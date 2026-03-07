@@ -115,27 +115,32 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
                 services = fingerprint_ports(host["open_ports"])
                 suggested_type = suggest_node_type(host["open_ports"])
 
-                # Skip if already pending (by IP)
-                existing = await db.execute(
+                # Update existing pending device or create a new one
+                existing_result = await db.execute(
                     select(PendingDevice).where(
                         PendingDevice.ip == host["ip"],
                         PendingDevice.status == "pending",
                     )
                 )
-                if existing.scalar_one_or_none():
-                    continue
-
-                device = PendingDevice(
-                    ip=host["ip"],
-                    mac=host.get("mac"),
-                    hostname=host.get("hostname"),
-                    os=host.get("os"),
-                    services=services,
-                    suggested_type=suggested_type,
-                    status="pending",
-                )
-                db.add(device)
-                devices_found += 1
+                existing = existing_result.scalar_one_or_none()
+                if existing:
+                    existing.mac = host.get("mac") or existing.mac
+                    existing.hostname = host.get("hostname") or existing.hostname
+                    existing.os = host.get("os") or existing.os
+                    existing.services = services
+                    existing.suggested_type = suggested_type
+                else:
+                    device = PendingDevice(
+                        ip=host["ip"],
+                        mac=host.get("mac"),
+                        hostname=host.get("hostname"),
+                        os=host.get("os"),
+                        services=services,
+                        suggested_type=suggested_type,
+                        status="pending",
+                    )
+                    db.add(device)
+                    devices_found += 1
 
                 # Commit immediately so the device is visible right away
                 await db.commit()
