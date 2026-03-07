@@ -15,14 +15,14 @@ async def headers(client: AsyncClient):
 
 
 async def test_list_nodes_empty(client: AsyncClient, headers: dict):
-    res = await client.get("/api/v1/nodes/", headers=headers)
+    res = await client.get("/api/v1/nodes", headers=headers)
     assert res.status_code == 200
     assert res.json() == []
 
 
 async def test_create_node(client: AsyncClient, headers: dict):
     payload = {"type": "server", "label": "My Server", "ip": "192.168.1.10", "status": "unknown"}
-    res = await client.post("/api/v1/nodes/", json=payload, headers=headers)
+    res = await client.post("/api/v1/nodes", json=payload, headers=headers)
     assert res.status_code == 201
     data = res.json()
     assert data["label"] == "My Server"
@@ -31,7 +31,7 @@ async def test_create_node(client: AsyncClient, headers: dict):
 
 
 async def test_get_node(client: AsyncClient, headers: dict):
-    create = await client.post("/api/v1/nodes/", json={"type": "router", "label": "Router", "status": "online"}, headers=headers)
+    create = await client.post("/api/v1/nodes", json={"type": "router", "label": "Router", "status": "online"}, headers=headers)
     node_id = create.json()["id"]
     res = await client.get(f"/api/v1/nodes/{node_id}", headers=headers)
     assert res.status_code == 200
@@ -44,7 +44,7 @@ async def test_get_node_not_found(client: AsyncClient, headers: dict):
 
 
 async def test_update_node(client: AsyncClient, headers: dict):
-    create = await client.post("/api/v1/nodes/", json={"type": "server", "label": "Old", "status": "unknown"}, headers=headers)
+    create = await client.post("/api/v1/nodes", json={"type": "server", "label": "Old", "status": "unknown"}, headers=headers)
     node_id = create.json()["id"]
     res = await client.patch(f"/api/v1/nodes/{node_id}", json={"label": "New", "ip": "10.0.0.1"}, headers=headers)
     assert res.status_code == 200
@@ -53,7 +53,7 @@ async def test_update_node(client: AsyncClient, headers: dict):
 
 
 async def test_delete_node(client: AsyncClient, headers: dict):
-    create = await client.post("/api/v1/nodes/", json={"type": "switch", "label": "Switch", "status": "unknown"}, headers=headers)
+    create = await client.post("/api/v1/nodes", json={"type": "switch", "label": "Switch", "status": "unknown"}, headers=headers)
     node_id = create.json()["id"]
     res = await client.delete(f"/api/v1/nodes/{node_id}", headers=headers)
     assert res.status_code == 204
@@ -62,6 +62,6 @@ async def test_delete_node(client: AsyncClient, headers: dict):
 
 async def test_list_nodes_returns_all(client: AsyncClient, headers: dict):
     for i in range(3):
-        await client.post("/api/v1/nodes/", json={"type": "generic", "label": f"Node {i}", "status": "unknown"}, headers=headers)
-    res = await client.get("/api/v1/nodes/", headers=headers)
+        await client.post("/api/v1/nodes", json={"type": "generic", "label": f"Node {i}", "status": "unknown"}, headers=headers)
+    res = await client.get("/api/v1/nodes", headers=headers)
     assert len(res.json()) == 3

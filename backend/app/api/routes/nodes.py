@@ -10,13 +10,13 @@ from app.schemas.nodes import NodeCreate, NodeResponse, NodeUpdate
 router = APIRouter()
 
 
-@router.get("/", response_model=list[NodeResponse])
+@router.get("", response_model=list[NodeResponse])
 async def list_nodes(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)):
     result = await db.execute(select(Node))
     return result.scalars().all()
 
 
-@router.post("/", response_model=NodeResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=NodeResponse, status_code=status.HTTP_201_CREATED)
 async def create_node(body: NodeCreate, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)):
     node = Node(**body.model_dump())
     db.add(node)

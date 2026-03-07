@@ -16,14 +16,14 @@ async def headers(client: AsyncClient):
 
 @pytest.fixture
 async def two_nodes(client: AsyncClient, headers: dict):
-    n1 = (await client.post("/api/v1/nodes/", json={"type": "router", "label": "R1", "status": "online"}, headers=headers)).json()
-    n2 = (await client.post("/api/v1/nodes/", json={"type": "switch", "label": "SW1", "status": "online"}, headers=headers)).json()
+    n1 = (await client.post("/api/v1/nodes", json={"type": "router", "label": "R1", "status": "online"}, headers=headers)).json()
+    n2 = (await client.post("/api/v1/nodes", json={"type": "switch", "label": "SW1", "status": "online"}, headers=headers)).json()
     return n1["id"], n2["id"]
 
 
 async def test_create_edge(client: AsyncClient, headers: dict, two_nodes):
     src, tgt = two_nodes
-    res = await client.post("/api/v1/edges/", json={"source": src, "target": tgt, "type": "ethernet"}, headers=headers)
+    res = await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet"}, headers=headers)
     assert res.status_code == 201
     data = res.json()
     assert data["source"] == src
@@ -33,22 +33,22 @@ async def test_create_edge(client: AsyncClient, headers: dict, two_nodes):
 
 async def test_create_vlan_edge(client: AsyncClient, headers: dict, two_nodes):
     src, tgt = two_nodes
-    res = await client.post("/api/v1/edges/", json={"source": src, "target": tgt, "type": "vlan", "vlan_id": 20, "label": "VLAN 20"}, headers=headers)
+    res = await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "vlan", "vlan_id": 20, "label": "VLAN 20"}, headers=headers)
     assert res.status_code == 201
     assert res.json()["vlan_id"] == 20
 
 
 async def test_list_edges(client: AsyncClient, headers: dict, two_nodes):
     src, tgt = two_nodes
-    await client.post("/api/v1/edges/", json={"source": src, "target": tgt, "type": "ethernet"}, headers=headers)
-    res = await client.get("/api/v1/edges/", headers=headers)
+    await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet"}, headers=headers)
+    res = await client.get("/api/v1/edges", headers=headers)
     assert res.status_code == 200
     assert len(res.json()) == 1
 
 
 async def test_delete_edge(client: AsyncClient, headers: dict, two_nodes):
     src, tgt = two_nodes
-    edge_id = (await client.post("/api/v1/edges/", json={"source": src, "target": tgt, "type": "wifi"}, headers=headers)).json()["id"]
+    edge_id = (await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "wifi"}, headers=headers)).json()["id"]
     res = await client.delete(f"/api/v1/edges/{edge_id}", headers=headers)
     assert res.status_code == 204
-    assert len((await client.get("/api/v1/edges/", headers=headers)).json()) == 0
+    assert len((await client.get("/api/v1/edges", headers=headers)).json()) == 0

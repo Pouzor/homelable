@@ -10,13 +10,13 @@ from app.schemas.edges import EdgeCreate, EdgeResponse, EdgeUpdate
 router = APIRouter()
 
 
-@router.get("/", response_model=list[EdgeResponse])
+@router.get("", response_model=list[EdgeResponse])
 async def list_edges(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)):
     result = await db.execute(select(Edge))
     return result.scalars().all()
 
 
-@router.post("/", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)
 async def create_edge(body: EdgeCreate, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)):
     edge = Edge(**body.model_dump())
     db.add(edge)

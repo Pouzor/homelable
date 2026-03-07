@@ -12,7 +12,7 @@ from app.schemas.canvas import CanvasSaveRequest, CanvasStateResponse
 router = APIRouter()
 
 
-@router.get("/", response_model=CanvasStateResponse)
+@router.get("", response_model=CanvasStateResponse)
 async def load_canvas(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)):
     nodes = (await db.execute(select(Node))).scalars().all()
     edges = (await db.execute(select(Edge))).scalars().all()

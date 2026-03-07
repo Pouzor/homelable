@@ -29,7 +29,7 @@ async def test_login_wrong_username(client: AsyncClient, mock_credentials):
 
 
 async def test_protected_route_requires_auth(client: AsyncClient):
-    res = await client.get("/api/v1/nodes/")
+    res = await client.get("/api/v1/nodes")
     assert res.status_code == 403
 
 
