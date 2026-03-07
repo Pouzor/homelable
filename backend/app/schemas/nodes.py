@@ -19,6 +19,7 @@ class NodeBase(BaseModel):
     pos_x: float = 0
     pos_y: float = 0
     parent_id: str | None = None
+    container_mode: bool = False
 
 
 class NodeCreate(NodeBase):
@@ -39,6 +40,7 @@ class NodeUpdate(BaseModel):
     notes: str | None = None
     pos_x: float | None = None
     pos_y: float | None = None
+    container_mode: bool | None = None
 
 
 class NodeResponse(NodeBase):

@@ -24,6 +24,9 @@ interface CanvasState {
   addNode: (node: Node<NodeData>) => void
   updateNode: (id: string, data: Partial<NodeData>) => void
   deleteNode: (id: string) => void
+  updateEdge: (id: string, data: Partial<EdgeData>) => void
+  deleteEdge: (id: string) => void
+  setProxmoxContainerMode: (proxmoxId: string, enabled: boolean) => void
   markSaved: () => void
   loadCanvas: (nodes: Node<NodeData>[], edges: Edge<EdgeData>[]) => void
 }
@@ -82,6 +85,44 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId,
       hasUnsavedChanges: true,
     })),
+
+  updateEdge: (id, data) =>
+    set((state) => ({
+      edges: state.edges.map((e) =>
+        e.id === id ? { ...e, type: data.type ?? e.type, data: { ...e.data, ...data } as EdgeData } : e
+      ),
+      hasUnsavedChanges: true,
+    })),
+
+  deleteEdge: (id) =>
+    set((state) => ({
+      edges: state.edges.filter((e) => e.id !== id),
+      hasUnsavedChanges: true,
+    })),
+
+  setProxmoxContainerMode: (proxmoxId, enabled) =>
+    set((state) => {
+      let nodes = state.nodes.map((n) => {
+        if (n.id === proxmoxId) {
+          const withMode = { ...n, data: { ...n.data, container_mode: enabled } }
+          return enabled
+            ? { ...withMode, width: 300, height: 200 }
+            : { ...withMode, width: undefined, height: undefined }
+        }
+        if (n.data.parent_id === proxmoxId) {
+          return enabled
+            ? { ...n, parentId: proxmoxId, extent: 'parent' as const }
+            : { ...n, parentId: undefined, extent: undefined }
+        }
+        return n
+      })
+      if (enabled) {
+        const parents = nodes.filter((n) => !n.parentId)
+        const children = nodes.filter((n) => !!n.parentId)
+        nodes = [...parents, ...children]
+      }
+      return { nodes, hasUnsavedChanges: true }
+    }),
 
   markSaved: () => set({ hasUnsavedChanges: false }),
 

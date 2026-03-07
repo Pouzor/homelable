@@ -20,6 +20,7 @@ class NodeSave(BaseModel):
     services: list[Any] = []
     notes: str | None = None
     parent_id: str | None = None
+    container_mode: bool = False
     pos_x: float = 0
     pos_y: float = 0
 

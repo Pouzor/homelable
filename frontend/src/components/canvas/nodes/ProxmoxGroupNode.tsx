@@ -1,6 +1,7 @@
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflow/react'
 import { Layers } from 'lucide-react'
 import type { NodeData, NodeStatus } from '@/types'
+import { BaseNode } from './BaseNode'
 
 const STATUS_COLORS: Record<NodeStatus, string> = {
   online: '#39d353',
@@ -11,7 +12,14 @@ const STATUS_COLORS: Record<NodeStatus, string> = {
 
 const GLOW = '#ff6e00'
 
-export function ProxmoxGroupNode({ data, selected }: NodeProps<Node<NodeData>>) {
+export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
+  const { data, selected } = props
+
+  // Render as a regular node when container mode is disabled
+  if (data.container_mode === false) {
+    return <BaseNode {...props} icon={Layers} glowColor={GLOW} />
+  }
+
   const statusColor = STATUS_COLORS[data.status]
   const isOnline = data.status === 'online'
 

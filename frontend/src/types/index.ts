@@ -40,6 +40,7 @@ export interface NodeData extends Record<string, unknown> {
   response_time_ms?: number
   notes?: string
   parent_id?: string
+  container_mode?: boolean
 }
 
 export interface EdgeData extends Record<string, unknown> {

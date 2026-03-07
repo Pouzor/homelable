@@ -12,12 +12,15 @@ interface EdgeModalProps {
   open: boolean
   onClose: () => void
   onSubmit: (data: EdgeData) => void
+  onDelete?: () => void
+  initial?: Partial<EdgeData>
+  title?: string
 }
 
-export function EdgeModal({ open, onClose, onSubmit }: EdgeModalProps) {
-  const [type, setType] = useState<EdgeType>('ethernet')
-  const [label, setLabel] = useState('')
-  const [vlanId, setVlanId] = useState('')
+export function EdgeModal({ open, onClose, onSubmit, onDelete, initial, title = 'Connect Nodes' }: EdgeModalProps) {
+  const [type, setType] = useState<EdgeType>(initial?.type ?? 'ethernet')
+  const [label, setLabel] = useState(initial?.label ?? '')
+  const [vlanId, setVlanId] = useState(initial?.vlan_id?.toString() ?? '')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,16 +30,18 @@ export function EdgeModal({ open, onClose, onSubmit }: EdgeModalProps) {
       vlan_id: type === 'vlan' && vlanId ? parseInt(vlanId) : undefined,
     })
     onClose()
-    setType('ethernet')
-    setLabel('')
-    setVlanId('')
+  }
+
+  const handleDelete = () => {
+    onDelete?.()
+    onClose()
   }
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-xs">
         <DialogHeader>
-          <DialogTitle className="text-sm font-semibold">Connect Nodes</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3 mt-2">
@@ -79,11 +84,18 @@ export function EdgeModal({ open, onClose, onSubmit }: EdgeModalProps) {
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-            <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90">
-              Connect
-            </Button>
+          <div className="flex justify-between gap-2 pt-1">
+            {onDelete ? (
+              <Button type="button" variant="ghost" size="sm" className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10" onClick={handleDelete}>
+                Delete
+              </Button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+              <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90">
+                {onDelete ? 'Save' : 'Connect'}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>

@@ -18,6 +18,7 @@ const DEFAULT_DATA: Partial<NodeData> = {
   status: 'unknown',
   check_method: 'ping',
   services: [],
+  container_mode: true,
 }
 
 interface NodeModalProps {
@@ -150,6 +151,29 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {/* Container mode (proxmox only) */}
+            {form.type === 'proxmox' && (
+              <div className="flex items-center justify-between col-span-2 py-1">
+                <div className="flex flex-col gap-0.5">
+                  <Label className="text-xs text-muted-foreground">Container Mode</Label>
+                  <span className="text-[10px] text-muted-foreground/60">Show VM/LXC nodes nested inside</span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!!form.container_mode}
+                  onClick={() => set('container_mode', !form.container_mode)}
+                  className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none"
+                  style={{ background: form.container_mode ? '#ff6e00' : '#30363d' }}
+                >
+                  <span
+                    className="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                    style={{ transform: form.container_mode ? 'translateX(16px)' : 'translateX(0)' }}
+                  />
+                </button>
               </div>
             )}
 

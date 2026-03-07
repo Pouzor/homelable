@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, useState } from 'react'
-import { ReactFlowProvider, type Connection } from '@xyflow/react'
+import { ReactFlowProvider, type Connection, type Edge } from '@xyflow/react'
 import { type Node } from '@xyflow/react'
 import { applyDagreLayout } from '@/utils/layout'
 import { exportToPng } from '@/utils/export'
@@ -22,7 +22,7 @@ import { useStatusPolling } from '@/hooks/useStatusPolling'
 import type { NodeData, EdgeData } from '@/types'
 
 export default function App() {
-  const { loadCanvas, markSaved, selectedNodeId, addNode, updateNode, onConnect, nodes, edges } = useCanvasStore()
+  const { loadCanvas, markSaved, selectedNodeId, addNode, updateNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, nodes, edges } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated } = useAuthStore()
 
@@ -31,6 +31,7 @@ export default function App() {
   const [addNodeOpen, setAddNodeOpen] = useState(false)
   const [editNodeId, setEditNodeId] = useState<string | null>(null)
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null)
+  const [editEdgeId, setEditEdgeId] = useState<string | null>(null)
   const [scanConfigOpen, setScanConfigOpen] = useState(false)
 
   // Declare handleSave before the Ctrl+S effect so it is in scope
@@ -50,6 +51,7 @@ export default function App() {
         services: n.data.services ?? [],
         notes: n.data.notes ?? null,
         parent_id: n.data.parent_id ?? null,
+        container_mode: n.data.container_mode ?? false,
         pos_x: n.position.x,
         pos_y: n.position.y,
       }))
@@ -81,14 +83,23 @@ export default function App() {
       .then((res) => {
         const { nodes: apiNodes, edges: apiEdges } = res.data
         if (apiNodes.length > 0) {
-          const rfNodes = apiNodes.map((n: NodeData & { id: string; pos_x: number; pos_y: number; parent_id?: string }) => ({
-            id: n.id,
-            type: n.type,
-            position: { x: n.pos_x, y: n.pos_y },
-            data: n,
-            ...(n.parent_id ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
-            ...(n.type === 'proxmox' ? { width: 300, height: 200 } : {}),
-          }))
+          // Build a map of proxmox container mode to know if children should be nested
+          const proxmoxContainerMap = new Map<string, boolean>(
+            apiNodes
+              .filter((n: NodeData & { id: string }) => n.type === 'proxmox')
+              .map((n: NodeData & { id: string }) => [n.id, n.container_mode !== false])
+          )
+          const rfNodes = apiNodes.map((n: NodeData & { id: string; pos_x: number; pos_y: number; parent_id?: string }) => {
+            const parentIsContainer = n.parent_id ? (proxmoxContainerMap.get(n.parent_id) ?? false) : false
+            return {
+              id: n.id,
+              type: n.type,
+              position: { x: n.pos_x, y: n.pos_y },
+              data: n,
+              ...(n.parent_id && parentIsContainer ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
+              ...(n.type === 'proxmox' && n.container_mode !== false ? { width: 300, height: 200 } : {}),
+            }
+          })
           const rfEdges = apiEdges.map((e: EdgeData & { id: string; source: string; target: string }) => ({
             id: e.id,
             source: e.source,
@@ -144,8 +155,12 @@ export default function App() {
   const handleUpdateNode = useCallback((data: Partial<NodeData>) => {
     if (!editNodeId) return
     updateNode(editNodeId, data)
+    // If proxmox container_mode changed, apply structural changes (children parentId, node dimensions)
+    if (data.type === 'proxmox' && typeof data.container_mode === 'boolean') {
+      setProxmoxContainerMode(editNodeId, data.container_mode)
+    }
     setEditNodeId(null)
-  }, [editNodeId, updateNode])
+  }, [editNodeId, updateNode, setProxmoxContainerMode])
 
   const handleAutoLayout = useCallback(() => {
     const laid = applyDagreLayout(nodes, edges)
@@ -174,7 +189,24 @@ export default function App() {
     setPendingConnection(null)
   }, [pendingConnection, onConnect])
 
+  const handleEdgeDoubleClick = useCallback((edge: Edge<EdgeData>) => {
+    setEditEdgeId(edge.id)
+  }, [])
+
+  const handleEdgeUpdate = useCallback((data: EdgeData) => {
+    if (!editEdgeId) return
+    updateEdge(editEdgeId, data)
+    setEditEdgeId(null)
+  }, [editEdgeId, updateEdge])
+
+  const handleEdgeDelete = useCallback(() => {
+    if (!editEdgeId) return
+    deleteEdge(editEdgeId)
+    setEditEdgeId(null)
+  }, [editEdgeId, deleteEdge])
+
   const editNode = editNodeId ? nodes.find((n) => n.id === editNodeId) : null
+  const editEdge = editEdgeId ? edges.find((e) => e.id === editEdgeId) : null
 
   if (!isAuthenticated) return <LoginPage />
 
@@ -195,7 +227,7 @@ export default function App() {
             />
             <div className="flex flex-1 min-h-0">
               <div ref={canvasRef} className="flex-1 min-w-0 h-full">
-                <CanvasContainer onConnect={handleEdgeConnect} />
+                <CanvasContainer onConnect={handleEdgeConnect} onEdgeDoubleClick={handleEdgeDoubleClick} />
               </div>
               {selectedNodeId && <DetailPanel onEdit={handleEditNode} />}
             </div>
@@ -225,6 +257,16 @@ export default function App() {
           open={!!pendingConnection}
           onClose={() => setPendingConnection(null)}
           onSubmit={handleEdgeConfirm}
+        />
+
+        <EdgeModal
+          key={editEdgeId ?? 'edge-edit'}
+          open={!!editEdgeId}
+          onClose={() => setEditEdgeId(null)}
+          onSubmit={handleEdgeUpdate}
+          onDelete={handleEdgeDelete}
+          initial={editEdge?.data}
+          title="Edit Link"
         />
 
         <ScanConfigModal
