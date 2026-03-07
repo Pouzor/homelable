@@ -1,8 +1,7 @@
-import { X, Edit, Trash2 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { X, Edit, Trash2, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCanvasStore } from '@/stores/canvasStore'
-import { NODE_TYPE_LABELS, STATUS_COLORS } from '@/types'
+import { NODE_TYPE_LABELS, STATUS_COLORS, type ServiceInfo } from '@/types'
 
 interface DetailPanelProps {
   onEdit: (id: string) => void
@@ -64,16 +63,10 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
       {/* Services */}
       {data.services.length > 0 && (
         <div className="px-4 py-3 border-t border-border">
-          <div className="text-xs text-muted-foreground mb-2">Services</div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="text-xs text-muted-foreground mb-2">Services ({data.services.length})</div>
+          <div className="flex flex-col gap-1.5">
             {data.services.map((svc) => (
-              <Badge
-                key={`${svc.port}-${svc.protocol}`}
-                variant="secondary"
-                className="font-mono text-xs bg-[#21262d] text-[#8b949e] border-[#30363d]"
-              >
-                {svc.port}/{svc.protocol} {svc.service_name}
-              </Badge>
+              <ServiceBadge key={`${svc.port}-${svc.protocol}`} svc={svc} ip={data.ip} />
             ))}
           </div>
         </div>
@@ -122,4 +115,60 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
       </span>
     </div>
   )
+}
+
+const CATEGORY_COLORS: Record<string, string> = {
+  web: '#00d4ff',
+  database: '#a855f7',
+  monitoring: '#39d353',
+  storage: '#e3b341',
+  security: '#f85149',
+  remote: '#8b949e',
+}
+
+function getServiceUrl(svc: ServiceInfo, ip?: string): string | null {
+  if (!ip) return null
+  const name = svc.service_name.toLowerCase()
+  const isHttps = name.includes('https') || name.includes('ssl') || svc.port === 443 || svc.port === 8443
+  const isHttp = name.includes('http') || [80, 8080, 8000, 3000, 8888, 9000, 8090, 7080].includes(svc.port)
+  if (isHttps) return `https://${ip}:${svc.port}`
+  if (isHttp) return `http://${ip}:${svc.port}`
+  return null
+}
+
+function ServiceBadge({ svc, ip }: { svc: ServiceInfo; ip?: string }) {
+  const url = getServiceUrl(svc, ip)
+  const color = CATEGORY_COLORS[svc.category ?? ''] ?? '#8b949e'
+
+  const inner = (
+    <div
+      className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border text-xs transition-colors"
+      style={{
+        background: '#21262d',
+        borderColor: '#30363d',
+        ...(url ? { cursor: 'pointer' } : {}),
+      }}
+    >
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span
+          className="shrink-0 w-1.5 h-1.5 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+        <span className="font-medium truncate" style={{ color }}>{svc.service_name}</span>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <span className="font-mono text-[#8b949e]">{svc.port}/{svc.protocol}</span>
+        {url && <ExternalLink size={10} className="text-muted-foreground" />}
+      </div>
+    </div>
+  )
+
+  if (url) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="block hover:opacity-80 transition-opacity">
+        {inner}
+      </a>
+    )
+  }
+  return inner
 }
