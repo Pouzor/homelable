@@ -116,3 +116,18 @@ def test_suggest_node_type_priority_proxmox_over_server():
     # both proxmox and server ports open → proxmox wins (higher priority)
     result = suggest_node_type([{"port": 80, "protocol": "tcp"}, {"port": 8006, "protocol": "tcp"}])
     assert result == "proxmox"
+
+
+def test_suggest_node_type_camera_from_rtsp_port():
+    # RTSP port 554 → camera (via _PORT_TYPE_HINTS)
+    result = suggest_node_type([{"port": 554, "protocol": "tcp"}])
+    assert result == "camera"
+
+
+def test_suggest_node_type_camera_from_signature():
+    # patch _load to return a camera sig so we test the sig path too
+    with patch("app.services.fingerprint._load", return_value=[
+        {"port": 554, "protocol": "tcp", "banner_regex": None, "service_name": "RTSP", "icon": "camera", "category": "camera", "suggested_node_type": "camera"}
+    ]):
+        result = suggest_node_type([{"port": 554, "protocol": "tcp"}])
+        assert result == "camera"

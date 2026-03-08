@@ -66,12 +66,12 @@ _PORT_TYPE_HINTS: dict[int, str] = {
     # Routers / network devices
     8291: "router",  # MikroTik Winbox
     179: "router",   # BGP
-    # Cameras / RTSP → iot
-    554: "iot",
-    8554: "iot",
-    37777: "iot",   # Dahua
-    34567: "iot",   # Amcrest
-    2020: "iot",    # Tapo
+    # Cameras / RTSP
+    554: "camera",
+    8554: "camera",
+    37777: "camera",   # Dahua
+    34567: "camera",   # Amcrest
+    2020: "camera",    # Tapo
     # Smart-home / MQTT → iot
     1883: "iot",
     8883: "iot",
@@ -87,7 +87,7 @@ _PORT_TYPE_HINTS: dict[int, str] = {
 
 def suggest_node_type(open_ports: list[dict[str, Any]]) -> str:
     """Suggest a node type based on the most specific matched signature."""
-    priority = ["proxmox", "nas", "router", "lxc", "vm", "server", "ap", "iot", "switch"]
+    priority = ["proxmox", "nas", "router", "lxc", "vm", "server", "ap", "camera", "iot", "switch"]
     found: set[str] = set()
     for p in open_ports:
         port = p["port"]
