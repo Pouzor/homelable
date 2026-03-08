@@ -10,6 +10,8 @@ export type NodeType =
   | 'iot'
   | 'ap'
   | 'camera'
+  | 'printer'
+  | 'computer'
   | 'generic'
 
 export type EdgeType = 'ethernet' | 'wifi' | 'iot' | 'vlan' | 'virtual' | 'cluster'
@@ -69,6 +71,8 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   iot: 'IoT Device',
   ap: 'Access Point',
   camera: 'Camera',
+  printer: 'Printer',
+  computer: 'Computer',
   generic: 'Generic Device',
 }
 
