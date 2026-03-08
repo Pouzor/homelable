@@ -20,10 +20,8 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
     return (
       <>
         <BaseNode {...props} icon={Layers} />
-        <Handle type="source" position={Position.Left} id="cluster-left-src" title="Same cluster" className="!w-2.5 !h-2.5 !rounded-sm" style={{ background: '#ff6e00', borderColor: '#ff6e0088', top: '35%' }} />
-        <Handle type="target" position={Position.Left} id="cluster-left-tgt" title="Same cluster" className="!w-2.5 !h-2.5 !rounded-sm" style={{ background: '#ff6e00', borderColor: '#ff6e0088', top: '65%' }} />
-        <Handle type="source" position={Position.Right} id="cluster-right-src" title="Same cluster" className="!w-2.5 !h-2.5 !rounded-sm" style={{ background: '#ff6e00', borderColor: '#ff6e0088', top: '35%' }} />
-        <Handle type="target" position={Position.Right} id="cluster-right-tgt" title="Same cluster" className="!w-2.5 !h-2.5 !rounded-sm" style={{ background: '#ff6e00', borderColor: '#ff6e0088', top: '65%' }} />
+        <Handle type="target" position={Position.Left} id="cluster-left" title="Same cluster" style={{ background: '#ff6e00', borderColor: '#ff6e0088', width: 6, height: 6 }} />
+        <Handle type="source" position={Position.Right} id="cluster-right" title="Same cluster" style={{ background: '#ff6e00', borderColor: '#ff6e0088', width: 6, height: 6 }} />
       </>
     )
   }
@@ -86,10 +84,8 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
       <Handle type="source" position={Position.Bottom} className="!bg-[#30363d] !border-[#8b949e]" />
 
       {/* Cluster handles — left/right for same-cluster links */}
-      <Handle type="source" position={Position.Left} id="cluster-left-src" title="Same cluster" className="!w-2.5 !h-2.5 !rounded-sm" style={{ background: '#ff6e00', borderColor: '#ff6e0088', top: '35%' }} />
-      <Handle type="target" position={Position.Left} id="cluster-left-tgt" title="Same cluster" className="!w-2.5 !h-2.5 !rounded-sm" style={{ background: '#ff6e00', borderColor: '#ff6e0088', top: '65%' }} />
-      <Handle type="source" position={Position.Right} id="cluster-right-src" title="Same cluster" className="!w-2.5 !h-2.5 !rounded-sm" style={{ background: '#ff6e00', borderColor: '#ff6e0088', top: '35%' }} />
-      <Handle type="target" position={Position.Right} id="cluster-right-tgt" title="Same cluster" className="!w-2.5 !h-2.5 !rounded-sm" style={{ background: '#ff6e00', borderColor: '#ff6e0088', top: '65%' }} />
+      <Handle type="target" position={Position.Left} id="cluster-left" title="Same cluster" style={{ background: '#ff6e00', borderColor: '#ff6e0088', width: 6, height: 6 }} />
+      <Handle type="source" position={Position.Right} id="cluster-right" title="Same cluster" style={{ background: '#ff6e00', borderColor: '#ff6e0088', width: 6, height: 6 }} />
     </>
   )
 }
