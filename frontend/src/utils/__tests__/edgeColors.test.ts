@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { EDGE_DEFAULT_COLORS } from '../edgeColors'
 import type { EdgeType } from '@/types'
 
-const EDGE_TYPES: EdgeType[] = ['ethernet', 'wifi', 'iot', 'vlan', 'virtual']
+const EDGE_TYPES: EdgeType[] = ['ethernet', 'wifi', 'iot', 'vlan', 'virtual', 'cluster']
 
 describe('EDGE_DEFAULT_COLORS', () => {
   it('has an entry for every EdgeType', () => {
@@ -31,5 +31,9 @@ describe('EDGE_DEFAULT_COLORS', () => {
 
   it('virtual default is muted gray', () => {
     expect(EDGE_DEFAULT_COLORS.virtual).toBe('#8b949e')
+  })
+
+  it('cluster default is proxmox orange', () => {
+    expect(EDGE_DEFAULT_COLORS.cluster).toBe('#ff6e00')
   })
 })

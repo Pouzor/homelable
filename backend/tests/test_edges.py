@@ -100,3 +100,40 @@ async def test_create_edge_requires_auth(client: AsyncClient, two_nodes):
     src, tgt = two_nodes
     res = await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet"})
     assert res.status_code == 401
+
+
+async def test_create_cluster_edge_with_handles(client: AsyncClient, headers: dict, two_nodes):
+    src, tgt = two_nodes
+    res = await client.post(
+        "/api/v1/edges",
+        json={
+            "source": src,
+            "target": tgt,
+            "type": "cluster",
+            "source_handle": "cluster-right",
+            "target_handle": "cluster-left",
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["type"] == "cluster"
+    assert data["source_handle"] == "cluster-right"
+    assert data["target_handle"] == "cluster-left"
+
+
+async def test_source_and_target_handle_persist_through_update(client: AsyncClient, headers: dict, two_nodes):
+    src, tgt = two_nodes
+    edge_id = (
+        await client.post(
+            "/api/v1/edges",
+            json={"source": src, "target": tgt, "type": "cluster", "source_handle": "cluster-right", "target_handle": "cluster-left"},
+            headers=headers,
+        )
+    ).json()["id"]
+    res = await client.patch(f"/api/v1/edges/{edge_id}", json={"label": "corosync"}, headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["source_handle"] == "cluster-right"
+    assert data["target_handle"] == "cluster-left"
+    assert data["label"] == "corosync"

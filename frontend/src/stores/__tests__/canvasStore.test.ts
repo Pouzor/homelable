@@ -117,6 +117,14 @@ describe('canvasStore', () => {
     expect(hasUnsavedChanges).toBe(true)
   })
 
+  it('onConnect preserves sourceHandle and targetHandle for cluster edges', () => {
+    useCanvasStore.getState().onConnect({ source: 'n1', target: 'n2', sourceHandle: 'cluster-right', targetHandle: 'cluster-left' })
+    const { edges } = useCanvasStore.getState()
+    expect(edges).toHaveLength(1)
+    expect(edges[0].sourceHandle).toBe('cluster-right')
+    expect(edges[0].targetHandle).toBe('cluster-left')
+  })
+
   it('addNode with parent_id sets parentId and extent', () => {
     useCanvasStore.getState().addNode(makeNode('parent'))
     useCanvasStore.getState().addNode(makeNode('child', { parent_id: 'parent' }))
