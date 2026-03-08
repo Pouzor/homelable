@@ -22,6 +22,7 @@ class NodeSave(BaseModel):
     parent_id: str | None = None
     container_mode: bool = False
     custom_colors: dict[str, Any] | None = None
+    custom_icon: str | None = None
     pos_x: float = 0
     pos_y: float = 0
 

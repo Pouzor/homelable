@@ -53,6 +53,7 @@ export default function App() {
         parent_id: n.data.parent_id ?? null,
         container_mode: n.data.container_mode ?? false,
         custom_colors: n.data.custom_colors ?? null,
+        custom_icon: n.data.custom_icon ?? null,
         pos_x: n.position.x,
         pos_y: n.position.y,
       }))

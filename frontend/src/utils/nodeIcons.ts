@@ -2,7 +2,7 @@ import {
   // Infrastructure (node types)
   Globe, Router, Network, Server, Layers, Box, Container, HardDrive, Cpu, Wifi, Circle,
   // Media
-  Play, Film, Tv, Tv2, Music, Camera, Video, Headphones, Clapperboard,
+  Play, Film, Tv, Tv2, Music, Camera, Video, Headphones, Clapperboard, Cctv,
   // Monitoring & Observability
   Activity, BarChart2, LineChart, Eye, Bell, Gauge, Monitor,
   // Storage & Databases
@@ -57,6 +57,7 @@ export const ICON_REGISTRY: IconEntry[] = [
   { key: 'headphones',   label: 'Audiobookshelf',    category: 'Media', icon: Headphones },
   { key: 'video',        label: 'Video / Streaming', category: 'Media', icon: Video },
   { key: 'camera',       label: 'Camera / Frigate',  category: 'Media', icon: Camera },
+  { key: 'cctv',         label: 'CCTV / IP Camera',  category: 'Media', icon: Cctv },
 
   // --- Monitoring ---
   { key: 'activity',   label: 'Prometheus / Uptime', category: 'Monitoring', icon: Activity },
