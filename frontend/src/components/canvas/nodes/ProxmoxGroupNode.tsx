@@ -80,10 +80,10 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
         <div className="flex-1 relative" />
       </div>
 
-      <Handle type="source" position={Position.Top} className="!bg-[#30363d] !border-[#8b949e]" />
-      <Handle type="target" position={Position.Top} className="!bg-[#30363d] !border-[#8b949e]" />
-      <Handle type="source" position={Position.Bottom} className="!bg-[#30363d] !border-[#8b949e]" />
-      <Handle type="target" position={Position.Bottom} className="!bg-[#30363d] !border-[#8b949e]" />
+      <Handle type="source" position={Position.Top} id="top" className="!bg-[#30363d] !border-[#8b949e]" />
+      <Handle type="target" position={Position.Top} id="top-t" style={{ opacity: 0, width: 12, height: 12 }} />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-[#30363d] !border-[#8b949e]" />
+      <Handle type="target" position={Position.Bottom} id="bottom-t" style={{ opacity: 0, width: 12, height: 12 }} />
 
       {/* Cluster handles — left/right for same-cluster links */}
       <Handle type="source" position={Position.Left} id="cluster-left" title="Same cluster" style={{ background: '#ff6e00', borderColor: '#ff6e0088', width: 6, height: 6 }} />

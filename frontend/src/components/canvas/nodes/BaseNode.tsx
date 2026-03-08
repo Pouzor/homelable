@@ -38,8 +38,8 @@ export function BaseNode({ data, selected, icon: typeIcon }: BaseNodeProps) {
         minWidth: 140,
       }}
     >
-      <Handle type="source" position={Position.Top} className="!bg-[#30363d] !border-[#8b949e]" />
-      <Handle type="target" position={Position.Top} className="!bg-[#30363d] !border-[#8b949e]" />
+      <Handle type="source" position={Position.Top} id="top" className="!bg-[#30363d] !border-[#8b949e]" />
+      <Handle type="target" position={Position.Top} id="top-t" style={{ opacity: 0, width: 12, height: 12 }} />
 
       {/* Icon */}
       <div
@@ -68,8 +68,8 @@ export function BaseNode({ data, selected, icon: typeIcon }: BaseNodeProps) {
         title={data.status}
       />
 
-      <Handle type="source" position={Position.Bottom} className="!bg-[#30363d] !border-[#8b949e]" />
-      <Handle type="target" position={Position.Bottom} className="!bg-[#30363d] !border-[#8b949e]" />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-[#30363d] !border-[#8b949e]" />
+      <Handle type="target" position={Position.Bottom} id="bottom-t" style={{ opacity: 0, width: 12, height: 12 }} />
     </div>
   )
 }
