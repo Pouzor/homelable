@@ -3,7 +3,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   BackgroundVariant,
   type Node,
   type Edge,
@@ -67,19 +66,6 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick }:
           color="#30363d"
         />
         <Controls />
-        <MiniMap
-          nodeColor={(node) => {
-            const data = node.data as NodeData
-            const colorMap: Record<string, string> = {
-              online: '#39d353',
-              offline: '#f85149',
-              pending: '#e3b341',
-              unknown: '#8b949e',
-            }
-            return colorMap[data?.status ?? 'unknown']
-          }}
-          maskColor="rgba(13, 17, 23, 0.7)"
-        />
       </ReactFlow>
     </div>
   )
