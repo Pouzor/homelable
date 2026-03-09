@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import socket
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -159,7 +159,7 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
         if run:
             run.status = "done"
             run.devices_found = devices_found
-            run.finished_at = datetime.now(UTC)
+            run.finished_at = datetime.now(timezone.utc)
             await db.commit()
 
     except Exception as exc:
@@ -168,5 +168,5 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
         if run:
             run.status = "error"
             run.error = str(exc)
-            run.finished_at = datetime.now(UTC)
+            run.finished_at = datetime.now(timezone.utc)
             await db.commit()

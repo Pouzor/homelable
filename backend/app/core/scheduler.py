@@ -1,6 +1,6 @@
 """APScheduler setup for background scan and status check jobs."""
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -33,12 +33,12 @@ async def _run_status_checks() -> None:
                 if n:
                     n.status = check_result["status"]
                     n.response_time_ms = check_result["response_time_ms"]
-                    n.last_seen = datetime.now(UTC) if check_result["status"] == "online" else n.last_seen
+                    n.last_seen = datetime.now(timezone.utc) if check_result["status"] == "online" else n.last_seen
                     await db.commit()
             await broadcast_status(
                 node_id=node.id,
                 status=check_result["status"],
-                checked_at=datetime.now(UTC).isoformat(),
+                checked_at=datetime.now(timezone.utc).isoformat(),
                 response_time_ms=check_result["response_time_ms"],
             )
         except Exception as exc:

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -71,7 +71,7 @@ async def save_canvas(
     state = await db.get(CanvasState, 1)
     if state:
         state.viewport = body.viewport
-        state.saved_at = datetime.now(UTC)
+        state.saved_at = datetime.now(timezone.utc)
     else:
         db.add(CanvasState(id=1, viewport=body.viewport))
 
