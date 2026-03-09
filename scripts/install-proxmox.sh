@@ -16,7 +16,7 @@ step()  { echo -e "\n${CYAN}▶ $*${NC}"; }
 command -v pct &>/dev/null || error "pct not found — run this on a Proxmox VE host, not inside a container"
 
 # ── Detect available storages for LXC rootfs ──────────────────────────────────
-mapfile -t STORAGES < <(pvesm status --content rootdir 2>/dev/null | awk 'NR>1 && $2=="active" {print $1}')
+mapfile -t STORAGES < <(pvesm status --content rootdir 2>/dev/null | awk 'NR>1 && $3=="active" {print $1}')
 [[ ${#STORAGES[@]} -eq 0 ]] && error "No active storage found that supports LXC rootfs (rootdir content type)"
 
 if [[ ${#STORAGES[@]} -eq 1 ]]; then
@@ -34,7 +34,7 @@ fi
 
 # ── Settings (override via env vars) ──────────────────────────────────────────
 CTID="${CTID:-$(pvesh get /cluster/nextid 2>/dev/null || echo 200)}"
-HOSTNAME="${HOSTNAME:-homelable}"
+CT_HOSTNAME="${CT_HOSTNAME:-homelable}"
 STORAGE="${STORAGE:-$DEFAULT_STORAGE}"
 DISK_SIZE="${DISK_SIZE:-8}"        # GB
 RAM="${RAM:-1024}"                 # MB
@@ -42,7 +42,7 @@ CORES="${CORES:-2}"
 BRIDGE="${BRIDGE:-vmbr0}"
 RAW="https://raw.githubusercontent.com/Pouzor/homelable/main"
 
-step "Creating Homelable LXC (CTID=$CTID, hostname=$HOSTNAME, storage=$STORAGE)"
+step "Creating Homelable LXC (CTID=$CTID, hostname=$CT_HOSTNAME, storage=$STORAGE)"
 
 # ── Download Debian 12 template if needed ─────────────────────────────────────
 TEMPLATE_STORAGE=$(pvesm status --content vztmpl | awk 'NR>1 {print $1; exit}')
@@ -61,7 +61,7 @@ info "Using template: $TEMPLATE"
 
 # ── Create the container ───────────────────────────────────────────────────────
 pct create "$CTID" "$TEMPLATE" \
-  --hostname "$HOSTNAME" \
+  --hostname "$CT_HOSTNAME" \
   --storage "$STORAGE" \
   --rootfs "${STORAGE}:${DISK_SIZE}" \
   --memory "$RAM" \
