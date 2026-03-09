@@ -18,9 +18,11 @@ docker compose up -d
 
 Open **http://localhost:3000** — login with `admin` / `admin`.
 
-> Change the password before exposing to a network: edit `backend/config.yml` and replace `password_hash` with a new bcrypt hash.
+> Change the password before exposing to a network: edit `.env` and update `AUTH_USERNAME` / `AUTH_PASSWORD_HASH`.
 >
-> Generate a hash: `docker compose exec backend python -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('yourpassword'))"`
+> Generate a new hash: `docker compose exec backend python -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('yourpassword'))"`
+>
+> ⚠️ Keep the single quotes around the hash value in `.env` — bcrypt hashes contain `$` characters that Docker Compose would otherwise misinterpret.
 
 ---
 
@@ -38,19 +40,20 @@ This installs the backend as a systemd service and serves the frontend via nginx
 
 ## Configuration
 
-`backend/config.yml`:
+All configuration is done via `.env` (copied from `.env.example`):
 
-```yaml
-auth:
-  username: admin
-  password_hash: "$2b$12$..."   # bcrypt hash
+```env
+SECRET_KEY=change_me_in_production
 
-scanner:
-  ranges:
-    - "192.168.1.0/24"          # CIDR ranges to scan
+# Auth — default: admin / admin
+AUTH_USERNAME=admin
+AUTH_PASSWORD_HASH='$2b$12$...'   # bcrypt hash — keep single quotes
 
-status_checker:
-  interval_seconds: 60          # how often to check node status
+# CIDR ranges to scan
+SCANNER_RANGES=["192.168.1.0/24"]
+
+# How often to check node status (seconds)
+STATUS_CHECKER_INTERVAL=60
 ```
 
 All settings are also editable in-app via the **Scan Network** button.
@@ -130,7 +133,7 @@ Proxmox nodes render as a resizable group container. VM and LXC nodes can be pla
 cd backend
 python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env          # edit SECRET_KEY
+cp ../.env.example .env       # edit SECRET_KEY and review defaults
 uvicorn app.main:app --reload --port 8000
 ```
 
