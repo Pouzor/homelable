@@ -1,16 +1,7 @@
-from unittest.mock import patch
-
-import pytest
 from httpx import AsyncClient
 
 
-@pytest.fixture
-def mock_credentials():
-    with patch("app.api.routes.auth._load_credentials", return_value=("admin", "$2b$12$o/LWyvmBc978CNpSsHxcveXN0WqjAGW/gBR0.U.HURWbaYD3GCDqS")):
-        yield
-
-
-async def test_login_success(client: AsyncClient, mock_credentials):
+async def test_login_success(client: AsyncClient):
     res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
     assert res.status_code == 200
     data = res.json()
@@ -18,12 +9,12 @@ async def test_login_success(client: AsyncClient, mock_credentials):
     assert data["token_type"] == "bearer"
 
 
-async def test_login_wrong_password(client: AsyncClient, mock_credentials):
+async def test_login_wrong_password(client: AsyncClient):
     res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "wrong"})
     assert res.status_code == 401
 
 
-async def test_login_wrong_username(client: AsyncClient, mock_credentials):
+async def test_login_wrong_username(client: AsyncClient):
     res = await client.post("/api/v1/auth/login", json={"username": "notadmin", "password": "admin"})
     assert res.status_code == 401
 

@@ -1,11 +1,11 @@
-"""Tests for background scheduler: _load_interval, _run_status_checks, lifecycle."""
+"""Tests for background scheduler: _run_status_checks, lifecycle."""
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.scheduler import _load_interval, _run_status_checks, start_scheduler, stop_scheduler
+from app.core.scheduler import _run_status_checks, start_scheduler, stop_scheduler
 from app.db.database import Base
 from app.db.models import Node
 
@@ -23,35 +23,6 @@ def _make_node(**kwargs) -> Node:
         pos_y=0.0,
     )
     return Node(**{**defaults, **kwargs})
-
-
-# ---------------------------------------------------------------------------
-# _load_interval
-# ---------------------------------------------------------------------------
-
-def test_load_interval_reads_from_config(tmp_path):
-    """_load_interval returns the value set in config.yml."""
-    cfg = tmp_path / "config.yml"
-    cfg.write_text("status_checker:\n  interval_seconds: 30\n")
-    with patch("app.core.scheduler.settings") as mock_settings:
-        mock_settings.config_path = str(cfg)
-        assert _load_interval() == 30
-
-
-def test_load_interval_defaults_to_60_when_key_missing(tmp_path):
-    """_load_interval returns 60 when status_checker section is absent."""
-    cfg = tmp_path / "config.yml"
-    cfg.write_text("auth:\n  username: admin\n")
-    with patch("app.core.scheduler.settings") as mock_settings:
-        mock_settings.config_path = str(cfg)
-        assert _load_interval() == 60
-
-
-def test_load_interval_defaults_to_60_on_missing_file():
-    """_load_interval returns 60 when config file does not exist."""
-    with patch("app.core.scheduler.settings") as mock_settings:
-        mock_settings.config_path = "/nonexistent/path/config.yml"
-        assert _load_interval() == 60
 
 
 # ---------------------------------------------------------------------------
@@ -164,26 +135,23 @@ async def test_run_status_checks_handles_check_error_gracefully(mem_db):
 # start_scheduler / stop_scheduler
 # ---------------------------------------------------------------------------
 
+def test_scheduler_uses_settings_interval():
+    """Scheduler registers the job with the interval from settings."""
+    mock_sched = MagicMock()
+    with patch("app.core.scheduler.settings") as mock_settings, \
+         patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
+        mock_settings.status_checker_interval = 45
+        start_scheduler()
+        _, kwargs = mock_sched.add_job.call_args
+        assert kwargs["seconds"] == 45
+
+
 def test_start_and_stop_scheduler():
     """Scheduler can be started and stopped without errors."""
     mock_sched = MagicMock()
-    with patch("app.core.scheduler._load_interval", return_value=3600), \
-         patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
+    with patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
         start_scheduler()
         stop_scheduler()
         mock_sched.add_job.assert_called_once()
         mock_sched.start.assert_called_once()
         mock_sched.shutdown.assert_called_once()
-
-
-def test_start_scheduler_uses_configured_interval():
-    """Scheduler registers the status_checks job with the correct interval."""
-    mock_sched = MagicMock()
-    with patch("app.core.scheduler._load_interval", return_value=120) as mock_interval, \
-         patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
-        start_scheduler()
-        mock_interval.assert_called_once()
-        mock_sched.add_job.assert_called_once()
-        _, kwargs = mock_sched.add_job.call_args
-        assert kwargs.get("seconds") == 120
-        mock_sched.start.assert_called_once()

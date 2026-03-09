@@ -4,7 +4,6 @@ import os
 os.environ.setdefault("SECRET_KEY", "test-only-secret-key-not-for-production")
 
 import pytest
-import yaml
 from httpx import ASGITransport, AsyncClient
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -18,20 +17,11 @@ _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 @pytest.fixture(autouse=True, scope="session")
-def test_config_file(tmp_path_factory):
-    """Write a minimal config.yml for the test session and point settings at it."""
-    cfg = {
-        "auth": {
-            "username": "admin",
-            "password_hash": _pwd_ctx.hash("admin"),
-        },
-        "scanner": {"ranges": []},
-        "status_checker": {"interval_seconds": 3600},
-    }
-    cfg_path = tmp_path_factory.mktemp("cfg") / "config.yml"
-    cfg_path.write_text(yaml.dump(cfg))
+def test_credentials():
+    """Configure test auth credentials directly on settings."""
     from app.core.config import settings
-    settings.config_path = str(cfg_path)
+    settings.auth_username = "admin"
+    settings.auth_password_hash = _pwd_ctx.hash("admin")
 
 
 @pytest.fixture

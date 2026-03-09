@@ -1,9 +1,0 @@
-auth:
-  username: admin
-  password_hash: ""  # Generate with: python -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('yourpassword'))"
-scanner:
-  interval: null
-  ranges:
-    - 192.168.1.0/24
-status_checker:
-  interval_seconds: 60

@@ -14,6 +14,7 @@ from app.db.database import init_db
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
+    settings.load_overrides()
     start_scheduler()
     yield
     stop_scheduler()

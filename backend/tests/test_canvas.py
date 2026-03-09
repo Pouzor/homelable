@@ -1,16 +1,12 @@
 import uuid
-from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
 
-TOKEN_HASH = "$2b$12$o/LWyvmBc978CNpSsHxcveXN0WqjAGW/gBR0.U.HURWbaYD3GCDqS"
-
 
 @pytest.fixture
 async def headers(client: AsyncClient):
-    with patch("app.api.routes.auth._load_credentials", return_value=("admin", TOKEN_HASH)):
-        res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
+    res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
     return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 

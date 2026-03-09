@@ -7,11 +7,13 @@ services:
     environment:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY must be set in the environment or a .env file}
       SQLITE_PATH: /app/data/homelab.db
-      CONFIG_PATH: /app/config.yml
       CORS_ORIGINS: '["http://localhost:3000"]'
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:?AUTH_PASSWORD_HASH must be set}
+      SCANNER_RANGES: ${SCANNER_RANGES:-["192.168.1.0/24"]}
+      STATUS_CHECKER_INTERVAL: ${STATUS_CHECKER_INTERVAL:-60}
     volumes:
       - backend_data:/app/data
-      - ./backend/config.yml:/app/config.yml
     networks:
       - homelable
     # Required for ping-based status checks

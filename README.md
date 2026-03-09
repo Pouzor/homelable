@@ -1,32 +1,18 @@
 # Homelable
 
-A self-hosted, open-source tool to visually map, document and monitor your homelab infrastructure.
+Homelable is a self-hosted infrastructure visualization solution. It provides a network scanning feature to accelerate the identification of machines and services deployed on your local infrastructure.
 
-Interactive network canvas where each node is a physical machine, VM, LXC container, switch, or device. Nodes show live status, IPs, hostnames, and running services. Edges represent network links.
+Homelable also offers a healthcheck system (WIP) through multiple methods (ping/TCP, /health API, etc.) to get a global overview of online/offline services.
 
----
-
-## Features
-
-- **Interactive canvas** — drag, zoom, pan, snap-to-grid (React Flow)
-- **11 node types** — ISP, router, switch, server, Proxmox, VM, LXC, NAS, IoT, AP, generic
-- **Proxmox nested nodes** — VM/LXC rendered inside a resizable Proxmox group container
-- **5 edge types** — ethernet, Wi-Fi, IoT, VLAN (color-coded), virtual
-- **Live status** — per-node checks via ping / HTTP / HTTPS / SSH / TCP / Prometheus
-- **Network scanner** — nmap-based discovery, approve/hide/ignore new devices
-- **Auto-layout** — one-click Dagre hierarchical arrangement
-- **Export** — download canvas as PNG
-- **Dark theme** — neon accent colors, JetBrains Mono for technical values
-- **Self-contained** — SQLite database, single config file, no cloud dependency
 
 ---
 
 ## Quick Start — Docker
 
 ```bash
-git clone https://github.com/you/homelable.git
+git clone https://github.com/Pouzor/homelable.git
 cd homelable
-
+cp .env.example .env
 docker compose up -d
 ```
 
@@ -38,34 +24,12 @@ Open **http://localhost:3000** — login with `admin` / `admin`.
 
 ---
 
-## Quick Start — Development
-
-**Backend (Python 3.13):**
-```bash
-cd backend
-python3.13 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # edit SECRET_KEY
-uvicorn app.main:app --reload --port 8000
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm install
-npm run dev   # http://localhost:5173
-```
-
-Default login: `admin` / `admin`
-
----
-
 ## Proxmox LXC Install
 
 Run inside a Debian/Ubuntu LXC container:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/you/homelable/main/scripts/lxc-install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/scripts/lxc-install.sh)
 ```
 
 This installs the backend as a systemd service and serves the frontend via nginx.
@@ -158,19 +122,25 @@ Proxmox nodes render as a resizable group container. VM and LXC nodes can be pla
 
 ---
 
-## Development
 
+## Development Mode
+
+**Backend (Python 3.13):**
 ```bash
-# Backend tests
-cd backend && source .venv/bin/activate
-pytest                    # 40 tests
-
-# Backend lint
-ruff check .
-
-# Frontend tests
-cd frontend && npm test
-
-# Frontend lint + typecheck
-npm run lint && npm run typecheck
+cd backend
+python3.13 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env          # edit SECRET_KEY
+uvicorn app.main:app --reload --port 8000
 ```
+
+**Frontend:**
+```bash
+cd frontend
+npm install
+npm run dev   # http://localhost:5173
+```
+
+Default login: `admin` / `admin`
+
+---

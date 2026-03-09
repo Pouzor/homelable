@@ -41,9 +41,6 @@ build/
 htmlcov/
 .coverage
 
-# App config — contains credentials, never commit
-backend/config.yml
-
 # SQLite
 *.db
 *.db-shm

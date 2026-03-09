@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-import yaml
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -20,17 +19,9 @@ class ScanConfig(BaseModel):
     ranges: list[str]
     interval_seconds: int
 
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-def _load_ranges() -> list[str]:
-    try:
-        with open(settings.config_path) as f:
-            cfg: dict[str, Any] = yaml.safe_load(f) or {}
-        return list(cfg.get("scanner", {}).get("ranges", []))
-    except Exception:
-        return []
 
 
 async def _background_scan(run_id: str, ranges: list[str]) -> None:
@@ -44,7 +35,7 @@ async def trigger_scan(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ) -> ScanRun:
-    ranges = _load_ranges()
+    ranges = settings.scanner_ranges
     run = ScanRun(status="running", ranges=ranges)
     db.add(run)
     await db.commit()
@@ -112,25 +103,18 @@ async def list_runs(db: AsyncSession = Depends(get_db), _: str = Depends(get_cur
 
 @router.get("/config", response_model=ScanConfig)
 async def get_scan_config(_: str = Depends(get_current_user)) -> ScanConfig:
-    try:
-        with open(settings.config_path) as f:
-            cfg = yaml.safe_load(f)
-        ranges = cfg.get("scanner", {}).get("ranges", [])
-        interval = int(cfg.get("status_checker", {}).get("interval_seconds", 60))
-        return ScanConfig(ranges=ranges, interval_seconds=interval)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return ScanConfig(
+        ranges=settings.scanner_ranges,
+        interval_seconds=settings.status_checker_interval,
+    )
 
 
 @router.post("/config", response_model=ScanConfig)
 async def update_scan_config(payload: ScanConfig, _: str = Depends(get_current_user)) -> ScanConfig:
     try:
-        with open(settings.config_path) as f:
-            cfg = yaml.safe_load(f) or {}
-        cfg.setdefault("scanner", {})["ranges"] = payload.ranges
-        cfg.setdefault("status_checker", {})["interval_seconds"] = payload.interval_seconds
-        with open(settings.config_path, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True)
+        settings.scanner_ranges = payload.ranges
+        settings.status_checker_interval = payload.interval_seconds
+        settings.save_overrides()
         return payload
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

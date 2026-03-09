@@ -2,7 +2,6 @@
 import logging
 from datetime import UTC, datetime
 
-import yaml
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 
@@ -46,22 +45,12 @@ async def _run_status_checks() -> None:
             logger.error("Status check failed for node %s: %s", node.id, exc)
 
 
-def _load_interval() -> int:
-    try:
-        with open(settings.config_path) as f:
-            cfg = yaml.safe_load(f)
-        return int(cfg.get("status_checker", {}).get("interval_seconds", 60))
-    except Exception:
-        return 60
-
-
 def start_scheduler() -> None:
     global scheduler
     scheduler = AsyncIOScheduler()
-    interval = _load_interval()
-    scheduler.add_job(_run_status_checks, "interval", seconds=interval, id="status_checks")
+    scheduler.add_job(_run_status_checks, "interval", seconds=settings.status_checker_interval, id="status_checks")
     scheduler.start()
-    logger.info("Scheduler started — status checks every %ds", interval)
+    logger.info("Scheduler started — status checks every %ds", settings.status_checker_interval)
 
 
 def stop_scheduler() -> None:

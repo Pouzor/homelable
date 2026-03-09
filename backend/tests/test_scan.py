@@ -49,8 +49,9 @@ async def test_trigger_scan_requires_auth(client: AsyncClient):
 async def test_trigger_scan_creates_run(client: AsyncClient, headers):
     with (
         patch("app.api.routes.scan._background_scan", new_callable=AsyncMock),
-        patch("app.api.routes.scan._load_ranges", return_value=["192.168.1.0/24"]),
+        patch("app.api.routes.scan.settings") as mock_settings,
     ):
+        mock_settings.scanner_ranges = ["192.168.1.0/24"]
         res = await client.post("/api/v1/scan/trigger", headers=headers)
     assert res.status_code == 200
     data = res.json()

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Homelable — LXC/VM bootstrap installer
 # Compatible with Proxmox VE (Debian/Ubuntu LXC containers)
-# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/you/homelable/main/scripts/lxc-install.sh)
+# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/scripts/lxc-install.sh)
 
 set -euo pipefail
 
@@ -48,7 +48,7 @@ if ! id "$SERVICE_USER" &>/dev/null; then
 fi
 
 # ── Clone / update repo ───────────────────────────────────────────────────────
-REPO_URL="https://github.com/you/homelable.git"   # ← update before publishing
+REPO_URL="https://github.com/Pouzor/homelable.git"
 if [[ -d "$INSTALL_DIR/.git" ]]; then
   info "Updating existing installation..."
   git -C "$INSTALL_DIR" pull
