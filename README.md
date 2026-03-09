@@ -9,13 +9,9 @@ Homelable also offers a healthcheck system (WIP) through multiple methods (ping/
 
 ## Quick Start — Docker
 
-No clone needed. Pull the pre-built images directly:
-
 ```bash
-mkdir homelable && cd homelable
-curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/.env.example -o .env
-curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/docker-compose.prebuilt.yml -o docker-compose.yml
-docker compose up -d
+curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/install.sh | bash
+cd homelable && docker compose up -d
 ```
 
 Open **http://localhost:3000** — login with `admin` / `admin`.
@@ -25,6 +21,15 @@ Open **http://localhost:3000** — login with `admin` / `admin`.
 > Generate a new hash: `docker compose exec backend python -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('yourpassword'))"`
 >
 > ⚠️ Keep the single quotes around the hash value in `.env` — bcrypt hashes contain `$` characters that Docker Compose would otherwise misinterpret.
+
+### Update
+
+Re-run the install script — it detects an existing install and only updates `docker-compose.yml`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/install.sh | bash
+cd homelable && docker compose pull && docker compose up -d
+```
 
 ### Build from source
 
