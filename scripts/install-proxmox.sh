@@ -41,7 +41,7 @@ RAM="${RAM:-1024}"                 # MB
 CORES="${CORES:-2}"
 BRIDGE="${BRIDGE:-vmbr0}"
 RAW="https://raw.githubusercontent.com/Pouzor/homelable/main"
-ROOT_PASSWORD="${ROOT_PASSWORD:-$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)}"
+ROOT_PASSWORD="${ROOT_PASSWORD:-$(openssl rand -base64 12 | tr -d '+/=')}"
 
 step "Creating Homelable LXC (CTID=$CTID, hostname=$CT_HOSTNAME, storage=$STORAGE)"
 
