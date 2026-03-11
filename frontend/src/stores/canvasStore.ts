@@ -32,6 +32,7 @@ interface CanvasState {
   editingGroupRectId: string | null
   setEditingGroupRectId: (id: string | null) => void
   markSaved: () => void
+  markUnsaved: () => void
   loadCanvas: (nodes: Node<NodeData>[], edges: Edge<EdgeData>[]) => void
   notifyScanDeviceFound: () => void
 }
@@ -154,6 +155,8 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   setEditingGroupRectId: (id) => set({ editingGroupRectId: id }),
 
   markSaved: () => set({ hasUnsavedChanges: false }),
+
+  markUnsaved: () => set({ hasUnsavedChanges: true }),
 
   notifyScanDeviceFound: () => set({ scanEventTs: Date.now() }),
 

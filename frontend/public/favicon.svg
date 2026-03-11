@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="32" fill="#0d1117"/>
+
+  <!-- House silhouette -->
+  <path d="M32 12 L52 30 L48 30 L48 52 L16 52 L16 30 L12 30 Z"
+        fill="#161b22" stroke="#00d4ff" stroke-width="1.5" stroke-linejoin="round"/>
+
+  <!-- Door -->
+  <rect x="27" y="40" width="10" height="12" rx="1"
+        fill="#0d1117" stroke="#00d4ff" stroke-width="1"/>
+
+  <!-- Network nodes -->
+  <!-- Center node (hub) -->
+  <circle cx="32" cy="33" r="3" fill="#00d4ff"/>
+
+  <!-- Left node -->
+  <circle cx="22" cy="38" r="2" fill="#39d353"/>
+  <line x1="22" y1="38" x2="29" y2="33" stroke="#39d353" stroke-width="1" opacity="0.7"/>
+
+  <!-- Right node -->
+  <circle cx="42" cy="38" r="2" fill="#39d353"/>
+  <line x1="42" y1="38" x2="35" y2="33" stroke="#39d353" stroke-width="1" opacity="0.7"/>
+
+  <!-- Top node (inside roof area) -->
+  <circle cx="32" cy="24" r="2" fill="#a855f7"/>
+  <line x1="32" y1="24" x2="32" y2="30" stroke="#a855f7" stroke-width="1" opacity="0.7"/>
+
+  <!-- Glow effect on center node -->
+  <circle cx="32" cy="33" r="3" fill="none" stroke="#00d4ff" stroke-width="1.5" opacity="0.4"/>
+</svg>

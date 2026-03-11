@@ -1,4 +1,5 @@
 import type { NodeData, NodeType } from '@/types'
+import { THEMES, type ThemeId } from './themes'
 
 export interface NodeColors {
   border: string
@@ -6,27 +7,31 @@ export interface NodeColors {
   icon: string
 }
 
-export const NODE_DEFAULT_COLORS: Record<NodeType, NodeColors> = {
-  isp:     { border: '#00d4ff', background: '#21262d', icon: '#00d4ff' },
-  router:  { border: '#00d4ff', background: '#21262d', icon: '#00d4ff' },
-  switch:  { border: '#39d353', background: '#21262d', icon: '#39d353' },
-  server:  { border: '#a855f7', background: '#21262d', icon: '#a855f7' },
-  proxmox: { border: '#ff6e00', background: '#21262d', icon: '#ff6e00' },
-  vm:      { border: '#a855f7', background: '#21262d', icon: '#a855f7' },
-  lxc:     { border: '#00d4ff', background: '#21262d', icon: '#00d4ff' },
-  nas:     { border: '#39d353', background: '#21262d', icon: '#39d353' },
-  iot:      { border: '#e3b341', background: '#21262d', icon: '#e3b341' },
-  ap:       { border: '#00d4ff', background: '#21262d', icon: '#00d4ff' },
-  camera:   { border: '#8b949e', background: '#21262d', icon: '#8b949e' },
-  printer:  { border: '#8b949e', background: '#21262d', icon: '#8b949e' },
-  computer: { border: '#a855f7', background: '#21262d', icon: '#a855f7' },
-  cpl:      { border: '#e3b341', background: '#21262d', icon: '#e3b341' },
-  generic:  { border: '#8b949e', background: '#21262d', icon: '#8b949e' },
-  groupRect: { border: '#00d4ff', background: 'transparent', icon: '#00d4ff' },
-}
+// Derived from the default theme — kept for backward compatibility and tests
+export const NODE_DEFAULT_COLORS: Record<NodeType, NodeColors> = Object.fromEntries(
+  (Object.entries(THEMES.default.colors.nodeAccents) as [NodeType, { border: string; icon: string }][]).map(
+    ([type, accent]) => [
+      type,
+      {
+        border:     accent.border,
+        background: type === 'groupRect' ? 'transparent' : THEMES.default.colors.nodeCardBackground,
+        icon:       accent.icon,
+      },
+    ]
+  )
+) as Record<NodeType, NodeColors>
 
-export function resolveNodeColors(data: Pick<NodeData, 'type' | 'custom_colors'>): NodeColors {
-  const defaults = NODE_DEFAULT_COLORS[data.type] ?? NODE_DEFAULT_COLORS.generic
+export function resolveNodeColors(
+  data: Pick<NodeData, 'type' | 'custom_colors'>,
+  themeId: ThemeId = 'default',
+): NodeColors {
+  const theme = THEMES[themeId] ?? THEMES.default
+  const accent = theme.colors.nodeAccents[data.type] ?? theme.colors.nodeAccents.generic
+  const defaults: NodeColors = {
+    border:     accent.border,
+    background: data.type === 'groupRect' ? 'transparent' : theme.colors.nodeCardBackground,
+    icon:       accent.icon,
+  }
   const custom = data.custom_colors
   return {
     border:     custom?.border     ?? defaults.border,

@@ -1,25 +1,23 @@
 import { createElement } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import { type LucideIcon } from 'lucide-react'
-import type { NodeData, NodeStatus } from '@/types'
+import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { resolveNodeIcon } from '@/utils/nodeIcons'
-
-const STATUS_COLORS: Record<NodeStatus, string> = {
-  online: '#39d353',
-  offline: '#f85149',
-  pending: '#e3b341',
-  unknown: '#8b949e',
-}
+import { useThemeStore } from '@/stores/themeStore'
+import { THEMES } from '@/utils/themes'
 
 interface BaseNodeProps extends NodeProps<Node<NodeData>> {
   icon: LucideIcon
 }
 
 export function BaseNode({ data, selected, icon: typeIcon }: BaseNodeProps) {
+  const activeTheme = useThemeStore((s) => s.activeTheme)
+  const theme = THEMES[activeTheme]
+
   const resolvedIcon = resolveNodeIcon(typeIcon, data.custom_icon)
-  const colors = resolveNodeColors(data)
-  const statusColor = STATUS_COLORS[data.status]
+  const colors = resolveNodeColors(data, activeTheme)
+  const statusColor = theme.colors.statusColors[data.status]
   const isOnline = data.status === 'online'
 
   return (
@@ -38,24 +36,40 @@ export function BaseNode({ data, selected, icon: typeIcon }: BaseNodeProps) {
         minWidth: 140,
       }}
     >
-      <Handle type="source" position={Position.Top} id="top" className="!bg-[#30363d] !border-[#8b949e]" />
+      <Handle
+        type="source"
+        position={Position.Top}
+        id="top"
+        style={{ background: theme.colors.handleBackground, borderColor: theme.colors.handleBorder }}
+      />
       <Handle type="target" position={Position.Top} id="top-t" style={{ opacity: 0, width: 12, height: 12 }} />
 
       {/* Icon */}
       <div
         className="flex items-center justify-center w-7 h-7 rounded-md shrink-0"
-        style={{ color: isOnline ? colors.icon : '#8b949e', background: '#161b22' }}
+        style={{
+          color: isOnline ? colors.icon : theme.colors.nodeSubtextColor,
+          background: theme.colors.nodeIconBackground,
+        }}
       >
         {createElement(resolvedIcon, { size: 15 })}
       </div>
 
       {/* Details */}
       <div className="flex flex-col min-w-0">
-        <div className="text-xs font-medium leading-tight truncate max-w-[110px]" title={data.label}>
+        <div
+          className="text-xs font-medium leading-tight truncate max-w-[110px]"
+          style={{ color: theme.colors.nodeLabelColor }}
+          title={data.label}
+        >
           {data.label}
         </div>
         {data.ip && (
-          <div className="font-mono text-[10px] text-[#8b949e] truncate" title={data.ip}>
+          <div
+            className="font-mono text-[10px] truncate"
+            style={{ color: theme.colors.nodeSubtextColor }}
+            title={data.ip}
+          >
             {data.ip}
           </div>
         )}
@@ -68,7 +82,12 @@ export function BaseNode({ data, selected, icon: typeIcon }: BaseNodeProps) {
         title={data.status}
       />
 
-      <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-[#30363d] !border-[#8b949e]" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom"
+        style={{ background: theme.colors.handleBackground, borderColor: theme.colors.handleBorder }}
+      />
       <Handle type="target" position={Position.Bottom} id="bottom-t" style={{ opacity: 0, width: 12, height: 12 }} />
     </div>
   )

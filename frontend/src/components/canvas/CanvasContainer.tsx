@@ -11,6 +11,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { useThemeStore } from '@/stores/themeStore'
+import { THEMES } from '@/utils/themes'
 import { nodeTypes } from './nodes/nodeTypes'
 import { edgeTypes } from './edges/edgeTypes'
 import type { NodeData, EdgeData } from '@/types'
@@ -27,6 +29,9 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick }:
     setSelectedNode,
   } = useCanvasStore()
 
+  const activeTheme = useThemeStore((s) => s.activeTheme)
+  const theme = THEMES[activeTheme]
+
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node<NodeData>) => {
     setSelectedNode(node.id)
   }, [setSelectedNode])
@@ -39,9 +44,8 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick }:
     onEdgeDoubleClick?.(edge)
   }, [onEdgeDoubleClick])
 
-
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full" style={{ background: theme.colors.canvasBackground }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -56,7 +60,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick }:
         snapToGrid
         snapGrid={[16, 16]}
         fitView
-        colorMode="dark"
+        colorMode={theme.colors.reactFlowColorMode}
         elevateNodesOnSelect={false}
         connectionMode={ConnectionMode.Loose}
         isValidConnection={(connection) => connection.source !== connection.target}
@@ -65,7 +69,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick }:
           variant={BackgroundVariant.Dots}
           gap={24}
           size={1}
-          color="#30363d"
+          color={theme.colors.canvasDotColor}
         />
         <Controls />
       </ReactFlow>

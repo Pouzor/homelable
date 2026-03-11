@@ -15,8 +15,10 @@ import { NodeModal } from '@/components/modals/NodeModal'
 import { EdgeModal } from '@/components/modals/EdgeModal'
 import { ScanConfigModal } from '@/components/modals/ScanConfigModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
+import { ThemeModal } from '@/components/modals/ThemeModal'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
+import { useThemeStore } from '@/stores/themeStore'
 import { canvasApi } from '@/api/client'
 import { demoNodes, demoEdges } from '@/utils/demoData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
@@ -29,9 +31,11 @@ export default function App() {
   const { loadCanvas, markSaved, selectedNodeId, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated } = useAuthStore()
+  const { activeTheme, setTheme } = useThemeStore()
 
   useStatusPolling()
 
+  const [themeModalOpen, setThemeModalOpen] = useState(false)
   const [addNodeOpen, setAddNodeOpen] = useState(false)
   const [addGroupRectOpen, setAddGroupRectOpen] = useState(false)
   const [editNodeId, setEditNodeId] = useState<string | null>(null)
@@ -43,7 +47,7 @@ export default function App() {
   const handleSave = useCallback(async () => {
     try {
       if (STANDALONE) {
-        localStorage.setItem(STANDALONE_STORAGE_KEY, JSON.stringify({ nodes, edges }))
+        localStorage.setItem(STANDALONE_STORAGE_KEY, JSON.stringify({ nodes, edges, theme_id: activeTheme }))
         markSaved()
         toast.success('Canvas saved')
         return
@@ -112,13 +116,13 @@ export default function App() {
         source_handle: e.sourceHandle === 'top-t' ? 'top' : e.sourceHandle === 'bottom-t' ? 'bottom' : (e.sourceHandle ?? null),
         target_handle: e.targetHandle === 'top-t' ? 'top' : e.targetHandle === 'bottom-t' ? 'bottom' : (e.targetHandle ?? null),
       }))
-      await canvasApi.save({ nodes: nodesToSave, edges: edgesToSave, viewport: {} })
+      await canvasApi.save({ nodes: nodesToSave, edges: edgesToSave, viewport: { theme_id: activeTheme } })
       markSaved()
       toast.success('Canvas saved')
     } catch {
       toast.error('Save failed')
     }
-  }, [nodes, edges, markSaved])
+  }, [nodes, edges, markSaved, activeTheme])
 
   // Keep a ref so the keydown handler always calls the latest version
   const handleSaveRef = useRef(handleSave)
@@ -130,7 +134,8 @@ export default function App() {
       try {
         const saved = localStorage.getItem(STANDALONE_STORAGE_KEY)
         if (saved) {
-          const { nodes: savedNodes, edges: savedEdges } = JSON.parse(saved)
+          const { nodes: savedNodes, edges: savedEdges, theme_id } = JSON.parse(saved)
+          if (theme_id) setTheme(theme_id)
           loadCanvas(savedNodes, savedEdges)
         } else {
           loadCanvas(demoNodes, demoEdges)
@@ -185,13 +190,15 @@ export default function App() {
             targetHandle: e.target_handle ?? null,
             data: e,
           }))
+          const savedTheme = res.data.viewport?.theme_id
+          if (savedTheme) setTheme(savedTheme)
           loadCanvas(rfNodes, rfEdges)
         } else {
           loadCanvas(demoNodes, demoEdges)
         }
       })
       .catch(() => loadCanvas(demoNodes, demoEdges))
-  }, [isAuthenticated, loadCanvas])
+  }, [isAuthenticated, loadCanvas, setTheme])
 
   // Ctrl+S
   useEffect(() => {
@@ -391,6 +398,7 @@ export default function App() {
               onSave={handleSave}
               onAutoLayout={handleAutoLayout}
               onExport={handleExport}
+              onChangeStyle={() => setThemeModalOpen(true)}
             />
             <div className="flex flex-1 min-h-0">
               <div ref={canvasRef} className="flex-1 min-w-0 h-full">
@@ -479,6 +487,13 @@ export default function App() {
             }
           })()}
           title="Edit Rectangle"
+        />
+
+        {/* key forces re-mount on open so useState captures current theme as original */}
+        <ThemeModal
+          key={themeModalOpen ? 'theme-open' : 'theme-closed'}
+          open={themeModalOpen}
+          onClose={() => setThemeModalOpen(false)}
         />
 
         <Toaster theme="dark" position="bottom-right" />

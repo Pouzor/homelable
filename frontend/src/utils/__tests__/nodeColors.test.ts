@@ -52,4 +52,25 @@ describe('resolveNodeColors', () => {
     const result = resolveNodeColors({ type: 'unknown' as any, custom_colors: undefined })
     expect(result).toEqual(NODE_DEFAULT_COLORS.generic)
   })
+
+  it('uses theme colors when themeId is provided', () => {
+    const result = resolveNodeColors(makeData({ type: 'server' }), 'matrix')
+    expect(result.border).not.toBe(NODE_DEFAULT_COLORS.server.border)
+    expect(result.border).toBe('#008822') // matrix server accent
+  })
+
+  it('custom_colors override theme colors', () => {
+    const custom = { border: '#ff0000' }
+    const result = resolveNodeColors(makeData({ type: 'server', custom_colors: custom }), 'neon')
+    expect(result.border).toBe('#ff0000')
+    // background should come from neon theme, not default
+    expect(result.background).not.toBe(NODE_DEFAULT_COLORS.server.background)
+  })
+
+  it('groupRect always has transparent background regardless of theme', () => {
+    for (const themeId of ['default', 'light', 'matrix', 'neon', 'dark'] as const) {
+      const result = resolveNodeColors(makeData({ type: 'groupRect' }), themeId)
+      expect(result.background).toBe('transparent')
+    }
+  })
 })

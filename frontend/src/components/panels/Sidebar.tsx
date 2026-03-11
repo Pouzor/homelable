@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Network, Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Trash2, RefreshCw, Loader2, Square } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Trash2, RefreshCw, Loader2, Square } from 'lucide-react'
+import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { scanApi } from '@/api/client'
@@ -70,13 +71,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeAppro
       </button>
 
       {/* Logo */}
-      <div className="flex items-center gap-2 px-3 py-4 border-b border-border">
-        <div className="flex items-center justify-center w-7 h-7 rounded-md bg-[#00d4ff]/10 text-[#00d4ff] shrink-0">
-          <Network size={16} />
-        </div>
-        {!collapsed && (
-          <span className="font-semibold text-sm tracking-wide text-foreground">Homelable</span>
-        )}
+      <div className="flex items-center px-3 py-4 border-b border-border overflow-hidden">
+        <Logo size={28} showText={!collapsed} />
       </div>
 
       {/* Views */}
