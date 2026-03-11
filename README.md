@@ -4,6 +4,8 @@ Homelable is a self-hosted infrastructure visualization solution. It provides a 
 
 Homelable also offers a healthcheck system (WIP) through multiple methods (ping/TCP, /health API, etc.) to get a global overview of online/offline services.
 
+You can also select some pre-built design styles, or personalize each device in your diagram.
+
 If you just like the design, you can only run the frontend and export your design as PNG.
 
 
