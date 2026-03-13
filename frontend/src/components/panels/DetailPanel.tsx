@@ -76,7 +76,21 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
       {/* Details */}
       <div className="flex flex-col gap-3 px-4 py-3 text-sm">
         <DetailRow label="Type" value={NODE_TYPE_LABELS[data.type]} />
-        {data.hostname && <DetailRow label="Hostname" value={data.hostname} mono />}
+        {data.hostname && (
+          <div className="flex justify-between gap-2 items-baseline">
+            <span className="text-muted-foreground text-xs shrink-0">Hostname</span>
+            <a
+              href={`http://${data.hostname}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-mono text-[#00d4ff] hover:underline truncate flex items-center gap-1"
+              title={data.hostname}
+            >
+              {data.hostname}
+              <ExternalLink size={10} className="shrink-0" />
+            </a>
+          </div>
+        )}
         {data.ip && <DetailRow label="IP Address" value={data.ip} mono />}
         {data.mac && <DetailRow label="MAC" value={data.mac} mono />}
         {data.os && <DetailRow label="OS" value={data.os} />}
