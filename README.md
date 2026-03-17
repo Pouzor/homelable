@@ -84,6 +84,20 @@ The backend runs as a systemd service, the frontend is served via nginx on port 
 > bash <(curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/scripts/lxc-install.sh)
 > ```
 
+### Update
+
+Run the update script inside the container (pulls latest code, rebuilds frontend, restarts services — `.env` and database are never touched):
+
+```bash
+sudo bash /opt/homelable/scripts/update.sh
+```
+
+Or directly from GitHub:
+
+```bash
+sudo bash <(curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/scripts/update.sh)
+```
+
 ---
 
 ## Configuration
