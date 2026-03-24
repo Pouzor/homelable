@@ -1,9 +1,9 @@
-import type { EdgeType, NodeType } from '@/types'
+import type { NodeType, EdgeType, CheckMethod } from '@/types'
 
 export interface YamlNodeConnection {
   label: string
-  linkType: EdgeType
-  linkLabel: string
+  linkType?: EdgeType
+  linkLabel?: string
 }
 
 export interface YamlNode {
@@ -12,7 +12,7 @@ export interface YamlNode {
   label: string
   hostname?: string
   ipAddress?: string
-  checkMethod?: string
+  checkMethod?: CheckMethod
   checkTarget?: string
   notes?: string
   parent?: YamlNodeConnection

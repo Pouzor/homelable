@@ -6,6 +6,7 @@ import { generateUUID } from '@/utils/uuid'
 import { generateMarkdownTable } from '@/utils/exportMarkdown'
 import { exportToPng } from '@/utils/export'
 import { exportCanvasToYaml, downloadYaml } from '@/utils/exportYaml'
+import { parseYamlToCanvas } from '@/utils/importYaml'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'sonner'
@@ -33,7 +34,7 @@ const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STANDALONE_STORAGE_KEY = 'homelable_canvas'
 
 export default function App() {
-  const { loadCanvas, markSaved, selectedNodeId, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
+  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated } = useAuthStore()
   const { activeTheme, setTheme } = useThemeStore()
@@ -379,6 +380,18 @@ export default function App() {
     toast.success('Canvas exported as YAML')
   }, [nodes, edges])
 
+  const handleImportYaml = useCallback((content: string) => {
+    try {
+      const { nodes: merged, edges: mergedEdges, imported } = parseYamlToCanvas(content, nodes, edges)
+      snapshotHistory()
+      loadCanvas(merged, mergedEdges)
+      markUnsaved()
+      toast.success(`Imported ${imported} node${imported !== 1 ? 's' : ''}`)
+    } catch (err) {
+      toast.error(`Import failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }, [nodes, edges, snapshotHistory, loadCanvas, markUnsaved])
+
   const handleExport = useCallback(async () => {
     const el = canvasRef.current?.querySelector<HTMLElement>('.react-flow')
     if (!el) { toast.error('Canvas not ready'); return }
@@ -458,6 +471,7 @@ export default function App() {
               onShortcuts={() => setShortcutsOpen(true)}
               onExportMd={handleExportMd}
               onExportYaml={handleExportYaml}
+              onImportYaml={handleImportYaml}
             />
             <div className="flex flex-1 min-h-0">
               <div ref={canvasRef} className="flex-1 min-w-0 h-full">

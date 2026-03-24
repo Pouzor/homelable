@@ -1,4 +1,5 @@
-import { Save, LayoutDashboard, Download, Palette, Undo2, Redo2, HelpCircle, Table2, FileDown } from 'lucide-react'
+import { useRef } from 'react'
+import { Save, LayoutDashboard, Download, Palette, Undo2, Redo2, HelpCircle, Table2, FileDown, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/ui/Logo'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -13,10 +14,24 @@ interface ToolbarProps {
   onShortcuts: () => void
   onExportMd: () => void
   onExportYaml: () => void
+  onImportYaml: (content: string) => void
 }
 
-export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo, onRedo, onShortcuts, onExportMd, onExportYaml }: ToolbarProps) {
+export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo, onRedo, onShortcuts, onExportMd, onExportYaml, onImportYaml }: ToolbarProps) {
   const { hasUnsavedChanges, past, future } = useCanvasStore()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const content = ev.target?.result
+      if (typeof content === 'string') onImportYaml(content)
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
 
   return (
     <header className="flex items-center gap-2 px-4 py-2 border-b border-border bg-[#161b22] shrink-0">
@@ -47,6 +62,16 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={onChangeStyle}>
         <Palette size={14} /> Style
       </Button>
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={() => fileInputRef.current?.click()} title="Import from YAML">
+        <Upload size={14} /> Import
+      </Button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".yaml,.yml"
+        className="hidden"
+        onChange={handleFileChange}
+      />
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={onExport} title="Export as PNG">
         <Download size={14} /> Export
       </Button>
