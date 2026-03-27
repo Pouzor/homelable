@@ -2,8 +2,8 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install nmap for network scanning
-RUN apt-get update && apt-get install -y --no-install-recommends nmap && rm -rf /var/lib/apt/lists/*
+# Install nmap for network scanning + iputils-ping for ping-based status checks
+RUN apt-get update && apt-get install -y --no-install-recommends nmap iputils-ping && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
