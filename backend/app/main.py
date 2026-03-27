@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(
     title="Homelable API",
-    version="1.0.0",
+    version="1.3.1",
     lifespan=lifespan,
 )
 
