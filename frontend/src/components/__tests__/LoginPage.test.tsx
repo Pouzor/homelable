@@ -78,8 +78,8 @@ describe('LoginPage', () => {
 
   it('clears previous error before each new attempt', async () => {
     vi.mocked(authApi.login)
-      .mockRejectedValueOnce(new Error('401'))
-      .mockRejectedValueOnce(new Error('401'))
+      .mockRejectedValueOnce({ response: { status: 401 } })
+      .mockRejectedValueOnce({ response: { status: 401 } })
     render(<LoginPage />)
     const form = screen.getByRole('button', { name: /sign in/i }).closest('form')!
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
