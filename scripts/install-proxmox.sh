@@ -85,7 +85,7 @@ pct create "$CTID" "$TEMPLATE" \
   --rootfs "${STORAGE}:${DISK_SIZE}" \
   --memory "$RAM" \
   --cores "$CORES" \
-  --net0 "name=eth0,bridge=${BRIDGE},ip=dhcp" \
+  --net0 "name=eth0,bridge=${BRIDGE},ip=dhcp${VLAN_TAG:+,tag=${VLAN_TAG}}" \
   --ostype debian \
   --unprivileged 1 \
   --features "nesting=1" \
