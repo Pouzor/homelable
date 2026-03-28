@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react'
 import { ReactFlowProvider, type Connection, type Edge } from '@xyflow/react'
 import { type Node } from '@xyflow/react'
 import { applyDagreLayout } from '@/utils/layout'
+import { serializeNode, serializeEdge, deserializeApiNode, deserializeApiEdge, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { generateUUID } from '@/utils/uuid'
 import { generateMarkdownTable } from '@/utils/exportMarkdown'
 import { exportToPng } from '@/utils/export'
@@ -60,76 +61,8 @@ export default function App() {
         toast.success('Canvas saved')
         return
       }
-      const nodesToSave = nodes.map((n) => {
-        if (n.data.type === 'groupRect') {
-          return {
-            id: n.id,
-            type: 'groupRect',
-            label: n.data.label,
-            hostname: null,
-            ip: null,
-            mac: null,
-            os: null,
-            status: 'unknown',
-            check_method: null,
-            check_target: null,
-            services: [],
-            notes: null,
-            parent_id: null,
-            container_mode: false,
-            custom_icon: null,
-            pos_x: n.position.x,
-            pos_y: n.position.y,
-            // Persist size and all rect config inside custom_colors
-            custom_colors: {
-              ...n.data.custom_colors,
-              width: n.measured?.width ?? n.width ?? 360,
-              height: n.measured?.height ?? n.height ?? 240,
-            },
-          }
-        }
-        return {
-          id: n.id,
-          type: n.data.type,
-          label: n.data.label,
-          hostname: n.data.hostname ?? null,
-          ip: n.data.ip ?? null,
-          mac: n.data.mac ?? null,
-          os: n.data.os ?? null,
-          status: n.data.status,
-          check_method: n.data.check_method ?? null,
-          check_target: n.data.check_target ?? null,
-          services: n.data.services ?? [],
-          notes: n.data.notes ?? null,
-          parent_id: n.data.parent_id ?? null,
-          container_mode: n.data.container_mode ?? false,
-          custom_colors: n.data.custom_colors ?? null,
-          custom_icon: n.data.custom_icon ?? null,
-          cpu_count: n.data.cpu_count ?? null,
-          cpu_model: n.data.cpu_model ?? null,
-          ram_gb: n.data.ram_gb ?? null,
-          disk_gb: n.data.disk_gb ?? null,
-          show_hardware: n.data.show_hardware ?? false,
-          pos_x: n.position.x,
-          pos_y: n.position.y,
-        }
-      })
-      const edgesToSave = edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        type: e.data?.type ?? 'ethernet',
-        label: e.data?.label ?? null,
-        vlan_id: e.data?.vlan_id ?? null,
-        speed: e.data?.speed ?? null,
-        custom_color: e.data?.custom_color ?? null,
-        path_style: e.data?.path_style ?? null,
-        animated: e.data?.animated ?? false,
-        // Normalize stub handle IDs: "top-t" / "bottom-t" are invisible target stubs;
-        // map them back to their canonical source handle ID so reload works correctly.
-        source_handle: e.sourceHandle === 'top-t' ? 'top' : e.sourceHandle === 'bottom-t' ? 'bottom' : (e.sourceHandle ?? null),
-        target_handle: e.targetHandle === 'top-t' ? 'top' : e.targetHandle === 'bottom-t' ? 'bottom' : (e.targetHandle ?? null),
-      }))
+      const nodesToSave = nodes.map(serializeNode)
+      const edgesToSave = edges.map(serializeEdge)
       await canvasApi.save({ nodes: nodesToSave, edges: edgesToSave, viewport: { theme_id: activeTheme } })
       markSaved()
       toast.success('Canvas saved')
@@ -166,44 +99,12 @@ export default function App() {
         if (apiNodes.length > 0) {
           // Build a map of proxmox container mode to know if children should be nested
           const proxmoxContainerMap = new Map<string, boolean>(
-            apiNodes
-              .filter((n: NodeData & { id: string }) => n.type === 'proxmox')
-              .map((n: NodeData & { id: string }) => [n.id, n.container_mode !== false])
+            (apiNodes as ApiNode[])
+              .filter((n) => n.type === 'proxmox')
+              .map((n) => [n.id, n.container_mode !== false])
           )
-          const rfNodes = apiNodes.map((n: NodeData & { id: string; pos_x: number; pos_y: number; parent_id?: string }) => {
-            if (n.type === 'groupRect') {
-              const w = n.custom_colors?.width ?? 360
-              const h = n.custom_colors?.height ?? 240
-              const z = n.custom_colors?.z_order ?? 1
-              return {
-                id: n.id,
-                type: 'groupRect',
-                position: { x: n.pos_x, y: n.pos_y },
-                data: n,
-                width: w,
-                height: h,
-                zIndex: z - 10,
-              }
-            }
-            const parentIsContainer = n.parent_id ? (proxmoxContainerMap.get(n.parent_id) ?? false) : false
-            return {
-              id: n.id,
-              type: n.type,
-              position: { x: n.pos_x, y: n.pos_y },
-              data: n,
-              ...(n.parent_id && parentIsContainer ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
-              ...(n.type === 'proxmox' && n.container_mode !== false ? { width: 300, height: 200 } : {}),
-            }
-          })
-          const rfEdges = apiEdges.map((e: EdgeData & { id: string; source: string; target: string; source_handle?: string; target_handle?: string }) => ({
-            id: e.id,
-            source: e.source,
-            target: e.target,
-            type: e.type,
-            sourceHandle: e.source_handle ?? null,
-            targetHandle: e.target_handle ?? null,
-            data: e,
-          }))
+          const rfNodes = (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxContainerMap))
+          const rfEdges = (apiEdges as ApiEdge[]).map(deserializeApiEdge)
           const savedTheme = res.data.viewport?.theme_id
           if (savedTheme) setTheme(savedTheme)
           loadCanvas(rfNodes, rfEdges)
