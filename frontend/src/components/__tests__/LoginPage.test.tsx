@@ -51,7 +51,7 @@ describe('LoginPage', () => {
   })
 
   it('shows a generic error message — no credential enumeration', async () => {
-    vi.mocked(authApi.login).mockRejectedValue(new Error('401'))
+    vi.mocked(authApi.login).mockRejectedValue({ response: { status: 401 } })
     render(<LoginPage />)
     fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'wrongpass' } })
@@ -63,6 +63,17 @@ describe('LoginPage', () => {
     const errors = document.querySelectorAll('p.text-\\[\\#f85149\\]')
     expect(errors.length).toBe(1)
     expect(errors[0].textContent).toBe('Invalid username or password')
+  })
+
+  it('shows a network error message when no response (e.g. CORS misconfiguration)', async () => {
+    vi.mocked(authApi.login).mockRejectedValue(new Error('Network Error'))
+    render(<LoginPage />)
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'admin' } })
+    fireEvent.submit(screen.getByRole('button', { name: /sign in/i }).closest('form')!)
+    await waitFor(() => {
+      expect(screen.getByText(/Could not reach the server/)).toBeDefined()
+    })
   })
 
   it('clears previous error before each new attempt', async () => {

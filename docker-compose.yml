@@ -7,9 +7,8 @@ services:
     env_file:
       - .env
     environment:
-      # Override env_file values that differ in Docker
+      # Override env_file: SQLite path must point inside the container volume
       SQLITE_PATH: /app/data/homelab.db
-      CORS_ORIGINS: '["http://localhost:3000"]'
     volumes:
       - backend_data:/app/data
     networks:

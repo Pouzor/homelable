@@ -20,8 +20,9 @@ export function LoginPage() {
     try {
       const res = await authApi.login(username, password)
       login(res.data.access_token)
-    } catch {
-      setError('Invalid username or password')
+    } catch (err: unknown) {
+      const hasResponse = err && typeof err === 'object' && 'response' in err
+      setError(hasResponse ? 'Invalid username or password' : 'Could not reach the server — check your CORS_ORIGINS setting')
     } finally {
       setLoading(false)
     }
@@ -95,7 +96,7 @@ export function LoginPage() {
         </form>
 
         <p className="text-center text-[10px] text-muted-foreground/40 mt-4">
-          Credentials configured in <span className="font-mono">config.yml</span>
+          Credentials configured in <span className="font-mono">.env</span>
         </p>
       </div>
     </div>
