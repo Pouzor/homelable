@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     # Leave empty to disable MCP service key auth.
     mcp_service_key: str = ""
 
+    # Live view — optional read-only public canvas endpoint.
+    # Set to a random secret string to enable /api/v1/liveview?key=<value>.
+    # Leave unset (or empty) to keep the feature disabled (default).
+    liveview_key: str | None = None
+
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"
 

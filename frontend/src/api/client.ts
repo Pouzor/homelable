@@ -5,6 +5,9 @@ export const api = axios.create({
   baseURL: '/api/v1',
 })
 
+// Unauthenticated axios instance — no JWT, no 401 redirect (used for public endpoints)
+const publicApi = axios.create({ baseURL: '/api/v1' })
+
 api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token
   if (token) config.headers.Authorization = `Bearer ${token}`
@@ -42,6 +45,10 @@ export const nodesApi = {
 export const edgesApi = {
   create: (data: object) => api.post('/edges', data),
   delete: (id: string) => api.delete(`/edges/${id}`),
+}
+
+export const liveviewApi = {
+  load: (key: string) => publicApi.get('/liveview', { params: { key } }),
 }
 
 export const scanApi = {
