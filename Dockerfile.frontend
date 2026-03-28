@@ -1,5 +1,7 @@
 # Stage 1: build
-FROM node:20-alpine AS builder
+# Use the native build platform so npm ci never runs under QEMU emulation.
+# The build output (static HTML/JS/CSS) is platform-independent.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 
 ARG VITE_STANDALONE=false
 ENV VITE_STANDALONE=$VITE_STANDALONE
