@@ -1,0 +1,4 @@
+# DL3008: pinning apt package versions is impractical for system tools (nmap, iputils-ping)
+# that have version numbers tied to specific Debian releases.
+ignore:
+  - DL3008

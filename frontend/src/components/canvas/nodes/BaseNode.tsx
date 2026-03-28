@@ -1,5 +1,5 @@
 import { createElement } from 'react'
-import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
+import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflow/react'
 import { Cpu, MemoryStick, HardDrive, type LucideIcon } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
@@ -18,7 +18,7 @@ function formatStorage(gb: number): string {
   return `${gb} GB`
 }
 
-export function BaseNode({ data, selected, icon: typeIcon }: BaseNodeProps) {
+export function BaseNode({ data, selected, icon: typeIcon, width, height }: BaseNodeProps) {
   const activeTheme = useThemeStore((s) => s.activeTheme)
   const hideIp = useCanvasStore((s) => s.hideIp)
   const theme = THEMES[activeTheme]
@@ -43,8 +43,17 @@ export function BaseNode({ data, selected, icon: typeIcon }: BaseNodeProps) {
           : 'none',
         opacity: data.status === 'offline' ? 0.55 : 1,
         minWidth: 140,
+        width: width ? '100%' : undefined,
+        height: height ? '100%' : undefined,
       }}
     >
+      <NodeResizer
+        isVisible={selected}
+        minWidth={140}
+        minHeight={50}
+        lineStyle={{ borderColor: colors.border, borderWidth: 1 }}
+        handleStyle={{ borderColor: colors.border, background: colors.border, width: 8, height: 8 }}
+      />
       <Handle
         type="source"
         position={Position.Top}
@@ -69,7 +78,7 @@ export function BaseNode({ data, selected, icon: typeIcon }: BaseNodeProps) {
         {/* Label + IP */}
         <div className="flex flex-col min-w-0">
           <div
-            className="text-xs font-medium leading-tight truncate max-w-[110px]"
+            className="text-xs font-medium leading-tight truncate"
             style={{ color: theme.colors.nodeLabelColor }}
             title={data.label}
           >

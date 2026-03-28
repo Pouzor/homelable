@@ -7,6 +7,25 @@ on:
     branches: [main]
 
 jobs:
+  lint-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck — lxc-install.sh
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: './scripts'
+      - name: Hadolint — Dockerfile.backend
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile.backend
+          ignore: DL3008
+      - name: Hadolint — Dockerfile.frontend
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile.frontend
+          ignore: DL3008
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

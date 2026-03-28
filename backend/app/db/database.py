@@ -52,6 +52,10 @@ async def init_db() -> None:
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN disk_gb REAL")
         with suppress(Exception):
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN show_hardware BOOLEAN NOT NULL DEFAULT 0")
+        with suppress(Exception):
+            await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN width REAL")
+        with suppress(Exception):
+            await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN height REAL")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

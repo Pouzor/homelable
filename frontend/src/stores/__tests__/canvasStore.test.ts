@@ -328,4 +328,40 @@ describe('canvasStore', () => {
     useCanvasStore.getState().pasteNodes()
     expect(useCanvasStore.getState().nodes).toHaveLength(1)
   })
+
+  // --- Node resizing (width / height) ---
+
+  it('addNode preserves explicit width and height', () => {
+    const node: Node<NodeData> = { ...makeNode('n1'), width: 280, height: 120 }
+    useCanvasStore.getState().addNode(node)
+    const stored = useCanvasStore.getState().nodes.find((n) => n.id === 'n1')
+    expect(stored?.width).toBe(280)
+    expect(stored?.height).toBe(120)
+  })
+
+  it('onNodesChange dimensions change updates width and height', () => {
+    useCanvasStore.getState().addNode(makeNode('n1'))
+    useCanvasStore.getState().markSaved()
+    useCanvasStore.getState().onNodesChange([
+      { type: 'dimensions', id: 'n1', dimensions: { width: 320, height: 180 }, resizing: true },
+    ])
+    const node = useCanvasStore.getState().nodes.find((n) => n.id === 'n1')
+    expect(node?.measured?.width ?? node?.width).toBeDefined()
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  it('loadCanvas preserves width and height on resized nodes', () => {
+    const resized: Node<NodeData> = { ...makeNode('n1'), width: 300, height: 160 }
+    useCanvasStore.getState().loadCanvas([resized], [])
+    const stored = useCanvasStore.getState().nodes.find((n) => n.id === 'n1')
+    expect(stored?.width).toBe(300)
+    expect(stored?.height).toBe(160)
+  })
+
+  it('loadCanvas preserves undefined width/height for default-sized nodes', () => {
+    useCanvasStore.getState().loadCanvas([makeNode('n1')], [])
+    const stored = useCanvasStore.getState().nodes.find((n) => n.id === 'n1')
+    expect(stored?.width).toBeUndefined()
+    expect(stored?.height).toBeUndefined()
+  })
 })

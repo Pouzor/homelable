@@ -42,6 +42,8 @@ class Node(Base):
     ram_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
     disk_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
     show_hardware: Mapped[bool] = mapped_column(Boolean, default=False)
+    width: Mapped[float | None] = mapped_column(Float, nullable=True)
+    height: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     response_time_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

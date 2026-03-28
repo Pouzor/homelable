@@ -17,6 +17,12 @@ services:
     # Required for ping-based status checks
     cap_add:
       - NET_RAW
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
 
   mcp:
     build:

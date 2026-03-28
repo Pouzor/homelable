@@ -1,0 +1,83 @@
+name: Docker CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-and-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Write a minimal .env required by env_file: .env in docker-compose.yml ─
+      # AUTH_PASSWORD_HASH is NOT set here — it's injected via docker-compose.ci.yml
+      # environment section using $$ escaping to avoid docker-compose $VAR expansion.
+      - name: Write .env
+        run: |
+          {
+            echo "SECRET_KEY=ci-only-secret-key-not-for-production"
+            echo "SQLITE_PATH=/app/data/homelab.db"
+            echo 'CORS_ORIGINS=["http://localhost:3000"]'
+            echo 'SCANNER_RANGES=["127.0.0.1/32"]'
+            echo "STATUS_CHECKER_INTERVAL=300"
+            echo "MCP_API_KEY=ci-mcp-key"
+            echo "MCP_SERVICE_KEY=ci-svc-key"
+          } > .env
+
+      # ── Build + start backend and frontend (skip mcp) ─────────────────────────
+      # docker-compose.ci.yml: exposes port 8000 + injects AUTH_* env vars
+      - name: Build images
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml build backend frontend
+
+      - name: Start stack
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d backend frontend
+
+      # ── Wait for backend to be healthy (max 60 s) ─────────────────────────────
+      - name: Wait for backend health
+        run: |
+          echo "Waiting for backend..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+              echo "Backend is up after ${i}s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend did not become healthy in time" >&2
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs backend
+          exit 1
+
+      # ── Smoke: frontend serves HTML ───────────────────────────────────────────
+      - name: Smoke — frontend returns 200
+        run: |
+          STATUS=$(curl -so /dev/null -w "%{http_code}" http://localhost:3000/)
+          [ "$STATUS" = "200" ] || { echo "Frontend returned $STATUS"; exit 1; }
+
+      # ── Tier 3: integration tests against the live stack ──────────────────────
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend test deps
+        run: pip install --quiet -r backend/requirements.txt
+
+      - name: Run integration tests
+        env:
+          INTEGRATION_BASE_URL: http://localhost:8000
+          INTEGRATION_USERNAME: admin
+          INTEGRATION_PASSWORD: admin
+        run: |
+          cd backend
+          pytest tests/test_integration.py -v
+
+      # ── Teardown ──────────────────────────────────────────────────────────────
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs
+
+      - name: Stop stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v

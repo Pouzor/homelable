@@ -191,3 +191,49 @@ async def test_save_canvas_hardware_fields_cleared_on_update(client: AsyncClient
     node = canvas["nodes"][0]
     assert node["cpu_count"] is None
     assert node["ram_gb"] is None
+
+
+# ── node width / height (resizable nodes) ─────────────────────────────────────
+
+async def test_save_canvas_persists_node_dimensions(client: AsyncClient, headers: dict):
+    n1 = node_payload(width=320.0, height=180.0)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    node = canvas["nodes"][0]
+    assert node["width"] == 320.0
+    assert node["height"] == 180.0
+
+
+async def test_save_canvas_dimensions_default_null(client: AsyncClient, headers: dict):
+    n1 = node_payload()
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["nodes"][0]["width"] is None
+    assert canvas["nodes"][0]["height"] is None
+
+
+async def test_save_canvas_dimensions_updated_on_resize(client: AsyncClient, headers: dict):
+    n1 = node_payload(width=140.0, height=50.0)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    n1_resized = {**n1, "width": 280.0, "height": 120.0}
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1_resized], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    node = canvas["nodes"][0]
+    assert node["width"] == 280.0
+    assert node["height"] == 120.0
+
+
+async def test_save_canvas_dimensions_cleared_when_null(client: AsyncClient, headers: dict):
+    n1 = node_payload(width=300.0, height=200.0)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    n1_cleared = {**n1, "width": None, "height": None}
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1_cleared], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["nodes"][0]["width"] is None
+    assert canvas["nodes"][0]["height"] is None

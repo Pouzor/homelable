@@ -1,0 +1,14 @@
+# CI override — exposes backend port 8000 and injects credentials.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d backend frontend
+#
+# AUTH_PASSWORD_HASH uses $$ escaping: docker-compose converts $$ → $ before
+# passing to the container, so the backend receives a valid bcrypt hash.
+# This avoids the project .env file being subject to docker-compose $VAR expansion.
+services:
+  backend:
+    ports:
+      - "8000:8000"
+    environment:
+      AUTH_USERNAME: admin
+      # bcrypt hash of "admin" — $$ is docker-compose escape for literal $
+      AUTH_PASSWORD_HASH: $$2b$$12$$RtMbyw17l4N5UGzeXMNAWuzCaVV.XFBY7ZetWheQhxcBDcxahapkG

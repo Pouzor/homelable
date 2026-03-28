@@ -10,7 +10,6 @@ INSTALL_DIR=/opt/homelable
 DATA_DIR=/opt/homelable/data
 SERVICE_USER=homelable
 REPO_URL="https://github.com/Pouzor/homelable.git"
-RAW="https://raw.githubusercontent.com/Pouzor/homelable/main"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[homelable]${NC} $*"; }
@@ -20,7 +19,12 @@ error() { echo -e "${RED}[homelable]${NC} $*"; exit 1; }
 [[ $EUID -ne 0 ]] && error "Run as root (sudo bash ...)"
 
 # ── Detect OS ─────────────────────────────────────────────────────────────────
-[[ -f /etc/os-release ]] && . /etc/os-release || error "Cannot detect OS"
+if [[ -f /etc/os-release ]]; then
+  # shellcheck source=/dev/null
+  . /etc/os-release
+else
+  error "Cannot detect OS"
+fi
 info "Detected: $PRETTY_NAME"
 [[ "$ID" =~ ^(debian|ubuntu)$ ]] || error "Requires Debian or Ubuntu"
 
@@ -118,7 +122,8 @@ sed \
 
 ln -sf /etc/nginx/sites-available/homelable /etc/nginx/sites-enabled/homelable
 rm -f /etc/nginx/sites-enabled/default
-nginx -t && systemctl reload nginx || systemctl start nginx
+nginx -t
+systemctl reload nginx || systemctl start nginx
 
 # ── Enable & start ────────────────────────────────────────────────────────────
 systemctl daemon-reload
