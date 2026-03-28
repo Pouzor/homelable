@@ -115,7 +115,7 @@ for i in $(seq 1 20); do
 done
 
 # ── Grant NET_RAW for nmap (ping-based checks) ─────────────────────────────────
-echo "lxc.cap.keep = net_raw net_bind_service" >> /etc/pve/lxc/${CTID}.conf 2>/dev/null || true
+echo "lxc.cap.keep = net_raw net_bind_service" >> "/etc/pve/lxc/${CTID}.conf" 2>/dev/null || true
 
 # ── Bootstrap curl then run the installer ─────────────────────────────────────
 step "Running Homelable installer inside container $CTID..."

@@ -22,6 +22,9 @@ jobs:
 
       # ── Write a minimal .env consumed by docker-compose.yml ───────────────
       - name: Write .env
+        # PW_HASH is set as an env var so bash does not expand the '$' chars in the bcrypt hash
+        env:
+          PW_HASH: ${{ steps.pwhash.outputs.hash }}
         run: |
           {
             echo "SECRET_KEY=ci-only-secret-key-not-for-production"
@@ -32,7 +35,7 @@ jobs:
             echo "MCP_API_KEY=ci-mcp-key"
             echo "MCP_SERVICE_KEY=ci-svc-key"
             echo "AUTH_USERNAME=admin"
-            echo "AUTH_PASSWORD_HASH=${{ steps.pwhash.outputs.hash }}"
+            printf 'AUTH_PASSWORD_HASH=%s\n' "$PW_HASH"
           } > .env
 
       # ── Build + start backend and frontend (skip mcp) ─────────────────────
