@@ -186,6 +186,8 @@ export default function App() {
           background: data.background_color,
           text_color: data.text_color,
           text_position: data.text_position,
+          text_size: data.text_size,
+          label_position: data.label_position,
           font: data.font,
           z_order: data.z_order,
         },
@@ -211,6 +213,8 @@ export default function App() {
         background: data.background_color,
         text_color: data.text_color,
         text_position: data.text_position,
+        text_size: data.text_size,
+        label_position: data.label_position,
         font: data.font,
         z_order: data.z_order,
       },
@@ -462,6 +466,8 @@ export default function App() {
               border_style: rc.border_style ?? 'solid',
               border_width: rc.border_width ?? 2,
               background_color: rc.background ?? '#00d4ff0d',
+              text_size: rc.text_size ?? 12,
+              label_position: rc.label_position ?? 'inside',
               z_order: rc.z_order ?? 1,
             }
           })()}

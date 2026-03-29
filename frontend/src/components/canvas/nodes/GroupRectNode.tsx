@@ -35,9 +35,30 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
   const borderWidth = rc.border_width ?? 2
   const backgroundColor = rc.background ?? 'rgba(0,212,255,0.05)'
   const textColor = rc.text_color ?? '#e6edf3'
+  const textSize: number = rc.text_size ?? 12
+  const labelPosition: string = rc.label_position ?? 'inside'
   const fontFamily = FONT_FAMILIES[rc.font ?? 'inter'] ?? FONT_FAMILIES.inter
   const textPos = (rc.text_position ?? 'top-left') as TextPosition
   const posStyle = POSITION_STYLES[textPos]
+
+  const outsideJustify = textPos.includes('right') ? 'flex-end'
+    : (textPos.includes('center') || textPos === 'center') ? 'center'
+    : 'flex-start'
+
+  const isOutsideBottom = textPos.startsWith('bottom')
+  const outsideOffset = textSize + 16
+  const outsideVertical: React.CSSProperties = isOutsideBottom
+    ? { bottom: -outsideOffset }
+    : { top: -outsideOffset }
+
+  const sharedTextStyle: React.CSSProperties = {
+    color: textColor,
+    fontFamily,
+    fontSize: textSize,
+    fontWeight: 500,
+    userSelect: 'none',
+    whiteSpace: 'pre-wrap',
+  }
 
   return (
     <>
@@ -56,6 +77,8 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
       />
       <div
         style={{
+          position: 'relative',
+          overflow: 'visible',
           width: '100%',
           height: '100%',
           display: 'flex',
@@ -65,10 +88,6 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
           background: backgroundColor,
           border: `${selected ? borderWidth + 1 : borderWidth}px ${selected ? 'solid' : borderStyle} ${selected ? '#00d4ff' : borderColor}`,
           borderRadius: 10,
-          fontFamily,
-          color: textColor,
-          fontSize: 12,
-          fontWeight: 500,
           boxSizing: 'border-box',
           cursor: 'default',
         }}
@@ -77,8 +96,24 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
           setEditingGroupRectId(id)
         }}
       >
-        {data.label && (
-          <span style={{ textAlign: posStyle.textAlign, userSelect: 'none', whiteSpace: 'pre-wrap' }}>
+        {labelPosition === 'outside' && data.label && (
+          <span
+            style={{
+              position: 'absolute',
+              ...outsideVertical,
+              left: 0,
+              right: 0,
+              display: 'flex',
+              justifyContent: outsideJustify,
+              pointerEvents: 'none',
+              ...sharedTextStyle,
+            }}
+          >
+            {data.label}
+          </span>
+        )}
+        {labelPosition === 'inside' && data.label && (
+          <span style={{ textAlign: posStyle.textAlign, ...sharedTextStyle }}>
             {data.label}
           </span>
         )}

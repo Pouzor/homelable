@@ -104,6 +104,25 @@ async def test_save_canvas_persists_custom_colors(client: AsyncClient, headers: 
     assert canvas["nodes"][0]["custom_colors"] == {"border": "#ff0000", "icon": "#00ff00"}
 
 
+async def test_save_canvas_persists_zone_label_position_and_text_size(client: AsyncClient, headers: dict):
+    """label_position and text_size are stored in custom_colors and returned unchanged."""
+    n1 = node_payload(custom_colors={
+        "border": "#00d4ff",
+        "border_style": "solid",
+        "border_width": 3,
+        "label_position": "outside",
+        "text_size": 16,
+        "text_color": "#e6edf3",
+    })
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    cc = canvas["nodes"][0]["custom_colors"]
+    assert cc["label_position"] == "outside"
+    assert cc["text_size"] == 16
+    assert cc["border_width"] == 3
+
+
 async def test_save_canvas_persists_edge_custom_color_and_path_style(client: AsyncClient, headers: dict):
     n1 = node_payload()
     n2 = node_payload()

@@ -124,6 +124,84 @@ describe('GroupRectModal', () => {
     expect(submitted.border_style).toBe('dotted')
   })
 
+  it('renders Label Position section with inside/outside options', () => {
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} />)
+    expect(screen.getByText('Label Position')).toBeDefined()
+    expect(screen.getByText('Inside')).toBeDefined()
+    expect(screen.getByText('Outside')).toBeDefined()
+  })
+
+  it('defaults label_position to inside', () => {
+    const onSubmit = vi.fn()
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByText('Add'))
+    const submitted = onSubmit.mock.calls[0][0] as GroupRectFormData
+    expect(submitted.label_position).toBe('inside')
+  })
+
+  it('selects outside label position on click', () => {
+    const onSubmit = vi.fn()
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByText('Outside'))
+    fireEvent.click(screen.getByText('Add'))
+    const submitted = onSubmit.mock.calls[0][0] as GroupRectFormData
+    expect(submitted.label_position).toBe('outside')
+  })
+
+  it('pre-fills label_position from initial prop', () => {
+    const onSubmit = vi.fn()
+    render(
+      <GroupRectModal
+        open
+        onClose={vi.fn()}
+        onSubmit={onSubmit}
+        initial={{ label_position: 'outside' }}
+      />
+    )
+    fireEvent.click(screen.getByText('Add'))
+    const submitted = onSubmit.mock.calls[0][0] as GroupRectFormData
+    expect(submitted.label_position).toBe('outside')
+  })
+
+  it('renders Text Size section with 6 options', () => {
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} />)
+    expect(screen.getByText('Text Size')).toBeDefined()
+    expect(screen.getByText('10')).toBeDefined()
+    expect(screen.getByText('20')).toBeDefined()
+  })
+
+  it('defaults text_size to 12', () => {
+    const onSubmit = vi.fn()
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByText('Add'))
+    const submitted = onSubmit.mock.calls[0][0] as GroupRectFormData
+    expect(submitted.text_size).toBe(12)
+  })
+
+  it('selects text size on click', () => {
+    const onSubmit = vi.fn()
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByText('18'))
+    fireEvent.click(screen.getByText('Add'))
+    const submitted = onSubmit.mock.calls[0][0] as GroupRectFormData
+    expect(submitted.text_size).toBe(18)
+  })
+
+  it('pre-fills text_size from initial prop', () => {
+    const onSubmit = vi.fn()
+    render(
+      <GroupRectModal
+        open
+        onClose={vi.fn()}
+        onSubmit={onSubmit}
+        initial={{ text_size: 16 }}
+      />
+    )
+    fireEvent.click(screen.getByText('Add'))
+    const submitted = onSubmit.mock.calls[0][0] as GroupRectFormData
+    expect(submitted.text_size).toBe(16)
+  })
+
   it('renders Border Width section with 5 options', () => {
     render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} />)
     expect(screen.getByText('Border Width')).toBeDefined()
