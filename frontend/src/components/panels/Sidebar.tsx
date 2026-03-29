@@ -124,7 +124,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeAppro
       {/* Actions */}
       <div className="flex flex-col gap-0.5 p-2 border-t border-border">
         <SidebarItem icon={Plus} label="Add Node" collapsed={collapsed} onClick={onAddNode} />
-        <SidebarItem icon={Square} label="Add Rectangle" collapsed={collapsed} onClick={onAddGroupRect} />
+        <SidebarItem icon={Square} label="Add Zone" collapsed={collapsed} onClick={onAddGroupRect} />
         {!STANDALONE && <SidebarItem icon={ScanLine} label="Scan Network" collapsed={collapsed} onClick={handleScan} />}
         <SidebarItem
           icon={hideIp ? EyeOff : Eye}
@@ -303,7 +303,7 @@ function HiddenDevicesPanel() {
     }
   }, [])
 
-  useState(() => { load() })
+  useEffect(() => { load() }, [load])
 
   const handleIgnore = async (id: string) => {
     try {

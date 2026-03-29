@@ -72,6 +72,9 @@ export interface NodeData extends Record<string, unknown> {
     text_position?: TextPosition
     font?: string
     border_style?: 'solid' | 'dashed' | 'dotted' | 'double' | 'none'
+    border_width?: number
+    label_position?: 'inside' | 'outside'
+    text_size?: number
     z_order?: number
     width?: number
     height?: number
@@ -88,7 +91,7 @@ export interface EdgeData extends Record<string, unknown> {
   speed?: string
   custom_color?: string
   path_style?: EdgePathStyle
-  animated?: boolean
+  animated?: boolean | 'snake' | 'flow' | 'none'
 }
 
 export const NODE_TYPE_LABELS: Record<NodeType, string> = {

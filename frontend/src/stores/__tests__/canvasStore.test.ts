@@ -98,18 +98,32 @@ describe('canvasStore', () => {
     expect(useCanvasStore.getState().selectedNodeId).toBeNull()
   })
 
-  it('onNodesChange marks unsaved', () => {
+  it('onNodesChange marks unsaved for position changes', () => {
     useCanvasStore.getState().addNode(makeNode('n1'))
     useCanvasStore.getState().markSaved()
-    useCanvasStore.getState().onNodesChange([{ type: 'select', id: 'n1', selected: true }])
+    useCanvasStore.getState().onNodesChange([{ type: 'position', id: 'n1', dragging: false }])
     expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
   })
 
-  it('onEdgesChange marks unsaved', () => {
+  it('onNodesChange does not mark unsaved for select-only changes', () => {
+    useCanvasStore.getState().addNode(makeNode('n1'))
+    useCanvasStore.getState().markSaved()
+    useCanvasStore.getState().onNodesChange([{ type: 'select', id: 'n1', selected: true }])
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
+  })
+
+  it('onEdgesChange marks unsaved for remove changes', () => {
+    useCanvasStore.setState((s) => ({ edges: [...s.edges, makeEdge('e1', 'n1', 'n2')] }))
+    useCanvasStore.getState().markSaved()
+    useCanvasStore.getState().onEdgesChange([{ type: 'remove', id: 'e1' }])
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  it('onEdgesChange does not mark unsaved for select-only changes', () => {
     useCanvasStore.setState((s) => ({ edges: [...s.edges, makeEdge('e1', 'n1', 'n2')] }))
     useCanvasStore.getState().markSaved()
     useCanvasStore.getState().onEdgesChange([{ type: 'select', id: 'e1', selected: true }])
-    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
   })
 
   it('onConnect adds an edge between two nodes', () => {
@@ -130,6 +144,13 @@ describe('canvasStore', () => {
     expect(edges[0].data?.label).toBe('uplink')
   })
 
+  it('onConnect preserves animated from edge data', () => {
+    const conn = Object.assign({ source: 'n1', target: 'n2', sourceHandle: null, targetHandle: null }, { type: 'ethernet', animated: 'snake' })
+    useCanvasStore.getState().onConnect(conn)
+    const { edges } = useCanvasStore.getState()
+    expect(edges[0].data?.animated).toBe('snake')
+  })
+
   it('onConnect preserves sourceHandle and targetHandle for cluster edges', () => {
     const conn = Object.assign({ source: 'n1', target: 'n2', sourceHandle: 'cluster-right', targetHandle: 'cluster-left' }, { type: 'cluster' })
     useCanvasStore.getState().onConnect(conn)
@@ -138,6 +159,15 @@ describe('canvasStore', () => {
     expect(edges[0].sourceHandle).toBe('cluster-right')
     expect(edges[0].targetHandle).toBe('cluster-left')
     expect(edges[0].type).toBe('cluster')
+  })
+
+  it('deleteNode also removes children with matching parentId', () => {
+    useCanvasStore.getState().addNode(makeNode('parent'))
+    useCanvasStore.getState().addNode(makeNode('child', { parent_id: 'parent' }))
+    useCanvasStore.getState().deleteNode('parent')
+    const { nodes } = useCanvasStore.getState()
+    expect(nodes.find((n) => n.id === 'parent')).toBeUndefined()
+    expect(nodes.find((n) => n.id === 'child')).toBeUndefined()
   })
 
   it('addNode with parent_id sets parentId and extent', () => {

@@ -8,13 +8,18 @@ import type { TextPosition } from '@/types'
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'none'
 
+export type LabelPosition = 'inside' | 'outside'
+
 export interface GroupRectFormData {
   label: string
   font: string
   text_color: string
   text_position: TextPosition
+  text_size: number
+  label_position: LabelPosition
   border_color: string
   border_style: BorderStyle
+  border_width: number
   background_color: string
   z_order: number
 }
@@ -27,13 +32,38 @@ const BORDER_STYLES: { value: BorderStyle; label: string; preview: string }[] = 
   { value: 'none',   label: 'None',   preview: '   ' },
 ]
 
+const TEXT_SIZES: { value: number; label: string }[] = [
+  { value: 10, label: '10' },
+  { value: 12, label: '12' },
+  { value: 14, label: '14' },
+  { value: 16, label: '16' },
+  { value: 18, label: '18' },
+  { value: 20, label: '20' },
+]
+
+const LABEL_POSITIONS: { value: LabelPosition; label: string }[] = [
+  { value: 'inside',  label: 'Inside' },
+  { value: 'outside', label: 'Outside' },
+]
+
+const BORDER_WIDTHS: { value: number; label: string }[] = [
+  { value: 1, label: '1px' },
+  { value: 2, label: '2px' },
+  { value: 3, label: '3px' },
+  { value: 4, label: '4px' },
+  { value: 5, label: '5px' },
+]
+
 const DEFAULT_FORM: GroupRectFormData = {
   label: '',
   font: 'inter',
   text_color: '#e6edf3',
   text_position: 'top-left',
+  text_size: 12,
+  label_position: 'inside',
   border_color: '#00d4ff',
   border_style: 'solid',
+  border_width: 2,
   background_color: '#00d4ff0d',
   z_order: 1,
 }
@@ -65,7 +95,7 @@ interface GroupRectModalProps {
   title?: string
 }
 
-export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, title = 'Add Rectangle' }: GroupRectModalProps) {
+export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, title = 'Add Zone' }: GroupRectModalProps) {
   const [form, setForm] = useState<GroupRectFormData>({ ...DEFAULT_FORM, ...initial })
 
   const set = <K extends keyof GroupRectFormData>(key: K, value: GroupRectFormData[K]) =>
@@ -145,6 +175,31 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
             </div>
           </div>
 
+          {/* Label position */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Label Position</Label>
+            <div className="grid grid-cols-2 gap-1">
+              {LABEL_POSITIONS.map(({ value, label }) => {
+                const isSelected = form.label_position === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => set('label_position', value)}
+                    className="flex items-center justify-center h-8 rounded text-xs transition-colors"
+                    style={{
+                      background: isSelected ? '#00d4ff22' : '#21262d',
+                      border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
+                      color: isSelected ? '#00d4ff' : '#8b949e',
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {/* Colors */}
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Colors</Label>
@@ -169,6 +224,32 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
             </div>
           </div>
 
+          {/* Text size */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Text Size</Label>
+            <div className="grid grid-cols-6 gap-1">
+              {TEXT_SIZES.map(({ value, label }) => {
+                const isSelected = form.text_size === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => set('text_size', value)}
+                    className="flex items-center justify-center h-8 rounded transition-colors"
+                    style={{
+                      background: isSelected ? '#00d4ff22' : '#21262d',
+                      border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
+                      color: isSelected ? '#00d4ff' : '#8b949e',
+                      fontSize: value,
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           {/* Border style */}
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Border Style</Label>
@@ -190,6 +271,31 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                   >
                     <span className="font-mono text-[11px] leading-none">{preview}</span>
                     <span className="text-[9px]">{label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Border width */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Border Width</Label>
+            <div className="grid grid-cols-5 gap-1">
+              {BORDER_WIDTHS.map(({ value, label }) => {
+                const isSelected = form.border_width === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => set('border_width', value)}
+                    className="flex items-center justify-center h-8 rounded text-xs transition-colors"
+                    style={{
+                      background: isSelected ? '#00d4ff22' : '#21262d',
+                      border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
+                      color: isSelected ? '#00d4ff' : '#8b949e',
+                    }}
+                  >
+                    {label}
                   </button>
                 )
               })}
@@ -230,7 +336,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                 Cancel
               </Button>
               <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90">
-                {title === 'Add Rectangle' ? 'Add' : 'Save'}
+                {title === 'Add Zone' ? 'Add' : 'Save'}
               </Button>
             </div>
           </div>

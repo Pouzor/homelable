@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from app.schemas.utils import normalize_animated
 
 
 class EdgeBase(BaseModel):
@@ -12,9 +14,14 @@ class EdgeBase(BaseModel):
     speed: str | None = None
     custom_color: str | None = None
     path_style: str | None = None
-    animated: bool = False
+    animated: str = 'none'
     source_handle: str | None = None
     target_handle: str | None = None
+
+    @field_validator('animated', mode='before')
+    @classmethod
+    def validate_animated(cls, v: object) -> str:
+        return normalize_animated(v)
 
 
 class EdgeCreate(EdgeBase):
@@ -28,9 +35,16 @@ class EdgeUpdate(BaseModel):
     speed: str | None = None
     custom_color: str | None = None
     path_style: str | None = None
-    animated: bool | None = None
+    animated: str | None = None
     source_handle: str | None = None
     target_handle: str | None = None
+
+    @field_validator('animated', mode='before')
+    @classmethod
+    def validate_animated(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        return normalize_animated(v)
 
 
 class EdgeResponse(EdgeBase):

@@ -182,9 +182,12 @@ export default function App() {
         custom_colors: {
           border: data.border_color,
           border_style: data.border_style,
+          border_width: data.border_width,
           background: data.background_color,
           text_color: data.text_color,
           text_position: data.text_position,
+          text_size: data.text_size,
+          label_position: data.label_position,
           font: data.font,
           z_order: data.z_order,
         },
@@ -198,6 +201,7 @@ export default function App() {
 
   const handleUpdateGroupRect = useCallback((data: GroupRectFormData) => {
     if (!editingGroupRectId) return
+    snapshotHistory()
     const existing = nodes.find((n) => n.id === editingGroupRectId)
     updateNode(editingGroupRectId, {
       label: data.label,
@@ -205,16 +209,19 @@ export default function App() {
         ...existing?.data.custom_colors,
         border: data.border_color,
         border_style: data.border_style,
+        border_width: data.border_width,
         background: data.background_color,
         text_color: data.text_color,
         text_position: data.text_position,
+        text_size: data.text_size,
+        label_position: data.label_position,
         font: data.font,
         z_order: data.z_order,
       },
     })
     setNodeZIndex(editingGroupRectId, data.z_order - 10)
     setEditingGroupRectId(null)
-  }, [editingGroupRectId, nodes, updateNode, setNodeZIndex, setEditingGroupRectId])
+  }, [editingGroupRectId, nodes, updateNode, setNodeZIndex, setEditingGroupRectId, snapshotHistory])
 
   const handleDeleteGroupRect = useCallback(() => {
     if (!editingGroupRectId) return
@@ -436,7 +443,7 @@ export default function App() {
           open={addGroupRectOpen}
           onClose={() => setAddGroupRectOpen(false)}
           onSubmit={handleAddGroupRect}
-          title="Add Rectangle"
+          title="Add Zone"
         />
 
         {/* key forces re-mount when editing a different rect */}
@@ -457,11 +464,14 @@ export default function App() {
               text_position: rc.text_position ?? 'top-left',
               border_color: rc.border ?? '#00d4ff',
               border_style: rc.border_style ?? 'solid',
+              border_width: rc.border_width ?? 2,
               background_color: rc.background ?? '#00d4ff0d',
+              text_size: rc.text_size ?? 12,
+              label_position: rc.label_position ?? 'inside',
               z_order: rc.z_order ?? 1,
             }
           })()}
-          title="Edit Rectangle"
+          title="Edit Zone"
         />
 
         {/* key forces re-mount on open so useState captures current theme as original */}

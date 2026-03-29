@@ -127,13 +127,13 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   onNodesChange: (changes) =>
     set((state) => ({
       nodes: applyNodeChanges(changes, state.nodes),
-      hasUnsavedChanges: true,
+      hasUnsavedChanges: state.hasUnsavedChanges || changes.some((c) => c.type !== 'select'),
     })),
 
   onEdgesChange: (changes) =>
     set((state) => ({
       edges: applyEdgeChanges(changes, state.edges),
-      hasUnsavedChanges: true,
+      hasUnsavedChanges: state.hasUnsavedChanges || changes.some((c) => c.type !== 'select'),
     })),
 
   onConnect: (connection) =>
@@ -150,7 +150,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
           sourceHandle: normalizeHandle(extra.sourceHandle),
           targetHandle: normalizeHandle(extra.targetHandle),
           type: edgeType,
-          data: { type: edgeType, label: extra.label, vlan_id: extra.vlan_id, custom_color: extra.custom_color, path_style: extra.path_style },
+          data: { type: edgeType, label: extra.label, vlan_id: extra.vlan_id, custom_color: extra.custom_color, path_style: extra.path_style, animated: extra.animated },
         }, state.edges),
         hasUnsavedChanges: true,
       }
@@ -163,10 +163,13 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       const enriched = node.data.parent_id
         ? { ...node, parentId: node.data.parent_id, extent: 'parent' as const }
         : node
-      // Parents must come before children in the array
+      // Parents must come before children in the array (React Flow requirement)
       const withoutNew = state.nodes.filter((n) => n.id !== node.id)
       if (enriched.parentId) {
-        return { nodes: [...withoutNew, enriched], hasUnsavedChanges: true }
+        const parentIdx = withoutNew.findIndex((n) => n.id === enriched.parentId)
+        const insertAt = parentIdx >= 0 ? parentIdx + 1 : withoutNew.length
+        const nodes = [...withoutNew.slice(0, insertAt), enriched, ...withoutNew.slice(insertAt)]
+        return { nodes, hasUnsavedChanges: true }
       }
       return { nodes: [...withoutNew, enriched], hasUnsavedChanges: true }
     }),
@@ -180,12 +183,20 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     })),
 
   deleteNode: (id) =>
-    set((state) => ({
-      nodes: state.nodes.filter((n) => n.id !== id),
-      edges: state.edges.filter((e) => e.source !== id && e.target !== id),
-      selectedNodeId: state.selectedNodeId === id ? null : state.selectedNodeId,
-      hasUnsavedChanges: true,
-    })),
+    set((state) => {
+      const idsToRemove = new Set<string>()
+      const collect = (nodeId: string) => {
+        idsToRemove.add(nodeId)
+        state.nodes.filter((n) => n.parentId === nodeId).forEach((n) => collect(n.id))
+      }
+      collect(id)
+      return {
+        nodes: state.nodes.filter((n) => !idsToRemove.has(n.id)),
+        edges: state.edges.filter((e) => !idsToRemove.has(e.source) && !idsToRemove.has(e.target)),
+        selectedNodeId: idsToRemove.has(state.selectedNodeId ?? '') ? null : state.selectedNodeId,
+        hasUnsavedChanges: true,
+      }
+    }),
 
   updateEdge: (id, data) =>
     set((state) => ({
@@ -245,6 +256,6 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     // React Flow requires parents before children in the array
     const parents = nodes.filter((n) => !n.parentId)
     const children = nodes.filter((n) => !!n.parentId)
-    set({ nodes: [...parents, ...children], edges, hasUnsavedChanges: false, selectedNodeId: null })
+    set({ nodes: [...parents, ...children], edges, hasUnsavedChanges: false, selectedNodeId: null, past: [], future: [], clipboard: [] })
   },
 }))

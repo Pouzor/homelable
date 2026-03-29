@@ -97,26 +97,52 @@ describe('EdgeModal', () => {
     expect(onSubmit.mock.calls[0][0].path_style).toBe('smooth')
   })
 
-  // ── Animated toggle ───────────────────────────────────────────────────────
+  // ── Animation select ──────────────────────────────────────────────────────
 
-  it('flow animation defaults to off', () => {
+  it('animation defaults to None — animated omitted from payload', () => {
     const onSubmit = vi.fn()
     render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} />)
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
-    // animated: false → omitted (falsy || undefined)
-    expect(onSubmit.mock.calls[0][0].animated).toBeFalsy()
+    expect(onSubmit.mock.calls[0][0].animated).toBeUndefined()
   })
 
-  it('toggling animation sends animated: true', () => {
+  it('selecting Snake sends animated: "snake"', () => {
     const onSubmit = vi.fn()
     render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} />)
-    // Find the toggle: it's the only button with aria-pressed attribute
-    const allButtons = screen.getAllByRole('button')
-    const toggle = allButtons.find((b) => b.hasAttribute('aria-pressed'))!
-    expect(toggle).toBeDefined()
-    fireEvent.click(toggle)
+    fireEvent.click(screen.getByText('Snake'))
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
-    expect(onSubmit.mock.calls[0][0].animated).toBe(true)
+    expect(onSubmit.mock.calls[0][0].animated).toBe('snake')
+  })
+
+  it('selecting Flow sends animated: "flow"', () => {
+    const onSubmit = vi.fn()
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByText('Flow'))
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    expect(onSubmit.mock.calls[0][0].animated).toBe('flow')
+  })
+
+  it('selecting None after Snake omits animated from payload', () => {
+    const onSubmit = vi.fn()
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByText('Snake'))
+    fireEvent.click(screen.getByText('None'))
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    expect(onSubmit.mock.calls[0][0].animated).toBeUndefined()
+  })
+
+  it('pre-fills animation from initial "snake" string', () => {
+    const onSubmit = vi.fn()
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} initial={{ animated: 'snake' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    expect(onSubmit.mock.calls[0][0].animated).toBe('snake')
+  })
+
+  it('pre-fills animation from legacy initial true (backward compat)', () => {
+    const onSubmit = vi.fn()
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} initial={{ animated: true }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    expect(onSubmit.mock.calls[0][0].animated).toBe('snake')
   })
 
   // ── Pre-fill ──────────────────────────────────────────────────────────────
