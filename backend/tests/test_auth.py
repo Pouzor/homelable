@@ -56,3 +56,15 @@ async def test_service_key_disabled_when_not_configured(client: AsyncClient):
     settings.mcp_service_key = ""
     res = await client.get("/api/v1/nodes", headers={"X-MCP-Service-Key": "any-key"})
     assert res.status_code == 401
+
+
+async def test_login_with_malformed_hash_returns_401_not_500(client: AsyncClient):
+    """Malformed hash (e.g. $ stripped by shell) must not crash with 500."""
+    from app.core.config import settings
+    original = settings.auth_password_hash
+    settings.auth_password_hash = "2b12RtMbyw17l4N5UGzeXMNAWu"  # $ signs stripped
+    try:
+        res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
+        assert res.status_code == 401
+    finally:
+        settings.auth_password_hash = original

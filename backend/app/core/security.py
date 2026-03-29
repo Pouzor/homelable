@@ -9,7 +9,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bool(pwd_context.verify(plain, hashed))
+    try:
+        return bool(pwd_context.verify(plain, hashed))
+    except ValueError:
+        return False
 
 
 def hash_password(password: str) -> str:

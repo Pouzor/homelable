@@ -1,7 +1,11 @@
 import json
+import logging
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -18,6 +22,17 @@ class Settings(BaseSettings):
     # Auth — set AUTH_USERNAME and AUTH_PASSWORD_HASH in .env
     auth_username: str = "admin"
     auth_password_hash: str = ""
+
+    @model_validator(mode="after")
+    def check_password_hash(self) -> "Settings":
+        h = self.auth_password_hash
+        if h and not h.startswith("$2"):
+            logger.error(
+                "AUTH_PASSWORD_HASH looks invalid (does not start with '$2b$'). "
+                "bcrypt hashes contain '$' signs — wrap the value in single quotes "
+                "in your .env file: AUTH_PASSWORD_HASH='$2b$12$...'"
+            )
+        return self
 
     # Scanner
     scanner_ranges: list[str] = ["192.168.1.0/24"]
