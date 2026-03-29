@@ -50,42 +50,48 @@ export function HomelableEdge({ id, source, target, sourceX, sourceY, targetX, t
     ...(selected ? { stroke: theme.colors.edgeSelectedColor, filter: `drop-shadow(0 0 4px ${theme.colors.edgeSelectedColor}88)` } : {}),
   }
 
-  // Animated dot: slightly brighter + thicker than the base edge, travels source→target
-  const dotColor = customColor ?? (edgeType === 'vlan' ? getVlanColor(data?.vlan_id as number | undefined) : edgeColors[edgeType as keyof typeof edgeColors] as string)
-  const dotWidth = ((style.strokeWidth as number ?? 2) + 1.5) * 2
+  // Normalize animated value — supports legacy boolean (true → 'snake')
+  const animMode: 'none' | 'snake' | 'flow' =
+    data?.animated === true || data?.animated === 'snake' ? 'snake' :
+    data?.animated === 'flow' ? 'flow' : 'none'
+
+  const animColor = customColor ?? (edgeType === 'vlan' ? getVlanColor(data?.vlan_id as number | undefined) : edgeColors[edgeType as keyof typeof edgeColors] as string)
 
   return (
     <>
       <BaseEdge id={id} path={edgePath} style={style} />
-      {data?.animated && (
+      {animMode === 'snake' && (
         <path
           d={edgePath}
           fill="none"
-          stroke={dotColor}
-          strokeWidth={dotWidth}
+          stroke={animColor}
+          strokeWidth={((style.strokeWidth as number ?? 2) + 1.5) * 2}
           strokeDasharray="20 10000"
           strokeLinecap="round"
           style={{ pointerEvents: 'none' }}
         >
           {isBidirectional ? (
-            <animate
-              attributeName="stroke-dashoffset"
-              values="-10000;0;-10000"
-              keyTimes="0;0.5;1"
-              dur="20s"
-              repeatCount="indefinite"
-            />
+            <animate attributeName="stroke-dashoffset" values="-10000;0;-10000" keyTimes="0;0.5;1" dur="20s" repeatCount="indefinite" />
           ) : (
-            <animate
-              attributeName="stroke-dashoffset"
-              from="-10000"
-              to="0"
-              dur="10s"
-              repeatCount="indefinite"
-            />
+            <animate attributeName="stroke-dashoffset" from="-10000" to="0" dur="10s" repeatCount="indefinite" />
           )}
         </path>
       )}
+      {animMode === 'flow' && (
+        <path
+          d={edgePath}
+          fill="none"
+          stroke={animColor}
+          strokeWidth={Math.max(3, (style.strokeWidth as number ?? 2) * 1.8)}
+          strokeDasharray="6 12"
+          strokeLinecap="round"
+          strokeOpacity={0.85}
+          style={{ pointerEvents: 'none' }}
+        >
+          <animate attributeName="stroke-dashoffset" from="0" to="18" dur="1.2s" repeatCount="indefinite" />
+        </path>
+      )}
+
       {data?.label && (
         <EdgeLabelRenderer>
           <div
