@@ -18,6 +18,7 @@ const defaultConfig = { data: { ranges: ['192.168.1.0/24'], interval_seconds: 60
 describe('ScanConfigModal', () => {
   beforeEach(() => {
     vi.mocked(scanApi.getConfig).mockResolvedValue(defaultConfig as never)
+    vi.mocked(scanApi.saveConfig).mockReset()
     vi.mocked(scanApi.saveConfig).mockResolvedValue({} as never)
     vi.mocked(toast.success).mockReset()
     vi.mocked(toast.error).mockReset()
@@ -37,11 +38,14 @@ describe('ScanConfigModal', () => {
     expect(input).toBeDefined()
   })
 
-  it('loads interval from API on open', async () => {
+  it('preserves interval from API when saving ranges', async () => {
     vi.mocked(scanApi.getConfig).mockResolvedValue({ data: { ranges: ['10.0.0.0/8'], interval_seconds: 120 } } as never)
     render(<ScanConfigModal open onClose={vi.fn()} onScanNow={vi.fn()} />)
-    const input = await screen.findByDisplayValue('120')
-    expect(input).toBeDefined()
+    await screen.findByDisplayValue('10.0.0.0/8')
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(scanApi.saveConfig).toHaveBeenCalledWith({ ranges: ['10.0.0.0/8'], interval_seconds: 120 })
+    })
   })
 
   it('adds a new empty range on "Add range" click', async () => {
