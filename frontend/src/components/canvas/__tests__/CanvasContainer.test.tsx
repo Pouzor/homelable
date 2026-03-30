@@ -143,4 +143,22 @@ describe('CanvasContainer', () => {
     render(<CanvasContainer />)
     expect(rfProps.snapGrid).toEqual([16, 16])
   })
+
+  // ── Delete key ────────────────────────────────────────────────────────────
+
+  it('sets deleteKeyCode to include both Backspace and Delete', () => {
+    render(<CanvasContainer />)
+    expect(rfProps.deleteKeyCode).toEqual(['Backspace', 'Delete'])
+  })
+
+  // ── onBeforeDelete snapshot ───────────────────────────────────────────────
+
+  it('onBeforeDelete calls snapshotHistory and returns true', async () => {
+    const snapshotHistory = vi.fn()
+    useCanvasStore.setState({ snapshotHistory } as unknown as Parameters<typeof useCanvasStore.setState>[0])
+    render(<CanvasContainer />)
+    const result = await (rfProps.onBeforeDelete as () => Promise<boolean>)()
+    expect(snapshotHistory).toHaveBeenCalledOnce()
+    expect(result).toBe(true)
+  })
 })

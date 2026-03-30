@@ -15,7 +15,7 @@ type SvcForm = { port: string; protocol: 'tcp' | 'udp'; service_name: string }
 const EMPTY_FORM: SvcForm = { port: '', protocol: 'tcp', service_name: '' }
 
 export function DetailPanel({ onEdit }: DetailPanelProps) {
-  const { nodes, selectedNodeId, setSelectedNode, deleteNode, updateNode } = useCanvasStore()
+  const { nodes, selectedNodeId, setSelectedNode, deleteNode, updateNode, snapshotHistory } = useCanvasStore()
   const node = nodes.find((n) => n.id === selectedNodeId)
 
   const [addingForNode, setAddingForNode] = useState<string | null>(null)
@@ -35,6 +35,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
 
   const handleDelete = () => {
     if (confirm(`Delete "${data.label}"?`)) {
+      snapshotHistory()
       deleteNode(node.id)
     }
   }

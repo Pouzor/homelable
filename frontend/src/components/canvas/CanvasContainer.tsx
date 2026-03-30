@@ -27,7 +27,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
   const {
     nodes, edges,
     onNodesChange, onEdgesChange,
-    setSelectedNode,
+    setSelectedNode, snapshotHistory,
   } = useCanvasStore()
 
   const activeTheme = useThemeStore((s) => s.activeTheme)
@@ -59,6 +59,8 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         onNodeDragStart={onNodeDragStart}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        deleteKeyCode={['Backspace', 'Delete']}
+        onBeforeDelete={async () => { snapshotHistory(); return true }}
         snapToGrid
         snapGrid={[16, 16]}
         fitView

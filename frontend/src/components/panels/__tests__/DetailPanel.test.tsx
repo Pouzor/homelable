@@ -29,6 +29,7 @@ function setupStore(nodeData: Partial<NodeData> = {}) {
     setSelectedNode: vi.fn(),
     deleteNode: vi.fn(),
     updateNode: vi.fn(),
+    snapshotHistory: vi.fn(),
   } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
 }
 
@@ -40,6 +41,7 @@ describe('DetailPanel', () => {
       setSelectedNode: vi.fn(),
       deleteNode: vi.fn(),
       updateNode: vi.fn(),
+      snapshotHistory: vi.fn(),
     } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
   })
 
@@ -125,6 +127,7 @@ describe('DetailPanel', () => {
         setSelectedNode,
         deleteNode: vi.fn(),
         updateNode: vi.fn(),
+        snapshotHistory: vi.fn(),
       } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
       render(<DetailPanel onEdit={vi.fn()} />)
       fireEvent.click(screen.getByLabelText('Close panel'))
@@ -139,33 +142,39 @@ describe('DetailPanel', () => {
       expect(onEdit).toHaveBeenCalledWith('n1')
     })
 
-    it('calls deleteNode when delete confirmed', () => {
+    it('calls snapshotHistory then deleteNode when delete confirmed', () => {
       const deleteNode = vi.fn()
+      const snapshotHistory = vi.fn()
       vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
         nodes: [makeNode({ label: 'My Server' })],
         selectedNodeId: 'n1',
         setSelectedNode: vi.fn(),
         deleteNode,
         updateNode: vi.fn(),
+        snapshotHistory,
       } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
       vi.spyOn(window, 'confirm').mockReturnValue(true)
       render(<DetailPanel onEdit={vi.fn()} />)
       fireEvent.click(screen.getByLabelText('Delete node'))
+      expect(snapshotHistory).toHaveBeenCalledOnce()
       expect(deleteNode).toHaveBeenCalledWith('n1')
     })
 
-    it('does not call deleteNode when delete is cancelled', () => {
+    it('does not call deleteNode or snapshotHistory when delete is cancelled', () => {
       const deleteNode = vi.fn()
+      const snapshotHistory = vi.fn()
       vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
         nodes: [makeNode({})],
         selectedNodeId: 'n1',
         setSelectedNode: vi.fn(),
         deleteNode,
         updateNode: vi.fn(),
+        snapshotHistory,
       } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
       vi.spyOn(window, 'confirm').mockReturnValue(false)
       render(<DetailPanel onEdit={vi.fn()} />)
       fireEvent.click(screen.getByLabelText('Delete node'))
+      expect(snapshotHistory).not.toHaveBeenCalled()
       expect(deleteNode).not.toHaveBeenCalled()
     })
   })
@@ -186,6 +195,7 @@ describe('DetailPanel', () => {
         setSelectedNode: vi.fn(),
         deleteNode: vi.fn(),
         updateNode,
+        snapshotHistory: vi.fn(),
       } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
       render(<DetailPanel onEdit={vi.fn()} />)
       fireEvent.click(screen.getByText('Add'))
@@ -207,6 +217,7 @@ describe('DetailPanel', () => {
         setSelectedNode: vi.fn(),
         deleteNode: vi.fn(),
         updateNode,
+        snapshotHistory: vi.fn(),
       } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
       render(<DetailPanel onEdit={vi.fn()} />)
       fireEvent.click(screen.getByTitle('Remove service'))
@@ -221,6 +232,7 @@ describe('DetailPanel', () => {
         setSelectedNode: vi.fn(),
         deleteNode: vi.fn(),
         updateNode: vi.fn(),
+        snapshotHistory: vi.fn(),
       } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
       expect(() => render(<DetailPanel onEdit={vi.fn()} />)).not.toThrow()
     })
@@ -249,6 +261,7 @@ describe('DetailPanel', () => {
         setSelectedNode: vi.fn(),
         deleteNode: vi.fn(),
         updateNode,
+        snapshotHistory: vi.fn(),
       } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
 
       render(<DetailPanel onEdit={vi.fn()} />)
@@ -271,6 +284,7 @@ describe('DetailPanel', () => {
         setSelectedNode: vi.fn(),
         deleteNode: vi.fn(),
         updateNode,
+        snapshotHistory: vi.fn(),
       } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
 
       render(<DetailPanel onEdit={vi.fn()} />)
