@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Settings } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -95,18 +95,10 @@ export function ScanConfigModal({ open, onClose, onScanNow }: ScanConfigModalPro
             </Button>
           </div>
 
-          {/* Status check interval */}
-          <div className="space-y-1.5">
-            <Label className="text-sm text-muted-foreground">Status check interval (seconds)</Label>
-            <Input
-              type="number"
-              min={10}
-              max={3600}
-              value={interval}
-              onChange={(e) => setInterval(Number(e.target.value))}
-              className="font-mono text-sm bg-[#0d1117] border-border w-32"
-            />
-          </div>
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <Settings size={11} />
+            Status check interval can be configured in the sidebar Settings.
+          </p>
         </div>
 
         <DialogFooter className="gap-2">

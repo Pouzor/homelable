@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Trash2, RefreshCw, Loader2, Square, Eye } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Trash2, RefreshCw, Loader2, Square, Eye, Settings } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -9,7 +9,7 @@ import { PendingDeviceModal, type PendingDevice } from '@/components/modals/Pend
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
-type SidebarView = 'canvas' | 'pending' | 'hidden' | 'history'
+type SidebarView = 'canvas' | 'pending' | 'hidden' | 'history' | 'settings'
 
 const ALL_VIEWS = [
   { id: 'canvas' as SidebarView, icon: LayoutDashboard, label: 'Canvas' },
@@ -95,6 +95,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeAppro
           {activeView === 'pending' && <PendingDevicesPanel onNodeApproved={onNodeApproved} />}
           {activeView === 'hidden' && <HiddenDevicesPanel />}
           {activeView === 'history' && <ScanHistoryPanel />}
+          {activeView === 'settings' && <SettingsPanel />}
         </div>
       )}
 
@@ -141,6 +142,15 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeAppro
           badge={hasUnsavedChanges}
           accent
         />
+        {!STANDALONE && (
+          <SidebarItem
+            icon={Settings}
+            label="Settings"
+            collapsed={collapsed}
+            active={activeView === 'settings'}
+            onClick={() => setActiveView((v) => v === 'settings' ? 'canvas' : 'settings')}
+          />
+        )}
       </div>
     </aside>
   )
@@ -413,6 +423,65 @@ function ScanHistoryPanel() {
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+function SettingsPanel() {
+  const [interval, setIntervalValue] = useState(60)
+  const [ranges, setRangesValue] = useState<string[]>([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    scanApi.getConfig()
+      .then((res) => {
+        setIntervalValue(res.data.interval_seconds)
+        setRangesValue(res.data.ranges)
+      })
+      .catch(() => {/* use current defaults */})
+  }, [])
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await scanApi.saveConfig({ ranges, interval_seconds: interval })
+      toast.success('Settings saved')
+    } catch {
+      toast.error('Failed to save settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="p-3 space-y-4">
+      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Settings</span>
+
+      <div className="space-y-1.5">
+        <label className="text-xs text-muted-foreground">Status check interval (s)</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={10}
+            max={3600}
+            value={interval}
+            onChange={(e) => setIntervalValue(Number(e.target.value))}
+            className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
+          />
+          <span className="text-xs text-muted-foreground">seconds</span>
+        </div>
+        <p className="text-[10px] text-muted-foreground leading-tight">
+          How often node health is polled (ping, HTTP, SSH…)
+        </p>
+      </div>
+
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className="w-full py-1.5 rounded-md text-xs font-medium bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/30 hover:bg-[#00d4ff]/20 transition-colors disabled:opacity-50"
+      >
+        {saving ? 'Saving…' : 'Save'}
+      </button>
     </div>
   )
 }
