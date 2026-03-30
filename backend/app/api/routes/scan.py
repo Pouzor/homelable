@@ -17,7 +17,6 @@ from app.services.scanner import run_scan
 
 class ScanConfig(BaseModel):
     ranges: list[str]
-    interval_seconds: int
 
 
 logger = logging.getLogger(__name__)
@@ -103,17 +102,13 @@ async def list_runs(db: AsyncSession = Depends(get_db), _: str = Depends(get_cur
 
 @router.get("/config", response_model=ScanConfig)
 async def get_scan_config(_: str = Depends(get_current_user)) -> ScanConfig:
-    return ScanConfig(
-        ranges=settings.scanner_ranges,
-        interval_seconds=settings.status_checker_interval,
-    )
+    return ScanConfig(ranges=settings.scanner_ranges)
 
 
 @router.post("/config", response_model=ScanConfig)
 async def update_scan_config(payload: ScanConfig, _: str = Depends(get_current_user)) -> ScanConfig:
     try:
         settings.scanner_ranges = payload.ranges
-        settings.status_checker_interval = payload.interval_seconds
         settings.save_overrides()
         return payload
     except Exception as exc:

@@ -59,6 +59,11 @@ export const scanApi = {
   approve: (id: string, nodeData: object) => api.post(`/scan/pending/${id}/approve`, nodeData),
   hide: (id: string) => api.post(`/scan/pending/${id}/hide`),
   ignore: (id: string) => api.post(`/scan/pending/${id}/ignore`),
-  getConfig: () => api.get<{ ranges: string[]; interval_seconds: number }>('/scan/config'),
-  saveConfig: (data: { ranges: string[]; interval_seconds: number }) => api.post('/scan/config', data),
+  getConfig: () => api.get<{ ranges: string[] }>('/scan/config'),
+  saveConfig: (data: { ranges: string[] }) => api.post('/scan/config', data),
+}
+
+export const settingsApi = {
+  get: () => api.get<{ interval_seconds: number }>('/settings'),
+  save: (data: { interval_seconds: number }) => api.post<{ interval_seconds: number }>('/settings', data),
 }

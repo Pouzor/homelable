@@ -13,11 +13,12 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.f
 import { scanApi } from '@/api/client'
 import { toast } from 'sonner'
 
-const defaultConfig = { data: { ranges: ['192.168.1.0/24'], interval_seconds: 60 } }
+const defaultConfig = { data: { ranges: ['192.168.1.0/24'] } }
 
 describe('ScanConfigModal', () => {
   beforeEach(() => {
     vi.mocked(scanApi.getConfig).mockResolvedValue(defaultConfig as never)
+    vi.mocked(scanApi.saveConfig).mockReset()
     vi.mocked(scanApi.saveConfig).mockResolvedValue({} as never)
     vi.mocked(toast.success).mockReset()
     vi.mocked(toast.error).mockReset()
@@ -37,11 +38,14 @@ describe('ScanConfigModal', () => {
     expect(input).toBeDefined()
   })
 
-  it('loads interval from API on open', async () => {
-    vi.mocked(scanApi.getConfig).mockResolvedValue({ data: { ranges: ['10.0.0.0/8'], interval_seconds: 120 } } as never)
+  it('saves only ranges (interval managed by settings endpoint)', async () => {
+    vi.mocked(scanApi.getConfig).mockResolvedValue({ data: { ranges: ['10.0.0.0/8'] } } as never)
     render(<ScanConfigModal open onClose={vi.fn()} onScanNow={vi.fn()} />)
-    const input = await screen.findByDisplayValue('120')
-    expect(input).toBeDefined()
+    await screen.findByDisplayValue('10.0.0.0/8')
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(scanApi.saveConfig).toHaveBeenCalledWith({ ranges: ['10.0.0.0/8'] })
+    })
   })
 
   it('adds a new empty range on "Add range" click', async () => {
@@ -61,7 +65,7 @@ describe('ScanConfigModal', () => {
   })
 
   it('can remove a range when more than one exist', async () => {
-    vi.mocked(scanApi.getConfig).mockResolvedValue({ data: { ranges: ['192.168.1.0/24', '10.0.0.0/8'], interval_seconds: 60 } } as never)
+    vi.mocked(scanApi.getConfig).mockResolvedValue({ data: { ranges: ['192.168.1.0/24', '10.0.0.0/8'], } } as never)
     render(<ScanConfigModal open onClose={vi.fn()} onScanNow={vi.fn()} />)
     await screen.findByDisplayValue('192.168.1.0/24')
     // Both trash buttons should be enabled
@@ -70,7 +74,7 @@ describe('ScanConfigModal', () => {
   })
 
   it('shows error toast and does not save when all ranges are empty', async () => {
-    vi.mocked(scanApi.getConfig).mockResolvedValue({ data: { ranges: [''], interval_seconds: 60 } } as never)
+    vi.mocked(scanApi.getConfig).mockResolvedValue({ data: { ranges: [''], } } as never)
     render(<ScanConfigModal open onClose={vi.fn()} onScanNow={vi.fn()} />)
     await waitFor(() => expect(scanApi.getConfig).toHaveBeenCalled())
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
@@ -86,7 +90,7 @@ describe('ScanConfigModal', () => {
     await screen.findByDisplayValue('192.168.1.0/24')
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => {
-      expect(scanApi.saveConfig).toHaveBeenCalledWith({ ranges: ['192.168.1.0/24'], interval_seconds: 60 })
+      expect(scanApi.saveConfig).toHaveBeenCalledWith({ ranges: ['192.168.1.0/24'] })
       expect(toast.success).toHaveBeenCalledWith('Scan config saved')
       expect(onClose).toHaveBeenCalledOnce()
     })

@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import PendingDevice, ScanRun
+from app.db.models import Node, PendingDevice, ScanRun
 from app.services.fingerprint import fingerprint_ports, suggest_node_type
 
 logger = logging.getLogger(__name__)
@@ -107,18 +107,54 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
 
     devices_found = 0
     try:
+        # Clean up stale pending devices whose IPs are already in the canvas
+        # (covers devices approved between scans, or pre-existing canvas nodes)
+        canvas_ips_result = await db.execute(select(Node.ip).where(Node.ip.isnot(None)))
+        canvas_ips = {row[0] for row in canvas_ips_result.fetchall()}
+        if canvas_ips:
+            stale_result = await db.execute(
+                select(PendingDevice).where(
+                    PendingDevice.status == "pending",
+                    PendingDevice.ip.in_(canvas_ips),
+                )
+            )
+            for stale in stale_result.scalars().all():
+                await db.delete(stale)
+            await db.commit()
+
         for cidr in ranges:
             # Run nmap in a thread pool — does not block the event loop
             hosts = await asyncio.to_thread(_nmap_scan, cidr)
 
             for host in hosts:
+                ip = host["ip"]
+
+                # Skip if device is already in the canvas (approved node)
+                canvas_result = await db.execute(
+                    select(Node).where(Node.ip == ip)
+                )
+                if canvas_result.scalar_one_or_none() is not None:
+                    logger.debug("Skipping %s — already in canvas", ip)
+                    continue
+
+                # Skip if device was explicitly hidden by the user
+                hidden_result = await db.execute(
+                    select(PendingDevice).where(
+                        PendingDevice.ip == ip,
+                        PendingDevice.status == "hidden",
+                    )
+                )
+                if hidden_result.scalar_one_or_none() is not None:
+                    logger.debug("Skipping %s — hidden by user", ip)
+                    continue
+
                 services = fingerprint_ports(host["open_ports"])
                 suggested_type = suggest_node_type(host["open_ports"], host.get("mac"))
 
                 # Update existing pending device or create a new one
                 existing_result = await db.execute(
                     select(PendingDevice).where(
-                        PendingDevice.ip == host["ip"],
+                        PendingDevice.ip == ip,
                         PendingDevice.status == "pending",
                     )
                 )
@@ -131,7 +167,7 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
                     existing.suggested_type = suggested_type
                 else:
                     device = PendingDevice(
-                        ip=host["ip"],
+                        ip=ip,
                         mac=host.get("mac"),
                         hostname=host.get("hostname"),
                         os=host.get("os"),

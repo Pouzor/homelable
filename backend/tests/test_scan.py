@@ -7,7 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import PendingDevice, ScanRun
+from app.db.models import Node, PendingDevice, ScanRun
 from app.services.scanner import run_scan
 
 
@@ -197,6 +197,119 @@ async def test_run_scan_creates_new_pending_device(db_session: AsyncSession):
     assert device.hostname == "myhost.lan"
     assert any(s["port"] == 8096 for s in device.services)
     assert device.suggested_type == "server"
+
+
+@pytest.mark.asyncio
+async def test_run_scan_purges_stale_pending_for_canvas_nodes(db_session: AsyncSession):
+    """Pending devices that were already in canvas before scan starts must be removed."""
+    node = Node(
+        id=str(uuid.uuid4()),
+        label="Existing Server",
+        type="server",
+        ip="192.168.1.50",
+        status="online",
+        services=[],
+        pos_x=0.0,
+        pos_y=0.0,
+    )
+    stale = PendingDevice(
+        id=str(uuid.uuid4()),
+        ip="192.168.1.50",
+        mac=None,
+        hostname=None,
+        os=None,
+        services=[],
+        suggested_type="generic",
+        status="pending",
+    )
+    db_session.add(node)
+    db_session.add(stale)
+    await db_session.commit()
+
+    run_id = str(uuid.uuid4())
+    run = ScanRun(id=run_id, status="running", ranges=["192.168.1.0/24"])
+    db_session.add(run)
+    await db_session.commit()
+
+    with (
+        patch("app.services.scanner._nmap_scan", return_value=[]),
+        patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock),
+    ):
+        await run_scan(["192.168.1.0/24"], db_session, run_id)
+
+    result = await db_session.execute(
+        select(PendingDevice).where(PendingDevice.ip == "192.168.1.50")
+    )
+    assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_run_scan_skips_ip_already_in_canvas(db_session: AsyncSession):
+    """Devices whose IP already exists as a canvas Node must not appear in pending."""
+    node = Node(
+        id=str(uuid.uuid4()),
+        label="Existing Server",
+        type="server",
+        ip="192.168.1.50",
+        status="online",
+        services=[],
+        pos_x=0.0,
+        pos_y=0.0,
+    )
+    db_session.add(node)
+    await db_session.commit()
+
+    run_id = str(uuid.uuid4())
+    run = ScanRun(id=run_id, status="running", ranges=["192.168.1.0/24"])
+    db_session.add(run)
+    await db_session.commit()
+
+    with (
+        patch("app.services.scanner._nmap_scan", return_value=[MOCK_HOST]),
+        patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock),
+    ):
+        await run_scan(["192.168.1.0/24"], db_session, run_id)
+
+    result = await db_session.execute(
+        select(PendingDevice).where(PendingDevice.ip == "192.168.1.50")
+    )
+    assert result.scalar_one_or_none() is None
+
+
+@pytest.mark.asyncio
+async def test_run_scan_skips_hidden_device(db_session: AsyncSession):
+    """Devices previously hidden by the user must not re-appear in pending on re-scan."""
+    hidden = PendingDevice(
+        id=str(uuid.uuid4()),
+        ip="192.168.1.50",
+        mac=None,
+        hostname=None,
+        os=None,
+        services=[],
+        suggested_type="generic",
+        status="hidden",
+    )
+    db_session.add(hidden)
+    await db_session.commit()
+
+    run_id = str(uuid.uuid4())
+    run = ScanRun(id=run_id, status="running", ranges=["192.168.1.0/24"])
+    db_session.add(run)
+    await db_session.commit()
+
+    with (
+        patch("app.services.scanner._nmap_scan", return_value=[MOCK_HOST]),
+        patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock),
+    ):
+        await run_scan(["192.168.1.0/24"], db_session, run_id)
+
+    result = await db_session.execute(
+        select(PendingDevice).where(
+            PendingDevice.ip == "192.168.1.50",
+            PendingDevice.status == "pending",
+        )
+    )
+    assert result.scalar_one_or_none() is None
 
 
 @pytest.mark.asyncio
