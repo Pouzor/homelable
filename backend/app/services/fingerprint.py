@@ -65,14 +65,46 @@ def fingerprint_ports(open_ports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return results
 
 
-# Known OUI prefixes for virtual machines / hypervisors (lowercase, colon-separated)
+# Known OUI prefixes — lowercase, colon-separated, first 3 octets
 _MAC_OUI_TYPES: dict[str, str] = {
-    "52:54:00": "vm",    # QEMU/KVM (used by Proxmox VMs)
-    "bc:24:11": "vm",    # Proxmox official OUI (VMs and LXC, Proxmox 7.3+)
+    # Hypervisors / VMs
+    "52:54:00": "vm",    # QEMU/KVM (Proxmox VMs)
+    "bc:24:11": "vm",    # Proxmox official OUI (VMs and LXC, 7.3+)
     "00:50:56": "vm",    # VMware
     "00:0c:29": "vm",    # VMware Workstation / Fusion
     "08:00:27": "vm",    # VirtualBox
     "00:15:5d": "vm",    # Hyper-V
+    # Shelly
+    "34:94:54": "iot",
+    "84:f3:eb": "iot",
+    "ec:fa:bc": "iot",
+    "30:c6:f7": "iot",
+    # Espressif (ESP8266 / ESP32 — used by Sonoff, many DIY IoT)
+    "a0:20:a6": "iot",
+    "24:62:ab": "iot",
+    "30:ae:a4": "iot",
+    "cc:50:e3": "iot",
+    "ac:67:b2": "iot",
+    "b4:e6:2d": "iot",
+    "3c:71:bf": "iot",
+    "8c:aa:b5": "iot",
+    # Sonoff / ITEAD
+    "dc:4f:22": "iot",
+    "e8:db:84": "iot",
+    # Tapo / TP-Link smart home
+    "b0:a7:b9": "iot",
+    "50:c7:bf": "iot",
+    "1c:3b:f3": "iot",
+    "10:27:f5": "iot",
+    # Philips Hue
+    "00:17:88": "iot",
+    "ec:b5:fa": "iot",
+    # IKEA Tradfri
+    "34:13:e8": "iot",
+    "00:21:2e": "iot",
+    # Tuya / Smart Life (widely used chip in many brands)
+    "d8:f1:5b": "iot",
+    "68:57:2d": "iot",
 }
 
 
@@ -101,10 +133,13 @@ _PORT_TYPE_HINTS: dict[int, str] = {
     37777: "camera",   # Dahua
     34567: "camera",   # Amcrest
     2020: "camera",    # Tapo
-    # Smart-home / MQTT → iot
+    # Smart-home / MQTT / CoAP → iot
     1883: "iot",
     8883: "iot",
-    6052: "iot",    # ESPHome
+    6052: "iot",    # ESPHome dashboard
+    4915: "iot",    # Shelly CoIoT
+    5683: "iot",    # CoAP (Shelly Gen1, many IoT devices)
+    5684: "iot",    # CoAP DTLS
     # AP / wireless
     8880: "ap",     # UniFi HTTP
     8443: "ap",     # UniFi HTTPS
@@ -115,8 +150,13 @@ _PORT_TYPE_HINTS: dict[int, str] = {
 
 
 def suggest_node_type(open_ports: list[dict[str, Any]], mac: str | None = None) -> str:
-    """Suggest a node type based on matched signatures and MAC OUI."""
-    priority = ["proxmox", "nas", "router", "lxc", "vm", "server", "ap", "camera", "iot", "switch"]
+    """Suggest a node type based on matched signatures, port hints, and MAC OUI."""
+    # IoT vendor MACs are a strong, unambiguous signal — don't let generic HTTP ports override
+    mac_type = suggest_type_from_mac(mac)
+    if mac_type == "iot":
+        return "iot"
+
+    priority = ["proxmox", "nas", "router", "lxc", "vm", "ap", "camera", "iot", "server", "switch"]
     found: set[str] = set()
     for p in open_ports:
         port = p["port"]
@@ -126,10 +166,10 @@ def suggest_node_type(open_ports: list[dict[str, Any]], mac: str | None = None) 
             found.add(sig["suggested_node_type"])
         if port in _PORT_TYPE_HINTS:
             found.add(_PORT_TYPE_HINTS[port])
-    # MAC OUI is a lower-priority hint — only used if ports give no better answer
-    mac_type = suggest_type_from_mac(mac)
+
     if mac_type:
         found.add(mac_type)
+
     for t in priority:
         if t in found:
             return t

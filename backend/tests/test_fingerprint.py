@@ -131,3 +131,45 @@ def test_suggest_node_type_camera_from_signature():
     ]):
         result = suggest_node_type([{"port": 554, "protocol": "tcp"}])
         assert result == "camera"
+
+
+# ── IoT detection ─────────────────────────────────────────────────────────────
+
+def test_suggest_node_type_iot_from_mqtt_port():
+    result = suggest_node_type([{"port": 1883, "protocol": "tcp"}])
+    assert result == "iot"
+
+
+def test_suggest_node_type_iot_from_coap_port():
+    result = suggest_node_type([{"port": 5683, "protocol": "tcp"}])
+    assert result == "iot"
+
+
+def test_suggest_node_type_iot_from_esphome_port():
+    result = suggest_node_type([{"port": 6052, "protocol": "tcp"}])
+    assert result == "iot"
+
+
+def test_suggest_node_type_shelly_mac_overrides_http_port():
+    # Shelly exposes port 80 (would suggest "server") but MAC identifies it as IoT
+    result = suggest_node_type([{"port": 80, "protocol": "tcp"}], mac="34:94:54:aa:bb:cc")
+    assert result == "iot"
+
+
+def test_suggest_node_type_espressif_mac_returns_iot():
+    result = suggest_node_type([], mac="a0:20:a6:11:22:33")
+    assert result == "iot"
+
+
+def test_suggest_node_type_tuya_mac_returns_iot():
+    result = suggest_node_type([{"port": 80, "protocol": "tcp"}], mac="d8:f1:5b:aa:bb:cc")
+    assert result == "iot"
+
+
+def test_suggest_node_type_iot_wins_over_server_when_mqtt_present():
+    # MQTT port + HTTP port → iot wins (iot is higher priority than server now)
+    result = suggest_node_type([
+        {"port": 80, "protocol": "tcp"},
+        {"port": 1883, "protocol": "tcp"},
+    ])
+    assert result == "iot"
