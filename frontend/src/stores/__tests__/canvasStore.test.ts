@@ -57,6 +57,57 @@ describe('canvasStore', () => {
     expect(node?.data.ip).toBe('10.0.0.1')
   })
 
+  it('updateNode setting parent_id on container-mode proxmox sets parentId and relative position', () => {
+    const proxmox = { ...makeNode('px1', { type: 'proxmox', container_mode: true }), position: { x: 100, y: 100 } }
+    const lxc = { ...makeNode('lxc1', { type: 'lxc' }), position: { x: 160, y: 180 } }
+    useCanvasStore.getState().addNode(proxmox)
+    useCanvasStore.getState().addNode(lxc)
+    useCanvasStore.getState().updateNode('lxc1', { parent_id: 'px1' })
+    const node = useCanvasStore.getState().nodes.find((n) => n.id === 'lxc1')
+    expect(node?.parentId).toBe('px1')
+    expect(node?.extent).toBe('parent')
+    // Position should be relative to parent (160-100=60, 180-100=80)
+    expect(node?.position.x).toBe(60)
+    expect(node?.position.y).toBe(80)
+  })
+
+  it('updateNode setting parent_id on non-container proxmox does NOT set React Flow parentId', () => {
+    const proxmox = { ...makeNode('px1', { type: 'proxmox', container_mode: false }), position: { x: 100, y: 100 } }
+    const lxc = { ...makeNode('lxc1', { type: 'lxc' }), position: { x: 160, y: 180 } }
+    useCanvasStore.getState().addNode(proxmox)
+    useCanvasStore.getState().addNode(lxc)
+    useCanvasStore.getState().updateNode('lxc1', { parent_id: 'px1' })
+    const node = useCanvasStore.getState().nodes.find((n) => n.id === 'lxc1')
+    expect(node?.parentId).toBeUndefined()
+    expect(node?.extent).toBeUndefined()
+  })
+
+  it('updateNode clearing parent_id converts position to absolute and clears parentId', () => {
+    const proxmox = { ...makeNode('px1', { type: 'proxmox', container_mode: true }), position: { x: 100, y: 100 } }
+    const lxc = { ...makeNode('lxc1', { type: 'lxc', parent_id: 'px1' }), position: { x: 30, y: 40 }, parentId: 'px1', extent: 'parent' as const }
+    useCanvasStore.getState().addNode(proxmox)
+    useCanvasStore.getState().addNode(lxc)
+    useCanvasStore.getState().updateNode('lxc1', { parent_id: undefined })
+    const node = useCanvasStore.getState().nodes.find((n) => n.id === 'lxc1')
+    expect(node?.parentId).toBeUndefined()
+    expect(node?.extent).toBeUndefined()
+    // Position should be absolute (100+30=130, 100+40=140)
+    expect(node?.position.x).toBe(130)
+    expect(node?.position.y).toBe(140)
+  })
+
+  it('updateNode with parent_id puts parents before children in array', () => {
+    const proxmox = { ...makeNode('px1', { type: 'proxmox', container_mode: true }), position: { x: 0, y: 0 } }
+    const lxc = { ...makeNode('lxc1', { type: 'lxc' }), position: { x: 10, y: 10 } }
+    useCanvasStore.getState().addNode(proxmox)
+    useCanvasStore.getState().addNode(lxc)
+    useCanvasStore.getState().updateNode('lxc1', { parent_id: 'px1' })
+    const { nodes } = useCanvasStore.getState()
+    const pxIdx = nodes.findIndex((n) => n.id === 'px1')
+    const lxcIdx = nodes.findIndex((n) => n.id === 'lxc1')
+    expect(pxIdx).toBeLessThan(lxcIdx)
+  })
+
   it('deleteNode removes node and its connected edges', () => {
     const store = useCanvasStore.getState()
     store.addNode(makeNode('n1'))

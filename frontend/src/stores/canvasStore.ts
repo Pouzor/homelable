@@ -187,12 +187,47 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     }),
 
   updateNode: (id, data) =>
-    set((state) => ({
-      nodes: state.nodes.map((n) =>
-        n.id === id ? { ...n, data: { ...n.data, ...data } } : n
-      ),
-      hasUnsavedChanges: true,
-    })),
+    set((state) => {
+      let nodes = state.nodes.map((n) => {
+        if (n.id !== id) return n
+        const updated: Node<NodeData> = { ...n, data: { ...n.data, ...data } }
+        if ('parent_id' in data) {
+          const newParentId = data.parent_id ?? undefined
+          if (!newParentId && n.parentId) {
+            // Detaching from a container: convert position back to absolute canvas coords
+            const parent = state.nodes.find((p) => p.id === n.parentId)
+            if (parent) {
+              updated.position = {
+                x: parent.position.x + n.position.x,
+                y: parent.position.y + n.position.y,
+              }
+            }
+            updated.parentId = undefined
+            updated.extent = undefined
+          } else if (newParentId && newParentId !== n.parentId) {
+            const parent = state.nodes.find((p) => p.id === newParentId)
+            if (parent?.data.container_mode) {
+              // Attaching to a container-mode Proxmox: nest visually
+              updated.parentId = newParentId
+              updated.extent = 'parent' as const
+              // Convert absolute position to parent-relative (keep node visible inside)
+              updated.position = {
+                x: Math.max(10, n.position.x - parent.position.x),
+                y: Math.max(10, n.position.y - parent.position.y),
+              }
+            }
+          }
+        }
+        return updated
+      })
+      // React Flow requires parent nodes to precede their children in the array
+      if ('parent_id' in data) {
+        const parents = nodes.filter((n) => !n.parentId)
+        const children = nodes.filter((n) => !!n.parentId)
+        nodes = [...parents, ...children]
+      }
+      return { nodes, hasUnsavedChanges: true }
+    }),
 
   deleteNode: (id) =>
     set((state) => {

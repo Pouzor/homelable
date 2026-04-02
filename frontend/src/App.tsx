@@ -258,10 +258,13 @@ export default function App() {
           )
           if (oldEdge) deleteEdge(oldEdge.id)
         }
-        // Create new virtual edge: LXC top → Proxmox bottom
+        // Create virtual edge only when parent is NOT in container mode
+        // (container mode shows containment visually — no edge needed)
         if (newParentId) {
-          // Pass type as extra field — canvasStore.onConnect casts to Connection & Partial<EdgeData>
-          onConnect({ source: editNodeId, sourceHandle: 'top', target: newParentId, targetHandle: 'bottom', type: 'virtual' } as unknown as Connection)
+          const parentNode = nodes.find((n) => n.id === newParentId)
+          if (!parentNode?.data.container_mode) {
+            onConnect({ source: editNodeId, sourceHandle: 'top', target: newParentId, targetHandle: 'bottom', type: 'virtual' } as unknown as Connection)
+          }
         }
       }
     }
