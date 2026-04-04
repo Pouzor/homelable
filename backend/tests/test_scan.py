@@ -101,6 +101,11 @@ async def test_approve_device(client: AsyncClient, headers, pending_device):
     assert data["approved"] is True
     assert "node_id" in data
 
+    node_res = await client.get(f"/api/v1/nodes/{data['node_id']}", headers=headers)
+    assert node_res.status_code == 200
+    assert node_res.json()["type"] == "server"
+    assert node_res.json()["label"] == "My Server"
+
     # Device should no longer appear in pending list
     pending_res = await client.get("/api/v1/scan/pending", headers=headers)
     assert pending_res.json() == []

@@ -40,6 +40,7 @@ interface CanvasState {
   setSelectedNode: (id: string | null) => void
   addNode: (node: Node<NodeData>) => void
   updateNode: (id: string, data: Partial<NodeData>) => void
+  setNodeDimensions: (id: string, width?: number, height?: number) => void
   deleteNode: (id: string) => void
   updateEdge: (id: string, data: Partial<EdgeData>) => void
   deleteEdge: (id: string) => void
@@ -152,7 +153,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       // Normalize invisible stub handle IDs so React Flow can locate the handle
       // and render the edge immediately (top-t / bottom-t are opacity:0 helpers).
       const normalizeHandle = (h: string | null | undefined) =>
-        h === 'top-t' ? 'top' : h === 'bottom-t' ? 'bottom' : (h ?? null)
+        h?.endsWith('-t') ? h.slice(0, -2) : (h ?? null)
       return {
         edges: addEdge({
           ...connection,
@@ -228,6 +229,12 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       }
       return { nodes, hasUnsavedChanges: true }
     }),
+
+  setNodeDimensions: (id, width, height) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) => n.id === id ? { ...n, width, height } : n),
+      hasUnsavedChanges: true,
+    })),
 
   deleteNode: (id) =>
     set((state) => {

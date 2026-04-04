@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef, useState } from 'react'
-import { ReactFlowProvider, type Connection, type Edge } from '@xyflow/react'
+import { ReactFlowProvider, type Connection } from '@xyflow/react'
 import { type Node } from '@xyflow/react'
 import { applyDagreLayout } from '@/utils/layout'
 import { serializeNode, serializeEdge, deserializeApiNode, deserializeApiEdge, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
@@ -26,19 +26,21 @@ import { ShortcutsModal } from '@/components/modals/ShortcutsModal'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
-import { canvasApi } from '@/api/client'
+import { canvasApi, settingsApi } from '@/api/client'
 import { demoNodes, demoEdges } from '@/utils/demoData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
-import type { NodeData, EdgeData } from '@/types'
+import type { NodeData, EdgeData, NodeDimensions } from '@/types'
+import { useSettingsStore } from '@/stores/settingsStore'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STANDALONE_STORAGE_KEY = 'homelable_canvas'
 
 export default function App() {
-  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
+  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, setNodeDimensions, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated } = useAuthStore()
   const { activeTheme, setTheme } = useThemeStore()
+  const setAppSettings = useSettingsStore((s) => s.setSettings)
 
   useStatusPolling()
 
@@ -76,6 +78,20 @@ export default function App() {
   useEffect(() => { handleSaveRef.current = handleSave }, [handleSave])
 
   // Load canvas on auth (or immediately in standalone mode)
+  useEffect(() => {
+    if (STANDALONE || !isAuthenticated) return
+    settingsApi.get()
+      .then((res) => setAppSettings({
+        intervalSeconds: res.data.interval_seconds,
+        scanIntervalSeconds: res.data.scan_interval_seconds,
+        defaultNodeColor: res.data.default_node_color ?? null,
+        defaultEdgeColor: res.data.default_edge_color ?? null,
+        nodeTypeColors: res.data.node_type_colors ?? {},
+        edgeTypeColors: res.data.edge_type_colors ?? {},
+      }))
+      .catch(() => undefined)
+  }, [isAuthenticated, setAppSettings])
+
   useEffect(() => {
     if (STANDALONE) {
       try {
@@ -145,7 +161,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  const handleAddNode = useCallback((data: Partial<NodeData>) => {
+  const handleAddNode = useCallback((data: Partial<NodeData>, dimensions?: NodeDimensions) => {
     snapshotHistory()
     const id = generateUUID()
     const isProxmox = data.type === 'proxmox'
@@ -161,7 +177,8 @@ export default function App() {
       position,
       data: { status: 'unknown', services: [], ...data } as NodeData,
       ...(data.parent_id ? { parentId: data.parent_id, extent: 'parent' as const } : {}),
-      ...(isProxmox ? { width: 300, height: 200 } : {}),
+      width: dimensions?.width ?? (isProxmox ? 300 : undefined),
+      height: dimensions?.height ?? (isProxmox ? 200 : undefined),
     }
     addNode(newNode)
     toast.success(`Added "${data.label}"`)
@@ -234,11 +251,14 @@ export default function App() {
     setEditNodeId(id)
   }, [])
 
-  const handleUpdateNode = useCallback((data: Partial<NodeData>) => {
+  const handleUpdateNode = useCallback((data: Partial<NodeData>, dimensions?: NodeDimensions) => {
     if (!editNodeId) return
     snapshotHistory()
     const existingNode = nodes.find((n) => n.id === editNodeId)
     updateNode(editNodeId, data)
+    if (dimensions) {
+      setNodeDimensions(editNodeId, dimensions.width, dimensions.height)
+    }
     // If proxmox container_mode changed, apply structural changes (children parentId, node dimensions)
     if (data.type === 'proxmox' && typeof data.container_mode === 'boolean') {
       setProxmoxContainerMode(editNodeId, data.container_mode)
@@ -269,7 +289,7 @@ export default function App() {
       }
     }
     setEditNodeId(null)
-  }, [editNodeId, updateNode, setProxmoxContainerMode, nodes, edges, deleteEdge, onConnect, snapshotHistory])
+  }, [editNodeId, updateNode, setNodeDimensions, setProxmoxContainerMode, nodes, edges, deleteEdge, onConnect, snapshotHistory])
 
   const handleAutoLayout = useCallback(() => {
     const laid = applyDagreLayout(nodes, edges)
@@ -337,8 +357,8 @@ export default function App() {
     setPendingConnection(null)
   }, [pendingConnection, onConnect, nodes, updateNode, snapshotHistory])
 
-  const handleEdgeDoubleClick = useCallback((edge: Edge<EdgeData>) => {
-    setEditEdgeId(edge.id)
+  const handleEdgeEditRequest = useCallback((edgeId: string) => {
+    setEditEdgeId(edgeId)
   }, [])
 
   const handleEdgeUpdate = useCallback((data: EdgeData) => {
@@ -357,6 +377,17 @@ export default function App() {
 
   const editNode = editNodeId ? nodes.find((n) => n.id === editNodeId) : null
   const editEdge = editEdgeId ? edges.find((e) => e.id === editEdgeId) : null
+
+  useEffect(() => {
+    const handleOpenEdgeEditor = (event: Event) => {
+      const detail = (event as CustomEvent<{ edgeId?: string }>).detail
+      if (detail?.edgeId) {
+        handleEdgeEditRequest(detail.edgeId)
+      }
+    }
+    window.addEventListener('homelable:edit-edge', handleOpenEdgeEditor)
+    return () => window.removeEventListener('homelable:edit-edge', handleOpenEdgeEditor)
+  }, [handleEdgeEditRequest])
 
   if (!STANDALONE && !isAuthenticated) return <LoginPage />
 
@@ -386,7 +417,7 @@ export default function App() {
             />
             <div className="flex flex-1 min-h-0">
               <div ref={canvasRef} className="flex-1 min-w-0 h-full">
-                <CanvasContainer onConnect={handleEdgeConnect} onEdgeDoubleClick={handleEdgeDoubleClick} onNodeDragStart={snapshotHistory} />
+                <CanvasContainer onConnect={handleEdgeConnect} onNodeDragStart={snapshotHistory} />
               </div>
               {(selectedNodeId || selectedNodeIds.length > 1) && <DetailPanel onEdit={handleEditNode} />}
             </div>
@@ -408,6 +439,7 @@ export default function App() {
           onClose={() => setEditNodeId(null)}
           onSubmit={handleUpdateNode}
           initial={editNode?.data}
+          initialDimensions={{ width: editNode?.width, height: editNode?.height }}
           title="Edit Node"
           proxmoxNodes={nodes.filter((n) => n.type === 'proxmox').map((n) => ({ id: n.id, label: n.data.label }))}
         />

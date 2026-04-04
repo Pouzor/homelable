@@ -16,6 +16,7 @@ vi.mock('@/api/client', () => ({
     getConfig: vi.fn().mockResolvedValue({ data: { ranges: [] } }),
   },
   settingsApi: { get: vi.fn(), save: vi.fn() },
+  nodeHistoryApi: { list: vi.fn().mockResolvedValue({ data: [] }) },
 }))
 
 import { scanApi } from '@/api/client'

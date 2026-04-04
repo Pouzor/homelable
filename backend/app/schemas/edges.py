@@ -5,6 +5,11 @@ from pydantic import BaseModel, field_validator
 from app.schemas.utils import normalize_animated
 
 
+class Waypoint(BaseModel):
+    x: float
+    y: float
+
+
 class EdgeBase(BaseModel):
     source: str
     target: str
@@ -17,6 +22,7 @@ class EdgeBase(BaseModel):
     animated: str = 'none'
     source_handle: str | None = None
     target_handle: str | None = None
+    waypoints: list[Waypoint] | None = None
 
     @field_validator('animated', mode='before')
     @classmethod
@@ -38,6 +44,7 @@ class EdgeUpdate(BaseModel):
     animated: str | None = None
     source_handle: str | None = None
     target_handle: str | None = None
+    waypoints: list[Waypoint] | None = None
 
     @field_validator('animated', mode='before')
     @classmethod

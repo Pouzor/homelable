@@ -1,6 +1,7 @@
 """Per-node status checks: ping, http, https, tcp, ssh, prometheus, health, none."""
 import asyncio
 import logging
+import platform
 import socket
 import time
 from typing import Any
@@ -57,8 +58,14 @@ async def check_node(check_method: str, target: str | None, ip: str | None) -> d
 
 
 async def _ping(host: str) -> bool:
+    system = platform.system().lower()
+    if system == "windows":
+        command = ("ping", "-n", "1", "-w", "1000", host)
+    else:
+        command = ("ping", "-c", "1", "-W", "1", host)
+
     proc = await asyncio.create_subprocess_exec(
-        "ping", "-c", "1", "-W", "1", host,
+        *command,
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
     )

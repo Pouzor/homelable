@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Run IDs that have been requested to cancel
 _cancelled_runs: set[str] = set()
+_active_runs: set[str] = set()
 
 # Port list for service detection (Phase 2)
 _EXTRA_PORTS = (
@@ -60,6 +61,18 @@ def request_cancel(run_id: str) -> None:
 
 def _is_cancelled(run_id: str) -> bool:
     return run_id in _cancelled_runs
+
+
+def mark_run_active(run_id: str) -> None:
+    _active_runs.add(run_id)
+
+
+def mark_run_inactive(run_id: str) -> None:
+    _active_runs.discard(run_id)
+
+
+def is_run_active(run_id: str) -> bool:
+    return run_id in _active_runs
 
 
 def _resolve_hostname(ip: str) -> str | None:
@@ -236,6 +249,7 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
     from app.api.routes.status import broadcast_scan_update
 
     devices_found = 0
+    mark_run_active(run_id)
     try:
         # Clean up stale pending devices whose IPs are already in the canvas
         canvas_ips_result = await db.execute(select(Node.ip).where(Node.ip.isnot(None)))
@@ -361,3 +375,4 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
             await db.commit()
     finally:
         _cancelled_runs.discard(run_id)
+        mark_run_inactive(run_id)

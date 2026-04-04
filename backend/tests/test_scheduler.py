@@ -1,13 +1,20 @@
-"""Tests for background scheduler: _run_status_checks, lifecycle."""
+"""Tests for background scheduler: status checks, scheduled scans, lifecycle."""
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.scheduler import _run_status_checks, start_scheduler, stop_scheduler
+from app.core.scheduler import (
+    _run_scheduled_scan,
+    _run_status_checks,
+    reschedule_auto_scan,
+    start_scheduler,
+    stop_scheduler,
+)
 from app.db.database import Base
-from app.db.models import Node
+from app.db.models import Node, ScanRun
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -136,14 +143,18 @@ async def test_run_status_checks_handles_check_error_gracefully(mem_db):
 # ---------------------------------------------------------------------------
 
 def test_scheduler_uses_settings_interval():
-    """Scheduler registers the job with the interval from settings."""
+    """Scheduler registers the status-check job with the interval from settings."""
     mock_sched = MagicMock()
     with patch("app.core.scheduler.settings") as mock_settings, \
          patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
         mock_settings.status_checker_interval = 45
+        mock_settings.scan_interval_seconds = 300
         start_scheduler()
-        _, kwargs = mock_sched.add_job.call_args
-        assert kwargs["seconds"] == 45
+        calls = mock_sched.add_job.call_args_list
+        assert calls[0].kwargs["seconds"] == 45
+        assert calls[0].kwargs["id"] == "status_checks"
+        assert calls[1].kwargs["seconds"] == 300
+        assert calls[1].kwargs["id"] == "scheduled_scan"
 
 
 def test_start_and_stop_scheduler():
@@ -152,6 +163,64 @@ def test_start_and_stop_scheduler():
     with patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
         start_scheduler()
         stop_scheduler()
-        mock_sched.add_job.assert_called_once()
+        assert mock_sched.add_job.call_count == 2
         mock_sched.start.assert_called_once()
         mock_sched.shutdown.assert_called_once()
+
+
+def test_start_scheduler_skips_auto_scan_when_disabled():
+    mock_sched = MagicMock()
+    with patch("app.core.scheduler.settings") as mock_settings, \
+         patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
+        mock_settings.status_checker_interval = 45
+        mock_settings.scan_interval_seconds = 0
+        start_scheduler()
+        assert mock_sched.add_job.call_count == 1
+        assert mock_sched.add_job.call_args.kwargs["id"] == "status_checks"
+
+
+def test_reschedule_auto_scan_disables_job():
+    mock_sched = MagicMock()
+    mock_sched.running = True
+    with patch("app.core.scheduler.scheduler", mock_sched):
+        reschedule_auto_scan(0)
+    mock_sched.remove_job.assert_called_once_with("scheduled_scan")
+
+
+def test_reschedule_auto_scan_updates_existing_job():
+    mock_sched = MagicMock()
+    mock_sched.running = True
+    with patch("app.core.scheduler.scheduler", mock_sched):
+        reschedule_auto_scan(120)
+    mock_sched.reschedule_job.assert_called_once_with("scheduled_scan", trigger="interval", seconds=120)
+
+
+@pytest.mark.asyncio
+async def test_run_scheduled_scan_creates_scan_run_and_calls_runner(mem_db):
+    with patch("app.core.scheduler.AsyncSessionLocal", mem_db), \
+         patch("app.core.scheduler.settings") as mock_settings, \
+         patch("app.core.scheduler.run_scan", new_callable=AsyncMock) as mock_run_scan:
+        mock_settings.scanner_ranges = ["192.168.1.0/24"]
+        await _run_scheduled_scan()
+
+    async with mem_db() as session:
+        runs = list((await session.execute(select(ScanRun))).scalars().all())
+        assert len(runs) == 1
+        assert runs[0].ranges == ["192.168.1.0/24"]
+
+    mock_run_scan.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_scheduled_scan_skips_when_another_scan_is_running(mem_db):
+    async with mem_db() as session:
+        session.add(ScanRun(id=str(uuid.uuid4()), status="running", ranges=["10.0.0.0/24"]))
+        await session.commit()
+
+    with patch("app.core.scheduler.AsyncSessionLocal", mem_db), \
+         patch("app.core.scheduler.settings") as mock_settings, \
+         patch("app.core.scheduler.run_scan", new_callable=AsyncMock) as mock_run_scan:
+        mock_settings.scanner_ranges = ["192.168.1.0/24"]
+        await _run_scheduled_scan()
+
+    mock_run_scan.assert_not_called()

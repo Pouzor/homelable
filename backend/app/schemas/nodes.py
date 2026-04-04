@@ -20,6 +20,7 @@ class NodeBase(BaseModel):
     pos_y: float = 0
     parent_id: str | None = None
     container_mode: bool = False
+    isp_layout: str = "single"
     custom_colors: dict[str, Any] | None = None
     custom_icon: str | None = None
     cpu_count: int | None = None
@@ -51,6 +52,7 @@ class NodeUpdate(BaseModel):
     pos_y: float | None = None
     parent_id: str | None = None
     container_mode: bool | None = None
+    isp_layout: str | None = None
     custom_colors: dict[str, Any] | None = None
     custom_icon: str | None = None
     cpu_count: int | None = None

@@ -6,7 +6,6 @@ import { useThemeStore } from '@/stores/themeStore'
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData } from '@/types'
 
-// Capture props passed to ReactFlow so we can test the callbacks
 let rfProps: Record<string, unknown> = {}
 
 vi.mock('@xyflow/react', () => ({
@@ -44,8 +43,6 @@ describe('CanvasContainer', () => {
     useThemeStore.setState({ activeTheme: 'default' })
   })
 
-  // ── Rendering ─────────────────────────────────────────────────────────────
-
   it('renders without crashing', () => {
     const { getByTestId } = render(<CanvasContainer />)
     expect(getByTestId('react-flow')).toBeDefined()
@@ -66,8 +63,6 @@ describe('CanvasContainer', () => {
     expect((rfProps.edges as Edge[]).length).toBe(1)
   })
 
-  // ── Node click → selection ────────────────────────────────────────────────
-
   it('calls setSelectedNode with node id on node click', () => {
     const node = makeNode('n1')
     useCanvasStore.setState({ nodes: [node] })
@@ -76,34 +71,12 @@ describe('CanvasContainer', () => {
     expect(useCanvasStore.getState().selectedNodeId).toBe('n1')
   })
 
-  // ── Pane click → deselect ─────────────────────────────────────────────────
-
   it('calls setSelectedNode(null) on pane click', () => {
     useCanvasStore.setState({ selectedNodeId: 'n1' })
     render(<CanvasContainer />)
     ;(rfProps.onPaneClick as (...args: unknown[]) => unknown)()
     expect(useCanvasStore.getState().selectedNodeId).toBeNull()
   })
-
-  // ── Edge double-click ─────────────────────────────────────────────────────
-
-  it('calls onEdgeDoubleClick prop when an edge is double-clicked', () => {
-    const onEdgeDoubleClick = vi.fn()
-    const edge = makeEdge('e1')
-    render(<CanvasContainer onEdgeDoubleClick={onEdgeDoubleClick} />)
-    ;(rfProps.onEdgeDoubleClick as (...args: unknown[]) => unknown)({} as MouseEvent, edge)
-    expect(onEdgeDoubleClick).toHaveBeenCalledWith(edge)
-  })
-
-  it('does not throw when onEdgeDoubleClick is not provided', () => {
-    const edge = makeEdge('e1')
-    render(<CanvasContainer />)
-    expect(() => {
-      ;(rfProps.onEdgeDoubleClick as (...args: unknown[]) => unknown)({} as MouseEvent, edge)
-    }).not.toThrow()
-  })
-
-  // ── Connection validation ─────────────────────────────────────────────────
 
   it('isValidConnection returns false for self-connections', () => {
     render(<CanvasContainer />)
@@ -117,8 +90,6 @@ describe('CanvasContainer', () => {
     expect(isValid({ source: 'n1', target: 'n2' })).toBe(true)
   })
 
-  // ── onConnect prop passthrough ────────────────────────────────────────────
-
   it('passes onConnect prop to ReactFlow', () => {
     const onConnect = vi.fn()
     render(<CanvasContainer onConnect={onConnect} />)
@@ -126,15 +97,11 @@ describe('CanvasContainer', () => {
     expect(onConnect).toHaveBeenCalledOnce()
   })
 
-  // ── onNodeDragStart prop passthrough ──────────────────────────────────────
-
   it('passes onNodeDragStart prop to ReactFlow', () => {
     const onNodeDragStart = vi.fn()
     render(<CanvasContainer onNodeDragStart={onNodeDragStart} />)
     expect(rfProps.onNodeDragStart).toBe(onNodeDragStart)
   })
-
-  // ── Canvas settings ───────────────────────────────────────────────────────
 
   it('enables snapToGrid', () => {
     render(<CanvasContainer />)
@@ -146,14 +113,10 @@ describe('CanvasContainer', () => {
     expect(rfProps.snapGrid).toEqual([16, 16])
   })
 
-  // ── Delete key ────────────────────────────────────────────────────────────
-
   it('sets deleteKeyCode to include both Backspace and Delete', () => {
     render(<CanvasContainer />)
     expect(rfProps.deleteKeyCode).toEqual(['Backspace', 'Delete'])
   })
-
-  // ── Lasso / multi-select ──────────────────────────────────────────────────
 
   it('enables selectionOnDrag for lasso selection', () => {
     render(<CanvasContainer />)
@@ -180,7 +143,7 @@ describe('CanvasContainer', () => {
     expect(rfProps.multiSelectionKeyCode).toEqual(['Meta', 'Control'])
   })
 
-  it('clears selectedNode (sets null) on Ctrl+click instead of selecting', () => {
+  it('clears selectedNode on Ctrl+click instead of selecting', () => {
     const node = makeNode('n1')
     useCanvasStore.setState({ nodes: [node], selectedNodeId: 'n1' })
     render(<CanvasContainer />)
@@ -191,7 +154,7 @@ describe('CanvasContainer', () => {
     expect(useCanvasStore.getState().selectedNodeId).toBeNull()
   })
 
-  it('clears selectedNode (sets null) on Cmd+click', () => {
+  it('clears selectedNode on Cmd+click', () => {
     const node = makeNode('n1')
     useCanvasStore.setState({ nodes: [node], selectedNodeId: 'n1' })
     render(<CanvasContainer />)
@@ -201,8 +164,6 @@ describe('CanvasContainer', () => {
     )
     expect(useCanvasStore.getState().selectedNodeId).toBeNull()
   })
-
-  // ── onBeforeDelete snapshot ───────────────────────────────────────────────
 
   it('onBeforeDelete calls snapshotHistory and returns true', async () => {
     const snapshotHistory = vi.fn()

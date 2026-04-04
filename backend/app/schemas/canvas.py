@@ -22,6 +22,7 @@ class NodeSave(BaseModel):
     notes: str | None = None
     parent_id: str | None = None
     container_mode: bool = False
+    isp_layout: str = "single"
     custom_colors: dict[str, Any] | None = None
     custom_icon: str | None = None
     cpu_count: int | None = None
@@ -48,6 +49,7 @@ class EdgeSave(BaseModel):
     animated: str = 'none'
     source_handle: str | None = None
     target_handle: str | None = None
+    waypoints: list[dict[str, float]] | None = None
 
     @field_validator('animated', mode='before')
     @classmethod

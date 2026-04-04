@@ -11,14 +11,31 @@ import { maskIp } from '@/utils/maskIp'
 
 interface BaseNodeProps extends NodeProps<Node<NodeData>> {
   icon: LucideIcon
+  topHandleIds?: string[]
+  bottomHandleIds?: string[]
+  leftHandleIds?: string[]
+  rightHandleIds?: string[]
 }
+
+const DEFAULT_TOP_HANDLE_IDS = ['top']
+const DEFAULT_BOTTOM_HANDLE_IDS = ['bottom']
 
 function formatStorage(gb: number): string {
   if (gb >= 1024) return `${(gb / 1024).toFixed(1).replace(/\.0$/, '')} TB`
   return `${gb} GB`
 }
 
-export function BaseNode({ data, selected, icon: typeIcon, width, height }: BaseNodeProps) {
+export function BaseNode({
+  data,
+  selected,
+  icon: typeIcon,
+  width,
+  height,
+  topHandleIds = DEFAULT_TOP_HANDLE_IDS,
+  bottomHandleIds = DEFAULT_BOTTOM_HANDLE_IDS,
+  leftHandleIds = [],
+  rightHandleIds = [],
+}: BaseNodeProps) {
   const activeTheme = useThemeStore((s) => s.activeTheme)
   const hideIp = useCanvasStore((s) => s.hideIp)
   const theme = THEMES[activeTheme]
@@ -28,6 +45,38 @@ export function BaseNode({ data, selected, icon: typeIcon, width, height }: Base
   const statusColor = theme.colors.statusColors[data.status]
   const isOnline = data.status === 'online'
   const showHardware = data.show_hardware && (data.cpu_count != null || data.cpu_model || data.ram_gb != null || data.disk_gb != null)
+  const getOffsets = (count: number) => count > 1 ? 100 / (count + 1) : 50
+
+  const renderHandles = (handleIds: string[], side: 'top' | 'bottom' | 'left' | 'right') => {
+    const position = side === 'top'
+      ? Position.Top
+      : side === 'bottom'
+      ? Position.Bottom
+      : side === 'left'
+      ? Position.Left
+      : Position.Right
+    const offset = getOffsets(handleIds.length)
+    return handleIds.flatMap((handleId, index) => {
+      const positionPercent = `${offset * (index + 1)}%`
+      const coordinateStyle = side === 'top' || side === 'bottom' ? { left: positionPercent } : { top: positionPercent }
+      return [
+        <Handle
+          key={handleId}
+          type="source"
+          position={position}
+          id={handleId}
+          style={{ ...coordinateStyle, background: theme.colors.handleBackground, borderColor: theme.colors.handleBorder }}
+        />,
+        <Handle
+          key={`${handleId}-target`}
+          type="target"
+          position={position}
+          id={`${handleId}-t`}
+          style={{ ...coordinateStyle, opacity: 0, width: 12, height: 12 }}
+        />,
+      ]
+    })
+  }
 
   return (
     <div
@@ -54,13 +103,7 @@ export function BaseNode({ data, selected, icon: typeIcon, width, height }: Base
         lineStyle={{ borderColor: colors.border, borderWidth: 1 }}
         handleStyle={{ borderColor: colors.border, background: colors.border, width: 8, height: 8 }}
       />
-      <Handle
-        type="source"
-        position={Position.Top}
-        id="top"
-        style={{ background: theme.colors.handleBackground, borderColor: theme.colors.handleBorder }}
-      />
-      <Handle type="target" position={Position.Top} id="top-t" style={{ opacity: 0, width: 12, height: 12 }} />
+      {renderHandles(topHandleIds, 'top')}
 
       {/* Main row */}
       <div className="flex flex-row items-center gap-2.5 px-2.5 py-2">
@@ -141,13 +184,9 @@ export function BaseNode({ data, selected, icon: typeIcon, width, height }: Base
         title={data.status}
       />
 
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="bottom"
-        style={{ background: theme.colors.handleBackground, borderColor: theme.colors.handleBorder }}
-      />
-      <Handle type="target" position={Position.Bottom} id="bottom-t" style={{ opacity: 0, width: 12, height: 12 }} />
+      {renderHandles(leftHandleIds, 'left')}
+      {renderHandles(rightHandleIds, 'right')}
+      {renderHandles(bottomHandleIds, 'bottom')}
     </div>
   )
 }

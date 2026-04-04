@@ -1,5 +1,5 @@
 import type { Node, Edge } from '@xyflow/react'
-import type { NodeData, EdgeData } from '@/types'
+import type { NodeData, EdgeData, Waypoint } from '@/types'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,11 +44,14 @@ export interface ApiEdge {
   animated?: boolean | 'snake' | 'flow' | 'none'
   source_handle?: string | null
   target_handle?: string | null
+  waypoints?: Waypoint[] | null
 }
 
 // ── Serialization (RF node → API save payload) ───────────────────────────────
 
 export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
+  const measuredWidth = n.measured?.width ?? n.width ?? null
+  const measuredHeight = n.measured?.height ?? n.height ?? null
   if (n.data.type === 'groupRect') {
     return {
       id: n.id,
@@ -70,8 +73,8 @@ export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
       pos_y: n.position.y,
       custom_colors: {
         ...n.data.custom_colors,
-        width: n.measured?.width ?? n.width ?? 360,
-        height: n.measured?.height ?? n.height ?? 240,
+        width: measuredWidth ?? 360,
+        height: measuredHeight ?? 240,
       },
     }
   }
@@ -97,8 +100,8 @@ export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
     ram_gb: n.data.ram_gb ?? null,
     disk_gb: n.data.disk_gb ?? null,
     show_hardware: n.data.show_hardware ?? false,
-    width: n.width ?? null,
-    height: n.height ?? null,
+    width: measuredWidth,
+    height: measuredHeight,
     pos_x: n.position.x,
     pos_y: n.position.y,
   }
@@ -121,6 +124,7 @@ export function serializeEdge(e: Edge<EdgeData>): Record<string, unknown> {
     animated: e.data?.animated ?? false,
     source_handle: normalizeHandle(e.sourceHandle),
     target_handle: normalizeHandle(e.targetHandle),
+    waypoints: e.data?.waypoints ?? null,
   }
 }
 

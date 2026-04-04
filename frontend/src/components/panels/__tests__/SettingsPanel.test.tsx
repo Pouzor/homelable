@@ -18,6 +18,9 @@ vi.mock('@/api/client', () => ({
     get: vi.fn(),
     save: vi.fn(),
   },
+  nodeHistoryApi: {
+    list: vi.fn(),
+  },
 }))
 
 import { settingsApi } from '@/api/client'
@@ -48,8 +51,26 @@ function renderSidebar() {
 
 describe('SettingsPanel', () => {
   beforeEach(() => {
-    vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60 } } as never)
-    vi.mocked(settingsApi.save).mockResolvedValue({ data: { interval_seconds: 60 } } as never)
+    vi.mocked(settingsApi.get).mockResolvedValue({
+      data: {
+        interval_seconds: 60,
+        scan_interval_seconds: 3600,
+        default_node_color: null,
+        default_edge_color: null,
+        node_type_colors: {},
+        edge_type_colors: {},
+      },
+    } as never)
+    vi.mocked(settingsApi.save).mockResolvedValue({
+      data: {
+        interval_seconds: 60,
+        scan_interval_seconds: 3600,
+        default_node_color: null,
+        default_edge_color: null,
+        node_type_colors: {},
+        edge_type_colors: {},
+      },
+    } as never)
     vi.mocked(toast.success).mockReset()
     vi.mocked(toast.error).mockReset()
   })
@@ -64,7 +85,16 @@ describe('SettingsPanel', () => {
   })
 
   it('displays interval loaded from API', async () => {
-    vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 120 } } as never)
+    vi.mocked(settingsApi.get).mockResolvedValue({
+      data: {
+        interval_seconds: 120,
+        scan_interval_seconds: 3600,
+        default_node_color: null,
+        default_edge_color: null,
+        node_type_colors: {},
+        edge_type_colors: {},
+      },
+    } as never)
     renderSidebar()
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     const input = await screen.findByDisplayValue('120')
@@ -78,7 +108,14 @@ describe('SettingsPanel', () => {
     fireEvent.change(input, { target: { value: '180' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => {
-      expect(settingsApi.save).toHaveBeenCalledWith({ interval_seconds: 180 })
+      expect(settingsApi.save).toHaveBeenCalledWith({
+        interval_seconds: 180,
+        scan_interval_seconds: 3600,
+        default_node_color: null,
+        default_edge_color: null,
+        node_type_colors: {},
+        edge_type_colors: {},
+      })
       expect(toast.success).toHaveBeenCalledWith('Settings saved')
     })
   })

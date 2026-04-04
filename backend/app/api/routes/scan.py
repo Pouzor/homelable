@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -12,7 +13,7 @@ from app.db.database import AsyncSessionLocal, get_db
 from app.db.models import Node, PendingDevice, ScanRun
 from app.schemas.nodes import NodeCreate
 from app.schemas.scan import PendingDeviceResponse, ScanRunResponse
-from app.services.scanner import request_cancel, run_scan
+from app.services.scanner import is_run_active, mark_run_active, run_scan, request_cancel
 
 
 class ScanConfig(BaseModel):
@@ -21,6 +22,45 @@ class ScanConfig(BaseModel):
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _ensure_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _serialize_run(run: ScanRun) -> ScanRunResponse:
+    return ScanRunResponse(
+        id=run.id,
+        status=run.status,
+        ranges=run.ranges,
+        devices_found=run.devices_found,
+        started_at=_ensure_utc(run.started_at),
+        finished_at=_ensure_utc(run.finished_at),
+        error=run.error,
+    )
+
+
+async def _reconcile_stale_runs(db: AsyncSession) -> None:
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=30)
+    result = await db.execute(select(ScanRun).where(ScanRun.status == "running"))
+    stale_runs = []
+    for run in result.scalars().all():
+        started_at = _ensure_utc(run.started_at)
+        if is_run_active(run.id):
+            continue
+        if started_at is not None and started_at > cutoff:
+            continue
+        run.status = "error"
+        run.finished_at = datetime.now(timezone.utc)
+        run.error = run.error or "Scan interrupted before completion"
+        stale_runs.append(run.id)
+    if stale_runs:
+        logger.warning("Reconciled stale scan runs: %s", ", ".join(stale_runs))
+        await db.commit()
 
 
 async def _background_scan(run_id: str, ranges: list[str]) -> None:
@@ -33,14 +73,15 @@ async def trigger_scan(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
-) -> ScanRun:
+) -> ScanRunResponse:
     ranges = settings.scanner_ranges
     run = ScanRun(status="running", ranges=ranges)
     db.add(run)
     await db.commit()
     await db.refresh(run)
+    mark_run_active(run.id)
     background_tasks.add_task(_background_scan, run.id, ranges)
-    return run
+    return _serialize_run(run)
 
 
 @router.post("/{run_id}/stop", response_model=dict)
@@ -110,9 +151,10 @@ async def ignore_device(
 
 
 @router.get("/runs", response_model=list[ScanRunResponse])
-async def list_runs(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[ScanRun]:
+async def list_runs(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[ScanRunResponse]:
+    await _reconcile_stale_runs(db)
     result = await db.execute(select(ScanRun).order_by(ScanRun.started_at.desc()).limit(20))
-    return list(result.scalars().all())
+    return [_serialize_run(run) for run in result.scalars().all()]
 
 
 @router.get("/config", response_model=ScanConfig)

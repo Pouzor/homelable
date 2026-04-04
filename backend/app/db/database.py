@@ -42,6 +42,8 @@ async def init_db() -> None:
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE edges ADD COLUMN target_handle TEXT")
         with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE edges ADD COLUMN waypoints JSON")
+        with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE edges ADD COLUMN animated BOOLEAN NOT NULL DEFAULT 0")
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN cpu_count INTEGER")
@@ -57,6 +59,20 @@ async def init_db() -> None:
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN width REAL")
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN height REAL")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql(
+                "CREATE TABLE node_status_logs ("
+                "id TEXT PRIMARY KEY, "
+                "node_id TEXT NOT NULL, "
+                "status TEXT NOT NULL, "
+                "response_time_ms INTEGER, "
+                "checked_at DATETIME, "
+                "FOREIGN KEY(node_id) REFERENCES nodes (id) ON DELETE CASCADE)"
+            )
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("CREATE INDEX ix_node_status_logs_node_id ON node_status_logs (node_id)")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("CREATE INDEX ix_node_status_logs_checked_at ON node_status_logs (checked_at)")
         # Migrate animated column from boolean (0/1) to string ('none'/'snake')
         with suppress(OperationalError):
             await conn.exec_driver_sql("UPDATE edges SET animated = 'snake' WHERE animated = '1' OR animated = 1")
