@@ -96,6 +96,16 @@ describe('serializeNode — regular node', () => {
     expect(result.height).toBe(120)
   })
 
+  it('prefers measured dimensions for regular nodes', () => {
+    const node: Node<NodeData> = {
+      ...makeRfNode({ width: 280, height: 120 }),
+      measured: { width: 312, height: 144 },
+    }
+    const result = serializeNode(node)
+    expect(result.width).toBe(312)
+    expect(result.height).toBe(144)
+  })
+
   it('serializes width/height as null when node has default size', () => {
     const result = serializeNode(makeRfNode())
     expect(result.width).toBeNull()

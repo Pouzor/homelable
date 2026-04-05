@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, canvas, edges, liveview, nodes, scan, status
+from app.api.routes import auth, canvas, edges, liveview, node_history, nodes, scan, status
 from app.api.routes import settings as settings_routes
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
@@ -53,6 +53,7 @@ app.include_router(edges.router, prefix="/api/v1/edges", tags=["edges"])
 app.include_router(canvas.router, prefix="/api/v1/canvas", tags=["canvas"])
 app.include_router(scan.router, prefix="/api/v1/scan", tags=["scan"])
 app.include_router(status.router, prefix="/api/v1/status", tags=["status"])
+app.include_router(node_history.router, prefix="/api/v1/node-history", tags=["node-history"])
 app.include_router(settings_routes.router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(liveview.router, prefix="/api/v1/liveview", tags=["liveview"])
 

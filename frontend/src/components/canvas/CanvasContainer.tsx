@@ -9,7 +9,6 @@ import {
   SelectionMode,
   useReactFlow,
   type Node,
-  type Edge,
   type Connection,
 } from '@xyflow/react'
 import { MousePointer2, Hand } from 'lucide-react'
@@ -20,16 +19,15 @@ import { THEMES } from '@/utils/themes'
 import { nodeTypes } from './nodes/nodeTypes'
 import { edgeTypes } from './edges/edgeTypes'
 import { SearchBar } from './SearchBar'
-import type { NodeData, EdgeData } from '@/types'
+import type { NodeData } from '@/types'
 
 interface CanvasContainerProps {
   onConnect?: (connection: Connection) => void
-  onEdgeDoubleClick?: (edge: Edge<EdgeData>) => void
   onNodeDragStart?: () => void
   onOpenPending?: (deviceId: string) => void
 }
 
-export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDragStart, onOpenPending }: CanvasContainerProps) {
+export function CanvasContainer({ onConnect: onConnectProp, onNodeDragStart, onOpenPending }: CanvasContainerProps) {
   const [lassoMode, setLassoMode] = useState(true)
   const {
     nodes, edges,
@@ -64,10 +62,6 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     setSelectedNode(null)
   }, [setSelectedNode])
 
-  const handleEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge<EdgeData>) => {
-    onEdgeDoubleClick?.(edge)
-  }, [onEdgeDoubleClick])
-
   return (
     <div className="w-full h-full" style={{ background: theme.colors.canvasBackground }}>
       <ReactFlow
@@ -78,7 +72,6 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         onConnect={onConnectProp}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
-        onEdgeDoubleClick={handleEdgeDoubleClick}
         onNodeDragStart={onNodeDragStart}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

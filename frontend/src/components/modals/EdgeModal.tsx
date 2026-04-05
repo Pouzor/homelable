@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { EDGE_TYPE_LABELS, type EdgeData, type EdgePathStyle, type EdgeType } from '@/types'
 import { EDGE_DEFAULT_COLORS } from '@/utils/edgeColors'
+import { COLOR_SWATCHES } from '@/utils/colorPalettes'
+import { useSettingsStore } from '@/stores/settingsStore'
 
 const EDGE_TYPES = Object.entries(EDGE_TYPE_LABELS) as [EdgeType, string][]
 
@@ -28,14 +30,19 @@ interface EdgeModalProps {
 }
 
 export function EdgeModal({ open, onClose, onSubmit, onDelete, initial, title = 'Connect Nodes' }: EdgeModalProps) {
+  const defaultEdgeColor = useSettingsStore((s) => s.defaultEdgeColor)
+  const edgeTypeColors = useSettingsStore((s) => s.edgeTypeColors)
   const [type, setType] = useState<EdgeType>(initial?.type ?? 'ethernet')
   const [label, setLabel] = useState(initial?.label ?? '')
   const [vlanId, setVlanId] = useState(initial?.vlan_id?.toString() ?? '')
-  const [customColor, setCustomColor] = useState<string | undefined>(initial?.custom_color)
+  const initialType = initial?.type ?? 'ethernet'
+  const [customColor, setCustomColor] = useState<string | undefined>(
+    initial?.custom_color ?? edgeTypeColors[initialType] ?? defaultEdgeColor ?? undefined,
+  )
   const [pathStyle, setPathStyle] = useState<EdgePathStyle>(initial?.path_style ?? 'bezier')
   const [animation, setAnimation] = useState<AnimMode>(() => toAnimMode(initial?.animated))
 
-  const effectiveColor = customColor ?? EDGE_DEFAULT_COLORS[type]
+  const effectiveColor = customColor ?? edgeTypeColors[type] ?? defaultEdgeColor ?? EDGE_DEFAULT_COLORS[type]
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -173,6 +180,18 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, initial, title = 
               </span>
               {!customColor && <span className="text-[10px] text-muted-foreground/50 ml-auto">default</span>}
             </label>
+            <div className="flex flex-wrap gap-1">
+              {COLOR_SWATCHES.map((swatch) => (
+                <button
+                  key={swatch}
+                  type="button"
+                  aria-label={`color ${swatch}`}
+                  onClick={() => setCustomColor(swatch)}
+                  className="w-4 h-4 rounded-full border border-white/10"
+                  style={{ background: swatch }}
+                />
+              ))}
+            </div>
           </div>
 
           <div className="flex justify-between gap-2 pt-1">
