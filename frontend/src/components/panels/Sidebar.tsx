@@ -163,6 +163,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeAppro
   )
 }
 
+const COMMON_PORTS = new Set([22, 80, 443])
+
 function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: (nodeId: string) => void; highlightId?: string }) {
   const [devices, setDevices] = useState<PendingDevice[]>([])
   const [loading, setLoading] = useState(false)
@@ -223,6 +225,7 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
       })
       toast.success(`Approved ${nodeData.label}`)
       setDevices((prev) => prev.filter((d) => d.id !== device.id))
+      setSelected(null)
       onNodeApproved(nodeId)
     } catch {
       toast.error('Failed to approve device')
@@ -269,7 +272,6 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
           <p className="text-xs text-muted-foreground text-center py-4">No pending devices</p>
         )}
         {devices.map((d) => {
-          const COMMON_PORTS = new Set([22, 80, 443])
           const namedService = d.services.find((s) => s.category != null && !COMMON_PORTS.has(s.port))
           const titleService = namedService
             ?? d.services.find((s) => s.port === 80)

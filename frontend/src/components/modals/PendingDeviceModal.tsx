@@ -78,7 +78,7 @@ export function PendingDeviceModal({ device, onClose, onApprove, onHide, onIgnor
 
   const TypeIcon = TYPE_ICONS[device.suggested_type ?? 'generic'] ?? Circle
 
-  const handleApprove = () => { onApprove(device); onClose() }
+  const handleApprove = () => { onApprove(device) }
   const handleHide = () => { onHide(device); onClose() }
   const handleIgnore = () => { onIgnore(device); onClose() }
 

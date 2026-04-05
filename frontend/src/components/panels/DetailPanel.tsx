@@ -85,6 +85,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
   const handleAddService = () => {
     const port = parseInt(newSvc.port, 10)
     if (!newSvc.service_name.trim() || isNaN(port) || port < 1 || port > 65535) return
+    snapshotHistory()
     const svc: ServiceInfo = { port, protocol: newSvc.protocol, service_name: newSvc.service_name.trim() }
     updateNode(node.id, { services: [...services, svc] })
     setNewSvc(EMPTY_FORM)
@@ -92,6 +93,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
   }
 
   const handleRemoveService = (index: number) => {
+    snapshotHistory()
     const updated = services.filter((_, i) => i !== index)
     updateNode(node.id, { services: updated })
     if (editingIndex === index) setEditingFor(null)
@@ -109,6 +111,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
     if (editingIndex === null) return
     const port = parseInt(editSvc.port, 10)
     if (!editSvc.service_name.trim() || isNaN(port) || port < 1 || port > 65535) return
+    snapshotHistory()
     const updated = services.map((svc, i) =>
       i === editingIndex ? { ...svc, port, protocol: editSvc.protocol, service_name: editSvc.service_name.trim() } : svc
     )

@@ -126,7 +126,7 @@ describe('PendingDeviceModal', () => {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
-  it('calls onApprove with the device and onClose when Approve is clicked', () => {
+  it('calls onApprove with the device when Approve is clicked (parent controls close on success)', () => {
     const device = makeDevice()
     const onApprove = vi.fn()
     const onClose = vi.fn()
@@ -135,7 +135,7 @@ describe('PendingDeviceModal', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
     expect(onApprove).toHaveBeenCalledWith(device)
-    expect(onClose).toHaveBeenCalledOnce()
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('calls onHide with the device and onClose when Hide is clicked', () => {
