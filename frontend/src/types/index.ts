@@ -87,6 +87,11 @@ export interface NodeData extends Record<string, unknown> {
 
 export type EdgePathStyle = 'bezier' | 'smooth'
 
+export interface Waypoint {
+  x: number
+  y: number
+}
+
 export interface EdgeData extends Record<string, unknown> {
   type: EdgeType
   label?: string
@@ -95,6 +100,12 @@ export interface EdgeData extends Record<string, unknown> {
   custom_color?: string
   path_style?: EdgePathStyle
   animated?: boolean | 'snake' | 'flow' | 'none'
+  waypoints?: Waypoint[]
+}
+
+export interface NodeDimensions {
+  width?: number
+  height?: number
 }
 
 export const NODE_TYPE_LABELS: Record<NodeType, string> = {

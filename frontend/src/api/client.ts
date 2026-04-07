@@ -66,6 +66,32 @@ export const scanApi = {
 }
 
 export const settingsApi = {
-  get: () => api.get<{ interval_seconds: number }>('/settings'),
-  save: (data: { interval_seconds: number }) => api.post<{ interval_seconds: number }>('/settings', data),
+  get: () => api.get<{
+    interval_seconds: number
+    scan_interval_seconds: number
+    default_node_color: string | null
+    default_edge_color: string | null
+    node_type_colors: Record<string, string>
+    edge_type_colors: Record<string, string>
+  }>('/settings'),
+  save: (data: {
+    interval_seconds: number
+    scan_interval_seconds: number
+    default_node_color: string | null
+    default_edge_color: string | null
+    node_type_colors: Record<string, string>
+    edge_type_colors: Record<string, string>
+  }) =>
+    api.post<{
+      interval_seconds: number
+      scan_interval_seconds: number
+      default_node_color: string | null
+      default_edge_color: string | null
+      node_type_colors: Record<string, string>
+      edge_type_colors: Record<string, string>
+    }>('/settings', data),
+}
+
+export const nodeHistoryApi = {
+  list: (params?: { node_id?: string; start_date?: string; end_date?: string; limit?: number }) => api.get('/node-history', { params }),
 }

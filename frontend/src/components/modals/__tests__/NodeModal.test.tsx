@@ -130,6 +130,32 @@ describe('NodeModal', () => {
     expect(data.notes).toBe('rack A')
   })
 
+  it('submits explicit width and height when provided', () => {
+    const onSubmit = vi.fn()
+    render(<NodeModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    fireEvent.change(screen.getByPlaceholderText('My Server'), { target: { value: 'Sized Node' } })
+    const numericInputs = screen.getAllByRole('spinbutton')
+    fireEvent.change(numericInputs[0], { target: { value: '240' } })
+    fireEvent.change(numericInputs[1], { target: { value: '100' } })
+    fireEvent.click(screen.getByText('Add'))
+    expect(onSubmit.mock.calls[0][1]).toEqual({ width: 240, height: 100 })
+  })
+
+  it('pre-fills width and height from initialDimensions', () => {
+    render(
+      <NodeModal
+        open
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+        initial={{ label: 'Sized' }}
+        initialDimensions={{ width: 320, height: 160 }}
+      />
+    )
+    const numericInputs = screen.getAllByRole('spinbutton')
+    expect((numericInputs[0] as HTMLInputElement).value).toBe('320')
+    expect((numericInputs[1] as HTMLInputElement).value).toBe('160')
+  })
+
   it('submits check_target', () => {
     const { onSubmit } = renderModal({ initial: BASE })
     fireEvent.change(screen.getByPlaceholderText('http://...'), { target: { value: 'http://192.168.1.10:8080' } })

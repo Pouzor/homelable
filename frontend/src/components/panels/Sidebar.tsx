@@ -1,11 +1,17 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Trash2, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, X } from 'lucide-react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Trash2, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, Activity, X } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { scanApi, settingsApi } from '@/api/client'
 import { toast } from 'sonner'
 import { PendingDeviceModal, type PendingDevice } from '@/components/modals/PendingDeviceModal'
+import { StatusTimelineModal } from '@/components/modals/StatusTimelineModal'
+import { COLOR_SWATCHES } from '@/utils/colorPalettes'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { EDGE_TYPE_LABELS, NODE_TYPE_LABELS, type EdgeType, type NodeType } from '@/types'
+import { NODE_DEFAULT_COLORS } from '@/utils/nodeColors'
+import { EDGE_DEFAULT_COLORS } from '@/utils/edgeColors'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -29,6 +35,45 @@ interface ScanRun {
   error: string | null
 }
 
+function parseApiDate(value: string | null) {
+  if (!value) return Number.NaN
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized)
+  return Date.parse(hasTimezone ? normalized : `${normalized}Z`)
+}
+
+function formatDuration(ms: number) {
+  if (!Number.isFinite(ms) || ms <= 0) return '0s'
+  const totalSeconds = Math.floor(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) return `${hours}h ${minutes}m`
+  if (minutes > 0) return `${minutes}m ${seconds}s`
+  return `${seconds}s`
+}
+
+function getRunSignature(run: ScanRun) {
+  return [...run.ranges].sort().join('|')
+}
+
+function getRunDurationMs(run: ScanRun, nowTs: number) {
+  const startedAt = parseApiDate(run.started_at)
+  if (!Number.isFinite(startedAt)) return null
+  const finishedAt = run.finished_at ? parseApiDate(run.finished_at) : nowTs
+  if (!Number.isFinite(finishedAt)) return null
+  return Math.max(0, finishedAt - startedAt)
+}
+
+function getMedian(values: number[]) {
+  if (values.length === 0) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[mid - 1] + sorted[mid]) / 2)
+    : sorted[mid]
+}
+
 interface SidebarProps {
   onAddNode: () => void
   onAddGroupRect: () => void
@@ -42,11 +87,11 @@ interface SidebarProps {
 export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeApproved, forceView, highlightPendingId }: SidebarProps) {
   const [_collapsed, setCollapsed] = useState(false)
   const [_activeView, setActiveView] = useState<SidebarView>('canvas')
+  const [statusTimelineOpen, setStatusTimelineOpen] = useState(false)
 
   // When forceView is set, override local state without useEffect
   const collapsed = forceView ? false : _collapsed
   const activeView = forceView ?? _activeView
-
   const { nodes, hasUnsavedChanges, hideIp, toggleHideIp } = useCanvasStore()
 
   const networkNodes = nodes.filter((n) => n.data.type !== 'groupRect')
@@ -127,6 +172,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeAppro
         <SidebarItem icon={Plus} label="Add Node" collapsed={collapsed} onClick={onAddNode} />
         <SidebarItem icon={Square} label="Add Zone" collapsed={collapsed} onClick={onAddGroupRect} />
         {!STANDALONE && <SidebarItem icon={ScanLine} label="Scan Network" collapsed={collapsed} onClick={handleScan} />}
+        {!STANDALONE && <SidebarItem icon={Activity} label="Status Timeline" collapsed={collapsed} onClick={() => setStatusTimelineOpen(true)} />}
         <SidebarItem
           icon={hideIp ? EyeOff : Eye}
           label={hideIp ? 'Show IPs' : 'Hide IPs'}
@@ -152,6 +198,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeAppro
           />
         )}
       </div>
+
+      {!STANDALONE && <StatusTimelineModal open={statusTimelineOpen} onClose={() => setStatusTimelineOpen(false)} />}
     </aside>
   )
 }
@@ -382,6 +430,7 @@ function HiddenDevicesPanel() {
 function ScanHistoryPanel() {
   const [runs, setRuns] = useState<ScanRun[]>([])
   const [loading, setLoading] = useState(false)
+  const [nowTs, setNowTs] = useState(() => Date.now())
   const prevRunsRef = useRef<ScanRun[]>([])
 
   const load = useCallback(async () => {
@@ -417,6 +466,13 @@ function ScanHistoryPanel() {
     return () => clearInterval(id)
   }, [runs, load])
 
+  useEffect(() => {
+    const hasRunning = runs.some((r) => r.status === 'running')
+    if (!hasRunning) return
+    const id = window.setInterval(() => setNowTs(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [runs])
+
   const [stopping, setStopping] = useState<string | null>(null)
 
   const handleStop = async (runId: string) => {
@@ -438,6 +494,31 @@ function ScanHistoryPanel() {
     : s === 'cancelled' ? '#8b949e'
     : '#8b949e'
 
+  const estimatedDurations = useMemo(() => {
+    const bySignature = new Map<string, number[]>()
+    const allDurations: number[] = []
+
+    for (const run of runs) {
+      if (!run.finished_at) continue
+      const durationMs = getRunDurationMs(run, nowTs)
+      if (durationMs == null) continue
+      allDurations.push(durationMs)
+      const signature = getRunSignature(run)
+      const existing = bySignature.get(signature) ?? []
+      existing.push(durationMs)
+      bySignature.set(signature, existing)
+    }
+
+    return {
+      bySignature: new Map(
+        [...bySignature.entries()]
+          .map(([signature, durations]) => [signature, getMedian(durations)] as const)
+          .filter((entry): entry is readonly [string, number] => entry[1] != null),
+      ),
+      global: getMedian(allDurations),
+    }
+  }, [runs, nowTs])
+
   return (
     <div className="p-2">
       <div className="flex items-center justify-between mb-2">
@@ -450,7 +531,13 @@ function ScanHistoryPanel() {
       {!loading && runs.length === 0 && (
         <p className="text-xs text-muted-foreground text-center py-4">No scans yet</p>
       )}
-      {runs.map((r) => (
+      {runs.map((r) => {
+        const durationMs = getRunDurationMs(r, nowTs)
+        const estimatedTotalMs = estimatedDurations.bySignature.get(getRunSignature(r)) ?? estimatedDurations.global
+        const remainingMs = r.status === 'running' && durationMs != null && estimatedTotalMs != null
+          ? Math.max(0, estimatedTotalMs - durationMs)
+          : null
+        return (
         <div key={r.id} className="mb-2 p-2 rounded-md bg-[#21262d] text-xs">
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: statusColor(r.status) }} />
@@ -459,18 +546,16 @@ function ScanHistoryPanel() {
             <span className="ml-auto text-muted-foreground font-mono">{r.devices_found} found</span>
             {r.status === 'running' && (
               <Tooltip>
-                <TooltipTrigger>
-                  <button
-                    aria-label="Stop scan"
-                    onClick={() => handleStop(r.id)}
-                    disabled={stopping === r.id}
-                    className="p-0.5 text-[#f85149] hover:bg-[#f85149]/10 rounded transition-colors disabled:opacity-50"
-                  >
-                    {stopping === r.id
-                      ? <Loader2 size={11} className="animate-spin" />
-                      : <StopCircle size={11} />
-                    }
-                  </button>
+                <TooltipTrigger
+                  aria-label="Stop scan"
+                  onClick={() => handleStop(r.id)}
+                  disabled={stopping === r.id}
+                  className="p-0.5 text-[#f85149] hover:bg-[#f85149]/10 rounded transition-colors disabled:opacity-50"
+                >
+                  {stopping === r.id
+                    ? <Loader2 size={11} className="animate-spin" />
+                    : <StopCircle size={11} />
+                  }
                 </TooltipTrigger>
                 <TooltipContent side="left">Stop scan</TooltipContent>
               </Tooltip>
@@ -478,6 +563,12 @@ function ScanHistoryPanel() {
           </div>
           <div className="text-muted-foreground text-[10px] mt-0.5">
             {new Date(r.started_at.endsWith('Z') ? r.started_at : r.started_at + 'Z').toLocaleString()}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono">
+            <span className="text-[#dff9ff]">Duration {durationMs != null ? formatDuration(durationMs) : 'n/a'}</span>
+            {r.status === 'running' && (
+              <span className="text-[#e3b341]">Remaining {remainingMs != null ? formatDuration(remainingMs) : 'estimating...'}</span>
+            )}
           </div>
           {r.ranges.length > 0 && (
             <div className="text-[#8b949e] text-[10px] font-mono truncate">{r.ranges.join(', ')}</div>
@@ -488,25 +579,54 @@ function ScanHistoryPanel() {
             </div>
           )}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
 
 function SettingsPanel() {
   const [interval, setIntervalValue] = useState(60)
+  const [scanInterval, setScanInterval] = useState(3600)
+  const [defaultNodeColor, setDefaultNodeColor] = useState<string | null>(null)
+  const [defaultEdgeColor, setDefaultEdgeColor] = useState<string | null>(null)
+  const [nodeTypeColors, setNodeTypeColors] = useState<Record<string, string>>({})
+  const [edgeTypeColors, setEdgeTypeColors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  const setAppSettings = useSettingsStore((s) => s.setSettings)
 
   useEffect(() => {
     settingsApi.get()
-      .then((res) => setIntervalValue(res.data.interval_seconds))
-      .catch(() => {/* use default */})
+      .then((res) => {
+        setIntervalValue(res.data.interval_seconds)
+        setScanInterval(res.data.scan_interval_seconds)
+        setDefaultNodeColor(res.data.default_node_color ?? null)
+        setDefaultEdgeColor(res.data.default_edge_color ?? null)
+        setNodeTypeColors(res.data.node_type_colors ?? {})
+        setEdgeTypeColors(res.data.edge_type_colors ?? {})
+      })
+      .catch(() => undefined)
   }, [])
 
   const handleSave = async () => {
     setSaving(true)
     try {
-      await settingsApi.save({ interval_seconds: interval })
+      await settingsApi.save({
+        interval_seconds: interval,
+        scan_interval_seconds: scanInterval,
+        default_node_color: defaultNodeColor,
+        default_edge_color: defaultEdgeColor,
+        node_type_colors: nodeTypeColors,
+        edge_type_colors: edgeTypeColors,
+      })
+      setAppSettings({
+        intervalSeconds: interval,
+        scanIntervalSeconds: scanInterval,
+        defaultNodeColor,
+        defaultEdgeColor,
+        nodeTypeColors,
+        edgeTypeColors,
+      })
       toast.success('Settings saved')
     } catch {
       toast.error('Failed to save settings')
@@ -532,9 +652,101 @@ function SettingsPanel() {
           />
           <span className="text-xs text-muted-foreground">seconds</span>
         </div>
-        <p className="text-[10px] text-muted-foreground leading-tight">
-          How often node health is polled (ping, HTTP, SSH…)
-        </p>
+        <p className="text-[10px] text-muted-foreground leading-tight">How often node health is polled.</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs text-muted-foreground">Automatic scan interval (s)</label>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={0}
+            max={86400}
+            value={scanInterval}
+            onChange={(e) => setScanInterval(Number(e.target.value))}
+            className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
+          />
+          <span className="text-xs text-muted-foreground">0 = disabled</span>
+        </div>
+        <p className="text-[10px] text-muted-foreground leading-tight">How often the network scan runs automatically.</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs text-muted-foreground">Fallback node color</label>
+        <div className="flex flex-wrap gap-1.5">
+          {COLOR_SWATCHES.map((color) => (
+            <button
+              key={`fallback-node-${color}`}
+              type="button"
+              aria-label={`fallback node ${color}`}
+              onClick={() => setDefaultNodeColor(color)}
+              className="w-5 h-5 rounded-full border-2"
+              style={{ background: color, borderColor: defaultNodeColor === color ? '#ffffff' : 'transparent' }}
+            />
+          ))}
+          <button type="button" onClick={() => setDefaultNodeColor(null)} className="px-2 py-0.5 rounded border border-border text-[10px] text-muted-foreground">Auto</button>
+        </div>
+        <p className="text-[10px] text-muted-foreground leading-tight">Used only when a node type has no custom default below.</p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs text-muted-foreground">Default colors by node type</label>
+        <div className="space-y-2 rounded-lg border border-border bg-[#11161d] p-2">
+          {(Object.entries(NODE_TYPE_LABELS) as [NodeType, string][]).filter(([type]) => type !== 'group' && type !== 'groupRect').map(([type, label]) => (
+            <ColorTypeRow
+              key={`node-type-${type}`}
+              label={label}
+              value={nodeTypeColors[type] ?? ''}
+              effectiveColor={nodeTypeColors[type] ?? defaultNodeColor ?? NODE_DEFAULT_COLORS[type].border}
+              onPick={(color) => setNodeTypeColors((current) => ({ ...current, [type]: color }))}
+              onHexChange={(color) => setNodeTypeColors((current) => ({ ...current, [type]: color }))}
+              onReset={() => setNodeTypeColors((current) => {
+                const next = { ...current }
+                delete next[type]
+                return next
+              })}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs text-muted-foreground">Fallback edge color</label>
+        <div className="flex flex-wrap gap-1.5">
+          {COLOR_SWATCHES.map((color) => (
+            <button
+              key={`fallback-edge-${color}`}
+              type="button"
+              aria-label={`fallback edge ${color}`}
+              onClick={() => setDefaultEdgeColor(color)}
+              className="w-5 h-5 rounded-full border-2"
+              style={{ background: color, borderColor: defaultEdgeColor === color ? '#ffffff' : 'transparent' }}
+            />
+          ))}
+          <button type="button" onClick={() => setDefaultEdgeColor(null)} className="px-2 py-0.5 rounded border border-border text-[10px] text-muted-foreground">Auto</button>
+        </div>
+        <p className="text-[10px] text-muted-foreground leading-tight">Used only when a connection type has no custom default below.</p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs text-muted-foreground">Default colors by connection type</label>
+        <div className="space-y-2 rounded-lg border border-border bg-[#11161d] p-2">
+          {(Object.entries(EDGE_TYPE_LABELS) as [EdgeType, string][]).map(([type, label]) => (
+            <ColorTypeRow
+              key={`edge-type-${type}`}
+              label={label}
+              value={edgeTypeColors[type] ?? ''}
+              effectiveColor={edgeTypeColors[type] ?? defaultEdgeColor ?? EDGE_DEFAULT_COLORS[type]}
+              onPick={(color) => setEdgeTypeColors((current) => ({ ...current, [type]: color }))}
+              onHexChange={(color) => setEdgeTypeColors((current) => ({ ...current, [type]: color }))}
+              onReset={() => setEdgeTypeColors((current) => {
+                const next = { ...current }
+                delete next[type]
+                return next
+              })}
+            />
+          ))}
+        </div>
       </div>
 
       <button
@@ -542,8 +754,88 @@ function SettingsPanel() {
         disabled={saving}
         className="w-full py-1.5 rounded-md text-xs font-medium bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/30 hover:bg-[#00d4ff]/20 transition-colors disabled:opacity-50"
       >
-        {saving ? 'Saving…' : 'Save'}
+        {saving ? 'Saving...' : 'Save'}
       </button>
+    </div>
+  )
+}
+
+function ColorTypeRow({
+  label,
+  value,
+  effectiveColor,
+  onPick,
+  onHexChange,
+  onReset,
+}: {
+  label: string
+  value: string
+  effectiveColor: string
+  onPick: (color: string) => void
+  onHexChange: (color: string) => void
+  onReset: () => void
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-[#0d1117] px-3 py-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="h-5 w-5 shrink-0 rounded-full border border-white/15"
+            style={{ backgroundColor: effectiveColor }}
+          />
+          <div className="min-w-0">
+            <div className="truncate text-xs text-foreground">{label}</div>
+            <div className="text-[10px] font-mono text-muted-foreground">
+              {value ? `custom ${value}` : `current ${effectiveColor}`}
+            </div>
+          </div>
+        </div>
+        <button type="button" onClick={onReset} className="text-[10px] text-muted-foreground hover:text-foreground">
+          Reset
+        </button>
+      </div>
+      <div className="mb-2 flex items-center gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={(event) => {
+            const next = event.target.value.trim()
+            if (next === '') {
+              onReset()
+              return
+            }
+            if (/^#?[0-9a-fA-F]{0,6}$/.test(next)) {
+              const normalized = next.startsWith('#') ? next : `#${next}`
+              if (normalized.length === 7) onHexChange(normalized)
+            }
+          }}
+          placeholder={effectiveColor}
+          className="w-full rounded-md border border-border bg-[#111827] px-2 py-1 text-[11px] font-mono text-foreground"
+        />
+        <span
+          className="h-7 w-7 shrink-0 rounded-md border border-white/10"
+          style={{ backgroundColor: effectiveColor }}
+        />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {COLOR_SWATCHES.map((color) => (
+          <button
+            key={`${label}-${color}`}
+            type="button"
+            aria-label={`${label} ${color}`}
+            onClick={() => onPick(color)}
+            className="flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-mono transition-colors"
+            style={{
+              background: effectiveColor === color ? `${color}22` : '#111827',
+              borderColor: effectiveColor === color ? color : '#30363d',
+              color: effectiveColor === color ? '#ffffff' : '#8b949e',
+            }}
+          >
+            <span className="h-3 w-3 rounded-full border border-white/10" style={{ backgroundColor: color }} />
+            {color}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -587,10 +879,8 @@ function ActionButton({ icon: Icon, label, color, onClick }: ActionButtonProps) 
     'text-muted-foreground hover:text-foreground hover:bg-[#30363d]'
   return (
     <Tooltip>
-      <TooltipTrigger>
-        <button onClick={onClick} className={`p-1 rounded ${colorClass} transition-colors`}>
-          <Icon size={11} />
-        </button>
+      <TooltipTrigger onClick={onClick} className={`p-1 rounded ${colorClass} transition-colors`}>
+        <Icon size={11} />
       </TooltipTrigger>
       <TooltipContent side="bottom">{label}</TooltipContent>
     </Tooltip>
@@ -608,33 +898,35 @@ interface SidebarItemProps {
 }
 
 function SidebarItem({ icon: Icon, label, collapsed, active, badge, accent, onClick }: SidebarItemProps) {
-  const btn = (
-    <button
-      onClick={onClick}
-      className={`relative flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-sm transition-colors ${
-        active
-          ? 'bg-[#00d4ff]/10 text-[#00d4ff]'
-          : accent
-          ? 'text-[#00d4ff] hover:bg-[#00d4ff]/10'
-          : 'text-muted-foreground hover:text-foreground hover:bg-[#21262d]'
-      }`}
-    >
-      <Icon size={16} className="shrink-0" />
-      {!collapsed && <span className="truncate">{label}</span>}
-      {badge && (
-        <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#e3b341]" />
-      )}
-    </button>
-  )
+  const className = `relative flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-sm transition-colors ${
+    active
+      ? 'bg-[#00d4ff]/10 text-[#00d4ff]'
+      : accent
+      ? 'text-[#00d4ff] hover:bg-[#00d4ff]/10'
+      : 'text-muted-foreground hover:text-foreground hover:bg-[#21262d]'
+  }`
 
   if (collapsed) {
     return (
       <Tooltip>
-        <TooltipTrigger>{btn}</TooltipTrigger>
+        <TooltipTrigger onClick={onClick} className={className}>
+          <Icon size={16} className="shrink-0" />
+          {badge && (
+            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#e3b341]" />
+          )}
+        </TooltipTrigger>
         <TooltipContent side="right">{label}</TooltipContent>
       </Tooltip>
     )
   }
 
-  return btn
+  return (
+    <button onClick={onClick} className={className}>
+      <Icon size={16} className="shrink-0" />
+      <span className="truncate">{label}</span>
+      {badge && (
+        <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#e3b341]" />
+      )}
+    </button>
+  )
 }
