@@ -8,7 +8,8 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.database import AsyncSessionLocal
-from app.db.models import Node
+from app.db.models import Node, NodeStatusLog, ScanRun
+from app.services.scanner import run_scan
 from app.services.status_checker import check_node
 
 logger = logging.getLogger(__name__)
@@ -22,11 +23,7 @@ async def _check_single_node(
     check_target: str | None,
     ip: str | None,
 ) -> tuple[str, dict[str, object] | None]:
-    """Run a single node check; returns (node_id, result_or_None).
-
-    Accepts plain scalars — not an ORM object — so there is no risk of
-    DetachedInstanceError when the originating session has already closed.
-    """
+    """Run a single node check; returns (node_id, result_or_None)."""
     from app.api.routes.status import broadcast_status  # avoid circular import
 
     try:
@@ -39,6 +36,12 @@ async def _check_single_node(
                 n.response_time_ms = check_result["response_time_ms"]
                 if check_result["status"] == "online":
                     n.last_seen = now
+                db.add(NodeStatusLog(
+                    node_id=node_id,
+                    status=check_result["status"],
+                    response_time_ms=check_result["response_time_ms"],
+                    checked_at=now,
+                ))
                 await db.commit()
         await broadcast_status(
             node_id=node_id,
@@ -57,7 +60,6 @@ async def _run_status_checks() -> None:
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Node))
         nodes = result.scalars().all()
-        # Extract scalars while the session is open to avoid DetachedInstanceError
         checkable = [
             (n.id, n.check_method, n.check_target, n.ip)
             for n in nodes
@@ -71,6 +73,26 @@ async def _run_status_checks() -> None:
         _check_single_node(node_id, method, target, ip)
         for node_id, method, target, ip in checkable
     ])
+
+
+async def _run_scheduled_scan() -> None:
+    ranges = [cidr for cidr in settings.scanner_ranges if cidr]
+    if not ranges:
+        logger.warning("Automatic scan skipped: no CIDR ranges configured")
+        return
+
+    async with AsyncSessionLocal() as db:
+        running = await db.execute(select(ScanRun).where(ScanRun.status == "running").limit(1))
+        if running.scalar_one_or_none() is not None:
+            logger.info("Automatic scan skipped: another scan is already running")
+            return
+
+        run = ScanRun(status="running", ranges=ranges)
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+
+        await run_scan(ranges, db, run.id)
 
 
 def start_scheduler() -> None:
@@ -89,8 +111,24 @@ def start_scheduler() -> None:
         max_instances=1,
         coalesce=True,
     )
+    if settings.scan_interval_seconds > 0:
+        scheduler.add_job(
+            _run_scheduled_scan,
+            "interval",
+            seconds=settings.scan_interval_seconds,
+            id="scheduled_scan",
+            max_instances=1,
+            coalesce=True,
+        )
     scheduler.start()
-    logger.info("Scheduler started — status checks every %ds", settings.status_checker_interval)
+    if settings.scan_interval_seconds > 0:
+        logger.info(
+            "Scheduler started: status checks every %ds, auto-scan every %ds",
+            settings.status_checker_interval,
+            settings.scan_interval_seconds,
+        )
+    else:
+        logger.info("Scheduler started: status checks every %ds, auto-scan disabled", settings.status_checker_interval)
 
 
 def reschedule_status_checks(interval_seconds: int) -> None:
@@ -102,6 +140,33 @@ def reschedule_status_checks(interval_seconds: int) -> None:
         return
     scheduler.reschedule_job("status_checks", trigger="interval", seconds=interval_seconds)
     logger.info("Status checks rescheduled to every %ds", interval_seconds)
+
+
+def reschedule_auto_scan(interval_seconds: int) -> None:
+    if interval_seconds < 0:
+        raise ValueError(f"interval_seconds must be >= 0, got {interval_seconds}")
+    if not scheduler.running:
+        logger.warning("Scheduler not running, skipping auto-scan reschedule")
+        return
+    if interval_seconds == 0:
+        try:
+            scheduler.remove_job("scheduled_scan")
+        except Exception:
+            pass
+        logger.info("Automatic scan disabled")
+        return
+    try:
+        scheduler.reschedule_job("scheduled_scan", trigger="interval", seconds=interval_seconds)
+    except Exception:
+        scheduler.add_job(
+            _run_scheduled_scan,
+            "interval",
+            seconds=interval_seconds,
+            id="scheduled_scan",
+            max_instances=1,
+            coalesce=True,
+        )
+    logger.info("Automatic scan rescheduled to every %ds", interval_seconds)
 
 
 def stop_scheduler() -> None:

@@ -41,6 +41,7 @@ interface CanvasState {
   setSelectedNode: (id: string | null) => void
   addNode: (node: Node<NodeData>) => void
   updateNode: (id: string, data: Partial<NodeData>) => void
+  setNodeDimensions: (id: string, width?: number, height?: number) => void
   deleteNode: (id: string) => void
   updateEdge: (id: string, data: Partial<EdgeData>) => void
   deleteEdge: (id: string) => void
@@ -246,6 +247,12 @@ export const useCanvasStore = create<CanvasState>((set) => ({
 
       return { nodes, edges, hasUnsavedChanges: true }
     }),
+
+  setNodeDimensions: (id, width, height) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) => n.id === id ? { ...n, width, height } : n),
+      hasUnsavedChanges: true,
+    })),
 
   deleteNode: (id) =>
     set((state) => {

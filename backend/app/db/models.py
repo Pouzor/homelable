@@ -35,6 +35,7 @@ class Node(Base):
     pos_y: Mapped[float] = mapped_column(Float, default=0)
     parent_id: Mapped[str | None] = mapped_column(String, ForeignKey("nodes.id", ondelete="CASCADE"))
     container_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    isp_layout: Mapped[str] = mapped_column(String, nullable=False, default="single")
     custom_colors: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     custom_icon: Mapped[str | None] = mapped_column(String, nullable=True)
     cpu_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -69,6 +70,7 @@ class Edge(Base):
     animated: Mapped[str] = mapped_column(String, nullable=False, default='none')
     source_handle: Mapped[str | None] = mapped_column(String)
     target_handle: Mapped[str | None] = mapped_column(String)
+    waypoints: Mapped[list[dict[str, float]] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -105,3 +107,13 @@ class ScanRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class NodeStatusLog(Base):
+    __tablename__ = "node_status_logs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    node_id: Mapped[str] = mapped_column(String, ForeignKey("nodes.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    response_time_ms: Mapped[int | None] = mapped_column(Integer)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)

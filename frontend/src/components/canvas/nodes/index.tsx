@@ -8,8 +8,8 @@ import type { NodeData } from '@/types'
 
 type N = NodeProps<Node<NodeData>>
 
-export const IspNode     = (props: N) => <BaseNode {...props} icon={Globe} />
-export const RouterNode  = (props: N) => <BaseNode {...props} icon={Router} />
+export const IspNode     = (props: N) => <BaseNode {...props} icon={Globe} topHandleIds={['top-left', 'top', 'top-right']} bottomHandleIds={['bottom-1', 'bottom-2', 'bottom-3', 'bottom-4', 'bottom-5']} leftHandleIds={['left-1', 'left-2']} rightHandleIds={['right-1', 'right-2']} />
+export const RouterNode  = (props: N) => <BaseNode {...props} icon={Router} topHandleIds={['top-left', 'top-right']} bottomHandleIds={['bottom-1', 'bottom-2', 'bottom-3', 'bottom-4']} leftHandleIds={['left-1', 'left-2']} rightHandleIds={['right-1', 'right-2']} />
 export const SwitchNode  = (props: N) => <BaseNode {...props} icon={Network} />
 export const ServerNode  = (props: N) => <BaseNode {...props} icon={Server} />
 export const ProxmoxNode = (props: N) => <BaseNode {...props} icon={Layers} />

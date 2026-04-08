@@ -1,13 +1,15 @@
-import { createElement, useState } from 'react'
+import { Fragment, createElement, useEffect, useMemo, useState } from 'react'
 import { RotateCcw, ChevronDown } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod } from '@/types'
+import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod, type NodeDimensions } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS } from '@/utils/nodeIcons'
+import { COLOR_SWATCHES } from '@/utils/colorPalettes'
+import { useSettingsStore } from '@/stores/settingsStore'
 
 const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
   { label: 'Hardware',       types: ['isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer'] },
@@ -34,8 +36,9 @@ const DEFAULT_DATA: Partial<NodeData> = {
 interface NodeModalProps {
   open: boolean
   onClose: () => void
-  onSubmit: (data: Partial<NodeData>) => void
+  onSubmit: (data: Partial<NodeData>, dimensions?: NodeDimensions) => void
   initial?: Partial<NodeData>
+  initialDimensions?: NodeDimensions
   title?: string
   proxmoxNodes?: { id: string; label: string }[]
 }
@@ -44,8 +47,26 @@ const CHILD_TYPES: NodeType[] = ['vm', 'lxc']
 
 // NodeModal is always mounted with a key that changes on open/edit, so useState
 // initial value is enough — no need for a reset effect.
-export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node', proxmoxNodes = [] }: NodeModalProps) {
-  const [form, setForm] = useState<Partial<NodeData>>({ ...DEFAULT_DATA, ...initial })
+export function NodeModal({ open, onClose, onSubmit, initial, initialDimensions, title = 'Add Node', proxmoxNodes = [] }: NodeModalProps) {
+  const defaultNodeColor = useSettingsStore((s) => s.defaultNodeColor)
+  const nodeTypeColors = useSettingsStore((s) => s.nodeTypeColors)
+  const getDefaultColors = (type: NodeType | undefined) => {
+    const selectedColor = (type ? nodeTypeColors[type] : undefined) ?? defaultNodeColor
+    return selectedColor ? {
+      border: selectedColor,
+      icon: selectedColor,
+      background: `${selectedColor}1a`,
+    } : undefined
+  }
+  const [form, setForm] = useState<Partial<NodeData>>({
+    ...DEFAULT_DATA,
+    ...initial,
+    custom_colors: initial?.custom_colors ?? getDefaultColors(initial?.type ?? DEFAULT_DATA.type),
+  })
+  const [dimensions, setDimensions] = useState<NodeDimensions>({
+    width: initialDimensions?.width,
+    height: initialDimensions?.height,
+  })
   const [iconSearch, setIconSearch] = useState('')
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [labelError, setLabelError] = useState(false)
@@ -55,6 +76,21 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
   const set = (key: keyof NodeData, value: unknown) =>
     setForm((f) => ({ ...f, [key]: value }))
 
+  const defaultColors = useMemo(
+    () => getDefaultColors((form.type as NodeType | undefined) ?? DEFAULT_DATA.type),
+    [form.type, nodeTypeColors, defaultNodeColor],
+  )
+
+  useEffect(() => {
+    if (initial?.custom_colors) return
+    setForm((current) => {
+      if (current.custom_colors?.border || current.custom_colors?.background || current.custom_colors?.icon) {
+        return current
+      }
+      return { ...current, custom_colors: defaultColors }
+    })
+  }, [defaultColors, initial?.custom_colors])
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.label?.trim()) {
@@ -62,7 +98,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
       return
     }
     setLabelError(false)
-    onSubmit(form)
+    onSubmit(form, dimensions)
     onClose()
   }
 
@@ -84,9 +120,9 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 </SelectTrigger>
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
                   {NODE_TYPE_GROUPS.map((group, i) => (
-                    <>
+                    <Fragment key={group.label}>
                       {i > 0 && <SelectSeparator key={`sep-${group.label}`} className="bg-[#30363d]" />}
-                      <SelectGroup key={group.label}>
+                      <SelectGroup>
                         <SelectLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 px-2 py-1">
                           {group.label}
                         </SelectLabel>
@@ -96,7 +132,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                           </SelectItem>
                         ))}
                       </SelectGroup>
-                    </>
+                    </Fragment>
                   ))}
                 </SelectContent>
               </Select>
@@ -325,6 +361,18 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                         <div className="w-full h-full rounded-sm" style={{ background: currentValue }} />
                       </label>
                       <span className="text-[9px] text-muted-foreground/60 capitalize">{key}</span>
+                      <div className="flex flex-wrap justify-center gap-1 max-w-[82px]">
+                        {COLOR_SWATCHES.slice(0, 6).map((swatch) => (
+                          <button
+                            key={`${key}-${swatch}`}
+                            type="button"
+                            aria-label={`${key} ${swatch}`}
+                            onClick={() => set('custom_colors', { ...form.custom_colors, [key]: swatch })}
+                            className="w-3.5 h-3.5 rounded-full border border-white/10"
+                            style={{ background: swatch }}
+                          />
+                        ))}
+                      </div>
                     </div>
                   )
                 })}
@@ -333,6 +381,41 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 <p className="text-[10px] text-muted-foreground/50">Using default colors for {NODE_TYPE_LABELS[form.type ?? 'generic']}. Click a swatch to customize.</p>
               )}
             </div>
+
+            {form.type !== 'groupRect' && (
+              <div className="flex flex-col gap-2 col-span-2">
+                <Label className="text-xs text-muted-foreground">Node Dimensions</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-xs text-muted-foreground">Width</Label>
+                    <Input
+                      type="number"
+                      min={140}
+                      step={10}
+                      value={dimensions.width ?? ''}
+                      onChange={(e) => setDimensions((current) => ({ ...current, width: e.target.value ? Number(e.target.value) : undefined }))}
+                      placeholder="auto"
+                      className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-xs text-muted-foreground">Height</Label>
+                    <Input
+                      type="number"
+                      min={50}
+                      step={10}
+                      value={dimensions.height ?? ''}
+                      onChange={(e) => setDimensions((current) => ({ ...current, height: e.target.value ? Number(e.target.value) : undefined }))}
+                      placeholder="auto"
+                      className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground/50">
+                  Leave empty to keep the default size. Resized nodes are saved automatically.
+                </p>
+              </div>
+            )}
 
             {/* Hardware specs (hidden for groupRect) */}
             {form.type !== 'groupRect' && (
