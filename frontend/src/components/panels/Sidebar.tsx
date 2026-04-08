@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useCanvasStore } from '@/stores/canvasStore'
 import { scanApi, settingsApi } from '@/api/client'
 import { toast } from 'sonner'
+import { useLatestRelease } from '@/hooks/useLatestRelease'
 import { PendingDeviceModal, type PendingDevice } from '@/components/modals/PendingDeviceModal'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
@@ -152,6 +153,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeAppro
           />
         )}
       </div>
+
+      {!collapsed && <VersionBadge />}
     </aside>
   )
 }
@@ -544,6 +547,34 @@ function SettingsPanel() {
       >
         {saving ? 'Saving…' : 'Save'}
       </button>
+    </div>
+  )
+}
+
+function VersionBadge() {
+  const current = __APP_VERSION__
+  const { latest, hasUpdate } = useLatestRelease(current)
+
+  return (
+    <div className="px-3 py-2 border-t border-border flex flex-col gap-1">
+      <a
+        href={`https://github.com/Pouzor/homelable/releases/tag/v${current}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        v{current}
+      </a>
+      {hasUpdate && latest && (
+        <a
+          href={latest.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#e3b341]/15 text-[#e3b341] border border-[#e3b341]/30 hover:bg-[#e3b341]/25 transition-colors self-start"
+        >
+          ↑ v{latest.version} available
+        </a>
+      )}
     </div>
   )
 }
