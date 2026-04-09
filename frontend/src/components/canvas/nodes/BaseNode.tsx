@@ -4,6 +4,7 @@ import { Cpu, MemoryStick, HardDrive, type LucideIcon } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { resolveNodeIcon } from '@/utils/nodeIcons'
+import { resolvePropertyIcon } from '@/utils/propertyIcons'
 import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -31,7 +32,11 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
   const colors = resolveNodeColors(data, activeTheme)
   const statusColor = theme.colors.statusColors[data.status]
   const isOnline = data.status === 'online'
-  const showHardware = data.show_hardware && (data.cpu_count != null || data.cpu_model || data.ram_gb != null || data.disk_gb != null)
+
+  // Properties: prefer new system; fall back to legacy hardware fields for unmigrated nodes
+  const visibleProperties = data.properties?.filter((p) => p.visible) ?? null
+  const showLegacyHardware = !data.properties && data.show_hardware &&
+    (data.cpu_count != null || data.cpu_model || data.ram_gb != null || data.disk_gb != null)
 
   return (
     <div
@@ -39,11 +44,13 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
       style={{
         background: colors.background,
         borderColor: colors.border,
-        borderWidth: selected ? 2 : 1,
-        boxShadow: isOnline
+        borderWidth: 1,
+        boxShadow: isOnline && selected
+          ? `0 0 0 1px ${colors.border}, 0 0 10px ${colors.border}2e, 0 0 3px ${colors.border}1a`
+          : isOnline
           ? `0 0 10px ${colors.border}2e, 0 0 3px ${colors.border}1a`
           : selected
-          ? `0 0 8px ${colors.border}44`
+          ? `0 0 0 1px ${colors.border}, 0 0 8px ${colors.border}44`
           : 'none',
         opacity: data.status === 'offline' ? 0.55 : 1,
         minWidth: 140,
@@ -55,7 +62,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         isVisible={selected}
         minWidth={140}
         minHeight={50}
-        lineStyle={{ borderColor: colors.border, borderWidth: 1 }}
+        lineStyle={{ borderColor: 'transparent' }}
         handleStyle={{ borderColor: colors.border, background: colors.border, width: 8, height: 8 }}
       />
       <Handle
@@ -100,12 +107,30 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         </div>
       </div>
 
-      {/* Hardware section */}
-      {showHardware && (
+      {/* Properties section (new system) */}
+      {visibleProperties && visibleProperties.length > 0 && (
         <>
           <div style={{ height: 1, background: `${colors.border}44`, margin: '0 8px' }} />
           <div className="flex flex-col gap-1 px-2.5 py-1.5">
-            {/* Line 1: CPU */}
+            {visibleProperties.map((prop, i) => {
+              const Icon = resolvePropertyIcon(prop.icon)
+              return (
+                <div key={i} className="flex items-center gap-1 font-mono text-[10px]" style={{ color: theme.colors.nodeSubtextColor }}>
+                  {Icon && <Icon size={9} className="shrink-0" />}
+                  <span className="truncate max-w-[60px] shrink-0" title={prop.key}>{prop.key}</span>
+                  <span className="truncate" title={prop.value}>· {prop.value}</span>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Legacy hardware section — fallback for nodes not yet migrated */}
+      {showLegacyHardware && (
+        <>
+          <div style={{ height: 1, background: `${colors.border}44`, margin: '0 8px' }} />
+          <div className="flex flex-col gap-1 px-2.5 py-1.5">
             {(data.cpu_model || data.cpu_count != null) && (
               <div className="flex items-center gap-1 font-mono text-[10px]" style={{ color: theme.colors.nodeSubtextColor }}>
                 <Cpu size={9} className="shrink-0" />
@@ -117,7 +142,6 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
                 )}
               </div>
             )}
-            {/* Line 2: RAM + Disk */}
             {(data.ram_gb != null || data.disk_gb != null) && (
               <div className="flex items-center gap-2 font-mono text-[10px]" style={{ color: theme.colors.nodeSubtextColor }}>
                 {data.ram_gb != null && (

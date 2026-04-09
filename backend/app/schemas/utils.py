@@ -4,6 +4,6 @@ def normalize_animated(v: object) -> str:
         return 'snake'
     if v is False or v == 0 or v == '0' or v is None or v == 'none':
         return 'none'
-    if v in ('snake', 'flow'):
+    if v in ('snake', 'flow', 'basic'):
         return str(v)
     return 'none'

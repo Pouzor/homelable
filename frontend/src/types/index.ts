@@ -43,6 +43,13 @@ export interface ServiceInfo {
   category?: string
 }
 
+export interface NodeProperty {
+  key: string
+  value: string
+  icon: string | null
+  visible: boolean
+}
+
 export interface NodeData extends Record<string, unknown> {
   label: string
   type: NodeType
@@ -62,6 +69,7 @@ export interface NodeData extends Record<string, unknown> {
   ram_gb?: number
   disk_gb?: number
   show_hardware?: boolean
+  properties?: NodeProperty[]
   parent_id?: string
   container_mode?: boolean
   custom_colors?: {
@@ -87,6 +95,11 @@ export interface NodeData extends Record<string, unknown> {
 
 export type EdgePathStyle = 'bezier' | 'smooth'
 
+export interface Waypoint {
+  x: number
+  y: number
+}
+
 export interface EdgeData extends Record<string, unknown> {
   type: EdgeType
   label?: string
@@ -94,7 +107,8 @@ export interface EdgeData extends Record<string, unknown> {
   speed?: string
   custom_color?: string
   path_style?: EdgePathStyle
-  animated?: boolean | 'snake' | 'flow' | 'none'
+  animated?: boolean | 'snake' | 'flow' | 'basic' | 'none'
+  waypoints?: Waypoint[]
 }
 
 export const NODE_TYPE_LABELS: Record<NodeType, string> = {

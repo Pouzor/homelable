@@ -73,7 +73,7 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
           background: '#00d4ff',
           border: '1px solid #0d1117',
         }}
-        lineStyle={{ borderColor: '#00d4ff55', borderWidth: 1 }}
+        lineStyle={{ borderColor: 'transparent' }}
       />
       <div
         style={{
@@ -86,7 +86,8 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
           justifyContent: posStyle.justifyContent,
           padding: 12,
           background: backgroundColor,
-          border: `${selected ? borderWidth + 1 : borderWidth}px ${selected ? 'solid' : borderStyle} ${selected ? '#00d4ff' : borderColor}`,
+          border: `${borderWidth}px ${borderStyle} ${borderColor}`,
+          boxShadow: selected ? '0 0 0 1px #00d4ff, 0 0 8px #00d4ff44' : 'none',
           borderRadius: 10,
           boxSizing: 'border-box',
           cursor: 'default',

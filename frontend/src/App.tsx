@@ -357,6 +357,13 @@ export default function App() {
     setEditEdgeId(null)
   }, [editEdgeId, deleteEdge, snapshotHistory])
 
+  const handleClearWaypoints = useCallback(() => {
+    if (!editEdgeId) return
+    snapshotHistory()
+    updateEdge(editEdgeId, { waypoints: [] })
+    setEditEdgeId(null)
+  }, [editEdgeId, updateEdge, snapshotHistory])
+
   const editNode = editNodeId ? nodes.find((n) => n.id === editNodeId) : null
   const editEdge = editEdgeId ? edges.find((e) => e.id === editEdgeId) : null
 
@@ -446,6 +453,7 @@ export default function App() {
           onClose={() => setEditEdgeId(null)}
           onSubmit={handleEdgeUpdate}
           onDelete={handleEdgeDelete}
+          onClearWaypoints={handleClearWaypoints}
           initial={editEdge?.data}
           title="Edit Link"
         />

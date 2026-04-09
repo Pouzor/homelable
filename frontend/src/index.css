@@ -6,6 +6,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@keyframes homelable-basic-dash {
+  from { stroke-dashoffset: 10; }
+  to   { stroke-dashoffset: 0; }
+}
+
 /* Homelable dark theme — always dark */
 :root {
     --background: #0d1117;

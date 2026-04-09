@@ -10,11 +10,12 @@ import { EDGE_DEFAULT_COLORS } from '@/utils/edgeColors'
 
 const EDGE_TYPES = Object.entries(EDGE_TYPE_LABELS) as [EdgeType, string][]
 
-type AnimMode = 'none' | 'snake' | 'flow'
+type AnimMode = 'none' | 'basic' | 'snake' | 'flow'
 
 function toAnimMode(v: EdgeData['animated']): AnimMode {
   if (v === true || v === 'snake') return 'snake'
   if (v === 'flow') return 'flow'
+  if (v === 'basic') return 'basic'
   return 'none'
 }
 
@@ -23,11 +24,12 @@ interface EdgeModalProps {
   onClose: () => void
   onSubmit: (data: EdgeData) => void
   onDelete?: () => void
+  onClearWaypoints?: () => void
   initial?: Partial<EdgeData>
   title?: string
 }
 
-export function EdgeModal({ open, onClose, onSubmit, onDelete, initial, title = 'Connect Nodes' }: EdgeModalProps) {
+export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints, initial, title = 'Connect Nodes' }: EdgeModalProps) {
   const [type, setType] = useState<EdgeType>(initial?.type ?? 'ethernet')
   const [label, setLabel] = useState(initial?.label ?? '')
   const [vlanId, setVlanId] = useState(initial?.vlan_id?.toString() ?? '')
@@ -126,7 +128,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, initial, title = 
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Animation</Label>
             <div className="flex rounded-md overflow-hidden border border-[#30363d]">
-              {(['none', 'snake', 'flow'] as AnimMode[]).map((mode, i) => (
+              {(['none', 'basic', 'snake', 'flow'] as AnimMode[]).map((mode, i) => (
                 <button
                   key={mode}
                   type="button"
@@ -135,10 +137,10 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, initial, title = 
                   style={{
                     background: animation === mode ? '#00d4ff22' : '#21262d',
                     color: animation === mode ? '#00d4ff' : '#8b949e',
-                    borderRight: i < 2 ? '1px solid #30363d' : undefined,
+                    borderRight: i < 3 ? '1px solid #30363d' : undefined,
                   }}
                 >
-                  {mode === 'none' ? 'None' : mode === 'snake' ? 'Snake' : 'Flow'}
+                  {mode === 'none' ? 'None' : mode === 'basic' ? 'Basic' : mode === 'snake' ? 'Snake' : 'Flow'}
                 </button>
               ))}
             </div>
@@ -174,6 +176,16 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, initial, title = 
               {!customColor && <span className="text-[10px] text-muted-foreground/50 ml-auto">default</span>}
             </label>
           </div>
+
+          {onClearWaypoints && initial?.waypoints && initial.waypoints.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { onClearWaypoints(); onClose() }}
+              className="text-[10px] text-muted-foreground hover:text-[#e3b341] transition-colors text-left"
+            >
+              Clear path ({initial.waypoints.length} point{initial.waypoints.length !== 1 ? 's' : ''})
+            </button>
+          )}
 
           <div className="flex justify-between gap-2 pt-1">
             {onDelete ? (

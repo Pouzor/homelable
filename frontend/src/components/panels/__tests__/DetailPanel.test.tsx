@@ -69,58 +69,137 @@ describe('DetailPanel', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  describe('Hardware section', () => {
-    it('does not render hardware section when no hardware data', () => {
-      setupStore({ label: 'Server' })
+  describe('Properties section', () => {
+    it('renders empty state when no properties', () => {
+      setupStore({ properties: [] })
       render(<DetailPanel onEdit={vi.fn()} />)
-      expect(screen.queryByText('Hardware')).toBeNull()
+      expect(screen.getByText(/No properties/)).toBeDefined()
     })
 
-    it('renders hardware section when cpu_count is set', () => {
-      setupStore({ cpu_count: 8 })
+    it('renders properties with key and value', () => {
+      setupStore({
+        properties: [
+          { key: 'CPU Model', value: 'i7-12700K', icon: 'Cpu', visible: true },
+          { key: 'RAM', value: '32 GB', icon: 'MemoryStick', visible: false },
+        ],
+      })
       render(<DetailPanel onEdit={vi.fn()} />)
-      expect(screen.getByText('Hardware')).toBeDefined()
-      expect(screen.getByText('8')).toBeDefined()
+      expect(screen.getByText('CPU Model')).toBeDefined()
+      // Value is rendered with a middle-dot prefix: "· 32 GB"
+      expect(screen.getByText(/32 GB/)).toBeDefined()
     })
 
-    it('renders cpu_model', () => {
-      setupStore({ cpu_model: 'Intel Xeon E5-2680' })
+    it('shows Properties count when properties exist', () => {
+      setupStore({
+        properties: [
+          { key: 'CPU Model', value: 'i7', icon: null, visible: true },
+          { key: 'RAM', value: '16 GB', icon: null, visible: true },
+        ],
+      })
       render(<DetailPanel onEdit={vi.fn()} />)
-      expect(screen.getByText('Intel Xeon E5-2680')).toBeDefined()
+      expect(screen.getByText('Properties (2)')).toBeDefined()
     })
 
-    it('formats ram_gb in GB', () => {
-      setupStore({ ram_gb: 32 })
+    it('shows add form when Add is clicked', () => {
+      setupStore({ properties: [] })
       render(<DetailPanel onEdit={vi.fn()} />)
-      expect(screen.getByText('32 GB')).toBeDefined()
+      // There are multiple "Add" buttons (services + properties) — find the one after "Properties"
+      const addButtons = screen.getAllByText('Add')
+      fireEvent.click(addButtons[0]) // first Add = properties (rendered above services)
+      expect(screen.getByPlaceholderText('Label (e.g. CPU Model)')).toBeDefined()
     })
 
-    it('formats ram_gb >= 1024 as TB', () => {
-      setupStore({ ram_gb: 2048 })
+    it('calls updateNode with new property on Add confirm', () => {
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+        nodes: [makeNode({ properties: [] })],
+        selectedNodeId: 'n1',
+        selectedNodeIds: [],
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode,
+        snapshotHistory: vi.fn(),
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
+      } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+
       render(<DetailPanel onEdit={vi.fn()} />)
-      expect(screen.getByText('2 TB')).toBeDefined()
+      const addButtons = screen.getAllByText('Add')
+      fireEvent.click(addButtons[0]) // first Add = properties
+      // Form is now open — fill key and value
+      fireEvent.change(screen.getByPlaceholderText('Label (e.g. CPU Model)'), { target: { value: 'GPU' } })
+      fireEvent.change(screen.getByPlaceholderText('Value (e.g. i7-12700K)'), { target: { value: 'RTX 4090' } })
+      // The PropertyForm confirm button is labeled "Add" — use the form's confirm button
+      fireEvent.keyDown(screen.getByPlaceholderText('Value (e.g. i7-12700K)'), { key: 'Enter' })
+      expect(updateNode).toHaveBeenCalledOnce()
+      const [, payload] = updateNode.mock.calls[0]
+      expect(payload.properties[0]).toMatchObject({ key: 'GPU', value: 'RTX 4090', visible: true })
     })
 
-    it('formats disk_gb in GB', () => {
-      setupStore({ disk_gb: 500 })
+    it('calls updateNode with toggled visibility when eye button is clicked', () => {
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+        nodes: [makeNode({ properties: [{ key: 'RAM', value: '32 GB', icon: 'MemoryStick', visible: true }] })],
+        selectedNodeId: 'n1',
+        selectedNodeIds: [],
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode,
+        snapshotHistory: vi.fn(),
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
+      } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+
       render(<DetailPanel onEdit={vi.fn()} />)
-      expect(screen.getByText('500 GB')).toBeDefined()
+      fireEvent.click(screen.getByTitle('Hide on node'))
+      expect(updateNode).toHaveBeenCalledOnce()
+      const [, payload] = updateNode.mock.calls[0]
+      expect(payload.properties[0].visible).toBe(false)
     })
 
-    it('formats disk_gb >= 1024 as TB', () => {
-      setupStore({ disk_gb: 1536 })
+    it('calls updateNode without the property when remove button is clicked', () => {
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+        nodes: [makeNode({ properties: [{ key: 'GPU', value: 'RTX 4090', icon: null, visible: true }] })],
+        selectedNodeId: 'n1',
+        selectedNodeIds: [],
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode,
+        snapshotHistory: vi.fn(),
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
+      } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+
       render(<DetailPanel onEdit={vi.fn()} />)
-      expect(screen.getByText('1.5 TB')).toBeDefined()
+      fireEvent.click(screen.getByTitle('Remove property'))
+      expect(updateNode).toHaveBeenCalledOnce()
+      const [, payload] = updateNode.mock.calls[0]
+      expect(payload.properties).toHaveLength(0)
     })
 
-    it('renders all hardware fields together', () => {
-      setupStore({ cpu_count: 16, cpu_model: 'AMD EPYC', ram_gb: 128, disk_gb: 4096 })
+    it('does not submit add form when key is empty', () => {
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+        nodes: [makeNode({ properties: [] })],
+        selectedNodeId: 'n1',
+        selectedNodeIds: [],
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode,
+        snapshotHistory: vi.fn(),
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
+      } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+
       render(<DetailPanel onEdit={vi.fn()} />)
-      expect(screen.getByText('Hardware')).toBeDefined()
-      expect(screen.getByText('AMD EPYC')).toBeDefined()
-      expect(screen.getByText('16')).toBeDefined()
-      expect(screen.getByText('128 GB')).toBeDefined()
-      expect(screen.getByText('4 TB')).toBeDefined()
+      const addButtons = screen.getAllByText('Add')
+      fireEvent.click(addButtons[0])
+      // Only fill value, leave key empty
+      fireEvent.change(screen.getByPlaceholderText('Value (e.g. i7-12700K)'), { target: { value: 'some value' } })
+      const confirmButtons = screen.getAllByRole('button', { name: 'Add' })
+      fireEvent.click(confirmButtons[confirmButtons.length - 1])
+      expect(updateNode).not.toHaveBeenCalled()
     })
   })
 
@@ -189,7 +268,9 @@ describe('DetailPanel', () => {
     it('shows add form when Add is clicked', () => {
       setupStore({})
       render(<DetailPanel onEdit={vi.fn()} />)
-      fireEvent.click(screen.getByText('Add'))
+      // Two "Add" buttons: first = properties, second = services
+      const addButtons = screen.getAllByText('Add')
+      fireEvent.click(addButtons[addButtons.length - 1])
       expect(screen.getByPlaceholderText('Service name')).toBeDefined()
     })
 
@@ -198,18 +279,21 @@ describe('DetailPanel', () => {
       vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
         nodes: [makeNode({})],
         selectedNodeId: 'n1',
+        selectedNodeIds: [],
         setSelectedNode: vi.fn(),
         deleteNode: vi.fn(),
         updateNode,
         snapshotHistory: vi.fn(),
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
       } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
       render(<DetailPanel onEdit={vi.fn()} />)
-      fireEvent.click(screen.getByText('Add'))
+      // Two "Add" header buttons: first = properties, second = services
+      const addHeaders = screen.getAllByText('Add')
+      fireEvent.click(addHeaders[addHeaders.length - 1])
       fireEvent.change(screen.getByPlaceholderText('Service name'), { target: { value: 'nginx' } })
       fireEvent.change(screen.getByPlaceholderText('Port'), { target: { value: '80' } })
-      // Two "Add" buttons exist: the header toggle and the form confirm — pick the form's
-      const addButtons = screen.getAllByRole('button', { name: 'Add' })
-      fireEvent.click(addButtons[addButtons.length - 1])
+      fireEvent.keyDown(screen.getByPlaceholderText('Port'), { key: 'Enter' })
       expect(updateNode).toHaveBeenCalledOnce()
       expect(updateNode.mock.calls[0][1].services[0]).toMatchObject({ service_name: 'nginx', port: 80, protocol: 'tcp' })
     })

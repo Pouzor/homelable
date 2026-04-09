@@ -236,6 +236,36 @@ describe('serializeEdge', () => {
     expect(result.custom_color).toBeNull()
     expect(result.path_style).toBeNull()
   })
+
+  it('serializes waypoints when present', () => {
+    const edge = makeRfEdge({ data: { type: 'ethernet', waypoints: [{ x: 10, y: 20 }, { x: 30, y: 40 }] } })
+    const result = serializeEdge(edge)
+    expect(result.waypoints).toEqual([{ x: 10, y: 20 }, { x: 30, y: 40 }])
+  })
+
+  it('serializes waypoints as null when empty array', () => {
+    const edge = makeRfEdge({ data: { type: 'ethernet', waypoints: [] } })
+    const result = serializeEdge(edge)
+    expect(result.waypoints).toBeNull()
+  })
+
+  it('serializes waypoints as null when absent', () => {
+    const result = serializeEdge(makeRfEdge())
+    expect(result.waypoints).toBeNull()
+  })
+})
+
+describe('deserializeApiEdge — waypoints', () => {
+  it('restores waypoints from API edge', () => {
+    const edge = makeApiEdge({ waypoints: [{ x: 5, y: 15 }, { x: 25, y: 35 }] })
+    const result = deserializeApiEdge(edge)
+    expect((result.data as { waypoints: unknown }).waypoints).toEqual([{ x: 5, y: 15 }, { x: 25, y: 35 }])
+  })
+
+  it('has no waypoints when API edge has none', () => {
+    const result = deserializeApiEdge(makeApiEdge())
+    expect((result.data as { waypoints?: unknown }).waypoints).toBeUndefined()
+  })
 })
 
 // ── deserializeApiNode — regular nodes ───────────────────────────────────────

@@ -134,6 +134,73 @@ describe('Standalone localStorage save/load cycle', () => {
     expect(stored.data?.label).toBe('VLAN 20')
   })
 
+  it('preserves node properties through the round-trip', () => {
+    const props = [
+      { key: 'RAM', value: '32 GB', icon: 'MemoryStick', visible: true },
+      { key: 'CPU', value: 'Intel i9', icon: 'Cpu', visible: false },
+    ]
+    const nodes = [makeNode('n1', { data: { label: 'n1', type: 'server', status: 'unknown', services: [], properties: props } })]
+    const raw = standaloneSerialize(nodes, [])
+    const { nodes: loaded } = standaloneDeserialize(raw)
+    useCanvasStore.getState().loadCanvas(loaded, [])
+
+    const stored = useCanvasStore.getState().nodes[0]
+    expect(stored.data.properties).toEqual(props)
+  })
+
+  it('preserves empty properties array through the round-trip', () => {
+    const nodes = [makeNode('n1', { data: { label: 'n1', type: 'server', status: 'unknown', services: [], properties: [] } })]
+    const raw = standaloneSerialize(nodes, [])
+    const { nodes: loaded } = standaloneDeserialize(raw)
+    useCanvasStore.getState().loadCanvas(loaded, [])
+
+    expect(useCanvasStore.getState().nodes[0].data.properties).toEqual([])
+  })
+
+  it('preserves edge waypoints through the round-trip', () => {
+    const waypoints = [{ x: 100, y: 200 }, { x: 300, y: 150 }]
+    const edges: Edge<EdgeData>[] = [{
+      id: 'e1', source: 'n1', target: 'n2', type: 'ethernet',
+      data: { type: 'ethernet', waypoints },
+    }]
+    const raw = standaloneSerialize([], edges)
+    const { edges: loaded } = standaloneDeserialize(raw)
+    useCanvasStore.getState().loadCanvas([], loaded)
+
+    expect(useCanvasStore.getState().edges[0].data?.waypoints).toEqual(waypoints)
+  })
+
+  it('preserves basic animation through the round-trip', () => {
+    const edges: Edge<EdgeData>[] = [{
+      id: 'e1', source: 'n1', target: 'n2', type: 'ethernet',
+      data: { type: 'ethernet', animated: 'basic' },
+    }]
+    const raw = standaloneSerialize([], edges)
+    const { edges: loaded } = standaloneDeserialize(raw)
+    useCanvasStore.getState().loadCanvas([], loaded)
+
+    expect(useCanvasStore.getState().edges[0].data?.animated).toBe('basic')
+  })
+
+  it('preserves all three animation types through the round-trip', () => {
+    const n1 = makeNode('n1')
+    const n2 = makeNode('n2')
+    const n3 = makeNode('n3')
+    const edges: Edge<EdgeData>[] = [
+      { id: 'e1', source: 'n1', target: 'n2', type: 'ethernet', data: { type: 'ethernet', animated: 'snake' } },
+      { id: 'e2', source: 'n2', target: 'n3', type: 'ethernet', data: { type: 'ethernet', animated: 'flow' } },
+      { id: 'e3', source: 'n1', target: 'n3', type: 'ethernet', data: { type: 'ethernet', animated: 'basic' } },
+    ]
+    const raw = standaloneSerialize([n1, n2, n3], edges)
+    const { edges: loaded } = standaloneDeserialize(raw)
+    useCanvasStore.getState().loadCanvas([n1, n2, n3], loaded)
+
+    const stored = useCanvasStore.getState().edges
+    expect(stored.find((e) => e.id === 'e1')?.data?.animated).toBe('snake')
+    expect(stored.find((e) => e.id === 'e2')?.data?.animated).toBe('flow')
+    expect(stored.find((e) => e.id === 'e3')?.data?.animated).toBe('basic')
+  })
+
   // ── loadCanvas marks clean ────────────────────────────────────────────────
 
   it('loadCanvas sets hasUnsavedChanges to false', () => {

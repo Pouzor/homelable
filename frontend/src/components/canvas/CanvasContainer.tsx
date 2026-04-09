@@ -98,7 +98,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
       >
         <Background
           variant={BackgroundVariant.Dots}
-          gap={24}
+          gap={16}
           size={1}
           color={theme.colors.canvasDotColor}
         />

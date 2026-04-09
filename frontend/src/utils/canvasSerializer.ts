@@ -1,5 +1,5 @@
 import type { Node, Edge } from '@xyflow/react'
-import type { NodeData, EdgeData } from '@/types'
+import type { NodeData, EdgeData, Waypoint } from '@/types'
 import { normalizeHandle } from '@/utils/handleUtils'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -28,6 +28,7 @@ export interface ApiNode extends Record<string, unknown> {
   ram_gb?: number | null
   disk_gb?: number | null
   show_hardware?: boolean
+  properties?: unknown[] | null
   width?: number | null
   height?: number | null
   bottom_handles?: number
@@ -43,9 +44,10 @@ export interface ApiEdge {
   speed?: string | null
   custom_color?: string | null
   path_style?: string | null
-  animated?: boolean | 'snake' | 'flow' | 'none'
+  animated?: boolean | 'snake' | 'flow' | 'basic' | 'none'
   source_handle?: string | null
   target_handle?: string | null
+  waypoints?: Waypoint[] | null
 }
 
 // ── Serialization (RF node → API save payload) ───────────────────────────────
@@ -99,6 +101,7 @@ export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
     ram_gb: n.data.ram_gb ?? null,
     disk_gb: n.data.disk_gb ?? null,
     show_hardware: n.data.show_hardware ?? false,
+    properties: n.data.properties ?? [],
     width: n.width ?? null,
     height: n.height ?? null,
     bottom_handles: n.data.bottom_handles ?? 1,
@@ -121,6 +124,7 @@ export function serializeEdge(e: Edge<EdgeData>): Record<string, unknown> {
     animated: e.data?.animated ?? false,
     source_handle: normalizeHandle(e.sourceHandle),
     target_handle: normalizeHandle(e.targetHandle),
+    waypoints: e.data?.waypoints?.length ? e.data.waypoints : null,
   }
 }
 

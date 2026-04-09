@@ -256,3 +256,295 @@ async def test_save_canvas_dimensions_cleared_when_null(client: AsyncClient, hea
     canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
     assert canvas["nodes"][0]["width"] is None
     assert canvas["nodes"][0]["height"] is None
+
+
+# ── properties ────────────────────────────────────────────────────────────────
+
+async def test_save_canvas_properties_default_empty(client: AsyncClient, headers: dict):
+    n1 = node_payload()
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["nodes"][0]["properties"] == []
+
+
+async def test_save_canvas_persists_properties(client: AsyncClient, headers: dict):
+    props = [
+        {"key": "RAM", "value": "32 GB", "icon": "MemoryStick", "visible": True},
+        {"key": "CPU", "value": "Intel i9", "icon": "Cpu", "visible": False},
+    ]
+    n1 = node_payload(properties=props)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    returned = canvas["nodes"][0]["properties"]
+    assert len(returned) == 2
+    assert returned[0] == {"key": "RAM", "value": "32 GB", "icon": "MemoryStick", "visible": True}
+    assert returned[1] == {"key": "CPU", "value": "Intel i9", "icon": "Cpu", "visible": False}
+
+
+async def test_save_canvas_properties_updated_on_second_save(client: AsyncClient, headers: dict):
+    n1 = node_payload(properties=[{"key": "RAM", "value": "16 GB", "icon": None, "visible": True}])
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    n1_updated = {**n1, "properties": [
+        {"key": "RAM", "value": "64 GB", "icon": "MemoryStick", "visible": True},
+        {"key": "Disk", "value": "2 TB", "icon": "HardDrive", "visible": True},
+    ]}
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1_updated], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    props = canvas["nodes"][0]["properties"]
+    assert len(props) == 2
+    assert props[0]["value"] == "64 GB"
+    assert props[1]["key"] == "Disk"
+
+
+async def test_save_canvas_properties_with_null_icon(client: AsyncClient, headers: dict):
+    props = [{"key": "Note", "value": "custom rack", "icon": None, "visible": True}]
+    n1 = node_payload(properties=props)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["nodes"][0]["properties"][0]["icon"] is None
+
+
+async def test_save_canvas_properties_cleared_to_empty(client: AsyncClient, headers: dict):
+    n1 = node_payload(properties=[{"key": "RAM", "value": "32 GB", "icon": None, "visible": True}])
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    n1_cleared = {**n1, "properties": []}
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1_cleared], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["nodes"][0]["properties"] == []
+
+
+# ── edge waypoints & handles ──────────────────────────────────────────────────
+
+async def test_save_canvas_edge_waypoints_default_null(client: AsyncClient, headers: dict):
+    n1 = node_payload()
+    n2 = node_payload()
+    e1 = edge_payload(n1["id"], n2["id"])
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["edges"][0]["waypoints"] is None
+
+
+async def test_save_canvas_persists_waypoints_on_edge(client: AsyncClient, headers: dict):
+    n1 = node_payload()
+    n2 = node_payload()
+    waypoints = [{"x": 100.0, "y": 200.0}, {"x": 300.0, "y": 150.0}]
+    e1 = edge_payload(n1["id"], n2["id"], waypoints=waypoints)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    returned = canvas["edges"][0]["waypoints"]
+    assert returned == [{"x": 100.0, "y": 200.0}, {"x": 300.0, "y": 150.0}]
+
+
+async def test_save_canvas_waypoints_updated_on_second_save(client: AsyncClient, headers: dict):
+    n1 = node_payload()
+    n2 = node_payload()
+    e1 = edge_payload(n1["id"], n2["id"], waypoints=[{"x": 10.0, "y": 20.0}])
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    e1_updated = {**e1, "waypoints": [{"x": 50.0, "y": 60.0}, {"x": 70.0, "y": 80.0}]}
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1_updated], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["edges"][0]["waypoints"] == [{"x": 50.0, "y": 60.0}, {"x": 70.0, "y": 80.0}]
+
+
+async def test_save_canvas_persists_edge_handles(client: AsyncClient, headers: dict):
+    n1 = node_payload(bottom_handles=3)
+    n2 = node_payload()
+    e1 = edge_payload(n1["id"], n2["id"], source_handle="bottom-1", target_handle="top")
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    edge = canvas["edges"][0]
+    assert edge["source_handle"] == "bottom-1"
+    assert edge["target_handle"] == "top"
+
+
+async def test_save_canvas_persists_animated_edge(client: AsyncClient, headers: dict):
+    n1 = node_payload()
+    n2 = node_payload()
+    e1 = edge_payload(n1["id"], n2["id"], animated="snake")
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["edges"][0]["animated"] == "snake"
+
+
+async def test_save_canvas_persists_animated_basic(client: AsyncClient, headers: dict):
+    n1 = node_payload()
+    n2 = node_payload()
+    e1 = edge_payload(n1["id"], n2["id"], animated="basic")
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["edges"][0]["animated"] == "basic"
+
+
+# ── node fields ───────────────────────────────────────────────────────────────
+
+async def test_save_canvas_persists_all_node_fields(client: AsyncClient, headers: dict):
+    n1 = node_payload(
+        type="server",
+        label="Main Server",
+        hostname="server.local",
+        ip="192.168.1.10",
+        mac="aa:bb:cc:dd:ee:ff",
+        os="Ubuntu 22.04",
+        status="online",
+        check_method="http",
+        check_target="http://192.168.1.10",
+        services=[{"name": "nginx", "port": 80}],
+        notes="Primary web server",
+        pos_x=150.0,
+        pos_y=250.0,
+        bottom_handles=2,
+    )
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    node = canvas["nodes"][0]
+    assert node["hostname"] == "server.local"
+    assert node["ip"] == "192.168.1.10"
+    assert node["mac"] == "aa:bb:cc:dd:ee:ff"
+    assert node["os"] == "Ubuntu 22.04"
+    assert node["status"] == "online"
+    assert node["check_method"] == "http"
+    assert node["check_target"] == "http://192.168.1.10"
+    assert node["services"] == [{"name": "nginx", "port": 80}]
+    assert node["notes"] == "Primary web server"
+    assert node["pos_x"] == 150.0
+    assert node["pos_y"] == 250.0
+    assert node["bottom_handles"] == 2
+
+
+async def test_save_canvas_persists_bottom_handles(client: AsyncClient, headers: dict):
+    n1 = node_payload(bottom_handles=4)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["nodes"][0]["bottom_handles"] == 4
+
+
+async def test_save_canvas_bottom_handles_defaults_one(client: AsyncClient, headers: dict):
+    n1 = node_payload()
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["nodes"][0]["bottom_handles"] == 1
+
+
+async def test_save_canvas_persists_services_and_notes(client: AsyncClient, headers: dict):
+    services = [{"name": "ssh", "port": 22}, {"name": "http", "port": 80}]
+    n1 = node_payload(services=services, notes="My NAS device")
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    node = canvas["nodes"][0]
+    assert node["services"] == services
+    assert node["notes"] == "My NAS device"
+
+
+async def test_save_canvas_persists_check_fields(client: AsyncClient, headers: dict):
+    n1 = node_payload(check_method="ping", check_target="192.168.1.1")
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    node = canvas["nodes"][0]
+    assert node["check_method"] == "ping"
+    assert node["check_target"] == "192.168.1.1"
+
+
+# ── parent/child nodes ────────────────────────────────────────────────────────
+
+async def test_save_canvas_persists_parent_child_nodes(client: AsyncClient, headers: dict):
+    parent = node_payload(type="proxmox", label="PVE Host")
+    child = node_payload(type="vm", label="VM-100", parent_id=parent["id"])
+    await client.post("/api/v1/canvas/save", json={"nodes": [parent, child], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    node_map = {n["id"]: n for n in canvas["nodes"]}
+    assert node_map[child["id"]]["parent_id"] == parent["id"]
+    assert node_map[parent["id"]]["parent_id"] is None
+
+
+async def test_save_canvas_child_removed_with_parent(client: AsyncClient, headers: dict):
+    parent = node_payload(type="proxmox", label="PVE Host")
+    child = node_payload(type="lxc", label="LXC-101", parent_id=parent["id"])
+    await client.post("/api/v1/canvas/save", json={"nodes": [parent, child], "edges": [], "viewport": {}}, headers=headers)
+
+    # Remove both parent and child
+    await client.post("/api/v1/canvas/save", json={"nodes": [], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["nodes"] == []
+
+
+# ── groupRect / group node ────────────────────────────────────────────────────
+
+async def test_save_canvas_persists_group_node(client: AsyncClient, headers: dict):
+    group = node_payload(type="group", label="Network Zone", width=400.0, height=300.0)
+    member = node_payload(type="server", label="Member", parent_id=group["id"])
+    await client.post("/api/v1/canvas/save", json={"nodes": [group, member], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    node_map = {n["id"]: n for n in canvas["nodes"]}
+    assert node_map[group["id"]]["type"] == "group"
+    assert node_map[group["id"]]["width"] == 400.0
+    assert node_map[group["id"]]["height"] == 300.0
+    assert node_map[member["id"]]["parent_id"] == group["id"]
+
+
+# ── viewport ──────────────────────────────────────────────────────────────────
+
+async def test_load_canvas_returns_default_viewport_when_no_state(client: AsyncClient, headers: dict):
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["viewport"] == {"x": 0, "y": 0, "zoom": 1}
+
+
+async def test_save_canvas_updates_existing_canvas_state(client: AsyncClient, headers: dict):
+    """Second save updates the existing CanvasState row (exercises the state.viewport branch)."""
+    await client.post("/api/v1/canvas/save", json={"nodes": [], "edges": [], "viewport": {"x": 1, "y": 2, "zoom": 1}}, headers=headers)
+    await client.post("/api/v1/canvas/save", json={"nodes": [], "edges": [], "viewport": {"x": 99, "y": 88, "zoom": 0.75}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["viewport"] == {"x": 99, "y": 88, "zoom": 0.75}
+
+
+# ── edge types ────────────────────────────────────────────────────────────────
+
+async def test_save_canvas_persists_edge_type_vlan(client: AsyncClient, headers: dict):
+    n1 = node_payload()
+    n2 = node_payload()
+    e1 = edge_payload(n1["id"], n2["id"], type="vlan", vlan_id=10, label="VLAN 10")
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    edge = canvas["edges"][0]
+    assert edge["type"] == "vlan"
+    assert edge["vlan_id"] == 10
+    assert edge["label"] == "VLAN 10"
+
+
+async def test_save_canvas_edge_update_existing(client: AsyncClient, headers: dict):
+    """Second save updates an existing edge (exercises the db_edge branch)."""
+    n1 = node_payload()
+    n2 = node_payload()
+    e1 = edge_payload(n1["id"], n2["id"], label="original")
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    e1_updated = {**e1, "label": "updated", "custom_color": "#ff0000"}
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1_updated], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    edge = canvas["edges"][0]
+    assert edge["label"] == "updated"
+    assert edge["custom_color"] == "#ff0000"

@@ -29,6 +29,7 @@ class NodeSave(BaseModel):
     ram_gb: float | None = None
     disk_gb: float | None = None
     show_hardware: bool = False
+    properties: list[Any] = []
     width: float | None = None
     height: float | None = None
     bottom_handles: int = 1
@@ -49,6 +50,7 @@ class EdgeSave(BaseModel):
     animated: str = 'none'
     source_handle: str | None = None
     target_handle: str | None = None
+    waypoints: list[dict[str, float]] | None = None
 
     @field_validator('animated', mode='before')
     @classmethod

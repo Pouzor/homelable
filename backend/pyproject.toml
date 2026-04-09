@@ -25,6 +25,8 @@ addopts = "--tb=short -q"
 [tool.coverage.run]
 source = ["app"]
 omit = ["*/migrations/*", "*/tests/*"]
+concurrency = ["thread"]
+core = "sysmon"
 
 [tool.coverage.report]
 skip_empty = true
