@@ -63,6 +63,31 @@ async def init_db() -> None:
             await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN discovery_source TEXT")
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE edges ADD COLUMN waypoints JSON")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN properties JSON")
+        # Migrate hardware columns → properties JSON (idempotent: only runs on nodes where properties IS NULL)
+        with suppress(OperationalError):
+            rows = await conn.exec_driver_sql(
+                "SELECT id, cpu_model, cpu_count, ram_gb, disk_gb, show_hardware "
+                "FROM nodes WHERE properties IS NULL"
+            )
+            for row in rows.fetchall():
+                node_id, cpu_model, cpu_count, ram_gb, disk_gb, show_hardware = row
+                props = []
+                visible = bool(show_hardware)
+                if cpu_model:
+                    props.append({"key": "CPU Model", "value": str(cpu_model), "icon": "Cpu", "visible": visible})
+                if cpu_count is not None:
+                    props.append({"key": "CPU Cores", "value": str(cpu_count), "icon": "Cpu", "visible": visible})
+                if ram_gb is not None:
+                    props.append({"key": "RAM", "value": f"{ram_gb} GB", "icon": "MemoryStick", "visible": visible})
+                if disk_gb is not None:
+                    props.append({"key": "Disk", "value": f"{disk_gb} GB", "icon": "HardDrive", "visible": visible})
+                import json as _json
+                await conn.exec_driver_sql(
+                    "UPDATE nodes SET properties = ? WHERE id = ?",
+                    (_json.dumps(props), node_id),
+                )
         # Migrate animated column from boolean (0/1) to string ('none'/'snake')
         with suppress(OperationalError):
             await conn.exec_driver_sql("UPDATE edges SET animated = 'snake' WHERE animated = '1' OR animated = 1")

@@ -27,6 +27,7 @@ class NodeBase(BaseModel):
     ram_gb: float | None = None
     disk_gb: float | None = None
     show_hardware: bool = False
+    properties: list[dict[str, Any]] = []
     width: float | None = None
     height: float | None = None
     bottom_handles: int = 1
@@ -59,6 +60,7 @@ class NodeUpdate(BaseModel):
     ram_gb: float | None = None
     disk_gb: float | None = None
     show_hardware: bool | None = None
+    properties: list[dict[str, Any]] | None = None
     width: float | None = None
     height: float | None = None
     bottom_handles: int | None = None

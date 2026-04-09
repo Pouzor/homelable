@@ -49,8 +49,6 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
   const [iconSearch, setIconSearch] = useState('')
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [labelError, setLabelError] = useState(false)
-  const hasHardwareData = !!(initial?.cpu_count || initial?.cpu_model || initial?.ram_gb || initial?.disk_gb)
-  const [hardwareOpen, setHardwareOpen] = useState(hasHardwareData)
 
   const set = (key: keyof NodeData, value: unknown) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -333,88 +331,6 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 <p className="text-[10px] text-muted-foreground/50">Using default colors for {NODE_TYPE_LABELS[form.type ?? 'generic']}. Click a swatch to customize.</p>
               )}
             </div>
-
-            {/* Hardware specs (hidden for groupRect) */}
-            {form.type !== 'groupRect' && (
-              <div className="flex flex-col gap-2 col-span-2">
-                <div className="flex items-center justify-between w-full">
-                  <button
-                    type="button"
-                    onClick={() => setHardwareOpen((o) => !o)}
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <span className="font-medium">Hardware</span>
-                    <ChevronDown size={12} style={{ transform: hardwareOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }} />
-                  </button>
-                  {hardwareOpen && (
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-muted-foreground/60">Show on node</span>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={!!form.show_hardware}
-                        onClick={() => set('show_hardware', !form.show_hardware)}
-                        className="relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none"
-                        style={{ background: form.show_hardware ? '#00d4ff' : '#30363d' }}
-                      >
-                        <span
-                          className="pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow-sm transition-transform"
-                          style={{ transform: form.show_hardware ? 'translateX(12px)' : 'translateX(0)' }}
-                        />
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {hardwareOpen && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="flex flex-col gap-1.5 col-span-2">
-                      <Label className="text-xs text-muted-foreground">CPU Model</Label>
-                      <Input
-                        value={form.cpu_model ?? ''}
-                        onChange={(e) => set('cpu_model', e.target.value || undefined)}
-                        placeholder="e.g. Intel Xeon E5-2680"
-                        className="bg-[#21262d] border-[#30363d] text-sm h-8"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Label className="text-xs text-muted-foreground">CPU Cores</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={form.cpu_count ?? ''}
-                        onChange={(e) => set('cpu_count', e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                        placeholder="e.g. 8"
-                        className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <Label className="text-xs text-muted-foreground">RAM (GB)</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        step={0.5}
-                        value={form.ram_gb ?? ''}
-                        onChange={(e) => set('ram_gb', e.target.value ? parseFloat(e.target.value) : undefined)}
-                        placeholder="e.g. 32"
-                        className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5 col-span-2">
-                      <Label className="text-xs text-muted-foreground">Disk (GB)</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={form.disk_gb ?? ''}
-                        onChange={(e) => set('disk_gb', e.target.value ? parseFloat(e.target.value) : undefined)}
-                        placeholder="e.g. 500"
-                        className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Bottom connection points (not for group containers) */}
             {form.type !== 'groupRect' && form.type !== 'group' && (

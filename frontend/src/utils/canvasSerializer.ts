@@ -28,6 +28,7 @@ export interface ApiNode extends Record<string, unknown> {
   ram_gb?: number | null
   disk_gb?: number | null
   show_hardware?: boolean
+  properties?: unknown[] | null
   width?: number | null
   height?: number | null
   bottom_handles?: number
@@ -100,6 +101,7 @@ export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
     ram_gb: n.data.ram_gb ?? null,
     disk_gb: n.data.disk_gb ?? null,
     show_hardware: n.data.show_hardware ?? false,
+    properties: n.data.properties ?? [],
     width: n.width ?? null,
     height: n.height ?? null,
     bottom_handles: n.data.bottom_handles ?? 1,

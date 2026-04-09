@@ -42,6 +42,7 @@ class Node(Base):
     ram_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
     disk_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
     show_hardware: Mapped[bool] = mapped_column(Boolean, default=False)
+    properties: Mapped[list[Any]] = mapped_column(JSON, default=list)
     width: Mapped[float | None] = mapped_column(Float, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)
     bottom_handles: Mapped[int] = mapped_column(Integer, default=1)
@@ -49,7 +50,6 @@ class Node(Base):
     response_time_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
-
     children: Mapped[list["Node"]] = relationship("Node", back_populates="parent")
     parent: Mapped["Node | None"] = relationship("Node", back_populates="children", remote_side=[id])
 

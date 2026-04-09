@@ -43,6 +43,13 @@ export interface ServiceInfo {
   category?: string
 }
 
+export interface NodeProperty {
+  key: string
+  value: string
+  icon: string | null
+  visible: boolean
+}
+
 export interface NodeData extends Record<string, unknown> {
   label: string
   type: NodeType
@@ -62,6 +69,7 @@ export interface NodeData extends Record<string, unknown> {
   ram_gb?: number
   disk_gb?: number
   show_hardware?: boolean
+  properties?: NodeProperty[]
   parent_id?: string
   container_mode?: boolean
   custom_colors?: {
