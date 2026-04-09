@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.database import AsyncSessionLocal
-from app.db.models import Node
+from app.db.models import Node, NodeStatusLog
 from app.services.status_checker import check_node
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,12 @@ async def _check_single_node(
                 n.response_time_ms = check_result["response_time_ms"]
                 if check_result["status"] == "online":
                     n.last_seen = now
+                db.add(NodeStatusLog(
+                    node_id=node_id,
+                    status=check_result["status"],
+                    response_time_ms=check_result["response_time_ms"],
+                    checked_at=now,
+                ))
                 await db.commit()
         await broadcast_status(
             node_id=node_id,

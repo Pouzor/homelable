@@ -1,4 +1,5 @@
 """Tests for status_checker service: each check method."""
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -218,3 +219,39 @@ async def test_tcp_connect_os_error():
     with patch("asyncio.open_connection", new_callable=AsyncMock, side_effect=OSError("refused")):
         result = await _tcp_connect("192.168.1.1", 9999)
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_ping_uses_windows_flags():
+    proc = MagicMock()
+    proc.wait = AsyncMock()
+    proc.returncode = 0
+    with (
+        patch("app.services.status_checker.platform.system", return_value="Windows"),
+        patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=proc) as mock_exec,
+    ):
+        result = await _ping("192.168.1.1")
+    assert result is True
+    mock_exec.assert_awaited_once_with(
+        "ping", "-n", "1", "-w", "1000", "192.168.1.1",
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+
+
+@pytest.mark.asyncio
+async def test_ping_uses_unix_flags():
+    proc = MagicMock()
+    proc.wait = AsyncMock()
+    proc.returncode = 0
+    with (
+        patch("app.services.status_checker.platform.system", return_value="Linux"),
+        patch("asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=proc) as mock_exec,
+    ):
+        result = await _ping("192.168.1.1")
+    assert result is True
+    mock_exec.assert_awaited_once_with(
+        "ping", "-c", "1", "-W", "1", "192.168.1.1",
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
