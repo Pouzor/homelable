@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # Run IDs that have been requested to cancel (thread-safe via lock)
 _cancelled_runs: set[str] = set()
 _cancelled_lock = threading.Lock()
+_active_runs: set[str] = set()
 
 # Port list for service detection (Phase 2)
 _EXTRA_PORTS = (
@@ -68,6 +69,18 @@ def request_cancel(run_id: str) -> None:
 def _is_cancelled(run_id: str) -> bool:
     with _cancelled_lock:
         return run_id in _cancelled_runs
+
+
+def mark_run_active(run_id: str) -> None:
+    _active_runs.add(run_id)
+
+
+def mark_run_inactive(run_id: str) -> None:
+    _active_runs.discard(run_id)
+
+
+def is_run_active(run_id: str) -> bool:
+    return run_id in _active_runs
 
 
 def _resolve_hostname(ip: str) -> str | None:
@@ -381,6 +394,7 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
 
     devices_found = 0
     mdns_task: asyncio.Task[list[dict[str, Any]]] | None = None
+    mark_run_active(run_id)
     try:
         # Validate all ranges are valid CIDRs before passing anything to nmap
         for r in ranges:
@@ -510,3 +524,4 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
     finally:
         with _cancelled_lock:
             _cancelled_runs.discard(run_id)
+        mark_run_inactive(run_id)
