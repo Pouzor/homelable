@@ -102,7 +102,7 @@ export default function App() {
         const { nodes: apiNodes, edges: apiEdges } = res.data
         if (apiNodes.length > 0) {
           // Build a map of container-capable node IDs → container_mode
-          const CONTAINER_TYPES = new Set(['proxmox', 'lxc', 'docker', 'nas', 'server', 'group'])
+          const CONTAINER_TYPES = new Set(['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server', 'group'])
           const proxmoxContainerMap = new Map<string, boolean>(
             (apiNodes as ApiNode[])
               .filter((n) => CONTAINER_TYPES.has(n.type))
@@ -153,7 +153,7 @@ export default function App() {
   const handleAddNode = useCallback((data: Partial<NodeData>) => {
     snapshotHistory()
     const id = generateUUID()
-    const isContainerHost = ['proxmox', 'lxc', 'docker', 'nas', 'server'].includes(data.type ?? '')
+    const isContainerHost = ['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server'].includes(data.type ?? '')
     const parentNode = data.parent_id ? nodes.find((n) => n.id === data.parent_id) : null
     // Children position is relative to parent; place near top-left with padding
     const position = parentNode
@@ -254,7 +254,7 @@ export default function App() {
     // Sync React Flow zIndex when z_order changes
       setNodeZIndex(editNodeId, data.custom_colors?.z_order ?? 5)
     // If a container-capable host's container_mode changed, apply structural changes
-    const CONTAINER_HOST_TYPES = ['proxmox', 'lxc', 'docker', 'nas', 'server']
+    const CONTAINER_HOST_TYPES = ['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server']
     if (CONTAINER_HOST_TYPES.includes(data.type ?? '') && typeof data.container_mode === 'boolean') {
       setProxmoxContainerMode(editNodeId, data.container_mode)
     }
@@ -369,7 +369,7 @@ export default function App() {
     if (edgeData.type === 'virtual') {
       const src = nodes.find((n) => n.id === pendingConnection.source)
       const tgt = nodes.find((n) => n.id === pendingConnection.target)
-      const CONTAINER_HOSTS = new Set(['proxmox', 'lxc', 'docker', 'nas', 'server', 'group'])
+      const CONTAINER_HOSTS = new Set(['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server', 'group'])
       const srcIsContainer = CONTAINER_HOSTS.has(src?.data.type ?? '')
       const tgtIsContainer = CONTAINER_HOSTS.has(tgt?.data.type ?? '')
       if (!srcIsContainer && tgtIsContainer) {
@@ -465,7 +465,7 @@ export default function App() {
           onSubmit={handleAddNode}
           title="Add Node"
           containerNodes={nodes
-            .filter((n) => ['proxmox', 'lxc', 'docker', 'nas', 'server', 'group'].includes(n.type ?? ''))
+            .filter((n) => ['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server', 'group'].includes(n.type ?? ''))
             .map((n) => ({ id: n.id, label: n.data.label }))}
         />
 
@@ -478,7 +478,7 @@ export default function App() {
           initial={editNode?.data}
           title="Edit Node"
           containerNodes={nodes
-            .filter((n) => ['proxmox', 'lxc', 'docker', 'nas', 'server', 'group'].includes(n.type ?? '') && n.id !== editNodeId)
+            .filter((n) => ['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server', 'group'].includes(n.type ?? '') && n.id !== editNodeId)
             .map((n) => ({ id: n.id, label: n.data.label }))}
         />
 
@@ -559,7 +559,7 @@ export default function App() {
           onSubmit={handleUpdateGroupNode}
           onDelete={handleDeleteGroupNode}
           containerNodes={nodes
-            .filter((n) => ['proxmox', 'lxc', 'docker', 'nas', 'server', 'group'].includes(n.type ?? '') && n.id !== editGroupNodeId)
+            .filter((n) => ['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server', 'group'].includes(n.type ?? '') && n.id !== editGroupNodeId)
             .map((n) => ({ id: n.id, label: n.data.label }))}
           initial={(() => {
             const n = editGroupNodeId ? nodes.find((nd) => nd.id === editGroupNodeId) : null

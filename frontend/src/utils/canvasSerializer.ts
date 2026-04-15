@@ -159,11 +159,11 @@ export function deserializeApiNode(
     data: n as unknown as NodeData,
     zIndex: (n.custom_colors?.z_order as number | undefined) ?? 5,
     ...(n.parent_id && parentIsContainer ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
-    ...(['proxmox', 'lxc', 'docker', 'nas', 'server'].includes(n.type) && n.container_mode !== false
+    ...(['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server'].includes(n.type) && n.container_mode !== false
       ? { width: n.width ?? 300, height: n.height ?? 200 }
       : {}),
-    ...(n.width && !(['proxmox', 'lxc', 'docker', 'nas', 'server'].includes(n.type) && n.container_mode !== false) ? { width: n.width } : {}),
-    ...(n.height && !(['proxmox', 'lxc', 'docker', 'nas', 'server'].includes(n.type) && n.container_mode !== false) ? { height: n.height } : {}),
+    ...(n.width && !(['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server'].includes(n.type) && n.container_mode !== false) ? { width: n.width } : {}),
+    ...(n.height && !(['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server'].includes(n.type) && n.container_mode !== false) ? { height: n.height } : {}),
   }
 }
 

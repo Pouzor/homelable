@@ -11,7 +11,7 @@ import { ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS } from '@/utils
 
 const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
   { label: 'Hardware',       types: ['isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer'] },
-  { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker'] },
+  { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker', 'dockerContainer'] },
   { label: 'IoT',            types: ['iot', 'camera', 'cpl'] },
   { label: 'Generic',        types: ['computer', 'generic', 'groupRect'] },
 ]
@@ -52,7 +52,7 @@ interface NodeModalProps {
   containerNodes?: { id: string; label: string }[]
 }
 
-const CONTAINER_HOST_TYPES: NodeType[] = ['proxmox', 'lxc', 'docker', 'nas', 'server']
+const CONTAINER_HOST_TYPES: NodeType[] = ['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server']
 
 // NodeModal is always mounted with a key that changes on open/edit, so useState
 // initial value is enough — no need for a reset effect.

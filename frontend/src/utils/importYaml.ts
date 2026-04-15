@@ -144,7 +144,7 @@ export function parseYamlToCanvas(
           containerHostIds.has(parentId) ||
           (parentExistingNode?.data.container_mode ?? false)
 
-        if (!parentIsContainer && (['proxmox', 'lxc', 'docker', 'nas', 'server'].includes(parentType ?? ''))) {
+        if (!parentIsContainer && (['proxmox', 'vm', 'lxc', 'docker', 'nas', 'server'].includes(parentType ?? ''))) {
           parentIsContainer = true
           if (parentNewNode) {
             parentNewNode.data = { ...parentNewNode.data, container_mode: true }

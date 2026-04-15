@@ -133,6 +133,7 @@ export const NODE_TYPE_DEFAULT_ICONS: Record<NodeType, LucideIcon> = {
   computer: Monitor,
   cpl:      PlugZap,
   docker:   Anchor,
+  dockerContainer: Container,
   generic:  Circle,
   group:    Circle,
   groupRect: Circle,
