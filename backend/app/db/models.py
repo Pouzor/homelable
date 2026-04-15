@@ -42,6 +42,7 @@ class Node(Base):
     ram_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
     disk_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
     show_hardware: Mapped[bool] = mapped_column(Boolean, default=False)
+    show_services: Mapped[bool] = mapped_column(Boolean, default=False)
     properties: Mapped[list[Any]] = mapped_column(JSON, default=list)
     width: Mapped[float | None] = mapped_column(Float, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -54,6 +54,8 @@ async def init_db() -> None:
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN show_hardware BOOLEAN NOT NULL DEFAULT 0")
         with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN show_services BOOLEAN NOT NULL DEFAULT 0")
+        with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN width REAL")
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN height REAL")

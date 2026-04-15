@@ -129,7 +129,7 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   computer: 'Computer',
   cpl: 'CPL / Powerline',
   docker: 'Docker Host',
-  dockerContainer: 'Docker',
+  dockerContainer: 'Docker Container',
   generic: 'Generic Device',
   groupRect: 'Group Rectangle',
   group: 'Node Group',
