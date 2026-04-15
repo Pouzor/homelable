@@ -18,6 +18,14 @@ const EMPTY_FORM: SvcForm = { port: '', protocol: 'tcp', service_name: '' }
 type PropForm = { key: string; value: string; icon: string | null; visible: boolean }
 const EMPTY_PROP: PropForm = { key: '', value: '', icon: null, visible: true }
 
+function formatTimestamp(value: string | null | undefined) {
+  if (!value) return 'Unknown'
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+  const withZone = /(?:Z|[+-]\d\d:\d\d)$/.test(normalized) ? normalized : `${normalized}Z`
+  const parsed = new Date(withZone)
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
+}
+
 export function DetailPanel({ onEdit }: DetailPanelProps) {
   const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup } = useCanvasStore()
 
@@ -202,11 +210,18 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
             </a>
           </div>
         )}
-        {data.ip && <DetailRow label="IP Address" value={data.ip} mono />}
+        {data.ip && (
+          <div className="flex justify-between gap-2 items-baseline">
+            <span className="text-muted-foreground text-xs shrink-0">IP Address</span>
+            <a href={`http://${data.ip}`} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[#00d4ff] hover:underline truncate flex items-center gap-1" title={data.ip}>
+              {data.ip}<ExternalLink size={10} className="shrink-0" />
+            </a>
+          </div>
+        )}
         {data.mac && <DetailRow label="MAC" value={data.mac} mono />}
         {data.os && <DetailRow label="OS" value={data.os} />}
         {data.check_method && <DetailRow label="Check" value={data.check_method} mono />}
-        {data.last_seen && <DetailRow label="Last Seen" value={new Date(data.last_seen.endsWith('Z') ? data.last_seen : data.last_seen + 'Z').toLocaleString()} />}
+        {data.last_seen && <DetailRow label="Last Seen" value={formatTimestamp(data.last_seen)} />}
       </div>
 
       {/* Properties section */}
@@ -291,7 +306,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         <Button size="sm" variant="secondary" className="flex-1 gap-1.5" onClick={() => onEdit(node.id)}>
           <Edit size={14} /> Edit
         </Button>
-        <Button size="sm" variant="destructive" className="gap-1.5" aria-label="Delete node" onClick={handleDelete}>
+        <Button size="sm" variant="ghost" className="gap-1.5 bg-[#f85149]/10 text-[#f85149] hover:bg-[#f85149]/20 hover:text-[#f85149]" aria-label="Delete node" onClick={handleDelete}>
           <Trash2 size={14} />
         </Button>
       </div>
@@ -490,8 +505,8 @@ function ServiceForm({ form, onChange, onConfirm, onCancel, confirmLabel, autoFo
         </select>
       </div>
       <div className="flex gap-1.5">
-        <Button size="sm" className="flex-1 h-6 text-[10px] bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90" onClick={onConfirm}>{confirmLabel}</Button>
-        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={onCancel}>Cancel</Button>
+        <Button size="sm" className="flex-1 h-6 text-[10px] bg-[#238636]/20 text-[#3fb950] hover:bg-[#238636]/30" onClick={onConfirm}>{confirmLabel}</Button>
+        <Button size="sm" variant="ghost" className="h-6 text-[10px] bg-[#f85149]/10 text-[#f85149] hover:bg-[#f85149]/20 hover:text-[#f85149]" onClick={onCancel}>Cancel</Button>
       </div>
     </div>
   )
@@ -562,10 +577,10 @@ function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel }: {
         <span className="text-[10px] text-muted-foreground">Show on node</span>
       </label>
       <div className="flex gap-1.5">
-        <Button size="sm" className="flex-1 h-6 text-[10px] bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90" onClick={onConfirm}>
+        <Button size="sm" className="flex-1 h-6 text-[10px] bg-[#238636]/20 text-[#3fb950] hover:bg-[#238636]/30" onClick={onConfirm}>
           {confirmLabel}
         </Button>
-        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={onCancel}>Cancel</Button>
+        <Button size="sm" variant="ghost" className="h-6 text-[10px] bg-[#f85149]/10 text-[#f85149] hover:bg-[#f85149]/20 hover:text-[#f85149]" onClick={onCancel}>Cancel</Button>
       </div>
     </div>
   )

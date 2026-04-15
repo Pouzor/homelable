@@ -25,11 +25,12 @@ import type { NodeData, EdgeData } from '@/types'
 interface CanvasContainerProps {
   onConnect?: (connection: Connection) => void
   onEdgeDoubleClick?: (edge: Edge<EdgeData>) => void
+  onNodeDoubleClick?: (e: React.MouseEvent, node: Node<NodeData>) => void
   onNodeDragStart?: () => void
   onOpenPending?: (deviceId: string) => void
 }
 
-export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDragStart, onOpenPending }: CanvasContainerProps) {
+export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDoubleClick, onNodeDragStart, onOpenPending }: CanvasContainerProps) {
   const [lassoMode, setLassoMode] = useState(true)
   const {
     nodes, edges,
@@ -68,6 +69,10 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     onEdgeDoubleClick?.(edge)
   }, [onEdgeDoubleClick])
 
+  const handleNodeDoubleClick = useCallback((e: React.MouseEvent, node: Node<NodeData>) => {
+    onNodeDoubleClick?.(e, node)
+  }, [onNodeDoubleClick])
+
   return (
     <div className="w-full h-full" style={{ background: theme.colors.canvasBackground }}>
       <ReactFlow
@@ -79,6 +84,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         onEdgeDoubleClick={handleEdgeDoubleClick}
+        onNodeDoubleClick={handleNodeDoubleClick}
         onNodeDragStart={onNodeDragStart}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
@@ -91,6 +97,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         multiSelectionKeyCode={['Meta', 'Control']}
         snapToGrid
         snapGrid={[8, 8]}
+        minZoom={0.05}
         colorMode={theme.colors.reactFlowColorMode}
         elevateNodesOnSelect={false}
         connectionMode={ConnectionMode.Loose}

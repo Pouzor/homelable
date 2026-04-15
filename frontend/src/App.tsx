@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useState } from 'react'
+import { useEffect, useCallback, useRef, useState, type MouseEvent } from 'react'
 import { ReactFlowProvider, type Connection, type Edge } from '@xyflow/react'
 import { type Node } from '@xyflow/react'
 import { applyDagreLayout } from '@/utils/layout'
@@ -20,6 +20,7 @@ import { NodeModal } from '@/components/modals/NodeModal'
 import { EdgeModal } from '@/components/modals/EdgeModal'
 import { ScanConfigModal } from '@/components/modals/ScanConfigModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
+import { GroupNodeModal, type GroupNodeFormData } from '@/components/modals/GroupNodeModal'
 import { ThemeModal } from '@/components/modals/ThemeModal'
 import { SearchModal } from '@/components/modals/SearchModal'
 import { ShortcutsModal } from '@/components/modals/ShortcutsModal'
@@ -50,6 +51,7 @@ export default function App() {
   const [addNodeOpen, setAddNodeOpen] = useState(false)
   const [addGroupRectOpen, setAddGroupRectOpen] = useState(false)
   const [editNodeId, setEditNodeId] = useState<string | null>(null)
+  const [editGroupNodeId, setEditGroupNodeId] = useState<string | null>(null)
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null)
   const [editEdgeId, setEditEdgeId] = useState<string | null>(null)
   const [scanConfigOpen, setScanConfigOpen] = useState(false)
@@ -99,10 +101,11 @@ export default function App() {
       .then((res) => {
         const { nodes: apiNodes, edges: apiEdges } = res.data
         if (apiNodes.length > 0) {
-          // Build a map of proxmox container mode to know if children should be nested
+          // Build a map of container-capable node IDs → container_mode
+          const CONTAINER_TYPES = new Set(['proxmox', 'lxc', 'docker', 'nas', 'server', 'group'])
           const proxmoxContainerMap = new Map<string, boolean>(
             (apiNodes as ApiNode[])
-              .filter((n) => n.type === 'proxmox' || n.type === 'group')
+              .filter((n) => CONTAINER_TYPES.has(n.type))
               .map((n) => [n.id, n.type === 'group' ? true : n.container_mode !== false])
           )
           const rfNodes = (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxContainerMap))
@@ -150,7 +153,7 @@ export default function App() {
   const handleAddNode = useCallback((data: Partial<NodeData>) => {
     snapshotHistory()
     const id = generateUUID()
-    const isProxmox = data.type === 'proxmox'
+    const isContainerHost = ['proxmox', 'lxc', 'docker', 'nas', 'server'].includes(data.type ?? '')
     const parentNode = data.parent_id ? nodes.find((n) => n.id === data.parent_id) : null
     // Children position is relative to parent; place near top-left with padding
     const position = parentNode
@@ -163,7 +166,8 @@ export default function App() {
       position,
       data: { status: 'unknown', services: [], ...data } as NodeData,
       ...(data.parent_id ? { parentId: data.parent_id, extent: 'parent' as const } : {}),
-      ...(isProxmox ? { width: 300, height: 200 } : {}),
+      ...(isContainerHost && data.container_mode ? { width: 300, height: 200 } : {}),
+      zIndex: data.custom_colors?.z_order ?? 5,
     }
     addNode(newNode)
     toast.success(`Added "${data.label}"`)
@@ -236,18 +240,27 @@ export default function App() {
     setEditNodeId(id)
   }, [])
 
+  const handleNodeDoubleClick = useCallback((_e: MouseEvent, node: Node<NodeData>) => {
+    if (node.type === 'groupRect') return // groupRect handles its own double-click
+    if (node.type === 'group') { setEditGroupNodeId(node.id); return }
+    handleEditNode(node.id)
+  }, [handleEditNode])
+
   const handleUpdateNode = useCallback((data: Partial<NodeData>) => {
     if (!editNodeId) return
     snapshotHistory()
     const existingNode = nodes.find((n) => n.id === editNodeId)
     updateNode(editNodeId, data)
-    // If proxmox container_mode changed, apply structural changes (children parentId, node dimensions)
-    if (data.type === 'proxmox' && typeof data.container_mode === 'boolean') {
+    // Sync React Flow zIndex when z_order changes
+      setNodeZIndex(editNodeId, data.custom_colors?.z_order ?? 5)
+    // If a container-capable host's container_mode changed, apply structural changes
+    const CONTAINER_HOST_TYPES = ['proxmox', 'lxc', 'docker', 'nas', 'server']
+    if (CONTAINER_HOST_TYPES.includes(data.type ?? '') && typeof data.container_mode === 'boolean') {
       setProxmoxContainerMode(editNodeId, data.container_mode)
     }
-    // Sync virtual edge when parent_id changes on an LXC/VM node
+    // Sync virtual edge when parent_id changes on any non-container-host node
     const nodeType = data.type ?? existingNode?.data.type
-    if ((nodeType === 'lxc' || nodeType === 'vm') && 'parent_id' in data) {
+    if (nodeType !== 'groupRect' && 'parent_id' in data) {
       const oldParentId = existingNode?.data.parent_id ?? null
       const newParentId = data.parent_id ?? null
       if (oldParentId !== newParentId) {
@@ -320,19 +333,48 @@ export default function App() {
     setPendingConnection(connection)
   }, [])
 
+  const handleUpdateGroupNode = useCallback((data: GroupNodeFormData) => {
+    if (!editGroupNodeId) return
+    snapshotHistory()
+    const existing = nodes.find((n) => n.id === editGroupNodeId)
+    updateNode(editGroupNodeId, {
+      label: data.label,
+      parent_id: data.parent_id,
+      custom_colors: {
+        ...existing?.data.custom_colors,
+        border: data.border_color,
+        border_style: data.border_style,
+        border_width: data.border_width,
+        background: data.background_color,
+        z_order: data.z_order,
+        show_border: data.show_border,
+      },
+    })
+    setNodeZIndex(editGroupNodeId, data.z_order)
+    setEditGroupNodeId(null)
+  }, [editGroupNodeId, nodes, updateNode, setNodeZIndex, snapshotHistory])
+
+  const handleDeleteGroupNode = useCallback(() => {
+    if (!editGroupNodeId) return
+    snapshotHistory()
+    deleteNode(editGroupNodeId)
+    setEditGroupNodeId(null)
+  }, [editGroupNodeId, deleteNode, snapshotHistory])
+
   const handleEdgeConfirm = useCallback((edgeData: EdgeData) => {
     if (!pendingConnection) return
     snapshotHistory()
     onConnect({ ...pendingConnection, ...edgeData } as unknown as Connection)
-    // When a virtual edge is drawn between LXC/VM (top) and Proxmox (bottom), sync parent_id
+    // When a virtual edge is drawn to/from a container host, sync parent_id
     if (edgeData.type === 'virtual') {
       const src = nodes.find((n) => n.id === pendingConnection.source)
       const tgt = nodes.find((n) => n.id === pendingConnection.target)
-      const srcType = src?.data.type
-      const tgtType = tgt?.data.type
-      if ((srcType === 'lxc' || srcType === 'vm') && tgtType === 'proxmox') {
+      const CONTAINER_HOSTS = new Set(['proxmox', 'lxc', 'docker', 'nas', 'server', 'group'])
+      const srcIsContainer = CONTAINER_HOSTS.has(src?.data.type ?? '')
+      const tgtIsContainer = CONTAINER_HOSTS.has(tgt?.data.type ?? '')
+      if (!srcIsContainer && tgtIsContainer) {
         updateNode(pendingConnection.source, { parent_id: pendingConnection.target })
-      } else if (srcType === 'proxmox' && (tgtType === 'lxc' || tgtType === 'vm')) {
+      } else if (srcIsContainer && !tgtIsContainer) {
         updateNode(pendingConnection.target, { parent_id: pendingConnection.source })
       }
     }
@@ -400,6 +442,7 @@ export default function App() {
                 <CanvasContainer
                   onConnect={handleEdgeConnect}
                   onEdgeDoubleClick={handleEdgeDoubleClick}
+                  onNodeDoubleClick={handleNodeDoubleClick}
                   onNodeDragStart={snapshotHistory}
                   onOpenPending={(deviceId) => {
                     setHighlightPendingId(undefined)
@@ -421,7 +464,9 @@ export default function App() {
           onClose={() => setAddNodeOpen(false)}
           onSubmit={handleAddNode}
           title="Add Node"
-          proxmoxNodes={nodes.filter((n) => n.type === 'proxmox').map((n) => ({ id: n.id, label: n.data.label }))}
+          containerNodes={nodes
+            .filter((n) => ['proxmox', 'lxc', 'docker', 'nas', 'server', 'group'].includes(n.type ?? ''))
+            .map((n) => ({ id: n.id, label: n.data.label }))}
         />
 
         {/* key forces re-mount when editing a different node, resetting form state */}
@@ -432,7 +477,9 @@ export default function App() {
           onSubmit={handleUpdateNode}
           initial={editNode?.data}
           title="Edit Node"
-          proxmoxNodes={nodes.filter((n) => n.type === 'proxmox').map((n) => ({ id: n.id, label: n.data.label }))}
+          containerNodes={nodes
+            .filter((n) => ['proxmox', 'lxc', 'docker', 'nas', 'server', 'group'].includes(n.type ?? '') && n.id !== editNodeId)
+            .map((n) => ({ id: n.id, label: n.data.label }))}
         />
 
         <EdgeModal
@@ -503,6 +550,33 @@ export default function App() {
             }
           })()}
           title="Edit Zone"
+        />
+
+        <GroupNodeModal
+          key={editGroupNodeId ?? 'grp-edit'}
+          open={!!editGroupNodeId}
+          onClose={() => setEditGroupNodeId(null)}
+          onSubmit={handleUpdateGroupNode}
+          onDelete={handleDeleteGroupNode}
+          containerNodes={nodes
+            .filter((n) => ['proxmox', 'lxc', 'docker', 'nas', 'server', 'group'].includes(n.type ?? '') && n.id !== editGroupNodeId)
+            .map((n) => ({ id: n.id, label: n.data.label }))}
+          initial={(() => {
+            const n = editGroupNodeId ? nodes.find((nd) => nd.id === editGroupNodeId) : null
+            if (!n) return undefined
+            const rc = n.data.custom_colors ?? {}
+            return {
+              label: n.data.label,
+              border_color: rc.border ?? '#00d4ff',
+              border_style: rc.border_style ?? 'dashed',
+              border_width: rc.border_width ?? 2,
+              background_color: rc.background ?? '#21262d',
+              z_order: rc.z_order ?? 5,
+              show_border: rc.show_border !== false,
+              parent_id: n.data.parent_id,
+            }
+          })()}
+          title="Edit Group"
         />
 
         {/* key forces re-mount on open so useState captures current theme as original */}

@@ -63,4 +63,13 @@ describe('getServiceUrl', () => {
   it('uses host string directly (works with both IP and hostname)', () => {
     expect(getServiceUrl(svc(80), 'myserver.lan')).toBe('http://myserver.lan:80')
   })
+
+  it('strips an existing port from the host before using the service port', () => {
+    expect(getServiceUrl(svc(8123, 'tcp', 'Home Assistant'), '192.168.1.10:8006')).toBe('http://192.168.1.10:8123')
+    expect(getServiceUrl(svc(9443, 'tcp', 'Portainer'), 'portainer.lan:9000')).toBe('https://portainer.lan:9443')
+  })
+
+  it('extracts the hostname when given a full URL-like host string', () => {
+    expect(getServiceUrl(svc(8006, 'tcp', 'Proxmox'), 'https://192.168.1.10:8443')).toBe('http://192.168.1.10:8006')
+  })
 })

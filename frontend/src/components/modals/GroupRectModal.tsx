@@ -97,6 +97,7 @@ interface GroupRectModalProps {
 
 export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, title = 'Add Zone' }: GroupRectModalProps) {
   const [form, setForm] = useState<GroupRectFormData>({ ...DEFAULT_FORM, ...initial })
+  const selectedFontLabel = FONTS.find((f) => f.value === form.font)?.label ?? FONTS[0].label
 
   const set = <K extends keyof GroupRectFormData>(key: K, value: GroupRectFormData[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -137,7 +138,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
             <Label className="text-xs text-muted-foreground">Font</Label>
             <Select value={form.font} onValueChange={(v: string | null) => set('font', v ?? 'inter')}>
               <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
-                <SelectValue />
+                <SelectValue>{selectedFontLabel}</SelectValue>
               </SelectTrigger>
               <SelectContent className="bg-[#21262d] border-[#30363d]">
                 {FONTS.map((f) => (
@@ -325,17 +326,17 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10"
+                className="bg-[#f85149]/10 text-[#f85149] hover:bg-[#f85149]/20 hover:text-[#f85149]"
                 onClick={() => { onDelete(); onClose() }}
               >
                 Delete
               </Button>
             )}
             <div className="flex gap-2 ml-auto">
-              <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+              <Button type="button" variant="ghost" size="sm" className="bg-[#f85149]/10 text-[#f85149] hover:bg-[#f85149]/20 hover:text-[#f85149]" onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90">
+              <Button type="submit" size="sm" className="bg-[#238636]/20 text-[#3fb950] hover:bg-[#238636]/30">
                 {title === 'Add Zone' ? 'Add' : 'Save'}
               </Button>
             </div>

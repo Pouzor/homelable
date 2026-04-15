@@ -1,5 +1,5 @@
-import { createElement, useState } from 'react'
-import { RotateCcw, ChevronDown } from 'lucide-react'
+import { createElement, useMemo, useState } from 'react'
+import { RotateCcw, ChevronDown, ChevronUp } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,6 +18,17 @@ const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
 
 const CHECK_METHODS: CheckMethod[] = ['none', 'ping', 'http', 'https', 'tcp', 'ssh', 'prometheus', 'health']
 
+const CHECK_METHOD_LABELS: Record<CheckMethod, string> = {
+  none: 'None',
+  ping: 'Ping',
+  http: 'HTTP',
+  https: 'HTTPS',
+  tcp: 'TCP',
+  ssh: 'SSH',
+  prometheus: 'Prometheus',
+  health: 'Health',
+}
+
 const DEFAULT_DATA: Partial<NodeData> = {
   type: 'server',
   label: '',
@@ -27,6 +38,7 @@ const DEFAULT_DATA: Partial<NodeData> = {
   check_method: 'ping',
   services: [],
   container_mode: true,
+  show_services: false,
   custom_colors: undefined,
   custom_icon: undefined,
 }
@@ -37,18 +49,24 @@ interface NodeModalProps {
   onSubmit: (data: Partial<NodeData>) => void
   initial?: Partial<NodeData>
   title?: string
-  proxmoxNodes?: { id: string; label: string }[]
+  containerNodes?: { id: string; label: string }[]
 }
 
-const CHILD_TYPES: NodeType[] = ['vm', 'lxc']
+const CONTAINER_HOST_TYPES: NodeType[] = ['proxmox', 'lxc', 'docker', 'nas', 'server']
 
 // NodeModal is always mounted with a key that changes on open/edit, so useState
 // initial value is enough — no need for a reset effect.
-export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node', proxmoxNodes = [] }: NodeModalProps) {
+export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node', containerNodes = [] }: NodeModalProps) {
   const [form, setForm] = useState<Partial<NodeData>>({ ...DEFAULT_DATA, ...initial })
   const [iconSearch, setIconSearch] = useState('')
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [labelError, setLabelError] = useState(false)
+
+  const selectedParentLabel = useMemo(() => {
+    if (!form.parent_id) return 'None (Standalone)'
+    return containerNodes.find((n) => n.id === form.parent_id)?.label ?? 'None (Standalone)'
+  }, [form.parent_id, containerNodes])
+  const bottomHandleCount = Math.max(1, form.bottom_handles ?? 1)
 
   const set = (key: keyof NodeData, value: unknown) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -78,7 +96,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               <Label className="text-xs text-muted-foreground">Type</Label>
               <Select value={form.type} onValueChange={(v) => set('type', v as NodeType)}>
                 <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8 w-full">
-                  <SelectValue />
+                  <SelectValue>{NODE_TYPE_LABELS[form.type ?? 'generic']}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
                   {NODE_TYPE_GROUPS.map((group, i) => (
@@ -223,11 +241,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               <Label className="text-xs text-muted-foreground">Check Method</Label>
               <Select value={form.check_method ?? 'ping'} onValueChange={(v) => set('check_method', v as CheckMethod)}>
                 <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
-                  <SelectValue />
+                  <SelectValue>{CHECK_METHOD_LABELS[form.check_method ?? 'ping']}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
                   {CHECK_METHODS.map((m) => (
-                    <SelectItem key={m} value={m} className="text-sm font-mono">{m}</SelectItem>
+                    <SelectItem key={m} value={m} className="text-sm">{CHECK_METHOD_LABELS[m]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -244,20 +262,20 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               />
             </div>
 
-            {/* Parent Proxmox (VM / LXC only) */}
-            {CHILD_TYPES.includes(form.type as NodeType) && proxmoxNodes.length > 0 && (
+            {/* Parent container (any nestable type) */}
+            {form.type !== 'groupRect' && containerNodes.length > 0 && (
               <div className="flex flex-col gap-1.5 col-span-2">
-                <Label className="text-xs text-muted-foreground">Parent Proxmox</Label>
+                <Label className="text-xs text-muted-foreground">Parent Container</Label>
                 <Select
                   value={form.parent_id ?? 'none'}
                   onValueChange={(v) => set('parent_id', v === 'none' ? undefined : v)}
                 >
                   <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
-                    <SelectValue placeholder="None (standalone)" />
+                    <SelectValue placeholder="None (Standalone)">{selectedParentLabel}</SelectValue>
                   </SelectTrigger>
                   <SelectContent className="bg-[#21262d] border-[#30363d]">
-                    <SelectItem value="none" className="text-sm">None (standalone)</SelectItem>
-                    {proxmoxNodes.map((n) => (
+                    <SelectItem value="none" className="text-sm">None (Standalone)</SelectItem>
+                    {containerNodes.map((n) => (
                       <SelectItem key={n.id} value={n.id} className="text-sm">{n.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -265,12 +283,12 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               </div>
             )}
 
-            {/* Container mode (proxmox only) */}
-            {form.type === 'proxmox' && (
+            {/* Container mode (proxmox, lxc, docker, nas, server) */}
+            {CONTAINER_HOST_TYPES.includes(form.type as NodeType) && (
               <div className="flex items-center justify-between col-span-2 py-1">
                 <div className="flex flex-col gap-0.5">
                   <Label className="text-xs text-muted-foreground">Container Mode</Label>
-                  <span className="text-[10px] text-muted-foreground/60">Show VM/LXC nodes nested inside</span>
+                  <span className="text-[10px] text-muted-foreground/60">Show nested nodes inside this host</span>
                 </div>
                 <button
                   type="button"
@@ -288,14 +306,41 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               </div>
             )}
 
+            {form.type !== 'groupRect' && form.type !== 'group' && (
+              <div className="flex items-center justify-between col-span-2 py-1">
+                <div className="flex flex-col gap-0.5">
+                  <Label className="text-xs text-muted-foreground">Show Services On Node</Label>
+                  <span className="text-[10px] text-muted-foreground/60">Render saved services directly on the node card</span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={!!form.show_services}
+                  onClick={() => set('show_services', !form.show_services)}
+                  className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none"
+                  style={{ background: form.show_services ? '#238636' : '#30363d' }}
+                >
+                  <span
+                    className="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                    style={{ transform: form.show_services ? 'translateX(16px)' : 'translateX(0)' }}
+                  />
+                </button>
+              </div>
+            )}
+
             {/* Appearance */}
             <div className="flex flex-col gap-2 col-span-2">
               <div className="flex items-center justify-between">
                 <Label className="text-xs text-muted-foreground">Appearance</Label>
-                {form.custom_colors && (
+                {(form.custom_colors?.border || form.custom_colors?.background || form.custom_colors?.icon) && (
                   <button
                     type="button"
-                    onClick={() => set('custom_colors', undefined)}
+                    onClick={() => {
+                      const preserved: NonNullable<NodeData['custom_colors']> = {
+                        ...(form.custom_colors?.z_order !== undefined ? { z_order: form.custom_colors.z_order } : {}),
+                      }
+                      set('custom_colors', Object.keys(preserved).length > 0 ? preserved : undefined)
+                    }}
                     className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                   >
                     <RotateCcw size={10} /> Reset to defaults
@@ -332,24 +377,62 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               )}
             </div>
 
-            {/* Bottom connection points (not for group containers) */}
+            {/* Layer / Z-order (not for group containers) */}
             {form.type !== 'groupRect' && form.type !== 'group' && (
-              <div className="flex flex-col gap-1.5 col-span-2">
-                <Label className="text-xs text-muted-foreground">Bottom Connection Points</Label>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted-foreground">Layer (1 = back, 9 = front)</Label>
                 <Select
-                  value={String(form.bottom_handles ?? 1)}
-                  onValueChange={(v) => set('bottom_handles', parseInt(v ?? '1', 10))}
+                  value={String(form.custom_colors?.z_order ?? 5)}
+                  onValueChange={(v) => set('custom_colors', { ...form.custom_colors, z_order: Number(v) })}
                 >
                   <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[#21262d] border-[#30363d]">
-                    <SelectItem value="1" className="text-sm">1 — center</SelectItem>
-                    <SelectItem value="2" className="text-sm">2 — left / right</SelectItem>
-                    <SelectItem value="3" className="text-sm">3 — left / center / right</SelectItem>
-                    <SelectItem value="4" className="text-sm">4 — evenly spaced</SelectItem>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                      <SelectItem key={n} value={String(n)} className="text-sm">{n}{n === 5 ? ' (default)' : ''}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {/* Bottom connection points (not for group containers) */}
+            {form.type !== 'groupRect' && form.type !== 'group' && (
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted-foreground">Bottom Connection Points</Label>
+                <div className="relative">
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    value={String(bottomHandleCount)}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D+/g, '')
+                      const parsed = Number.parseInt(digits || '1', 10)
+                      set('bottom_handles', Math.max(1, parsed))
+                    }}
+                    className="bg-[#21262d] border-[#30363d] text-sm h-10 pr-10"
+                  />
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 flex flex-col">
+                    <button
+                      type="button"
+                      onClick={() => set('bottom_handles', bottomHandleCount + 1)}
+                      className="h-4 w-6 rounded-sm text-[#8b949e] hover:text-[#00d4ff] hover:bg-[#30363d] transition-colors"
+                      aria-label="Increase bottom connections"
+                    >
+                      <ChevronUp size={14} className="mx-auto" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => set('bottom_handles', Math.max(1, bottomHandleCount - 1))}
+                      className="h-4 w-6 rounded-sm text-[#8b949e] hover:text-[#00d4ff] hover:bg-[#30363d] transition-colors"
+                      aria-label="Decrease bottom connections"
+                    >
+                      <ChevronDown size={14} className="mx-auto" />
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground/60">Use higher counts for port-dense devices like switches and routers.</p>
               </div>
             )}
 
@@ -366,13 +449,13 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
           </div>
 
           <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            <Button type="button" variant="ghost" size="sm" className="bg-[#f85149]/10 text-[#f85149] hover:bg-[#f85149]/20 hover:text-[#f85149]" onClick={onClose}>
               Cancel
             </Button>
             <Button
               type="submit"
               size="sm"
-              className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
+              className="bg-[#238636]/20 text-[#3fb950] hover:bg-[#238636]/30"
             >
               {title === 'Add Node' ? 'Add' : 'Save'}
             </Button>

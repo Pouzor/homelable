@@ -10,11 +10,21 @@ function buildIdToLabel(nodes: Node<NodeData>[]): Map<string, string> {
   return m
 }
 
-function makeConnection(targetLabel: string, edgeType: EdgeType, edgeLabel: string | undefined): YamlNodeConnection {
+function makeConnection(
+  targetLabel: string,
+  edgeType: EdgeType,
+  edgeLabel: string | undefined,
+  customColor?: string | null,
+  sourceHandle?: string | null,
+  targetHandle?: string | null,
+): YamlNodeConnection {
   return {
     label: targetLabel,
     linkType: edgeType,
-    linkLabel: edgeLabel ?? '',
+    ...(edgeLabel ? { linkLabel: edgeLabel } : {}),
+    ...(customColor ? { linkColor: customColor } : {}),
+    ...(sourceHandle ? { linkSourceHandle: sourceHandle } : {}),
+    ...(targetHandle ? { linkTargetHandle: targetHandle } : {}),
   }
 }
 
@@ -67,6 +77,7 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
     if (d.cpu_count && d.cpu_count > 0) entry.cpuCore = d.cpu_count
     if (d.ram_gb && d.ram_gb > 0) entry.ram = d.ram_gb
     if (d.disk_gb && d.disk_gb > 0) entry.disk = d.disk_gb
+    if (d.type === 'proxmox' && d.container_mode) entry.containerMode = true
 
     // Parent relationship: if this node has a parentId in React Flow,
     // encode it as a 'parent' connection using any virtual edge between them.
@@ -79,8 +90,9 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
       ]
       const pEdge = parentEdges[0]
       const linkType: EdgeType = (pEdge?.data?.type as EdgeType) ?? 'virtual'
-      const linkLabel = pEdge?.data?.label ?? ''
-      entry.parent = { label: parentLabel, linkType, linkLabel: linkLabel as string }
+      const linkLabel = (pEdge?.data?.label as string | undefined) ?? ''
+      const linkColor = pEdge?.data?.custom_color as string | undefined
+      entry.parent = makeConnection(parentLabel, linkType, linkLabel || undefined, linkColor, pEdge?.sourceHandle, pEdge?.targetHandle)
       if (pEdge) serializedEdges.add(pEdge.id)
     }
 
@@ -95,7 +107,8 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
       if (!targetLabel) continue
       const edgeType: EdgeType = (e.data?.type as EdgeType) ?? 'ethernet'
       const edgeLabel = e.data?.label as string | undefined
-      const conn = makeConnection(targetLabel, edgeType, edgeLabel)
+      const edgeColor = e.data?.custom_color as string | undefined
+      const conn = makeConnection(targetLabel, edgeType, edgeLabel, edgeColor, e.sourceHandle, e.targetHandle)
       if (edgeType === 'cluster') {
         if (!entry.clusterR) entry.clusterR = conn
       } else {
@@ -112,7 +125,8 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
       const sourceLabel = idToLabel.get(e.source)
       if (!sourceLabel) continue
       const edgeLabel = e.data?.label as string | undefined
-      if (!entry.clusterL) entry.clusterL = makeConnection(sourceLabel, 'cluster', edgeLabel)
+      const edgeColor = e.data?.custom_color as string | undefined
+      if (!entry.clusterL) entry.clusterL = makeConnection(sourceLabel, 'cluster', edgeLabel, edgeColor, e.sourceHandle, e.targetHandle)
       serializedEdges.add(e.id)
     }
 

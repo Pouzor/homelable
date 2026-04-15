@@ -20,8 +20,30 @@ const NON_HTTP_PORTS = new Set([
   27017, 27018,   // MongoDB
 ])
 
+function normalizeServiceHost(host: string): string {
+  const trimmed = host.trim()
+  if (!trimmed) return trimmed
+
+  if (/^[a-z]+:\/\//i.test(trimmed)) {
+    try {
+      return new URL(trimmed).hostname
+    } catch {
+      return trimmed
+    }
+  }
+
+  // Strip a user-supplied port from plain hosts like 192.168.1.10:8006 or nas.lan:5000.
+  if (/^[^/\[\]]+:\d+$/.test(trimmed) && trimmed.indexOf(':') === trimmed.lastIndexOf(':')) {
+    return trimmed.replace(/:\d+$/, '')
+  }
+
+  return trimmed
+}
+
 export function getServiceUrl(svc: ServiceInfo, host?: string): string | null {
   if (!host) return null
+  const normalizedHost = normalizeServiceHost(host)
+  if (!normalizedHost) return null
   if (svc.port === 22) return null        // SSH — no browser
   if (svc.protocol === 'udp') return null // UDP — not HTTP
   if (NON_HTTP_PORTS.has(svc.port)) return null
@@ -30,5 +52,5 @@ export function getServiceUrl(svc: ServiceInfo, host?: string): string | null {
   const isHttps =
     name.includes('https') || name.includes('ssl') || name.includes('tls') ||
     svc.port === 443 || svc.port === 8443
-  return `${isHttps ? 'https' : 'http'}://${host}:${svc.port}`
+  return `${isHttps ? 'https' : 'http'}://${normalizedHost}:${svc.port}`
 }

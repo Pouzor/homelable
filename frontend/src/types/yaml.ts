@@ -4,6 +4,9 @@ export interface YamlNodeConnection {
   label: string
   linkType?: EdgeType
   linkLabel?: string
+  linkColor?: string
+  linkSourceHandle?: string
+  linkTargetHandle?: string
 }
 
 export interface YamlNode {
@@ -15,6 +18,7 @@ export interface YamlNode {
   checkMethod?: CheckMethod
   checkTarget?: string
   notes?: string
+  containerMode?: boolean
   links?: YamlNodeConnection[]
   parent?: YamlNodeConnection
   clusterR?: YamlNodeConnection

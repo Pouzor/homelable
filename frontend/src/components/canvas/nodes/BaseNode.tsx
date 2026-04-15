@@ -1,6 +1,6 @@
 import { createElement, useEffect } from 'react'
 import { Handle, Position, NodeResizer, useUpdateNodeInternals, type NodeProps, type Node } from '@xyflow/react'
-import { Cpu, MemoryStick, HardDrive, type LucideIcon } from 'lucide-react'
+import { Cpu, MemoryStick, HardDrive, ExternalLink, type LucideIcon } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { resolveNodeIcon } from '@/utils/nodeIcons'
@@ -9,7 +9,8 @@ import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { maskIp } from '@/utils/maskIp'
-import { BOTTOM_HANDLE_IDS, BOTTOM_HANDLE_POSITIONS } from '@/utils/handleUtils'
+import { getBottomHandleIds, getBottomHandlePositions } from '@/utils/handleUtils'
+import { getServiceUrl } from '@/utils/serviceUrl'
 
 interface BaseNodeProps extends NodeProps<Node<NodeData>> {
   icon: LucideIcon
@@ -32,6 +33,11 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
   const colors = resolveNodeColors(data, activeTheme)
   const statusColor = theme.colors.statusColors[data.status]
   const isOnline = data.status === 'online'
+  const bottomHandleCount = Math.max(1, data.bottom_handles ?? 1)
+  const bottomHandleIds = getBottomHandleIds(bottomHandleCount)
+  const bottomHandlePositions = getBottomHandlePositions(bottomHandleCount)
+  const host = data.ip ?? data.hostname
+  const visibleServices = data.show_services ? (data.services ?? []) : []
 
   // Properties: prefer new system; fall back to legacy hardware fields for unmigrated nodes
   const visibleProperties = data.properties?.filter((p) => p.visible) ?? null
@@ -162,6 +168,48 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         </>
       )}
 
+      {visibleServices.length > 0 && (
+        <>
+          <div style={{ height: 1, background: `${colors.border}44`, margin: '0 8px' }} />
+          <div className="flex flex-col gap-1 px-2.5 py-1.5">
+            {visibleServices.map((service, index) => {
+              const url = getServiceUrl(service, host)
+              const content = (
+                <div
+                  className="nodrag flex items-center justify-between gap-2 rounded px-1.5 py-1 text-[10px] transition-colors"
+                  style={{
+                    background: theme.colors.nodeIconBackground,
+                    color: theme.colors.nodeSubtextColor,
+                    cursor: url ? 'pointer' : 'default',
+                  }}
+                  title={url ?? `${service.service_name} (${service.port}/${service.protocol})`}
+                >
+                  <span className="truncate">{service.service_name}</span>
+                  <span className="flex items-center gap-1 shrink-0 font-mono">
+                    <span>{service.port}</span>
+                    {url && <ExternalLink size={9} className="shrink-0" />}
+                  </span>
+                </div>
+              )
+
+              if (!url) return <div key={`${service.port}-${service.protocol}-${index}`}>{content}</div>
+
+              return (
+                <a
+                  key={`${service.port}-${service.protocol}-${index}`}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="nodrag block hover:opacity-80"
+                >
+                  {content}
+                </a>
+              )
+            })}
+          </div>
+        </>
+      )}
+
       {/* Status dot */}
       <div
         className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full shrink-0"
@@ -169,8 +217,8 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         title={data.status}
       />
 
-      {(BOTTOM_HANDLE_POSITIONS[data.bottom_handles ?? 1] ?? BOTTOM_HANDLE_POSITIONS[1]).map((leftPct, idx) => {
-        const sourceId = BOTTOM_HANDLE_IDS[idx]
+      {bottomHandlePositions.map((leftPct, idx) => {
+        const sourceId = bottomHandleIds[idx]
         const targetId = idx === 0 ? 'bottom-t' : `bottom-${idx + 1}-t`
         return (
           <span key={sourceId}>

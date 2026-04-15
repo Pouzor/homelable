@@ -25,8 +25,14 @@ export function GroupNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
     setEditing(false)
   }
 
-  const borderColor = selected ? '#00d4ff' : '#30363d'
-  const borderStyle = selected ? 'solid' : 'dashed'
+  const customBorderColor = data.custom_colors?.border ?? '#30363d'
+  const customBorderStyle = (data.custom_colors?.border_style ?? 'dashed') as string
+  const customBorderWidth = data.custom_colors?.border_width ?? 2
+  const customBackground = data.custom_colors?.background ?? 'transparent'
+
+  const borderColor = selected ? '#00d4ff' : customBorderColor
+  const borderStyle = selected ? 'solid' : customBorderStyle
+  const borderWidth = customBorderWidth
 
   return (
     <div
@@ -35,8 +41,8 @@ export function GroupNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
         height: '100%',
         position: 'relative',
         borderRadius: 8,
-        border: isVisible ? `2px ${borderStyle} ${borderColor}` : '2px solid transparent',
-        background: 'transparent',
+        border: isVisible ? `${borderWidth}px ${borderStyle} ${borderColor}` : `${borderWidth}px solid transparent`,
+        background: customBackground,
         transition: 'border-color 0.15s, background 0.15s',
         boxSizing: 'border-box',
       }}
@@ -61,14 +67,13 @@ export function GroupNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
             display: 'flex',
             alignItems: 'center',
             gap: 6,
-            background: selected ? 'rgba(0,212,255,0.08)' : 'rgba(22,27,34,0.8)',
+            background: selected ? `${borderColor}14` : 'rgba(22,27,34,0.8)',
             borderRadius: '6px 6px 0 0',
             borderBottom: isVisible ? `1px solid ${borderColor}40` : 'none',
             pointerEvents: 'auto',
           }}
-          className="nodrag"
         >
-          <Layers size={12} style={{ color: '#00d4ff', flexShrink: 0 }} />
+          <Layers size={12} style={{ color: borderColor, flexShrink: 0 }} />
 
           {editing ? (
             <input
@@ -79,6 +84,7 @@ export function GroupNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
                 if (e.key === 'Enter') handleRename()
                 if (e.key === 'Escape') { setLabelDraft(data.label); setEditing(false) }
               }}
+                className="nodrag"
               style={{
                 flex: 1,
                 background: 'transparent',
@@ -97,11 +103,12 @@ export function GroupNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
 
           {editing ? (
             <>
-              <button onClick={handleRename} style={{ color: '#39d353', background: 'none', border: 'none', cursor: 'pointer', padding: 1 }}><Check size={11} /></button>
-              <button onClick={() => { setLabelDraft(data.label); setEditing(false) }} style={{ color: '#f85149', background: 'none', border: 'none', cursor: 'pointer', padding: 1 }}><X size={11} /></button>
+              <button className="nodrag" onClick={handleRename} style={{ color: '#39d353', background: 'none', border: 'none', cursor: 'pointer', padding: 1 }}><Check size={11} /></button>
+              <button className="nodrag" onClick={() => { setLabelDraft(data.label); setEditing(false) }} style={{ color: '#f85149', background: 'none', border: 'none', cursor: 'pointer', padding: 1 }}><X size={11} /></button>
             </>
           ) : (
             <button
+              className="nodrag"
               onClick={() => { setLabelDraft(data.label); setEditing(true) }}
               style={{ color: '#8b949e', background: 'none', border: 'none', cursor: 'pointer', padding: 1, opacity: selected ? 1 : 0 }}
               title="Rename group"

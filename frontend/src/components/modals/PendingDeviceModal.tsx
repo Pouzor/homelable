@@ -73,6 +73,14 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   )
 }
 
+function formatTimestamp(value: string | null | undefined) {
+  if (!value) return 'Unknown'
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+  const withZone = /(?:Z|[+-]\d\d:\d\d)$/.test(normalized) ? normalized : `${normalized}Z`
+  const parsed = new Date(withZone)
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
+}
+
 export function PendingDeviceModal({ device, onClose, onApprove, onHide, onIgnore }: PendingDeviceModalProps) {
   if (!device) return null
 
@@ -105,7 +113,7 @@ export function PendingDeviceModal({ device, onClose, onApprove, onHide, onIgnor
             {device.discovery_source && (
               <InfoRow label="Source" value={device.discovery_source.toUpperCase()} />
             )}
-            <InfoRow label="Discovered" value={new Date(device.discovered_at.endsWith('Z') ? device.discovered_at : device.discovered_at + 'Z').toLocaleString()} />
+            <InfoRow label="Discovered" value={formatTimestamp(device.discovered_at)} />
           </div>
 
           {/* Services */}

@@ -32,6 +32,8 @@ export function parseYamlToCanvas(
   // First pass: validate and create nodes (without positions — dagre will assign them)
   const newNodes: Node<NodeData>[] = []
   const yamlNodes: YamlNode[] = []
+  // Track which node IDs are container hosts (legacy YAML may omit containerMode)
+  const containerHostIds = new Set<string>()
 
   for (const entry of entries) {
     const entryRecord = entry as Record<string, unknown>
@@ -55,6 +57,7 @@ export function parseYamlToCanvas(
     labelToId.set(yn.label, id)
 
     const hasHardware = !!(yn.cpuModel || yn.cpuCore || yn.ram || yn.disk)
+    const isContainerHost = !!yn.containerMode
 
     const data: NodeData = {
       label: yn.label,
@@ -72,14 +75,18 @@ export function parseYamlToCanvas(
       ...(yn.ram ? { ram_gb: yn.ram } : {}),
       ...(yn.disk ? { disk_gb: yn.disk } : {}),
       ...(hasHardware ? { show_hardware: true } : {}),
+      ...(isContainerHost ? { container_mode: true } : {}),
     }
 
-    newNodes.push({
+    const rfNode: Node<NodeData> = {
       id,
       type: yn.nodeType,
       position: { x: 0, y: 0 },
       data,
-    })
+      ...(isContainerHost ? { width: 300, height: 200 } : {}),
+    }
+    newNodes.push(rfNode)
+    if (isContainerHost) containerHostIds.add(id)
 
     yamlNodes.push(yn)
   }
@@ -95,8 +102,8 @@ export function parseYamlToCanvas(
     sourceId: string,
     targetId: string,
     conn: YamlNodeConnection,
-    sourceHandle = 'bottom',
-    targetHandle = 'top-t',
+    sourceHandle = 'top',
+    targetHandle = 'bottom',
   ) {
     const key = `${sourceId}|${targetId}`
     const reverseKey = `${targetId}|${sourceId}`
@@ -107,12 +114,13 @@ export function parseYamlToCanvas(
       id: generateUUID(),
       source: sourceId,
       target: targetId,
-      sourceHandle,
-      targetHandle,
+      sourceHandle: conn.linkSourceHandle ?? sourceHandle,
+      targetHandle: conn.linkTargetHandle ?? targetHandle,
       type: edgeType,
       data: {
         type: edgeType,
         ...(conn.linkLabel ? { label: conn.linkLabel } : {}),
+        ...(conn.linkColor ? { custom_color: conn.linkColor } : {}),
       },
     })
   }
@@ -126,12 +134,35 @@ export function parseYamlToCanvas(
       if (!parentId) {
         console.warn(`[importYaml] parent label not found: "${yn.parent.label}" — skipping relationship`)
       } else {
-        // Set React Flow parentId for nesting
+        const parentNewNode = newNodes.find((n) => n.id === parentId)
+        const parentExistingNode = existingNodes.find((n) => n.id === parentId)
+        const parentType = parentNewNode?.data.type ?? parentExistingNode?.data.type
+
+        // Legacy YAML may not include `containerMode`. If a parent relation points to
+        // a host-type node, treat it as a container host so nesting is preserved.
+        let parentIsContainer =
+          containerHostIds.has(parentId) ||
+          (parentExistingNode?.data.container_mode ?? false)
+
+        if (!parentIsContainer && (['proxmox', 'lxc', 'docker', 'nas', 'server'].includes(parentType ?? ''))) {
+          parentIsContainer = true
+          if (parentNewNode) {
+            parentNewNode.data = { ...parentNewNode.data, container_mode: true }
+            parentNewNode.width = parentNewNode.width ?? 300
+            parentNewNode.height = parentNewNode.height ?? 200
+            containerHostIds.add(parentId)
+          }
+        }
+
         node.data = { ...node.data, parent_id: parentId }
-        node.parentId = parentId
-        node.extent = 'parent'
-        // Also create an edge (parent bottom → child top)
-        addEdgeIfNew(parentId, node.id, yn.parent, 'bottom', 'top-t')
+        if (parentIsContainer) {
+          // Visual containment — no edge needed, use RF parentId/extent
+          node.parentId = parentId
+          node.extent = 'parent'
+        } else {
+          // Non-container parent — create a virtual edge preserving direction
+          addEdgeIfNew(node.id, parentId, yn.parent, 'top', 'bottom')
+        }
       }
     }
 
@@ -141,7 +172,7 @@ export function parseYamlToCanvas(
         if (!targetId) {
           console.warn(`[importYaml] links label not found: "${link.label}" — skipping`)
         } else {
-          addEdgeIfNew(node.id, targetId, link, 'bottom', 'top-t')
+          addEdgeIfNew(node.id, targetId, link, 'top', 'bottom')
         }
       }
     }

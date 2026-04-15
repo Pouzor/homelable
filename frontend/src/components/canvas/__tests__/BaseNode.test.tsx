@@ -48,8 +48,8 @@ vi.mock('@/utils/maskIp', () => ({
 }))
 
 vi.mock('@/utils/handleUtils', () => ({
-  BOTTOM_HANDLE_IDS: ['bottom'],
-  BOTTOM_HANDLE_POSITIONS: { 1: [50] },
+  getBottomHandleIds: () => ['bottom'],
+  getBottomHandlePositions: () => [50],
 }))
 
 function makeNode(data: Partial<NodeData>): Node<NodeData> {
@@ -153,5 +153,32 @@ describe('BaseNode — legacy hardware fallback', () => {
       cpu_model: 'Intel Xeon E5-2680',
     })
     expect(screen.queryByText('Intel Xeon E5-2680')).toBeNull()
+  })
+})
+
+describe('BaseNode — services rendering', () => {
+  it('renders clickable services when show_services is enabled', () => {
+    renderBaseNode({
+      ip: '192.168.1.10',
+      show_services: true,
+      services: [
+        { port: 8123, protocol: 'tcp', service_name: 'Home Assistant', category: 'automation' },
+      ],
+    })
+
+    const serviceLink = screen.getByRole('link', { name: /home assistant/i })
+    expect(serviceLink.getAttribute('href')).toBe('http://192.168.1.10:8123')
+  })
+
+  it('does not render services when show_services is disabled', () => {
+    renderBaseNode({
+      ip: '192.168.1.10',
+      show_services: false,
+      services: [
+        { port: 8123, protocol: 'tcp', service_name: 'Home Assistant', category: 'automation' },
+      ],
+    })
+
+    expect(screen.queryByText('Home Assistant')).toBeNull()
   })
 })

@@ -161,6 +161,34 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeAppro
 
 const COMMON_PORTS = new Set([22, 80, 443])
 
+function compareIpAddresses(left: string, right: string) {
+  const leftParts = left.split('.').map((part) => Number.parseInt(part, 10))
+  const rightParts = right.split('.').map((part) => Number.parseInt(part, 10))
+  const leftIsIpv4 = leftParts.length === 4 && leftParts.every((part) => Number.isFinite(part))
+  const rightIsIpv4 = rightParts.length === 4 && rightParts.every((part) => Number.isFinite(part))
+
+  if (leftIsIpv4 && rightIsIpv4) {
+    for (let index = 0; index < 4; index += 1) {
+      if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index]
+    }
+    return 0
+  }
+
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function sortDevicesByIp(devices: PendingDevice[]) {
+  return [...devices].sort((left, right) => compareIpAddresses(left.ip, right.ip))
+}
+
+function formatTimestamp(value: string | null | undefined) {
+  if (!value) return 'Unknown'
+  const normalized = value.includes('T') ? value : value.replace(' ', 'T')
+  const withZone = /(?:Z|[+-]\d\d:\d\d)$/.test(normalized) ? normalized : `${normalized}Z`
+  const parsed = new Date(withZone)
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
+}
+
 function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: (nodeId: string) => void; highlightId?: string }) {
   const [devices, setDevices] = useState<PendingDevice[]>([])
   const [loading, setLoading] = useState(false)
@@ -172,7 +200,7 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
     setLoading(true)
     try {
       const res = await scanApi.pending()
-      setDevices(res.data)
+      setDevices(sortDevicesByIp(res.data))
     } catch {
       toast.error('Failed to load pending devices')
     } finally {
@@ -338,14 +366,14 @@ function HiddenDevicesPanel() {
     setLoading(true)
     try {
       const res = await scanApi.hidden()
-      setDevices(res.data)
+      setDevices(sortDevicesByIp(res.data))
     } catch {
       toast.error('Failed to load hidden devices')
     } finally {
       setLoading(false)
     }
   }, [])
-
+            {formatTimestamp(r.started_at)}
   useEffect(() => { load() }, [load])
 
   const handleIgnore = async (id: string) => {

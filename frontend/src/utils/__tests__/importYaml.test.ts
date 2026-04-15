@@ -105,7 +105,7 @@ describe('parseYamlToCanvas', () => {
     expect(edges[0].targetHandle).toBe('cluster-left')
   })
 
-  it('parent relationship sets parentId and creates an edge', () => {
+  it('parent relationship nests VM under proxmox host and does not create an edge', () => {
     const yaml = `
 - nodeType: proxmox
   label: "PVE1"
@@ -122,9 +122,53 @@ describe('parseYamlToCanvas', () => {
     expect(vm.parentId).toBe(pve.id)
     expect(vm.data.parent_id).toBe(pve.id)
     expect(vm.extent).toBe('parent')
+    expect(pve.data.container_mode).toBe(true)
+    expect(pve.width).toBe(300)
+    expect(pve.height).toBe(200)
+    expect(edges).toHaveLength(0)
+  })
+
+  it('legacy docker parent relationship nests child without needing containerMode field', () => {
+    const yaml = `
+- nodeType: docker
+  label: "DockerHost"
+- nodeType: lxc
+  label: "Container1"
+  parent:
+    label: "DockerHost"
+    linkType: virtual
+`
+    const { nodes, edges } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    const child = nodes.find((n) => n.data.label === 'Container1')!
+    const host = nodes.find((n) => n.data.label === 'DockerHost')!
+    expect(child.parentId).toBe(host.id)
+    expect(child.extent).toBe('parent')
+    expect(child.data.parent_id).toBe(host.id)
+    expect(host.data.container_mode).toBe(true)
+    expect(host.width).toBe(300)
+    expect(host.height).toBe(200)
+    expect(edges).toHaveLength(0)
+  })
+
+  it('non-container parent relationship creates a virtual edge', () => {
+    const yaml = `
+- nodeType: router
+  label: "RTR1"
+- nodeType: server
+  label: "SRV1"
+  parent:
+    label: "RTR1"
+    linkType: virtual
+    linkLabel: "hosted"
+`
+    const { nodes, edges } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    const router = nodes.find((n) => n.data.label === 'RTR1')!
+    const server = nodes.find((n) => n.data.label === 'SRV1')!
+    expect(server.parentId).toBeUndefined()
+    expect(server.data.parent_id).toBe(router.id)
     expect(edges).toHaveLength(1)
-    expect(edges[0].source).toBe(pve.id)
-    expect(edges[0].target).toBe(vm.id)
+    expect(edges[0].source).toBe(server.id)
+    expect(edges[0].target).toBe(router.id)
     expect(edges[0].type).toBe('virtual')
     expect(edges[0].data?.label).toBe('hosted')
   })

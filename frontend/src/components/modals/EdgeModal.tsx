@@ -69,7 +69,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
             <Label className="text-xs text-muted-foreground">Link Type</Label>
             <Select value={type} onValueChange={(v) => setType(v as EdgeType)}>
               <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
-                <SelectValue />
+                <SelectValue>{EDGE_TYPE_LABELS[type]}</SelectValue>
               </SelectTrigger>
               <SelectContent className="bg-[#21262d] border-[#30363d]">
                 {EDGE_TYPES.map(([value, label]) => (
@@ -189,13 +189,13 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
 
           <div className="flex justify-between gap-2 pt-1">
             {onDelete ? (
-              <Button type="button" variant="ghost" size="sm" className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10" onClick={handleDelete}>
+              <Button type="button" variant="ghost" size="sm" className="bg-[#f85149]/10 text-[#f85149] hover:bg-[#f85149]/20 hover:text-[#f85149]" onClick={handleDelete}>
                 Delete
               </Button>
             ) : <span />}
             <div className="flex gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-              <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90">
+              <Button type="button" variant="ghost" size="sm" className="bg-[#f85149]/10 text-[#f85149] hover:bg-[#f85149]/20 hover:text-[#f85149]" onClick={onClose}>Cancel</Button>
+              <Button type="submit" size="sm" className="bg-[#238636]/20 text-[#3fb950] hover:bg-[#238636]/30">
                 {onDelete ? 'Save' : 'Connect'}
               </Button>
             </div>

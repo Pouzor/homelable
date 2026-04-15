@@ -91,11 +91,11 @@ export function ScanConfigModal({ open, onClose, onScanNow }: ScanConfigModalPro
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" className="bg-[#f85149]/10 text-[#f85149] hover:bg-[#f85149]/20 hover:text-[#f85149]" onClick={onClose}>Cancel</Button>
           <Button
             onClick={handleScanNow}
             disabled={saving}
-            style={{ background: '#00d4ff', color: '#0d1117' }}
+            className="bg-[#238636]/20 text-[#3fb950] hover:bg-[#238636]/30"
           >
             Scan Now
           </Button>

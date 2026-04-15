@@ -24,7 +24,7 @@ function ThemeCard({ themeId, selected, onClick }: ThemeCardProps) {
     <button
       type="button"
       onClick={onClick}
-      className="relative rounded-xl border-2 p-3 text-left transition-all duration-150 focus:outline-none w-full"
+      className="relative rounded-xl border-2 p-3.5 text-left transition-all duration-150 focus:outline-none w-full min-h-[150px] overflow-hidden"
       style={{
         borderColor: selected ? c.nodeAccents.isp.border : c.handleBackground,
         background: c.canvasBackground,
@@ -43,7 +43,7 @@ function ThemeCard({ themeId, selected, onClick }: ThemeCardProps) {
 
       {/* Mini canvas preview */}
       <div
-        className="rounded-md mb-2.5 flex flex-col gap-1.5 p-2"
+        className="rounded-md mb-3 flex flex-col gap-2 p-2.5"
         style={{ background: c.nodeCardBackground, border: `1px solid ${c.handleBackground}` }}
       >
         {/* Node accent dots */}
@@ -70,13 +70,13 @@ function ThemeCard({ themeId, selected, onClick }: ThemeCardProps) {
 
       {/* Label */}
       <div
-        className="text-xs font-semibold leading-tight"
+        className="text-sm font-semibold leading-tight break-words"
         style={{ color: c.nodeLabelColor }}
       >
         {preset.label}
       </div>
       <div
-        className="text-[10px] leading-snug mt-0.5 line-clamp-2"
+        className="text-xs leading-snug mt-1 line-clamp-2 break-words"
         style={{ color: c.nodeSubtextColor }}
       >
         {preset.description}
@@ -121,20 +121,22 @@ export function ThemeModal({ open, onClose }: ThemeModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleCancel() }}>
-      <DialogContent className="bg-[#161b22] border-[#30363d] w-[90vw] max-w-4xl">
+      <DialogContent className="bg-[#161b22] border-[#30363d] !w-[96vw] !max-w-[1280px]">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">Choose Canvas Style</DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-5 gap-3 py-1">
-          {THEME_ORDER.map((id) => (
-            <ThemeCard
-              key={id}
-              themeId={id}
-              selected={selected === id}
-              onClick={() => handleSelect(id)}
-            />
-          ))}
+        <div className="py-1">
+          <div className="grid grid-cols-5 gap-3">
+            {THEME_ORDER.map((id) => (
+              <ThemeCard
+                key={id}
+                themeId={id}
+                selected={selected === id}
+                onClick={() => handleSelect(id)}
+              />
+            ))}
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-1">

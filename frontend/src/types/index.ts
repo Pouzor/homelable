@@ -69,6 +69,7 @@ export interface NodeData extends Record<string, unknown> {
   ram_gb?: number
   disk_gb?: number
   show_hardware?: boolean
+  show_services?: boolean
   properties?: NodeProperty[]
   parent_id?: string
   container_mode?: boolean

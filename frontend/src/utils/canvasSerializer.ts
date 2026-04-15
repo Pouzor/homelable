@@ -28,6 +28,7 @@ export interface ApiNode extends Record<string, unknown> {
   ram_gb?: number | null
   disk_gb?: number | null
   show_hardware?: boolean
+  show_services?: boolean
   properties?: unknown[] | null
   width?: number | null
   height?: number | null
@@ -101,6 +102,7 @@ export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
     ram_gb: n.data.ram_gb ?? null,
     disk_gb: n.data.disk_gb ?? null,
     show_hardware: n.data.show_hardware ?? false,
+    show_services: n.data.show_services ?? false,
     properties: n.data.properties ?? [],
     width: n.width ?? null,
     height: n.height ?? null,
@@ -155,12 +157,13 @@ export function deserializeApiNode(
     type: n.type,
     position: { x: n.pos_x, y: n.pos_y },
     data: n as unknown as NodeData,
+    zIndex: (n.custom_colors?.z_order as number | undefined) ?? 5,
     ...(n.parent_id && parentIsContainer ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
-    ...(n.type === 'proxmox' && n.container_mode !== false
+    ...(['proxmox', 'lxc', 'docker', 'nas', 'server'].includes(n.type) && n.container_mode !== false
       ? { width: n.width ?? 300, height: n.height ?? 200 }
       : {}),
-    ...(n.width && n.type !== 'proxmox' ? { width: n.width } : {}),
-    ...(n.height && n.type !== 'proxmox' ? { height: n.height } : {}),
+    ...(n.width && !(['proxmox', 'lxc', 'docker', 'nas', 'server'].includes(n.type) && n.container_mode !== false) ? { width: n.width } : {}),
+    ...(n.height && !(['proxmox', 'lxc', 'docker', 'nas', 'server'].includes(n.type) && n.container_mode !== false) ? { height: n.height } : {}),
   }
 }
 
