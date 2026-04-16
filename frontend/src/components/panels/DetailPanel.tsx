@@ -1,5 +1,5 @@
 import { createElement, useState } from 'react'
-import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff } from 'lucide-react'
+import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff, ChevronUp, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -175,6 +175,38 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
     setEditingPropIndex(null)
   }
 
+  const handleMovePropUp = (index: number) => {
+    if (index <= 0) return
+    snapshotHistory()
+    const newProps = [...properties]
+    ;[newProps[index - 1], newProps[index]] = [newProps[index], newProps[index - 1]]
+    updateNode(node.id, { properties: newProps })
+  }
+
+  const handleMovePropDown = (index: number) => {
+    if (index >= properties.length - 1) return
+    snapshotHistory()
+    const newProps = [...properties]
+    ;[newProps[index], newProps[index + 1]] = [newProps[index + 1], newProps[index]]
+    updateNode(node.id, { properties: newProps })
+  }
+
+  const handleMoveServiceUp = (index: number) => {
+    if (index <= 0) return
+    snapshotHistory()
+    const newServices = [...services]
+    ;[newServices[index - 1], newServices[index]] = [newServices[index], newServices[index - 1]]
+    updateNode(node.id, { services: newServices })
+  }
+
+  const handleMoveServiceDown = (index: number) => {
+    if (index >= services.length - 1) return
+    snapshotHistory()
+    const newServices = [...services]
+    ;[newServices[index], newServices[index + 1]] = [newServices[index + 1], newServices[index]]
+    updateNode(node.id, { services: newServices })
+  }
+
   return (
     <aside className="w-72 shrink-0 flex flex-col border-l border-border bg-[#161b22] overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -245,9 +277,13 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
                 <PropertyBadge
                   key={`${prop.key}-${i}`}
                   prop={prop}
+                  index={i}
+                  totalCount={properties.length}
                   onToggleVisible={() => handleTogglePropVisible(i)}
                   onEdit={() => handleStartEditProp(i)}
                   onRemove={() => handleRemoveProp(i)}
+                  onMoveUp={() => handleMovePropUp(i)}
+                  onMoveDown={() => handleMovePropDown(i)}
                 />
               )
             )}
@@ -272,7 +308,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
               editingIndex === i ? (
                 <ServiceForm key={`edit-${i}`} form={editSvc} onChange={setEditSvc} onConfirm={handleSaveEdit} onCancel={() => setEditingFor(null)} confirmLabel="Save" autoFocus />
               ) : (
-                <ServiceBadge key={`${svc.port}-${svc.protocol}-${i}`} svc={svc} host={host} onEdit={() => handleStartEdit(i)} onRemove={() => handleRemoveService(i)} />
+                <ServiceBadge key={`${svc.port}-${svc.protocol}-${i}`} svc={svc} host={host} index={i} totalCount={services.length} onEdit={() => handleStartEdit(i)} onRemove={() => handleRemoveService(i)} onMoveUp={() => handleMoveServiceUp(i)} onMoveDown={() => handleMoveServiceDown(i)} />
               )
             )}
           </div>
@@ -571,11 +607,15 @@ function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel }: {
   )
 }
 
-function PropertyBadge({ prop, onToggleVisible, onEdit, onRemove }: {
+function PropertyBadge({ prop, index, totalCount, onToggleVisible, onEdit, onRemove, onMoveUp, onMoveDown }: {
   prop: NodeProperty
+  index: number
+  totalCount: number
   onToggleVisible: () => void
   onEdit: () => void
   onRemove: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
 }) {
   const Icon = resolvePropertyIcon(prop.icon)
   return (
@@ -585,13 +625,19 @@ function PropertyBadge({ prop, onToggleVisible, onEdit, onRemove }: {
         <span className="font-medium truncate text-foreground" title={prop.key}>{prop.key}</span>
         <span className="text-muted-foreground truncate" title={prop.value}>· {prop.value}</span>
       </div>
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1.5 shrink-0">
         <button
           onClick={onToggleVisible}
           title={prop.visible ? 'Hide on node' : 'Show on node'}
           className="text-[#8b949e] hover:text-[#00d4ff] transition-colors"
         >
           {prop.visible ? <Eye size={10} /> : <EyeOff size={10} />}
+        </button>
+        <button onClick={onMoveUp} disabled={index === 0} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] disabled:opacity-30 disabled:cursor-not-allowed" title="Move up">
+          <ChevronUp size={10} />
+        </button>
+        <button onClick={onMoveDown} disabled={index === totalCount - 1} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] disabled:opacity-30 disabled:cursor-not-allowed" title="Move down">
+          <ChevronDown size={10} />
         </button>
         <button onClick={onEdit} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff]" title="Edit property">
           <Pencil size={10} />
@@ -608,20 +654,22 @@ const CATEGORY_COLORS: Record<string, string> = {
   web: '#00d4ff', database: '#a855f7', monitoring: '#39d353', storage: '#e3b341', security: '#f85149', remote: '#8b949e',
 }
 
-function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?: string; onEdit: () => void; onRemove: () => void }) {
+function ServiceBadge({ svc, host, index, totalCount, onEdit, onRemove, onMoveUp, onMoveDown }: { svc: ServiceInfo; host?: string; index: number; totalCount: number; onEdit: () => void; onRemove: () => void; onMoveUp: () => void; onMoveDown: () => void }) {
   const url = getServiceUrl(svc, host)
   const color = CATEGORY_COLORS[svc.category ?? ''] ?? '#8b949e'
   const inner = (
     <div className="group flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border text-xs transition-colors" style={{ background: '#21262d', borderColor: '#30363d', cursor: url ? 'pointer' : 'default' }}>
-      <div className="flex items-center gap-1.5 min-w-0">
+      <div className="flex items-center gap-1.5 shrink-0">
         <span className="shrink-0 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
         <span className="font-medium truncate" style={{ color }}>{svc.service_name}</span>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         <span className="font-mono text-[#8b949e]">{svc.port}/{svc.protocol}</span>
         {url && <ExternalLink size={10} className="text-muted-foreground" />}
-        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5" title="Edit service"><Pencil size={10} /></button>
-        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5" title="Remove service"><X size={10} /></button>
+        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMoveUp() }} disabled={index === 0} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] disabled:opacity-30 disabled:cursor-not-allowed" title="Move up"><ChevronUp size={10} /></button>
+        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onMoveDown() }} disabled={index === totalCount - 1} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] disabled:opacity-30 disabled:cursor-not-allowed" title="Move down"><ChevronDown size={10} /></button>
+        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff]" title="Edit service"><Pencil size={10} /></button>
+        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149]" title="Remove service"><X size={10} /></button>
       </div>
     </div>
   )
