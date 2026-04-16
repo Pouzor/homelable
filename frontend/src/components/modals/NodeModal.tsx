@@ -16,7 +16,7 @@ const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
   { label: 'Generic',        types: ['computer', 'generic', 'groupRect'] },
 ]
 
-const CHECK_METHODS: CheckMethod[] = ['none', 'ping', 'http', 'https', 'tcp', 'ssh', 'prometheus', 'health']
+const CHECK_METHODS: CheckMethod[] = ['none', 'ping', 'http', 'https', 'tcp', 'ssh', 'prometheus', 'health', 'proxmox']
 
 const DEFAULT_DATA: Partial<NodeData> = {
   type: 'server',
@@ -52,6 +52,17 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
 
   const set = (key: keyof NodeData, value: unknown) =>
     setForm((f) => ({ ...f, [key]: value }))
+
+ const getProperty = (name: string): string => {
+    const props = (form.properties as any[]) || [];
+    return props.find((p: any) => p.name === name)?.value || '';
+  };
+
+  const setProperty = (name: string, value: string) => {
+    const currentProps = (form.properties as any[]) || [];
+    const otherProps = currentProps.filter((p: any) => p.name !== name);
+    set('properties', [...otherProps, { name, value }]);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -233,6 +244,57 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               </Select>
             </div>
 
+        {form.check_method === 'proxmox' && (
+          <div className="col-span-2 flex flex-col gap-3 p-3 rounded-md bg-[#0d1117] border border-[#ff6e00]/30 mt-1">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#ff6e00]" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#ff6e00]">Proxmox API Settings</span>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-[10px] text-muted-foreground uppercase">Node Name (PVE)</Label>
+                <Input
+                  value={getProperty('proxmox_node')}
+                  onChange={(e) => setProperty('proxmox_node', e.target.value)}
+                  placeholder="pve01"
+                  className="bg-[#21262d] border-[#30363d] text-xs h-7"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-[10px] text-muted-foreground uppercase">VM / LXC ID</Label>
+                <Input
+                  value={getProperty('proxmox_vmid')}
+                  onChange={(e) => setProperty('proxmox_vmid', e.target.value)}
+                  placeholder="100"
+                  className="bg-[#21262d] border-[#30363d] text-xs h-7"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-[10px] text-muted-foreground uppercase">API Token ID</Label>
+              <Input
+                value={getProperty('proxmox_token')}
+                onChange={(e) => setProperty('proxmox_token', e.target.value)}
+                placeholder="root@pam!homelable"
+                className="bg-[#21262d] border-[#30363d] font-mono text-xs h-7"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-[10px] text-muted-foreground uppercase">Token Secret</Label>
+              <Input
+                type="password"
+                value={getProperty('proxmox_secret')}
+                onChange={(e) => setProperty('proxmox_secret', e.target.value)}
+                placeholder="Your-Secret-Key"
+                className="bg-[#21262d] border-[#30363d] text-xs h-7"
+              />
+            </div>
+          </div>
+        )}
+     
             {/* Check target */}
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs text-muted-foreground">Check Target</Label>
