@@ -11,10 +11,21 @@ from proxmoxer import ProxmoxAPI
 
 logger = logging.getLogger(__name__)
 
-async def check_node(node_data: dict, *args, **kwargs) -> dict[str, Any]:
-    check_method = node_data.get("check_method")
-    host = node_data.get("check_target") or node_data.get("ip")
-    properties = node_data.get("properties", [])
+async def check_node(node_data: Any, *args, **kwargs) -> dict[str, Any]:
+    """
+    Evaluates the current status of a node based on its configured check method.
+    """
+    # Fallback for older scheduler calls sending ID instead of dictionary data
+    if isinstance(node_data, str):
+        node = kwargs.get('node')
+        if not isinstance(node, dict):
+            return {"status": "error", "message": "Scheduler sent ID instead of dictionary data"}
+    else:
+        node = node_data
+
+    check_method = node.get("check_method", "ping")
+    host = node.get("check_target") or node.get("ip")
+    properties = node.get("properties", [])
 
     if check_method == "none":
         return {"status": "online", "response_time_ms": None}
@@ -27,10 +38,14 @@ async def check_node(node_data: dict, *args, **kwargs) -> dict[str, Any]:
             case "ping":
                 ok = await _ping(host)
             case "proxmox":
-                props = {p['name']: p['value'] for p in properties if 'name' in p}
+                # Convert properties list to a key-value dictionary safely
+                props = {p['name']: p['value'] for p in properties if isinstance(p, dict) and 'name' in p}
                 ok = await _check_proxmox(
-                    host, props.get("proxmox_node"), props.get("proxmox_vmid"),
-                    props.get("proxmox_token"), props.get("proxmox_secret")
+                    host, 
+                    props.get("proxmox_node"), 
+                    props.get("proxmox_vmid"),
+                    props.get("proxmox_token"), 
+                    props.get("proxmox_secret")
                 )
             case "http" | "https":
                 url = host if host.startswith("http") else f"{check_method}://{host}"
@@ -52,6 +67,7 @@ async def check_node(node_data: dict, *args, **kwargs) -> dict[str, Any]:
         return {"status": "offline", "response_time_ms": None}
 
 async def _ping(host: str) -> bool:
+    # Cross-platform ping command setup
     args = ["ping", "-c", "1", "-W", "2", host] if sys.platform != "win32" else ["ping", "-n", "1", "-w", "2000", host]
     proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     stdout, _ = await proc.communicate()
@@ -73,11 +89,20 @@ async def _tcp_connect(host: str, port: int) -> bool:
         return False
 
 async def _check_proxmox(host, node, vmid, token, secret) -> bool:
-    if not all([node, vmid, token, secret]): return False
+    # Ensure all required Proxmox credentials are provided
+    if not all([node, vmid, token, secret]): 
+        return False
+        
     def sync_check():
         p = ProxmoxAPI(host, user=token, token_name="", token_value=secret, verify_ssl=False)
-        try: return p.nodes(node).qemu(vmid).status.current.get()["status"] == "running"
+        try: 
+            # Check QEMU (VM) status
+            return p.nodes(node).qemu(vmid).status.current.get()["status"] == "running"
         except: 
-            try: return p.nodes(node).lxc(vmid).status.current.get()["status"] == "running"
-            except: return False
+            try: 
+                # Check LXC (Container) status
+                return p.nodes(node).lxc(vmid).status.current.get()["status"] == "running"
+            except: 
+                return False
+                
     return await asyncio.to_thread(sync_check)
