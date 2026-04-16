@@ -17,6 +17,7 @@ types-PyYAML==6.0.12.20240917
 websockets==13.1
 httpx==0.27.2
 zeroconf==0.131.0
+proxmoxer==2.2.0
 
 # Dev
 ruff==0.6.9
