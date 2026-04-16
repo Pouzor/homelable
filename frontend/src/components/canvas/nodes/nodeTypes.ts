@@ -18,7 +18,7 @@ export const nodeTypes = {
   printer: PrinterNode,
   computer: ComputerNode,
   cpl: CplNode,
-  docker: DockerNode,
+  docker_host: DockerNode,
   generic: GenericNode,
   groupRect: GroupRectNode,
   group: GroupNode,
