@@ -59,15 +59,20 @@ async def check_node(check_method: str, target: str | None, ip: str | None) -> d
 
 async def _ping(host: str) -> bool:
     if sys.platform == "win32":
-        args = ["ping", "-n", "1", "-w", "1000", host]
+        args = ["ping", "-n", "1", "-w", "2000", host]
     else:
-        args = ["ping", "-c", "1", "-W", "1", host]
+        args = ["ping", "-c", "1", "-W", "2", host]
     proc = await asyncio.create_subprocess_exec(
         *args,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    await proc.wait()
+    stdout, stderr = await proc.communicate()
+    output = stdout.decode("utf-8", errors="ignore").lower()
+
+    if "unreachable" in output or "100% packet loss" in output:
+        return False
+    
     return proc.returncode == 0
 
 
