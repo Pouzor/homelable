@@ -89,14 +89,23 @@ async def _tcp_connect(host: str, port: int) -> bool:
         return False
 
 async def _check_proxmox(host, node, vmid, token, secret) -> bool:
-    # O vmid agora é opcional. Exigimos apenas o node, token e secret.
     if not all([node, token, secret]): 
         return False
         
     def sync_check():
-        p = ProxmoxAPI(host, user=token, token_name="", token_value=secret, verify_ssl=False)
+        
+        clean_host = host.replace("https://", "").replace("http://", "").split(":")[0]
+        
+        
+        if "!" in token:
+            user, token_name = token.split("!", 1)
+        else:
+            user = token
+            token_name = ""
+            
+        p = ProxmoxAPI(clean_host, user=user, token_name=token_name, token_value=secret, verify_ssl=False)
         try: 
-            if vmid:
+            if vmid:  
                 try: 
                     return p.nodes(node).qemu(vmid).status.current.get()["status"] == "running"
                 except: 
@@ -104,7 +113,7 @@ async def _check_proxmox(host, node, vmid, token, secret) -> bool:
                         return p.nodes(node).lxc(vmid).status.current.get()["status"] == "running"
                     except: 
                         return False
-            else:
+            else:  
                 p.nodes(node).status.get()
                 return True
         except:
