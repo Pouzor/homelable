@@ -1,4 +1,4 @@
-import { createElement, useState } from 'react'
+import { Fragment, createElement, useState } from 'react'
 import { RotateCcw, ChevronDown } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -11,7 +11,7 @@ import { ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS } from '@/utils
 
 const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
   { label: 'Hardware',       types: ['isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer'] },
-  { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker'] },
+  { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker', 'docker_container'] },
   { label: 'IoT',            types: ['iot', 'camera', 'cpl'] },
   { label: 'Generic',        types: ['computer', 'generic', 'groupRect'] },
 ]
@@ -78,11 +78,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               <Label className="text-xs text-muted-foreground">Type</Label>
               <Select value={form.type} onValueChange={(v) => set('type', v as NodeType)}>
                 <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8 w-full">
-                  <SelectValue />
+                  <SelectValue>{NODE_TYPE_LABELS[(form.type ?? 'server') as NodeType]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
                   {NODE_TYPE_GROUPS.map((group, i) => (
-                    <>
+                    <Fragment key={group.label}>
                       {i > 0 && <SelectSeparator key={`sep-${group.label}`} className="bg-[#30363d]" />}
                       <SelectGroup key={group.label}>
                         <SelectLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 px-2 py-1">
@@ -94,7 +94,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                           </SelectItem>
                         ))}
                       </SelectGroup>
-                    </>
+                    </Fragment>
                   ))}
                 </SelectContent>
               </Select>
