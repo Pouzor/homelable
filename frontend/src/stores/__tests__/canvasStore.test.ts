@@ -49,6 +49,21 @@ describe('canvasStore', () => {
     expect(hasUnsavedChanges).toBe(true)
   })
 
+  it('addNode nests under parent only when parent is in container mode', () => {
+    const parent = { ...makeNode('p1', { container_mode: false }), position: { x: 100, y: 100 } }
+    const child = { ...makeNode('c1', { parent_id: 'p1' }), position: { x: 150, y: 180 } }
+    useCanvasStore.getState().addNode(parent)
+    useCanvasStore.getState().addNode(child)
+    const childNode = useCanvasStore.getState().nodes.find((n) => n.id === 'c1')
+    expect(childNode?.parentId).toBeUndefined()
+
+    useCanvasStore.getState().updateNode('p1', { container_mode: true })
+    useCanvasStore.getState().setProxmoxContainerMode('p1', true)
+    const nested = useCanvasStore.getState().nodes.find((n) => n.id === 'c1')
+    expect(nested?.parentId).toBe('p1')
+    expect(nested?.extent).toBe('parent')
+  })
+
   it('updateNode updates data fields', () => {
     useCanvasStore.getState().addNode(makeNode('n1', { label: 'old' }))
     useCanvasStore.getState().updateNode('n1', { label: 'new', ip: '10.0.0.1' })

@@ -4,7 +4,7 @@ import type { NodeType, EdgeType, NodeStatus } from '@/types'
 
 const NODE_TYPES: NodeType[] = [
   'isp', 'router', 'switch', 'server', 'proxmox', 'vm', 'lxc',
-  'nas', 'iot', 'ap', 'camera', 'printer', 'computer', 'cpl', 'docker', 'generic', 'groupRect',
+  'nas', 'iot', 'ap', 'camera', 'printer', 'computer', 'cpl', 'docker_host', 'generic', 'groupRect',
 ]
 const EDGE_TYPES: EdgeType[] = ['ethernet', 'wifi', 'iot', 'vlan', 'virtual', 'cluster']
 const STATUS_TYPES: NodeStatus[] = ['online', 'offline', 'pending', 'unknown']
@@ -84,7 +84,7 @@ describe('THEMES', () => {
     expect(d.nodeAccents.server.border).toBe('#a855f7')
     expect(d.nodeAccents.isp.border).toBe('#00d4ff')
     expect(d.nodeAccents.proxmox.border).toBe('#ff6e00')
-    expect(d.nodeAccents.docker.border).toBe('#2496ED')
+    expect(d.nodeAccents.docker_host.border).toBe('#2496ED')
     expect(d.nodeCardBackground).toBe('#21262d')
     expect(d.nodeIconBackground).toBe('#161b22')
     expect(d.canvasBackground).toBe('#0d1117')

@@ -134,6 +134,7 @@ export function deserializeApiNode(
   n: ApiNode,
   proxmoxContainerMap: Map<string, boolean>,
 ): Node<NodeData> {
+  const normalizedType = n.type === 'docker' ? 'docker_host' : n.type
   if (n.type === 'groupRect') {
     const w = (n.custom_colors?.width as number | undefined) ?? 360
     const h = (n.custom_colors?.height as number | undefined) ?? 240
@@ -152,12 +153,15 @@ export function deserializeApiNode(
   const parentIsContainer = n.parent_id ? (proxmoxContainerMap.get(n.parent_id) ?? false) : false
   return {
     id: n.id,
-    type: n.type,
+    type: normalizedType,
     position: { x: n.pos_x, y: n.pos_y },
-    data: n as unknown as NodeData,
+    data: { ...n, type: normalizedType } as unknown as NodeData,
     ...(n.parent_id && parentIsContainer ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
-    ...(n.width ? { width: n.width } : n.type === 'proxmox' && n.container_mode !== false ? { width: 300 } : {}),
-    ...(n.height ? { height: n.height } : n.type === 'proxmox' && n.container_mode !== false ? { height: 200 } : {}),
+    ...(normalizedType === 'proxmox' && n.container_mode !== false
+      ? { width: n.width ?? 300, height: n.height ?? 200 }
+      : {}),
+    ...(n.width && normalizedType !== 'proxmox' ? { width: n.width } : {}),
+    ...(n.height && normalizedType !== 'proxmox' ? { height: n.height } : {}),
   }
 }
 

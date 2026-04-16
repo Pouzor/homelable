@@ -33,6 +33,7 @@ import type { NodeData, EdgeData } from '@/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STANDALONE_STORAGE_KEY = 'homelable_canvas'
+const CONTAINER_MODE_TYPES = new Set<NodeData['type']>(['proxmox', 'vm', 'lxc', 'docker_host'])
 
 export default function App() {
   const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
@@ -103,8 +104,8 @@ export default function App() {
           // Build a map of proxmox container mode to know if children should be nested
           const proxmoxContainerMap = new Map<string, boolean>(
             (apiNodes as ApiNode[])
-              .filter((n) => n.type === 'proxmox' || n.type === 'group')
-              .map((n) => [n.id, n.type === 'group' ? true : n.container_mode !== false])
+              .filter((n) => n.type === 'group' || n.container_mode === true)
+              .map((n) => [n.id, true])
           )
           const rfNodes = (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxContainerMap))
           const rfEdges = (apiEdges as ApiEdge[]).map(deserializeApiEdge)
@@ -242,8 +243,8 @@ export default function App() {
     snapshotHistory()
     const existingNode = nodes.find((n) => n.id === editNodeId)
     updateNode(editNodeId, data)
-    // If proxmox container_mode changed, apply structural changes (children parentId, node dimensions)
-    if (data.type === 'proxmox' && typeof data.container_mode === 'boolean') {
+    // If container_mode changed, apply structural changes (children parentId, node dimensions)
+    if (typeof data.container_mode === 'boolean') {
       setProxmoxContainerMode(editNodeId, data.container_mode)
     }
     // Sync virtual edge when parent_id changes on an LXC/VM node
@@ -423,7 +424,9 @@ export default function App() {
           onClose={() => setAddNodeOpen(false)}
           onSubmit={handleAddNode}
           title="Add Node"
-          proxmoxNodes={nodes.filter((n) => n.type === 'proxmox').map((n) => ({ id: n.id, label: n.data.label }))}
+          parentContainerNodes={nodes
+            .filter((n) => CONTAINER_MODE_TYPES.has(n.data.type) && n.data.container_mode)
+            .map((n) => ({ id: n.id, label: n.data.label }))}
         />
 
         {/* key forces re-mount when editing a different node, resetting form state */}
@@ -434,7 +437,9 @@ export default function App() {
           onSubmit={handleUpdateNode}
           initial={editNode?.data}
           title="Edit Node"
-          proxmoxNodes={nodes.filter((n) => n.type === 'proxmox').map((n) => ({ id: n.id, label: n.data.label }))}
+          parentContainerNodes={nodes
+            .filter((n) => n.id !== editNodeId && CONTAINER_MODE_TYPES.has(n.data.type) && n.data.container_mode)
+            .map((n) => ({ id: n.id, label: n.data.label }))}
         />
 
         <EdgeModal

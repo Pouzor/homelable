@@ -234,15 +234,20 @@ describe('NodeModal', () => {
     expect(screen.queryByTitle('Router')).toBeNull()
   })
 
-  // ── Container mode (proxmox only) ─────────────────────────────────────
+  // ── Container mode ─────────────────────────────────────────────────────
 
   it('shows Container Mode toggle for proxmox type', () => {
     renderModal({ initial: { ...BASE, type: 'proxmox' } })
     expect(screen.getByText('Container Mode')).toBeDefined()
   })
 
-  it('hides Container Mode for non-proxmox types', () => {
-    renderModal({ initial: BASE })
+  it('hides Container Mode for server type', () => {
+    renderModal({ initial: { ...BASE, type: 'server' } })
+    expect(screen.queryByText('Container Mode')).toBeNull()
+  })
+
+  it('hides Container Mode for groupRect type', () => {
+    renderModal({ initial: { ...BASE, type: 'groupRect' } })
     expect(screen.queryByText('Container Mode')).toBeNull()
   })
 
@@ -253,33 +258,25 @@ describe('NodeModal', () => {
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).container_mode).toBe(false)
   })
 
-  // ── Parent Proxmox (vm / lxc only) ───────────────────────────────────
+  // ── Parent container ──────────────────────────────────────────────────
 
-  it('shows Parent Proxmox for vm with proxmoxNodes', () => {
+  it('shows Parent Container when options are provided', () => {
     renderModal({
-      initial: { ...BASE, type: 'vm' },
-      proxmoxNodes: [{ id: 'px1', label: 'PVE-01' }],
+      initial: { ...BASE, type: 'server' },
+      parentContainerNodes: [{ id: 'c1', label: 'Container 01' }],
     })
-    expect(screen.getByText('Parent Proxmox')).toBeDefined()
-    expect(screen.getByText('PVE-01')).toBeDefined()
+    expect(screen.getByText('Parent Container')).toBeDefined()
+    expect(screen.getByText('Container 01')).toBeDefined()
   })
 
-  it('shows Parent Proxmox for lxc with proxmoxNodes', () => {
-    renderModal({
-      initial: { ...BASE, type: 'lxc' },
-      proxmoxNodes: [{ id: 'px1', label: 'PVE-01' }],
-    })
-    expect(screen.getByText('Parent Proxmox')).toBeDefined()
+  it('hides Parent Container for groupRect type', () => {
+    renderModal({ initial: { ...BASE, type: 'groupRect' }, parentContainerNodes: [{ id: 'c1', label: 'Container 01' }] })
+    expect(screen.queryByText('Parent Container')).toBeNull()
   })
 
-  it('hides Parent Proxmox for server type', () => {
-    renderModal({ initial: BASE, proxmoxNodes: [{ id: 'px1', label: 'PVE-01' }] })
-    expect(screen.queryByText('Parent Proxmox')).toBeNull()
-  })
-
-  it('hides Parent Proxmox for vm when no proxmoxNodes', () => {
-    renderModal({ initial: { ...BASE, type: 'vm' } })
-    expect(screen.queryByText('Parent Proxmox')).toBeNull()
+  it('hides Parent Container when no container options are available', () => {
+    renderModal({ initial: { ...BASE, type: 'server' } })
+    expect(screen.queryByText('Parent Container')).toBeNull()
   })
 
   // ── Appearance ────────────────────────────────────────────────────────
