@@ -89,6 +89,8 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         panActivationKeyCode="Space"
         selectionMode={SelectionMode.Partial}
         multiSelectionKeyCode={['Meta', 'Control']}
+        minZoom={0.25}
+        maxZoom={2.5}
         snapToGrid
         snapGrid={[8, 8]}
         colorMode={theme.colors.reactFlowColorMode}
