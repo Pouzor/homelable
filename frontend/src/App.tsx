@@ -400,6 +400,7 @@ export default function App() {
                 <CanvasContainer
                   onConnect={handleEdgeConnect}
                   onEdgeDoubleClick={handleEdgeDoubleClick}
+                  onNodeDoubleClick={(node) => handleEditNode(node.id)}
                   onNodeDragStart={snapshotHistory}
                   onOpenPending={(deviceId) => {
                     setHighlightPendingId(undefined)
