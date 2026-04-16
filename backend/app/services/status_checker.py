@@ -11,7 +11,7 @@ from proxmoxer import ProxmoxAPI
 
 logger = logging.getLogger(__name__)
 
-async def check_node(node_data: dict) -> dict[str, Any]:
+async def check_node(node_data: dict, *args, **kwargs) -> dict[str, Any]:
     check_method = node_data.get("check_method")
     host = node_data.get("check_target") or node_data.get("ip")
     properties = node_data.get("properties", [])
