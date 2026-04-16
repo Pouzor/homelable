@@ -89,20 +89,25 @@ async def _tcp_connect(host: str, port: int) -> bool:
         return False
 
 async def _check_proxmox(host, node, vmid, token, secret) -> bool:
-    # Ensure all required Proxmox credentials are provided
-    if not all([node, vmid, token, secret]): 
+    # O vmid agora é opcional. Exigimos apenas o node, token e secret.
+    if not all([node, token, secret]): 
         return False
         
     def sync_check():
         p = ProxmoxAPI(host, user=token, token_name="", token_value=secret, verify_ssl=False)
         try: 
-            # Check QEMU (VM) status
-            return p.nodes(node).qemu(vmid).status.current.get()["status"] == "running"
-        except: 
-            try: 
-                # Check LXC (Container) status
-                return p.nodes(node).lxc(vmid).status.current.get()["status"] == "running"
-            except: 
-                return False
-                
+            if vmid:
+                try: 
+                    return p.nodes(node).qemu(vmid).status.current.get()["status"] == "running"
+                except: 
+                    try: 
+                        return p.nodes(node).lxc(vmid).status.current.get()["status"] == "running"
+                    except: 
+                        return False
+            else:
+                p.nodes(node).status.get()
+                return True
+        except:
+            return False
+            
     return await asyncio.to_thread(sync_check)
