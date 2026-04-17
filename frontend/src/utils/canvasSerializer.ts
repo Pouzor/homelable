@@ -67,7 +67,8 @@ export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
       check_target: null,
       services: [],
       notes: null,
-      parent_id: n.data.parent_id ?? null,
+      // Accept parent from either `data.parent_id` or the React Flow top-level `parentId`
+      parent_id: (n.data.parent_id ?? (n as any).parentId) ?? null,
       container_mode: false,
       custom_icon: null,
       pos_x: n.position.x,
@@ -92,7 +93,8 @@ export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
     check_target: n.data.check_target ?? null,
     services: n.data.services ?? [],
     notes: n.data.notes ?? null,
-    parent_id: n.data.parent_id ?? null,
+    // Accept parent from either `data.parent_id` or the React Flow top-level `parentId`
+    parent_id: (n.data.parent_id ?? (n as any).parentId) ?? null,
     container_mode: n.data.container_mode ?? false,
     custom_colors: n.data.custom_colors ?? null,
     custom_icon: n.data.custom_icon ?? null,

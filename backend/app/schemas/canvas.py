@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, Field, ConfigDict
 
 from app.schemas.edges import EdgeResponse
 from app.schemas.nodes import NodeResponse
@@ -8,6 +8,8 @@ from app.schemas.utils import normalize_animated
 
 
 class NodeSave(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     type: str
     label: str
@@ -20,7 +22,8 @@ class NodeSave(BaseModel):
     check_target: str | None = None
     services: list[Any] = []
     notes: str | None = None
-    parent_id: str | None = None
+    # Accept frontend alias `parentId` while keeping internal `parent_id` name
+    parent_id: str | None = Field(None, alias="parentId")
     container_mode: bool = False
     custom_colors: dict[str, Any] | None = None
     custom_icon: str | None = None

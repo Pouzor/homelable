@@ -1,8 +1,11 @@
 import asyncio
+import logging
 from proxmoxer import ProxmoxAPI
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+logger = logging.getLogger(__name__)
 
 class ProxmoxService:
     def __init__(self, host: str, user: str, token_value: str):
@@ -55,5 +58,5 @@ class ProxmoxService:
                     })
             return output
         except Exception as e:
-            print(f"Error fetching Proxmox resources: {e}")
+            logger.exception("Error fetching Proxmox resources")
             return []

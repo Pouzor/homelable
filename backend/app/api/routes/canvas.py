@@ -51,21 +51,24 @@ async def save_canvas(
 
     # Upsert nodes
     for node_data in body.nodes:
+        # Ensure we dump using internal field names (not aliases) so setattr maps correctly
+        node_payload = node_data.model_dump(by_alias=False)
         db_node = await db.get(Node, node_data.id)
         if db_node:
-            for field, value in node_data.model_dump().items():
+            for field, value in node_payload.items():
                 setattr(db_node, field, value)
         else:
-            db.add(Node(**node_data.model_dump()))
+            db.add(Node(**node_payload))
 
     # Upsert edges
     for edge_data in body.edges:
+        edge_payload = edge_data.model_dump(by_alias=False)
         db_edge = await db.get(Edge, edge_data.id)
         if db_edge:
-            for field, value in edge_data.model_dump().items():
+            for field, value in edge_payload.items():
                 setattr(db_edge, field, value)
         else:
-            db.add(Edge(**edge_data.model_dump()))
+            db.add(Edge(**edge_payload))
 
     # Upsert viewport
     state = await db.get(CanvasState, 1)
