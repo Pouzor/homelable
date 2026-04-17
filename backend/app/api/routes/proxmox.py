@@ -3,8 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.database import get_db
 from app.db.models import Node
 from app.api.deps import get_current_user
-# Assumindo que a sua classe de serviço Proxmox se chama ProxmoxService
-from app.services.status_checker import ProxmoxService 
+from app.services.proxmox_client import ProxmoxService
 
 router = APIRouter()
 
@@ -19,7 +18,7 @@ async def discover_resources(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
 
     try:
-       
+        # Initialize service with Node data (adjust fields if necessary)
         service = ProxmoxService(
             host=node.ip,
             user=node.api_token_id,
