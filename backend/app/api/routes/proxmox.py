@@ -17,8 +17,15 @@ async def discover_resources(
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
 
+    # Guard against missing IP or Name which causes internal crashes
+    if not node.ip or not node.name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Node is missing a valid IP address or Name. Please update it in the Canvas."
+        )
+
     try:
-        # Extract properties supporting both 'key' and 'name' formats
+        # Robust property extraction
         props = {}
         if isinstance(node.properties, list):
             for p in node.properties:
@@ -33,22 +40,22 @@ async def discover_resources(
         user = props.get("proxmox_token") or props.get("token_id") or props.get("user") or ""
         token_value = props.get("proxmox_secret") or props.get("token_secret") or props.get("token") or ""
         
-        # Determine target node name (default to 'pve2' based on your DB log)
+        # Determine target Proxmox node name
         target_node_name = props.get("proxmox_node") or node.name
 
         if not user or not token_value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, 
-                detail="Incomplete credentials. Please check proxmox_token and proxmox_secret."
+                detail="Incomplete credentials. Add 'proxmox_token' and 'proxmox_secret' to node properties."
             )
 
+        # Initialize service and fetch
         service = ProxmoxService(
             host=node.ip,
             user=user,
             token_value=token_value
         )
         
-        # Fetch resources filtered by the specific Proxmox node name
         resources = await service.get_node_resources(target_node_name)
         
         return {
@@ -59,4 +66,8 @@ async def discover_resources(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        # Capture the specific error message to help debugging
+        error_msg = str(e)
+        if "Connection refused" in error_msg:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Cannot reach Proxmox at {node.ip}:8006")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Proxmox Sync Error: {error_msg}")
