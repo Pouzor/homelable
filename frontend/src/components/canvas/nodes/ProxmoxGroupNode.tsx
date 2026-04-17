@@ -1,17 +1,74 @@
+import React, { useState } from 'react'
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflow/react'
-import { Layers } from 'lucide-react'
+import { Layers, RefreshCw } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { BaseNode } from './BaseNode'
+import { useCanvasStore } from '@/stores/canvasStore'
+import { api } from '@/api/client' 
+import { toast } from 'sonner'
 
 export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
-  const { data, selected } = props
+  const { id, data, selected } = props
 
   const activeTheme = useThemeStore((s) => s.activeTheme)
   const theme = THEMES[activeTheme]
   const colors = resolveNodeColors(data, activeTheme)
+
+  const [isSyncing, setIsSyncing] = useState(false)
+  const addNode = useCanvasStore((state) => state.addNode)
+  const nodes = useCanvasStore((state) => state.nodes)
+
+  const handleSync = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setIsSyncing(true)
+    
+    try {
+      const response = await api.get(`/proxmox/${id}/discover`)
+      const resources = response.data.resources
+
+      let addedCount = 0
+      resources.forEach((res: any, index: number) => {
+        
+        const exists = nodes.some(n => 
+          n.data.properties?.some((p: any) => 
+            (p.key === 'vmid' || p.name === 'vmid') && String(p.value) === String(res.vmid)
+          )
+        )
+        
+        if (!exists) {
+          // CORREÇÃO 3: Estrutura correta de um Node do React Flow
+          addNode({
+            id: crypto.randomUUID(),
+            type: res.type === 'qemu' ? 'vm' : 'lxc',
+            position: { x: 20, y: 60 + (index * 60) },
+            parentId: id,
+            data: {
+              label: res.name,
+              type: res.type === 'qemu' ? 'vm' : 'lxc',
+              status: res.status === 'running' ? 'online' : 'offline',
+              container_mode: false,
+              properties: [
+                { key: 'vmid', value: String(res.vmid) },
+                { key: 'cpu', value: String(res.cpu_usage || 0) },
+                { key: 'memory', value: String(res.mem_usage || 0) }
+              ]
+            }
+          } as Node<NodeData>)
+          addedCount++
+        }
+      })
+
+      toast.success(`Sync complete: ${addedCount} new resources found.`)
+    } catch (error) {
+      console.error('Proxmox Sync Error:', error)
+      toast.error('Failed to sync Proxmox resources.')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   // Render as a regular node when container mode is disabled
   if (data.container_mode === false) {
@@ -104,6 +161,16 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
             style={{ backgroundColor: statusColor }}
             title={data.status}
           />
+          
+          {/* Sync Button */}
+          <button
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors z-50 pointer-events-auto"
+            title="Sync Resources"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} style={{ color: theme.colors.nodeSubtextColor }} />
+          </button>
         </div>
 
         {/* Inner area — React Flow places children here */}
