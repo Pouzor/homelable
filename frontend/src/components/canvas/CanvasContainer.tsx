@@ -36,6 +36,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     onNodesChange, onEdgesChange,
     setSelectedNode, snapshotHistory,
     fitViewPending, clearFitViewPending,
+    updateNode
   } = useCanvasStore()
   const { fitView } = useReactFlow()
 
@@ -64,6 +65,42 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     setSelectedNode(null)
   }, [setSelectedNode])
 
+  const handleNodeDragStop = useCallback((_: React.MouseEvent, draggedNode: Node<NodeData>) => {
+    // Only look for intersection if it's a loose node (no parent)
+    if (!draggedNode.parentId) {
+      // Temporarily cast to 'any' to read positionAbsolute, 
+      // or fallback to default React Flow 'position'
+      const dNode = draggedNode as any;
+      const draggedX = dNode.positionAbsolute?.x ?? draggedNode.position.x;
+      const draggedY = dNode.positionAbsolute?.y ?? draggedNode.position.y;
+
+      // Find all proxmox containers
+      const containers = nodes.filter(
+        (n) => n.data.type === 'proxmox' && n.data.container_mode
+      );
+
+      // Mathematically check if the node was dropped inside any container
+      const targetContainer = containers.find((container) => {
+        const cNode = container as any;
+        const cX = cNode.positionAbsolute?.x ?? container.position.x;
+        const cY = cNode.positionAbsolute?.y ?? container.position.y;
+        const cWidth = container.width ?? 0;
+        const cHeight = container.height ?? 0;
+
+        return (
+          draggedX >= cX &&
+          draggedX <= cX + cWidth &&
+          draggedY >= cY &&
+          draggedY <= cY + cHeight
+        );
+      });
+
+      if (targetContainer) {
+        updateNode(draggedNode.id, { parent_id: targetContainer.id });
+      }
+    }
+  }, [nodes, updateNode]);
+ 
   const handleEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge<EdgeData>) => {
     onEdgeDoubleClick?.(edge)
   }, [onEdgeDoubleClick])
@@ -80,6 +117,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         onPaneClick={onPaneClick}
         onEdgeDoubleClick={handleEdgeDoubleClick}
         onNodeDragStart={onNodeDragStart}
+        onNodeDragStop={handleNodeDragStop}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         deleteKeyCode={['Backspace', 'Delete']}
