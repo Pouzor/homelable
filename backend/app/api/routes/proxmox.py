@@ -17,15 +17,14 @@ async def discover_resources(
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
 
-    # Guard against missing IP or Name which causes internal crashes
-    if not node.ip or not node.name:
+    # Guard against missing IP or Label (Model uses 'label', not 'name')
+    if not node.ip or not node.label:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Node is missing a valid IP address or Name. Please update it in the Canvas."
+            detail="Node is missing a valid IP address or Label. Please update it in the Canvas."
         )
 
     try:
-        # Robust property extraction
         props = {}
         if isinstance(node.properties, list):
             for p in node.properties:
@@ -36,12 +35,11 @@ async def discover_resources(
         elif isinstance(node.properties, dict):
             props = node.properties
 
-        # Flexible credential lookup
         user = props.get("proxmox_token") or props.get("token_id") or props.get("user") or ""
         token_value = props.get("proxmox_secret") or props.get("token_secret") or props.get("token") or ""
         
-        # Determine target Proxmox node name
-        target_node_name = props.get("proxmox_node") or node.name
+        # Use 'proxmox_node' property first, fallback to node.label
+        target_node_name = props.get("proxmox_node") or node.label
 
         if not user or not token_value:
             raise HTTPException(
@@ -49,7 +47,6 @@ async def discover_resources(
                 detail="Incomplete credentials. Add 'proxmox_token' and 'proxmox_secret' to node properties."
             )
 
-        # Initialize service and fetch
         service = ProxmoxService(
             host=node.ip,
             user=user,
