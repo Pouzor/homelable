@@ -3,6 +3,7 @@ import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflo
 import { Layers, RefreshCw } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
+import { generateUUID } from '@/utils/uuid'
 import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { BaseNode } from './BaseNode'
@@ -41,7 +42,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
         if (!exists) {
           // CORREÇÃO 3: Estrutura correta de um Node do React Flow
           addNode({
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             type: res.type === 'qemu' ? 'vm' : 'lxc',
             position: { x: 20, y: 60 + (index * 60) },
             parentId: id,
