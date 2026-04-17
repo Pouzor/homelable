@@ -58,11 +58,12 @@ async def _check_single_node(
                 await db.commit()
                 
                 # Broadcast real-time update to WebSocket clients
-                await broadcast_status({
-                    "id": n.id,
-                    "status": n.status,
-                    "response_time_ms": n.response_time_ms
-                })
+                await broadcast_status(
+                  node_id=node_id,
+                  status=check_result["status"],
+                  checked_at=now.isoformat(),
+                  response_time_ms=check_result.get("response_time_ms"),
+             )
 
         return node_id, check_result
 
