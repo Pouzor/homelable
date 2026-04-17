@@ -16,7 +16,7 @@ const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 export function useStatusPolling() {
   const wsRef = useRef<WebSocket | null>(null)
-  const { updateNode, notifyScanDeviceFound } = useCanvasStore()
+  const { updateNodesStatus, notifyScanDeviceFound } = useCanvasStore()
   const { isAuthenticated, token } = useAuthStore()
 
   useEffect(() => {
@@ -40,11 +40,7 @@ export function useStatusPolling() {
         if (msg.type === 'scan_device_found') {
           notifyScanDeviceFound()
         } else if (msg.node_id && msg.status) {
-          updateNode(msg.node_id, {
-            status: msg.status,
-            response_time_ms: msg.response_time_ms ?? undefined,
-            last_seen: msg.status === 'online' ? msg.checked_at : undefined,
-          })
+          updateNodesStatus([{ id: msg.node_id, status: msg.status, response_time_ms: msg.response_time_ms ?? undefined, last_seen: msg.status === 'online' ? msg.checked_at : undefined }])
         }
       } catch {
         // ignore malformed messages
@@ -59,5 +55,5 @@ export function useStatusPolling() {
       ws.close()
       wsRef.current = null
     }
-  }, [isAuthenticated, token, updateNode, notifyScanDeviceFound])
+  }, [isAuthenticated, token, updateNodesStatus, notifyScanDeviceFound])
 }

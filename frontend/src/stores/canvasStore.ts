@@ -9,7 +9,7 @@ import {
   applyEdgeChanges,
   addEdge,
 } from '@xyflow/react'
-import type { NodeData, EdgeData } from '@/types'
+import type { NodeData, EdgeData, NodeStatus } from '@/types'
 import { generateUUID } from '@/utils/uuid'
 import { normalizeHandle, removedBottomHandleIds } from '@/utils/handleUtils'
 
@@ -38,6 +38,7 @@ interface CanvasState {
   onNodesChange: (changes: NodeChange<Node<NodeData>>[]) => void
   onEdgesChange: (changes: EdgeChange<Edge<EdgeData>>[]) => void
   onConnect: (connection: Connection) => void
+  updateNodesStatus: (updates: { id: string; status?: NodeStatus; response_time_ms?: number | null; last_seen?: string | undefined }[]) => void
   setSelectedNode: (id: string | null) => void
   addNode: (node: Node<NodeData>) => void
   updateNode: (id: string, data: Partial<NodeData>) => void
@@ -184,6 +185,22 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         return { nodes, hasUnsavedChanges: true }
       }
       return { nodes: [...withoutNew, enriched], hasUnsavedChanges: true }
+    }),
+
+  updateNodesStatus: (updates) =>
+    set((state) => {
+      if (!updates || updates.length === 0) return {}
+      const map = new Map<string, any>(updates.map((u: any) => [u.id, u]))
+      const nodes = state.nodes.map((n) => {
+        const u = map.get(n.id)
+        if (!u) return n
+        const updatedData = { ...n.data }
+        if (u.status !== undefined) updatedData.status = u.status
+        if (u.response_time_ms !== undefined) updatedData.response_time_ms = u.response_time_ms
+        if (u.last_seen !== undefined) updatedData.last_seen = u.last_seen
+        return { ...n, data: updatedData }
+      })
+      return { nodes }
     }),
 
   updateNode: (id, data) =>
