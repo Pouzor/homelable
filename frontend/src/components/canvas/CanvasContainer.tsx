@@ -74,9 +74,9 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
       const draggedX = dNode.positionAbsolute?.x ?? draggedNode.position.x;
       const draggedY = dNode.positionAbsolute?.y ?? draggedNode.position.y;
 
-      // Find all proxmox containers
+      // Find all proxmox containers EXCEPT the dragged node itself
       const containers = nodes.filter(
-        (n) => n.data.type === 'proxmox' && n.data.container_mode
+        (n) => n.data.type === 'proxmox' && n.data.container_mode && n.id !== draggedNode.id
       );
 
       // Mathematically check if the node was dropped inside any container
