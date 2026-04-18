@@ -17,7 +17,7 @@ const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
 ]
 
 const CHECK_METHODS: CheckMethod[] = ['none', 'ping', 'http', 'https', 'tcp', 'ssh', 'prometheus', 'health']
-const CONTAINER_MODE_TYPES: NodeType[] = ['proxmox', 'vm', 'lxc', 'docker_host']
+const CONTAINER_MODE_TYPES: NodeType[] = ['proxmox', 'docker_host']
 
 const DEFAULT_DATA: Partial<NodeData> = {
   type: 'server',

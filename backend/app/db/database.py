@@ -94,10 +94,11 @@ async def init_db() -> None:
         with suppress(OperationalError):
             sql = "UPDATE edges SET animated = 'none' WHERE animated = '0' OR animated = 0 OR animated IS NULL"
             await conn.exec_driver_sql(sql)
-        # Ensure existing proxmox nodes have container_mode=1 (they were always containers before the flag existed)
+        # Ensure proxmox nodes that have children get container_mode=1 (safe: only nodes already used as containers)
         with suppress(OperationalError):
             await conn.exec_driver_sql(
                 "UPDATE nodes SET container_mode = 1 WHERE type = 'proxmox' AND container_mode = 0"
+                " AND id IN (SELECT DISTINCT parent_id FROM nodes WHERE parent_id IS NOT NULL)"
             )
         # Rename legacy 'docker' type → 'docker_container'
         with suppress(OperationalError):

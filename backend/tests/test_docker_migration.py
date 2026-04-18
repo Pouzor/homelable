@@ -17,7 +17,8 @@ async def _setup_table(conn):
             id TEXT PRIMARY KEY,
             type TEXT NOT NULL DEFAULT 'generic',
             label TEXT NOT NULL DEFAULT '',
-            container_mode BOOLEAN NOT NULL DEFAULT 0
+            container_mode BOOLEAN NOT NULL DEFAULT 0,
+            parent_id TEXT
         )
     """)
 
@@ -25,6 +26,7 @@ async def _setup_table(conn):
 async def _run_migrations(conn):
     await conn.exec_driver_sql(
         "UPDATE nodes SET container_mode = 1 WHERE type = 'proxmox' AND container_mode = 0"
+        " AND id IN (SELECT DISTINCT parent_id FROM nodes WHERE parent_id IS NOT NULL)"
     )
     await conn.exec_driver_sql(
         "UPDATE nodes SET type = 'docker_container' WHERE type = 'docker'"
@@ -32,7 +34,23 @@ async def _run_migrations(conn):
 
 
 @pytest.mark.asyncio
-async def test_proxmox_container_mode_set_to_true():
+async def test_proxmox_with_children_gets_container_mode():
+    engine = create_async_engine(TEST_DB_URL)
+    async with engine.begin() as conn:
+        await _setup_table(conn)
+        await conn.exec_driver_sql(
+            "INSERT INTO nodes (id, type, label, container_mode) VALUES ('p1', 'proxmox', 'PVE', 0)"
+        )
+        await conn.exec_driver_sql(
+            "INSERT INTO nodes (id, type, label, container_mode, parent_id) VALUES ('c1', 'lxc', 'CT', 0, 'p1')"
+        )
+        await _run_migrations(conn)
+        row = (await conn.exec_driver_sql("SELECT container_mode FROM nodes WHERE id = 'p1'")).fetchone()
+        assert row[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_proxmox_without_children_stays_unchanged():
     engine = create_async_engine(TEST_DB_URL)
     async with engine.begin() as conn:
         await _setup_table(conn)
@@ -41,7 +59,7 @@ async def test_proxmox_container_mode_set_to_true():
         )
         await _run_migrations(conn)
         row = (await conn.exec_driver_sql("SELECT container_mode FROM nodes WHERE id = 'p1'")).fetchone()
-        assert row[0] == 1
+        assert row[0] == 0
 
 
 @pytest.mark.asyncio
