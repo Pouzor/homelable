@@ -343,6 +343,10 @@ export default function App() {
     setEditEdgeId(edge.id)
   }, [])
 
+  const handleNodeDoubleClick = useCallback((node: Node<NodeData>) => {
+    handleEditNode(node.id)
+  }, [handleEditNode])
+
   const handleEdgeUpdate = useCallback((data: EdgeData) => {
     if (!editEdgeId) return
     snapshotHistory()
@@ -400,7 +404,7 @@ export default function App() {
                 <CanvasContainer
                   onConnect={handleEdgeConnect}
                   onEdgeDoubleClick={handleEdgeDoubleClick}
-                  onNodeDoubleClick={(node) => handleEditNode(node.id)}
+                  onNodeDoubleClick={handleNodeDoubleClick}
                   onNodeDragStart={snapshotHistory}
                   onOpenPending={(deviceId) => {
                     setHighlightPendingId(undefined)
