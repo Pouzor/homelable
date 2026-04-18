@@ -33,7 +33,7 @@ import type { NodeData, EdgeData } from '@/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STANDALONE_STORAGE_KEY = 'homelable_canvas'
-const CONTAINER_MODE_TYPES = new Set<NodeData['type']>(['proxmox', 'vm', 'lxc', 'docker_host'])
+const CONTAINER_MODE_TYPES = new Set<NodeData['type']>(['proxmox', 'docker_host'])
 
 export default function App() {
   const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()

@@ -94,6 +94,16 @@ async def init_db() -> None:
         with suppress(OperationalError):
             sql = "UPDATE edges SET animated = 'none' WHERE animated = '0' OR animated = 0 OR animated IS NULL"
             await conn.exec_driver_sql(sql)
+        # Ensure existing proxmox nodes have container_mode=1 (they were always containers before the flag existed)
+        with suppress(OperationalError):
+            await conn.exec_driver_sql(
+                "UPDATE nodes SET container_mode = 1 WHERE type = 'proxmox' AND container_mode = 0"
+            )
+        # Rename legacy 'docker' type → 'docker_container'
+        with suppress(OperationalError):
+            await conn.exec_driver_sql(
+                "UPDATE nodes SET type = 'docker_container' WHERE type = 'docker'"
+            )
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
