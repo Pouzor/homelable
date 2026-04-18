@@ -1,5 +1,5 @@
 import { createElement, useEffect } from 'react'
-import { Handle, Position, NodeResizer, useUpdateNodeInternals, type NodeProps, type Node } from '@xyflow/react'
+import { Handle, Position, NodeResizer, useUpdateNodeInternals, useViewport, type NodeProps, type Node } from '@xyflow/react'
 import { Cpu, MemoryStick, HardDrive, type LucideIcon } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
@@ -24,6 +24,9 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
   const updateNodeInternals = useUpdateNodeInternals()
   useEffect(() => { updateNodeInternals(id) }, [data.bottom_handles, id, updateNodeInternals])
 
+  const { zoom } = useViewport()
+  const borderWidth = Math.max(1, 1 / zoom)
+
   const activeTheme = useThemeStore((s) => s.activeTheme)
   const hideIp = useCanvasStore((s) => s.hideIp)
   const theme = THEMES[activeTheme]
@@ -44,7 +47,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
       style={{
         background: colors.background,
         borderColor: colors.border,
-        borderWidth: 1,
+        borderWidth,
         boxShadow: isOnline && selected
           ? `0 0 0 1px ${colors.border}, 0 0 10px ${colors.border}2e, 0 0 3px ${colors.border}1a`
           : isOnline

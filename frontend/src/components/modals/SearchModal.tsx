@@ -4,6 +4,7 @@ import { Search } from 'lucide-react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { scanApi } from '@/api/client'
 import type { PendingDevice } from '@/components/modals/PendingDeviceModal'
+import { NODE_TYPE_LABELS } from '@/types'
 
 interface SearchModalProps {
   open: boolean
@@ -89,7 +90,7 @@ export function SearchModal({ open, onClose, onOpenPending }: SearchModalProps) 
                 className="flex items-center gap-3 px-4 py-2 hover:bg-[#21262d] cursor-pointer"
                 onClick={() => handleSelectNode(node.id)}
               >
-                <span className="text-xs font-mono text-[#00d4ff] w-16 shrink-0">{node.data.type}</span>
+                <span className="text-xs font-mono text-[#00d4ff] w-16 shrink-0">{NODE_TYPE_LABELS[node.data.type] ?? node.data.type}</span>
                 <span className="text-sm text-foreground font-medium flex-1 truncate">{node.data.label}</span>
                 {node.data.ip && (
                   <span className="text-xs font-mono text-muted-foreground shrink-0">{node.data.ip}</span>
