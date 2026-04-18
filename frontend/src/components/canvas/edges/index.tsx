@@ -13,7 +13,7 @@ import type { EdgeData, EdgeType, Waypoint } from '@/types'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { THEMES } from '@/utils/themes'
-import { buildWaypointPath, snap45, snap45both } from './waypointUtils'
+import { buildWaypointPath, getWaypointLabelPosition, snap45, snap45both } from './waypointUtils'
 
 const VLAN_COLORS = ['#00d4ff', '#a855f7', '#39d353', '#ff6e00', '#e3b341', '#f85149']
 
@@ -205,8 +205,9 @@ export function HomelableEdge({ id, source, target, sourceX, sourceY, targetX, t
     ? buildWaypointPath(sourceX, sourceY, waypoints, targetX, targetY, pathStyle)
     : autoPath
 
-  const midX = hasWaypoints ? (sourceX + targetX) / 2 : labelX
-  const midY = (sourceY + targetY) / 2
+  const labelPosition = hasWaypoints
+    ? getWaypointLabelPosition(sourceX, sourceY, waypoints, targetX, targetY, pathStyle)
+    : { x: labelX, y: (sourceY + targetY) / 2 }
 
   const edgeType: EdgeType = data?.type ?? 'ethernet'
   const edgeColors = theme.colors.edgeColors
@@ -300,7 +301,7 @@ export function HomelableEdge({ id, source, target, sourceX, sourceY, targetX, t
           <div
             className="absolute pointer-events-none font-mono text-[10px] px-1.5 py-0.5 rounded"
             style={{
-              transform: `translate(-50%, -50%) translate(${midX}px, ${midY}px)`,
+              transform: `translate(-50%, -50%) translate(${labelPosition.x}px, ${labelPosition.y}px)`,
               background: theme.colors.edgeLabelBackground,
               color:      theme.colors.edgeLabelColor,
               border:     `1px solid ${theme.colors.edgeLabelBorder}`,
