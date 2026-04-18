@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { GroupNode } from '../nodes/GroupNode'
 import * as canvasStore from '@/stores/canvasStore'
 import type { Node } from '@xyflow/react'
@@ -100,6 +100,19 @@ describe('GroupNode', () => {
       />,
     )
     expect(screen.getByTestId('node-resizer').getAttribute('data-visible')).toBe('true')
+  })
+
+  it('allows dragging from the header while keeping rename controls nodrag', () => {
+    renderGroupNode({ selected: true })
+
+    expect(screen.getByText('My Group').closest('div')).not.toHaveClass('nodrag')
+
+    const renameButton = screen.getByTitle('Rename group')
+    expect(renameButton).toHaveClass('nodrag')
+
+    fireEvent.click(renameButton)
+
+    expect(screen.getByDisplayValue('My Group')).toHaveClass('nodrag')
   })
 
   it('shows online/offline status summary from children', () => {
