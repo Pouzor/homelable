@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { Server } from 'lucide-react'
 import { BaseNode } from '../nodes/BaseNode'
@@ -16,11 +16,11 @@ vi.mock('@xyflow/react', () => ({
 }))
 
 vi.mock('@/stores/themeStore', () => ({
-  useThemeStore: () => 'dark',
+  useThemeStore: (sel: (s: { activeTheme: string }) => unknown) => sel({ activeTheme: 'dark' }),
 }))
 
 vi.mock('@/stores/canvasStore', () => ({
-  useCanvasStore: () => ({ hideIp: false }),
+  useCanvasStore: (sel: (s: { hideIp: boolean }) => unknown) => sel({ hideIp: false }),
 }))
 
 vi.mock('@/utils/themes', () => ({
@@ -89,6 +89,8 @@ function renderBaseNode(data: Partial<NodeData>) {
 }
 
 describe('BaseNode — borderWidth zoom scaling', () => {
+  beforeEach(() => { mockZoom = 1 })
+
   it('borderWidth is 1px at zoom=1', () => {
     mockZoom = 1
     const { container } = renderBaseNode({})
