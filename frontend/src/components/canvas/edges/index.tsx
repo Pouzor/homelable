@@ -13,7 +13,11 @@ import type { EdgeData, EdgeType, Waypoint } from '@/types'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { THEMES } from '@/utils/themes'
+<<<<<<< HEAD
 import { buildWaypointPath, getAddWaypointHandlePosition, getWaypointLabelPosition, snap45, snap45both } from './waypointUtils'
+=======
+import { buildWaypointPath, getWaypointLabelPosition, snap45, snap45both } from './waypointUtils'
+>>>>>>> 431fb47 (bug: fixed an issue with the label and a bezier path with multiple points)
 
 const VLAN_COLORS = ['#00d4ff', '#a855f7', '#39d353', '#ff6e00', '#e3b341', '#f85149']
 
