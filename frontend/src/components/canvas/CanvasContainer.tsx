@@ -73,6 +73,16 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     onNodeDoubleClick?.(node)
   }, [onNodeDoubleClick])
 
+  const handleBeforeDelete = useCallback(async () => {
+    snapshotHistory()
+    return true
+  }, [snapshotHistory])
+
+  const isValidConnection = useCallback(
+    (connection: { source: string | null; target: string | null }) => connection.source !== connection.target,
+    []
+  )
+
   return (
     <div className="w-full h-full" style={{ background: theme.colors.canvasBackground }}>
       <ReactFlow
@@ -89,7 +99,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         deleteKeyCode={['Backspace', 'Delete']}
-        onBeforeDelete={async () => { snapshotHistory(); return true }}
+        onBeforeDelete={handleBeforeDelete}
         selectionOnDrag={lassoMode}
         panOnDrag={lassoMode ? [1, 2] : true}
         panActivationKeyCode="Space"
@@ -102,7 +112,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         colorMode={theme.colors.reactFlowColorMode}
         elevateNodesOnSelect={false}
         connectionMode={ConnectionMode.Loose}
-        isValidConnection={(connection) => connection.source !== connection.target}
+        isValidConnection={isValidConnection}
       >
         <Background
           variant={BackgroundVariant.Dots}

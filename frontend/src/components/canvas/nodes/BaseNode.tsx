@@ -1,4 +1,4 @@
-import { createElement, useEffect } from 'react'
+import { createElement, useEffect, useMemo } from 'react'
 import { Handle, Position, NodeResizer, useUpdateNodeInternals, useViewport, type NodeProps, type Node } from '@xyflow/react'
 import { Cpu, MemoryStick, HardDrive, type LucideIcon } from 'lucide-react'
 import type { NodeData } from '@/types'
@@ -25,7 +25,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
   useEffect(() => { updateNodeInternals(id) }, [data.bottom_handles, id, updateNodeInternals])
 
   const { zoom } = useViewport()
-  const borderWidth = Math.max(1, 1 / zoom)
+  const borderWidth = useMemo(() => Math.max(1, 1 / zoom), [zoom])
 
   const activeTheme = useThemeStore((s) => s.activeTheme)
   const hideIp = useCanvasStore((s) => s.hideIp)
@@ -49,11 +49,11 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         borderColor: colors.border,
         borderWidth,
         boxShadow: isOnline && selected
-          ? `0 0 0 1px ${colors.border}, 0 0 10px ${colors.border}2e, 0 0 3px ${colors.border}1a`
+          ? `0 0 0 ${borderWidth}px ${colors.border}, 0 0 10px ${colors.border}2e, 0 0 3px ${colors.border}1a`
           : isOnline
           ? `0 0 10px ${colors.border}2e, 0 0 3px ${colors.border}1a`
           : selected
-          ? `0 0 0 1px ${colors.border}, 0 0 8px ${colors.border}44`
+          ? `0 0 0 ${borderWidth}px ${colors.border}, 0 0 8px ${colors.border}44`
           : 'none',
         opacity: data.status === 'offline' ? 0.55 : 1,
         minWidth: 140,
@@ -115,10 +115,10 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         <>
           <div style={{ height: 1, background: `${colors.border}44`, margin: '0 8px' }} />
           <div className="flex flex-col gap-1 px-2.5 py-1.5">
-            {visibleProperties.map((prop, i) => {
+            {visibleProperties.map((prop) => {
               const Icon = resolvePropertyIcon(prop.icon)
               return (
-                <div key={i} className="flex items-center gap-1 font-mono text-[10px]" style={{ color: theme.colors.nodeSubtextColor }}>
+                <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px]" style={{ color: theme.colors.nodeSubtextColor }}>
                   {Icon && <Icon size={9} className="shrink-0" />}
                   <span className="truncate max-w-[60px] shrink-0" title={prop.key}>{prop.key}</span>
                   <span className="truncate" title={prop.value}>· {prop.value}</span>
