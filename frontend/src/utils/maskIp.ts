@@ -8,3 +8,8 @@ export function maskIp(ip: string): string {
   if (parts.length === 4) return `${parts[0]}.${parts[1]}.XX.XX`
   return ip
 }
+
+export function primaryIp(ip: string): string {
+  if (!ip?.trim()) return ''
+  return ip.split(',')[0].trim()
+}
