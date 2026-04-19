@@ -25,11 +25,12 @@ import type { NodeData, EdgeData } from '@/types'
 interface CanvasContainerProps {
   onConnect?: (connection: Connection) => void
   onEdgeDoubleClick?: (edge: Edge<EdgeData>) => void
+  onNodeDoubleClick?: (node: Node<NodeData>) => void
   onNodeDragStart?: () => void
   onOpenPending?: (deviceId: string) => void
 }
 
-export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDragStart, onOpenPending }: CanvasContainerProps) {
+export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDoubleClick, onNodeDragStart, onOpenPending }: CanvasContainerProps) {
   const [lassoMode, setLassoMode] = useState(true)
   const {
     nodes, edges,
@@ -68,6 +69,20 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     onEdgeDoubleClick?.(edge)
   }, [onEdgeDoubleClick])
 
+  const handleNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node<NodeData>) => {
+    onNodeDoubleClick?.(node)
+  }, [onNodeDoubleClick])
+
+  const handleBeforeDelete = useCallback(async () => {
+    snapshotHistory()
+    return true
+  }, [snapshotHistory])
+
+  const isValidConnection = useCallback(
+    (connection: { source: string | null; target: string | null }) => connection.source !== connection.target,
+    []
+  )
+
   return (
     <div className="w-full h-full" style={{ background: theme.colors.canvasBackground }}>
       <ReactFlow
@@ -79,22 +94,25 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         onEdgeDoubleClick={handleEdgeDoubleClick}
+        onNodeDoubleClick={handleNodeDoubleClick}
         onNodeDragStart={onNodeDragStart}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         deleteKeyCode={['Backspace', 'Delete']}
-        onBeforeDelete={async () => { snapshotHistory(); return true }}
+        onBeforeDelete={handleBeforeDelete}
         selectionOnDrag={lassoMode}
         panOnDrag={lassoMode ? [1, 2] : true}
         panActivationKeyCode="Space"
         selectionMode={SelectionMode.Partial}
         multiSelectionKeyCode={['Meta', 'Control']}
+        minZoom={0.25}
+        maxZoom={2.5}
         snapToGrid
         snapGrid={[8, 8]}
         colorMode={theme.colors.reactFlowColorMode}
         elevateNodesOnSelect={false}
         connectionMode={ConnectionMode.Loose}
-        isValidConnection={(connection) => connection.source !== connection.target}
+        isValidConnection={isValidConnection}
       >
         <Background
           variant={BackgroundVariant.Dots}
