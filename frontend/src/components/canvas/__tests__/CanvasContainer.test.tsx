@@ -104,6 +104,24 @@ describe('CanvasContainer', () => {
     }).not.toThrow()
   })
 
+  // ── Node double-click ─────────────────────────────────────────────────────
+
+  it('calls onNodeDoubleClick prop when a node is double-clicked', () => {
+    const onNodeDoubleClick = vi.fn()
+    const node = makeNode('n1')
+    render(<CanvasContainer onNodeDoubleClick={onNodeDoubleClick} />)
+    ;(rfProps.onNodeDoubleClick as (...args: unknown[]) => unknown)({} as MouseEvent, node)
+    expect(onNodeDoubleClick).toHaveBeenCalledWith(node)
+  })
+
+  it('does not throw when onNodeDoubleClick is not provided', () => {
+    const node = makeNode('n1')
+    render(<CanvasContainer />)
+    expect(() => {
+      ;(rfProps.onNodeDoubleClick as (...args: unknown[]) => unknown)({} as MouseEvent, node)
+    }).not.toThrow()
+  })
+
   // ── Connection validation ─────────────────────────────────────────────────
 
   it('isValidConnection returns false for self-connections', () => {
