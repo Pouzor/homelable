@@ -202,7 +202,14 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
             </a>
           </div>
         )}
-        {data.ip && <DetailRow label="IP Address" value={data.ip} mono />}
+        {data.ip && (
+          <div className="flex justify-between gap-2 items-baseline">
+            <span className="text-muted-foreground text-xs shrink-0">IP Address</span>
+            <a href={`http://${data.ip}`} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[#00d4ff] hover:underline truncate flex items-center gap-1" title={data.ip}>
+              {data.ip}<ExternalLink size={10} className="shrink-0" />
+            </a>
+          </div>
+        )}
         {data.mac && <DetailRow label="MAC" value={data.mac} mono />}
         {data.os && <DetailRow label="OS" value={data.os} />}
         {data.check_method && <DetailRow label="Check" value={data.check_method} mono />}
