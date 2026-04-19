@@ -120,8 +120,7 @@ async def test_approve_nonexistent_device(client: AsyncClient, headers):
         json=node_payload,
         headers=headers,
     )
-    assert res.status_code == 200
-    assert res.json()["approved"] is False
+    assert res.status_code == 404
 
 
 # --- Hide device ---
@@ -478,6 +477,7 @@ async def test_bulk_approve_approves_devices(client: AsyncClient, headers, two_p
     data = res.json()
     assert data["approved"] == 2
     assert len(data["node_ids"]) == 2
+    assert all(nid is not None for nid in data["node_ids"]), "node_ids must be non-null UUIDs"
     assert len(data["device_ids"]) == 2
     assert data["skipped"] == 0
     # Pending list should now be empty
