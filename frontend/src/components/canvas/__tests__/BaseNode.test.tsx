@@ -48,6 +48,7 @@ vi.mock('@/utils/nodeIcons', () => ({
 
 vi.mock('@/utils/maskIp', () => ({
   maskIp: (ip: string) => ip,
+  splitIps: (ip: string) => ip ? ip.split(',').map((s: string) => s.trim()).filter(Boolean) : [],
 }))
 
 vi.mock('@/utils/propertyIcons', () => ({

@@ -72,7 +72,7 @@ describe('NodeModal', () => {
     renderModal({ initial: BASE })
     expect((screen.getByPlaceholderText('My Server') as HTMLInputElement).value).toBe('My Server')
     expect((screen.getByPlaceholderText('server.lan') as HTMLInputElement).value).toBe('server.lan')
-    expect((screen.getByPlaceholderText('192.168.1.x') as HTMLInputElement).value).toBe('192.168.1.10')
+    expect((screen.getByPlaceholderText('192.168.1.x, 2001:db8::1') as HTMLInputElement).value).toBe('192.168.1.10')
   })
 
   // ── Cancel ────────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ describe('NodeModal', () => {
   it('submits updated hostname, IP and notes', () => {
     const { onSubmit } = renderModal({ initial: BASE })
     fireEvent.change(screen.getByPlaceholderText('server.lan'), { target: { value: 'nas.local' } })
-    fireEvent.change(screen.getByPlaceholderText('192.168.1.x'), { target: { value: '10.0.0.1' } })
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.x, 2001:db8::1'), { target: { value: '10.0.0.1' } })
     fireEvent.change(screen.getByPlaceholderText('Optional notes'), { target: { value: 'rack A' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     const data = onSubmit.mock.calls[0][0] as Partial<NodeData>

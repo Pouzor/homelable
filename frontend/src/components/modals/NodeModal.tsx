@@ -209,11 +209,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
 
             {/* IP */}
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">IP Address</Label>
+              <Label className="text-xs text-muted-foreground">IP Address <span className="text-muted-foreground/50">(comma-separated)</span></Label>
               <Input
                 value={form.ip ?? ''}
                 onChange={(e) => set('ip', e.target.value)}
-                placeholder="192.168.1.x"
+                placeholder="192.168.1.x, 2001:db8::1"
                 className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
               />
             </div>

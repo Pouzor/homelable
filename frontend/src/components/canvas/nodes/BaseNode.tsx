@@ -8,7 +8,7 @@ import { resolvePropertyIcon } from '@/utils/propertyIcons'
 import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { useCanvasStore } from '@/stores/canvasStore'
-import { maskIp } from '@/utils/maskIp'
+import { maskIp, splitIps } from '@/utils/maskIp'
 import { BOTTOM_HANDLE_IDS, BOTTOM_HANDLE_POSITIONS } from '@/utils/handleUtils'
 
 interface BaseNodeProps extends NodeProps<Node<NodeData>> {
@@ -98,15 +98,16 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
           >
             {data.label}
           </div>
-          {data.ip && (
+          {data.ip && splitIps(data.ip).map((ip) => (
             <div
+              key={ip}
               className="font-mono text-[10px] truncate"
               style={{ color: theme.colors.nodeSubtextColor }}
-              title={data.ip}
+              title={ip}
             >
-              {hideIp ? maskIp(data.ip) : data.ip}
+              {hideIp ? maskIp(ip) : ip}
             </div>
-          )}
+          ))}
         </div>
       </div>
 
