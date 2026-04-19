@@ -19,7 +19,9 @@ async def check_node(check_method: str, target: str | None, ip: str | None) -> d
     if check_method == "none":
         return {"status": "online", "response_time_ms": None}
 
-    host = target or ip
+    # Use only the first IP when the field contains comma-separated addresses
+    raw_ip = ip.split(",")[0].strip() if ip else None
+    host = target or raw_ip
     if not host:
         return {"status": "unknown", "response_time_ms": None}
 

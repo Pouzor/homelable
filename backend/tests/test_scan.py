@@ -444,3 +444,101 @@ async def test_run_scan_updates_existing_pending_device(db_session: AsyncSession
     # Services and hostname should be updated
     assert device.hostname == "myhost.lan"
     assert any(s["port"] == 8096 for s in device.services)
+
+
+# --- Bulk approve ---
+
+@pytest.fixture
+async def two_pending_devices(db_session):
+    devices = []
+    for i in range(2):
+        d = PendingDevice(
+            id=str(uuid.uuid4()),
+            ip=f"192.168.1.{10 + i}",
+            mac=None,
+            hostname=f"host-{i}",
+            os=None,
+            services=[],
+            suggested_type="generic",
+            status="pending",
+        )
+        db_session.add(d)
+        devices.append(d)
+    await db_session.commit()
+    for d in devices:
+        await db_session.refresh(d)
+    return devices
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_approves_devices(client: AsyncClient, headers, two_pending_devices):
+    ids = [d.id for d in two_pending_devices]
+    res = await client.post("/api/v1/scan/pending/bulk-approve", json={"device_ids": ids}, headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["approved"] == 2
+    assert len(data["node_ids"]) == 2
+    assert len(data["device_ids"]) == 2
+    assert data["skipped"] == 0
+    # Pending list should now be empty
+    pending_res = await client.get("/api/v1/scan/pending", headers=headers)
+    assert pending_res.json() == []
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_skips_already_approved(client: AsyncClient, headers, two_pending_devices):
+    ids = [d.id for d in two_pending_devices]
+    # Approve first device individually first
+    await client.post(
+        f"/api/v1/scan/pending/{ids[0]}/approve",
+        json={"label": "h", "type": "generic", "ip": "192.168.1.10", "status": "unknown", "services": []},
+        headers=headers,
+    )
+    # Bulk approve both — first one is already approved (not pending), should be skipped
+    res = await client.post("/api/v1/scan/pending/bulk-approve", json={"device_ids": ids}, headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["approved"] == 1
+    assert data["skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_requires_auth(client: AsyncClient, two_pending_devices):
+    ids = [d.id for d in two_pending_devices]
+    res = await client.post("/api/v1/scan/pending/bulk-approve", json={"device_ids": ids})
+    assert res.status_code == 401
+
+
+# --- Bulk hide ---
+
+@pytest.mark.asyncio
+async def test_bulk_hide_hides_devices(client: AsyncClient, headers, two_pending_devices):
+    ids = [d.id for d in two_pending_devices]
+    res = await client.post("/api/v1/scan/pending/bulk-hide", json={"device_ids": ids}, headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["hidden"] == 2
+    assert data["skipped"] == 0
+    # Should appear in hidden list
+    hidden_res = await client.get("/api/v1/scan/hidden", headers=headers)
+    assert len(hidden_res.json()) == 2
+
+
+@pytest.mark.asyncio
+async def test_bulk_hide_skips_non_pending(client: AsyncClient, headers, two_pending_devices):
+    ids = [d.id for d in two_pending_devices]
+    # Hide first device individually first
+    await client.post(f"/api/v1/scan/pending/{ids[0]}/hide", headers=headers)
+    # Bulk hide both — first is already hidden (not pending anymore)
+    res = await client.post("/api/v1/scan/pending/bulk-hide", json={"device_ids": ids}, headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["hidden"] == 1
+    assert data["skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_hide_requires_auth(client: AsyncClient, two_pending_devices):
+    ids = [d.id for d in two_pending_devices]
+    res = await client.post("/api/v1/scan/pending/bulk-hide", json={"device_ids": ids})
+    assert res.status_code == 401

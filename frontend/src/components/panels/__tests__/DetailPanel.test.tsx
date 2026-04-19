@@ -385,4 +385,34 @@ describe('DetailPanel', () => {
       expect(screen.getByText('nginx')).toBeDefined()
     })
   })
+
+  describe('IP Address — clickable link', () => {
+    it('renders a link for a single IP', () => {
+      setupStore({ ip: '192.168.1.10' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const link = screen.getByRole('link', { name: /192\.168\.1\.10/ })
+      expect(link).toBeDefined()
+      expect(link.getAttribute('href')).toBe('http://192.168.1.10')
+      expect(link.getAttribute('target')).toBe('_blank')
+    })
+
+    it('renders no IP link when ip is absent', () => {
+      setupStore({ ip: undefined })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.queryByText('IP Address')).toBeNull()
+    })
+
+    it('uses primary IP as href for comma-separated IPs', () => {
+      setupStore({ ip: '192.168.1.10, 192.168.1.11' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const link = screen.getByRole('link', { name: /192\.168\.1\.10/ })
+      expect(link.getAttribute('href')).toBe('http://192.168.1.10')
+    })
+
+    it('displays full comma-separated IP string as link text', () => {
+      setupStore({ ip: '192.168.1.10, 192.168.1.11' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText(/192\.168\.1\.10, 192\.168\.1\.11/)).toBeDefined()
+    })
+  })
 })

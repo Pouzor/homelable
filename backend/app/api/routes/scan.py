@@ -17,6 +17,10 @@ from app.schemas.scan import PendingDeviceResponse, ScanRunResponse
 from app.services.scanner import request_cancel, run_scan
 
 
+class BulkActionRequest(BaseModel):
+    device_ids: list[str]
+
+
 class ScanConfig(BaseModel):
     ranges: list[str]
 
@@ -97,6 +101,61 @@ async def clear_pending(
 async def list_hidden(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[PendingDevice]:
     result = await db.execute(select(PendingDevice).where(PendingDevice.status == "hidden"))
     return list(result.scalars().all())
+
+
+@router.post("/pending/bulk-approve", response_model=dict)
+async def bulk_approve_devices(
+    payload: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> dict[str, Any]:
+    result = await db.execute(
+        select(PendingDevice).where(
+            PendingDevice.id.in_(payload.device_ids),
+            PendingDevice.status == "pending",
+        )
+    )
+    devices = result.scalars().all()
+    node_ids: list[str] = []
+    for device in devices:
+        device.status = "approved"
+        node = Node(
+            label=device.hostname or device.ip,
+            type=device.suggested_type or "generic",
+            ip=device.ip,
+            hostname=device.hostname,
+            status="unknown",
+            services=device.services or [],
+        )
+        db.add(node)
+        node_ids.append(node.id)
+    await db.commit()
+    approved_device_ids = [d.id for d in devices]
+    return {
+        "approved": len(node_ids),
+        "node_ids": node_ids,
+        "device_ids": approved_device_ids,
+        "skipped": len(payload.device_ids) - len(node_ids),
+    }
+
+
+@router.post("/pending/bulk-hide", response_model=dict)
+async def bulk_hide_devices(
+    payload: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> dict[str, Any]:
+    result = await db.execute(
+        select(PendingDevice).where(
+            PendingDevice.id.in_(payload.device_ids),
+            PendingDevice.status == "pending",
+        )
+    )
+    devices = result.scalars().all()
+    for device in devices:
+        device.status = "hidden"
+    await db.commit()
+    return {"hidden": len(devices), "skipped": len(payload.device_ids) - len(devices)}
 
 
 @router.post("/pending/{device_id}/approve", response_model=dict)

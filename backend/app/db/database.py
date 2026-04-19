@@ -1,3 +1,5 @@
+import logging
+import shutil
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from pathlib import Path
@@ -6,7 +8,9 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
-from app.core.config import settings
+from app.core.config import APP_VERSION, settings
+
+logger = logging.getLogger(__name__)
 
 # Ensure the data directory exists before SQLite tries to open the file
 Path(settings.sqlite_path).parent.mkdir(parents=True, exist_ok=True)
@@ -23,7 +27,22 @@ class Base(DeclarativeBase):
     pass
 
 
+def _backup_db() -> None:
+    db_path = Path(settings.sqlite_path)
+    if not db_path.exists():
+        return
+    backup_path = db_path.with_suffix(f".db.back-{APP_VERSION}")
+    if backup_path.exists():
+        return
+    try:
+        shutil.copy2(db_path, backup_path)
+        logger.info("DB backup created: %s", backup_path.name)
+    except OSError:
+        logger.warning("Could not create DB backup at %s", backup_path)
+
+
 async def init_db() -> None:
+    _backup_db()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # Add columns introduced after initial schema (idempotent)
