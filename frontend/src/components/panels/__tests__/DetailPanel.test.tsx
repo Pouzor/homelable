@@ -293,9 +293,35 @@ describe('DetailPanel', () => {
       fireEvent.click(addHeaders[addHeaders.length - 1])
       fireEvent.change(screen.getByPlaceholderText('Service name'), { target: { value: 'nginx' } })
       fireEvent.change(screen.getByPlaceholderText('Port'), { target: { value: '80' } })
+      fireEvent.change(screen.getByPlaceholderText('Path (/admin)'), { target: { value: '/admin' } })
       fireEvent.keyDown(screen.getByPlaceholderText('Port'), { key: 'Enter' })
       expect(updateNode).toHaveBeenCalledOnce()
-      expect(updateNode.mock.calls[0][1].services[0]).toMatchObject({ service_name: 'nginx', port: 80, protocol: 'tcp' })
+      expect(updateNode.mock.calls[0][1].services[0]).toMatchObject({ service_name: 'nginx', port: 80, protocol: 'tcp', path: '/admin' })
+    })
+
+    it('allows adding a service without a port', () => {
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+        nodes: [makeNode({ ip: '192.168.1.10:8080' })],
+        selectedNodeId: 'n1',
+        selectedNodeIds: [],
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode,
+        snapshotHistory: vi.fn(),
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
+      } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const addHeaders = screen.getAllByText('Add')
+      fireEvent.click(addHeaders[addHeaders.length - 1])
+      fireEvent.change(screen.getByPlaceholderText('Service name'), { target: { value: 'health' } })
+      fireEvent.change(screen.getByPlaceholderText('Path (/admin)'), { target: { value: 'healthz' } })
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add' }).at(-1) as HTMLButtonElement)
+
+      expect(updateNode).toHaveBeenCalledOnce()
+      expect(updateNode.mock.calls[0][1].services[0]).toMatchObject({ service_name: 'health', protocol: 'tcp', path: 'healthz' })
+      expect(updateNode.mock.calls[0][1].services[0].port).toBeUndefined()
     })
 
     it('calls updateNode without the removed service when X is clicked', () => {
@@ -332,7 +358,7 @@ describe('DetailPanel', () => {
     const svc = { port: 80, protocol: 'tcp' as const, service_name: 'nginx' }
 
     it('shows edit form pre-filled when pencil is clicked', () => {
-      setupStore({ services: [svc] })
+      setupStore({ services: [{ ...svc, path: '/admin' }] })
       render(<DetailPanel onEdit={vi.fn()} />)
       // Hover to reveal edit button (fireEvent.mouseOver isn't needed — opacity is CSS only)
       const editBtn = screen.getByTitle('Edit service')
@@ -341,6 +367,8 @@ describe('DetailPanel', () => {
       expect(nameInput.value).toBe('nginx')
       const portInput = screen.getByPlaceholderText('Port') as HTMLInputElement
       expect(portInput.value).toBe('80')
+      const pathInput = screen.getByPlaceholderText('Path (/admin)') as HTMLInputElement
+      expect(pathInput.value).toBe('/admin')
     })
 
     it('calls updateNode with updated values on Save', () => {
@@ -359,11 +387,13 @@ describe('DetailPanel', () => {
 
       const nameInput = screen.getByPlaceholderText('Service name')
       fireEvent.change(nameInput, { target: { value: 'apache' } })
+      fireEvent.change(screen.getByPlaceholderText('Path (/admin)'), { target: { value: '/admin' } })
       fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
       expect(updateNode).toHaveBeenCalledOnce()
       expect(updateNode.mock.calls[0][1].services[0].service_name).toBe('apache')
       expect(updateNode.mock.calls[0][1].services[0].port).toBe(80)
+      expect(updateNode.mock.calls[0][1].services[0].path).toBe('/admin')
     })
 
     it('cancels edit without updating', () => {
@@ -383,6 +413,36 @@ describe('DetailPanel', () => {
 
       expect(updateNode).not.toHaveBeenCalled()
       expect(screen.getByText('nginx')).toBeDefined()
+    })
+  })
+
+  describe('IP Address — clickable link', () => {
+    it('renders a link for a single IP', () => {
+      setupStore({ ip: '192.168.1.10' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const link = screen.getByRole('link', { name: /192\.168\.1\.10/ })
+      expect(link).toBeDefined()
+      expect(link.getAttribute('href')).toBe('http://192.168.1.10')
+      expect(link.getAttribute('target')).toBe('_blank')
+    })
+
+    it('renders no IP link when ip is absent', () => {
+      setupStore({ ip: undefined })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.queryByText('IP Address')).toBeNull()
+    })
+
+    it('uses primary IP as href for comma-separated IPs', () => {
+      setupStore({ ip: '192.168.1.10, 192.168.1.11' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const link = screen.getByRole('link', { name: /192\.168\.1\.10/ })
+      expect(link.getAttribute('href')).toBe('http://192.168.1.10')
+    })
+
+    it('displays full comma-separated IP string as link text', () => {
+      setupStore({ ip: '192.168.1.10, 192.168.1.11' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText(/192\.168\.1\.10, 192\.168\.1\.11/)).toBeDefined()
     })
   })
 })

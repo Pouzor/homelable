@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { TextPosition } from '@/types'
+import { hexToRgba, rgbaToHex8 } from '@/utils/colorUtils'
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'none'
 
@@ -204,23 +205,35 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Colors</Label>
             <div className="grid grid-cols-3 gap-2">
-              {colorFields.map(({ key, label }) => (
-                <div key={key} className="flex flex-col gap-1 items-center">
-                  <label
-                    className="relative w-full h-7 rounded-md border cursor-pointer overflow-hidden"
-                    style={{ borderColor: '#30363d' }}
-                  >
+              {colorFields.map(({ key, label }) => {
+                const { hex6, alpha } = hexToRgba(form[key])
+                return (
+                  <div key={key} className="flex flex-col gap-1 items-center">
+                    <label
+                      className="relative w-full h-7 rounded-md border cursor-pointer overflow-hidden"
+                      style={{ borderColor: '#30363d' }}
+                    >
+                      <input
+                        type="color"
+                        value={hex6}
+                        onChange={(e) => set(key, rgbaToHex8(e.target.value, alpha))}
+                        className="absolute inset-0 w-full h-full cursor-pointer opacity-0"
+                      />
+                      <div className="w-full h-full rounded-sm" style={{ background: form[key] }} />
+                    </label>
                     <input
-                      type="color"
-                      value={form[key]}
-                      onChange={(e) => set(key, e.target.value)}
-                      className="absolute inset-0 w-full h-full cursor-pointer opacity-0"
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={alpha}
+                      onChange={(e) => set(key, rgbaToHex8(hex6, Number(e.target.value)))}
+                      className="w-full h-1 accent-[#00d4ff] cursor-pointer"
+                      title={`Opacity: ${alpha}%`}
                     />
-                    <div className="w-full h-full rounded-sm" style={{ background: form[key] }} />
-                  </label>
-                  <span className="text-[9px] text-muted-foreground/60">{label}</span>
-                </div>
-              ))}
+                    <span className="text-[9px] text-muted-foreground/60">{label} {alpha}%</span>
+                  </div>
+                )
+              })}
             </div>
           </div>
 

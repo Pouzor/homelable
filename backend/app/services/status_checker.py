@@ -29,6 +29,7 @@ async def check_node(node_data: Any, *args, **kwargs) -> dict[str, Any]:
 
     if check_method == "none":
         return {"status": "online", "response_time_ms": None}
+
     if not host:
         return {"status": "unknown", "response_time_ms": None}
 

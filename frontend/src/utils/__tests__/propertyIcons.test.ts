@@ -1,12 +1,17 @@
 import { describe, it, expect } from 'vitest'
-import { Cpu, HardDrive, MemoryStick } from 'lucide-react'
+import { CircuitBoard, Cpu, EthernetPort, Gpu, HardDrive, HdmiPort, MemoryStick, Usb } from 'lucide-react'
 import { PROPERTY_ICONS, PROPERTY_ICON_NAMES, resolvePropertyIcon } from '../propertyIcons'
 
 describe('PROPERTY_ICONS', () => {
   it('contains the hardware migration icons', () => {
+    expect(PROPERTY_ICONS['CircuitBoard']).toBe(CircuitBoard)
     expect(PROPERTY_ICONS['Cpu']).toBe(Cpu)
+    expect(PROPERTY_ICONS['EthernetPort']).toBe(EthernetPort)
+    expect(PROPERTY_ICONS['Gpu']).toBe(Gpu)
     expect(PROPERTY_ICONS['HardDrive']).toBe(HardDrive)
+    expect(PROPERTY_ICONS['HdmiPort']).toBe(HdmiPort)
     expect(PROPERTY_ICONS['MemoryStick']).toBe(MemoryStick)
+    expect(PROPERTY_ICONS['Usb']).toBe(Usb)
   })
 
   it('has at least 10 icons', () => {

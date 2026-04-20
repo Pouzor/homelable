@@ -251,4 +251,60 @@ describe('GroupRectModal', () => {
     const submitted = onSubmit.mock.calls[0][0] as GroupRectFormData
     expect(submitted.border_style).toBe('solid')
   })
+
+  it('shows opacity sliders for all three color fields', () => {
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} />)
+    const sliders = screen.getAllByRole('slider')
+    expect(sliders).toHaveLength(3)
+  })
+
+  it('default background_color is 8-digit hex with low alpha', () => {
+    const onSubmit = vi.fn()
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByText('Add'))
+    const submitted = onSubmit.mock.calls[0][0] as GroupRectFormData
+    expect(submitted.background_color).toBe('#00d4ff0d')
+    expect(submitted.background_color.length).toBe(9)
+  })
+
+  it('moving background opacity slider updates background_color alpha', () => {
+    const onSubmit = vi.fn()
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    // background slider is the third one (Text, Border, Background)
+    const sliders = screen.getAllByRole('slider')
+    fireEvent.change(sliders[2], { target: { value: '50' } })
+    fireEvent.click(screen.getByText('Add'))
+    const submitted = onSubmit.mock.calls[0][0] as GroupRectFormData
+    // alpha 50% → 0x80 = 128
+    expect(submitted.background_color).toBe('#00d4ff80')
+  })
+
+  it('moving border opacity slider to 0 makes border fully transparent', () => {
+    const onSubmit = vi.fn()
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    const sliders = screen.getAllByRole('slider')
+    fireEvent.change(sliders[1], { target: { value: '0' } })
+    fireEvent.click(screen.getByText('Add'))
+    const submitted = onSubmit.mock.calls[0][0] as GroupRectFormData
+    expect(submitted.border_color).toBe('#00d4ff00')
+  })
+
+  it('pre-fills opacity from 8-digit initial background_color', () => {
+    render(
+      <GroupRectModal
+        open
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+        initial={{ background_color: '#ff6e0080' }}
+      />
+    )
+    const sliders = screen.getAllByRole('slider')
+    expect((sliders[2] as HTMLInputElement).value).toBe('50')
+  })
+
+  it('shows opacity percentage in label', () => {
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} />)
+    // Background default is 5% opacity
+    expect(screen.getByText(/Background 5%/)).toBeInTheDocument()
+  })
 })

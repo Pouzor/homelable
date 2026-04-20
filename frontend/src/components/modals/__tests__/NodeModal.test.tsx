@@ -72,7 +72,7 @@ describe('NodeModal', () => {
     renderModal({ initial: BASE })
     expect((screen.getByPlaceholderText('My Server') as HTMLInputElement).value).toBe('My Server')
     expect((screen.getByPlaceholderText('server.lan') as HTMLInputElement).value).toBe('server.lan')
-    expect((screen.getByPlaceholderText('192.168.1.x') as HTMLInputElement).value).toBe('192.168.1.10')
+    expect((screen.getByPlaceholderText('192.168.1.x, 2001:db8::1') as HTMLInputElement).value).toBe('192.168.1.10')
   })
 
   // ── Cancel ────────────────────────────────────────────────────────────
@@ -121,13 +121,28 @@ describe('NodeModal', () => {
   it('submits updated hostname, IP and notes', () => {
     const { onSubmit } = renderModal({ initial: BASE })
     fireEvent.change(screen.getByPlaceholderText('server.lan'), { target: { value: 'nas.local' } })
-    fireEvent.change(screen.getByPlaceholderText('192.168.1.x'), { target: { value: '10.0.0.1' } })
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.x, 2001:db8::1'), { target: { value: '10.0.0.1' } })
     fireEvent.change(screen.getByPlaceholderText('Optional notes'), { target: { value: 'rack A' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     const data = onSubmit.mock.calls[0][0] as Partial<NodeData>
     expect(data.hostname).toBe('nas.local')
     expect(data.ip).toBe('10.0.0.1')
     expect(data.notes).toBe('rack A')
+  })
+
+  it('resets form values when reopened in Add mode', () => {
+    const onClose = vi.fn()
+    const onSubmit = vi.fn()
+
+    const { rerender } = render(<NodeModal key="open-1" open onClose={onClose} onSubmit={onSubmit} />)
+    fireEvent.change(screen.getByPlaceholderText('My Server'), { target: { value: 'Temp Node' } })
+    fireEvent.change(screen.getByPlaceholderText('server.lan'), { target: { value: 'temp.local' } })
+
+    rerender(<NodeModal key="closed" open={false} onClose={onClose} onSubmit={onSubmit} />)
+    rerender(<NodeModal key="open-2" open onClose={onClose} onSubmit={onSubmit} />)
+
+    expect((screen.getByPlaceholderText('My Server') as HTMLInputElement).value).toBe('')
+    expect((screen.getByPlaceholderText('server.lan') as HTMLInputElement).value).toBe('')
   })
 
   it('submits check_target', () => {

@@ -1,23 +1,26 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { Server } from 'lucide-react'
 import { BaseNode } from '../nodes/BaseNode'
 import type { NodeData } from '@/types'
 import type { Node } from '@xyflow/react'
 
+let mockZoom = 1
+
 vi.mock('@xyflow/react', () => ({
   Handle: () => null,
   Position: { Top: 'top', Bottom: 'bottom' },
   NodeResizer: () => null,
   useUpdateNodeInternals: () => vi.fn(),
+  useViewport: () => ({ zoom: mockZoom }),
 }))
 
 vi.mock('@/stores/themeStore', () => ({
-  useThemeStore: () => 'dark',
+  useThemeStore: (sel: (s: { activeTheme: string }) => unknown) => sel({ activeTheme: 'dark' }),
 }))
 
 vi.mock('@/stores/canvasStore', () => ({
-  useCanvasStore: () => ({ hideIp: false }),
+  useCanvasStore: (sel: (s: { hideIp: boolean }) => unknown) => sel({ hideIp: false }),
 }))
 
 vi.mock('@/utils/themes', () => ({
@@ -45,12 +48,19 @@ vi.mock('@/utils/nodeIcons', () => ({
 
 vi.mock('@/utils/maskIp', () => ({
   maskIp: (ip: string) => ip,
+  splitIps: (ip: string) => ip ? ip.split(',').map((s: string) => s.trim()).filter(Boolean) : [],
+}))
+
+vi.mock('@/utils/propertyIcons', () => ({
+  resolvePropertyIcon: (icon: string | null) => icon ? Server : null,
 }))
 
 vi.mock('@/utils/handleUtils', () => ({
   BOTTOM_HANDLE_IDS: ['bottom'],
   BOTTOM_HANDLE_POSITIONS: { 1: [50] },
 }))
+
+beforeEach(() => { mockZoom = 1 })
 
 function makeNode(data: Partial<NodeData>): Node<NodeData> {
   return {
@@ -84,6 +94,39 @@ function renderBaseNode(data: Partial<NodeData>) {
     />
   )
 }
+
+describe('BaseNode — borderWidth zoom scaling', () => {
+  beforeEach(() => { mockZoom = 1 })
+
+  it('borderWidth is 1px at zoom=1', () => {
+    mockZoom = 1
+    const { container } = renderBaseNode({})
+    expect((container.firstChild as HTMLElement).style.borderWidth).toBe('1px')
+  })
+
+  it('borderWidth scales to 2px at zoom=0.5', () => {
+    mockZoom = 0.5
+    const { container } = renderBaseNode({})
+    expect((container.firstChild as HTMLElement).style.borderWidth).toBe('2px')
+  })
+
+  it('borderWidth is clamped to 1px at zoom=2', () => {
+    mockZoom = 2
+    const { container } = renderBaseNode({})
+    expect((container.firstChild as HTMLElement).style.borderWidth).toBe('1px')
+  })
+
+  it('boxShadow glow ring uses borderWidth when selected + online at zoom=0.5', () => {
+    mockZoom = 0.5
+    const node = makeNode({ status: 'online' })
+    const { container } = render(
+      <BaseNode id={node.id} data={node.data} selected={true} icon={Server}
+        type="server" dragging={false} zIndex={0} isConnectable={true}
+        positionAbsoluteX={0} positionAbsoluteY={0} />
+    )
+    expect((container.firstChild as HTMLElement).style.boxShadow).toContain('0 0 0 2px')
+  })
+})
 
 describe('BaseNode — properties rendering', () => {
   it('renders visible properties on the node', () => {

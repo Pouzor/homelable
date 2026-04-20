@@ -165,8 +165,25 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
   const [devices, setDevices] = useState<PendingDevice[]>([])
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<PendingDevice | null>(null)
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
   const { addNode, scanEventTs } = useCanvasStore()
   const highlightRef = useRef<HTMLButtonElement>(null)
+
+  const allChecked = devices.length > 0 && checkedIds.size === devices.length
+  const someChecked = checkedIds.size > 0
+
+  const toggleCheck = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setCheckedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    setCheckedIds(allChecked ? new Set() : new Set(devices.map((d) => d.id)))
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -184,9 +201,55 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
     try {
       await scanApi.clearPending()
       setDevices([])
+      setCheckedIds(new Set())
       toast.success('Pending devices cleared')
     } catch {
       toast.error('Failed to clear pending devices')
+    }
+  }
+
+  const handleBulkApprove = async () => {
+    const ids = [...checkedIds]
+    try {
+      const res = await scanApi.bulkApprove(ids)
+      const deviceToNode: Record<string, string> = {}
+      res.data.device_ids.forEach((did, i) => { deviceToNode[did] = res.data.node_ids[i] })
+      const approvedDevices = devices.filter((d) => ids.includes(d.id))
+      approvedDevices.forEach((d, i) => {
+        const nodeId = deviceToNode[d.id]
+        if (!nodeId) return
+        addNode({
+          id: nodeId,
+          type: (d.suggested_type ?? 'generic') as import('@/types').NodeType,
+          position: { x: 400 + (i % 4) * 160, y: 300 + Math.floor(i / 4) * 100 },
+          data: {
+            label: d.hostname ?? d.ip,
+            type: (d.suggested_type ?? 'generic') as import('@/types').NodeType,
+            ip: d.ip,
+            hostname: d.hostname ?? undefined,
+            status: 'unknown' as const,
+            services: (d.services ?? []) as import('@/types').ServiceInfo[],
+          },
+        })
+        onNodeApproved(nodeId)
+      })
+      setDevices((prev) => prev.filter((d) => !ids.includes(d.id)))
+      setCheckedIds(new Set())
+      toast.success(`Approved ${res.data.approved} device${res.data.approved !== 1 ? 's' : ''}`)
+    } catch {
+      toast.error('Failed to bulk approve devices')
+    }
+  }
+
+  const handleBulkHide = async () => {
+    const ids = [...checkedIds]
+    try {
+      const res = await scanApi.bulkHide(ids)
+      setDevices((prev) => prev.filter((d) => !ids.includes(d.id)))
+      setCheckedIds(new Set())
+      toast.success(`Hidden ${res.data.hidden} device${res.data.hidden !== 1 ? 's' : ''}`)
+    } catch {
+      toast.error('Failed to bulk hide devices')
     }
   }
 
@@ -251,7 +314,19 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
     <>
       <div className="p-2">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Pending</span>
+          <div className="flex items-center gap-1.5">
+            {devices.length > 0 && (
+              <input
+                type="checkbox"
+                checked={allChecked}
+                ref={(el) => { if (el) el.indeterminate = someChecked && !allChecked }}
+                onChange={toggleAll}
+                className="w-3 h-3 accent-[#00d4ff] cursor-pointer"
+                title="Select all"
+              />
+            )}
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Pending</span>
+          </div>
           <div className="flex items-center gap-1">
             <button onClick={load} className="text-muted-foreground hover:text-foreground p-0.5" title="Refresh">
               <RefreshCw size={12} />
@@ -263,12 +338,28 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
             )}
           </div>
         </div>
+        {someChecked && (
+          <div className="flex items-center gap-1 mb-2">
+            <button
+              onClick={handleBulkApprove}
+              className="flex-1 text-[10px] py-1 px-2 rounded bg-[#39d353]/20 text-[#39d353] hover:bg-[#39d353]/30 transition-colors font-medium"
+            >
+              Approve ({checkedIds.size})
+            </button>
+            <button
+              onClick={handleBulkHide}
+              className="flex-1 text-[10px] py-1 px-2 rounded bg-[#8b949e]/20 text-[#8b949e] hover:bg-[#8b949e]/30 transition-colors font-medium"
+            >
+              Hide ({checkedIds.size})
+            </button>
+          </div>
+        )}
         {loading && <Loader2 size={14} className="animate-spin text-muted-foreground mx-auto my-4" />}
         {!loading && devices.length === 0 && (
           <p className="text-xs text-muted-foreground text-center py-4">No pending devices</p>
         )}
         {devices.map((d) => {
-          const namedService = d.services.find((s) => s.category != null && !COMMON_PORTS.has(s.port))
+          const namedService = d.services.find((s) => s.category != null && s.port != null && !COMMON_PORTS.has(s.port))
           const titleService = namedService
             ?? d.services.find((s) => s.port === 80)
             ?? d.services.find((s) => s.port === 443)
@@ -288,10 +379,16 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
               key={d.id}
               ref={isHighlighted ? highlightRef : null}
               onClick={() => setSelected(d)}
-              className={`w-full mb-1.5 p-2 rounded-md text-xs text-left transition-colors border ${isHighlighted ? 'bg-[#2d3748] border-[#e3b341]' : 'bg-[#21262d] border-transparent hover:bg-[#30363d] hover:border-[#30363d]'}`}
+              className={`w-full mb-1.5 p-2 rounded-md text-xs text-left transition-colors border ${isHighlighted ? 'bg-[#2d3748] border-[#e3b341]' : checkedIds.has(d.id) ? 'bg-[#21262d] border-[#00d4ff]/40' : 'bg-[#21262d] border-transparent hover:bg-[#30363d] hover:border-[#30363d]'}`}
             >
               <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#e3b341] shrink-0" />
+                <input
+                  type="checkbox"
+                  checked={checkedIds.has(d.id)}
+                  onClick={(e) => toggleCheck(d.id, e)}
+                  onChange={() => {}}
+                  className="w-3 h-3 accent-[#00d4ff] cursor-pointer shrink-0"
+                />
                 <span className="text-foreground truncate font-medium">{title}</span>
               </div>
               {showIpBelow && (

@@ -2,3 +2,4 @@
 *.db-shm
 *.db-wal
 scan_config.json
+homelab.db.*

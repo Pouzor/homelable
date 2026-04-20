@@ -12,6 +12,7 @@ COPY frontend/package*.json ./
 RUN npm ci
 
 COPY frontend/ .
+COPY VERSION ../VERSION
 RUN npm run build
 
 # Stage 2: serve

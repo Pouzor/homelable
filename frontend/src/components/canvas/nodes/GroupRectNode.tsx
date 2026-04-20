@@ -1,4 +1,5 @@
-import { NodeResizer, type NodeProps, type Node } from '@xyflow/react'
+import { useState } from 'react'
+import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflow/react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import type { NodeData, TextPosition } from '@/types'
 
@@ -26,8 +27,16 @@ const POSITION_STYLES: Record<TextPosition, AlignStyle> = {
   'bottom-right':  { alignItems: 'flex-end',   justifyContent: 'flex-end',   textAlign: 'right' },
 }
 
+const HANDLE_SIDES = [
+  { id: 'zone-top',    position: Position.Top },
+  { id: 'zone-right',  position: Position.Right },
+  { id: 'zone-bottom', position: Position.Bottom },
+  { id: 'zone-left',   position: Position.Left },
+] as const
+
 export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
   const setEditingGroupRectId = useCanvasStore((s) => s.setEditingGroupRectId)
+  const [hovered, setHovered] = useState(false)
 
   const rc = data.custom_colors ?? {}
   const borderColor = rc.border ?? '#00d4ff'
@@ -60,6 +69,16 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
     whiteSpace: 'pre-wrap',
   }
 
+  const handleStyle: React.CSSProperties = {
+    width: 10,
+    height: 10,
+    background: borderColor,
+    border: '2px solid #0d1117',
+    borderRadius: '50%',
+    opacity: hovered ? 1 : 0,
+    transition: 'opacity 0.15s',
+  }
+
   return (
     <>
       <NodeResizer
@@ -75,6 +94,14 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
         }}
         lineStyle={{ borderColor: 'transparent' }}
       />
+
+      {HANDLE_SIDES.map(({ id: hid, position }) => (
+        <span key={hid}>
+          <Handle type="source" id={hid} position={position} style={handleStyle} />
+          <Handle type="target" id={`${hid}-t`} position={position} style={{ ...handleStyle, opacity: 0, width: 14, height: 14 }} />
+        </span>
+      ))}
+
       <div
         style={{
           position: 'relative',
@@ -92,6 +119,8 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
           boxSizing: 'border-box',
           cursor: 'default',
         }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         onDoubleClick={(e) => {
           e.stopPropagation()
           setEditingGroupRectId(id)

@@ -20,6 +20,7 @@ vi.mock('@xyflow/react', () => ({
   BackgroundVariant: { Dots: 'dots' },
   ConnectionMode: { Loose: 'loose' },
   SelectionMode: { Partial: 'partial' },
+  Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
   useReactFlow: () => ({ fitView: vi.fn() }),
 }))
 
@@ -101,6 +102,24 @@ describe('CanvasContainer', () => {
     render(<CanvasContainer />)
     expect(() => {
       ;(rfProps.onEdgeDoubleClick as (...args: unknown[]) => unknown)({} as MouseEvent, edge)
+    }).not.toThrow()
+  })
+
+  // ── Node double-click ─────────────────────────────────────────────────────
+
+  it('calls onNodeDoubleClick prop when a node is double-clicked', () => {
+    const onNodeDoubleClick = vi.fn()
+    const node = makeNode('n1')
+    render(<CanvasContainer onNodeDoubleClick={onNodeDoubleClick} />)
+    ;(rfProps.onNodeDoubleClick as (...args: unknown[]) => unknown)({} as MouseEvent, node)
+    expect(onNodeDoubleClick).toHaveBeenCalledWith(node)
+  })
+
+  it('does not throw when onNodeDoubleClick is not provided', () => {
+    const node = makeNode('n1')
+    render(<CanvasContainer />)
+    expect(() => {
+      ;(rfProps.onNodeDoubleClick as (...args: unknown[]) => unknown)({} as MouseEvent, node)
     }).not.toThrow()
   })
 

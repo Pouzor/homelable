@@ -2,13 +2,14 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install nmap for network scanning + iputils-ping for ping-based status checks
-RUN apt-get update && apt-get install -y --no-install-recommends nmap iputils-ping && rm -rf /var/lib/apt/lists/*
+# Install nmap for network scanning + iputils-ping for ping-based status checks + curl for the health check
+RUN apt-get update && apt-get install -y --no-install-recommends nmap iputils-ping curl && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ .
+COPY VERSION /app/VERSION
 
 # Create data directory (volume mount point)
 RUN mkdir -p /app/data

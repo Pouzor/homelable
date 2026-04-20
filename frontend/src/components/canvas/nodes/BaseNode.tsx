@@ -1,5 +1,5 @@
-import { createElement, useEffect } from 'react'
-import { Handle, Position, NodeResizer, useUpdateNodeInternals, type NodeProps, type Node } from '@xyflow/react'
+import { createElement, useEffect, useMemo } from 'react'
+import { Handle, Position, NodeResizer, useUpdateNodeInternals, useViewport, type NodeProps, type Node } from '@xyflow/react'
 import { Cpu, MemoryStick, HardDrive, type LucideIcon } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
@@ -8,7 +8,7 @@ import { resolvePropertyIcon } from '@/utils/propertyIcons'
 import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { useCanvasStore } from '@/stores/canvasStore'
-import { maskIp } from '@/utils/maskIp'
+import { maskIp, splitIps } from '@/utils/maskIp'
 import { BOTTOM_HANDLE_IDS, BOTTOM_HANDLE_POSITIONS } from '@/utils/handleUtils'
 
 interface BaseNodeProps extends NodeProps<Node<NodeData>> {
@@ -23,6 +23,9 @@ function formatStorage(gb: number): string {
 export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: BaseNodeProps) {
   const updateNodeInternals = useUpdateNodeInternals()
   useEffect(() => { updateNodeInternals(id) }, [data.bottom_handles, id, updateNodeInternals])
+
+  const { zoom } = useViewport()
+  const borderWidth = useMemo(() => Math.max(1, 1 / zoom), [zoom])
 
   const activeTheme = useThemeStore((s) => s.activeTheme)
   const hideIp = useCanvasStore((s) => s.hideIp)
@@ -40,17 +43,17 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
 
   return (
     <div
-      className="relative flex flex-col rounded-lg border transition-all duration-200"
+      className="relative flex flex-col rounded-lg border transition-all duration-200 overflow-hidden"
       style={{
         background: colors.background,
         borderColor: colors.border,
-        borderWidth: 1,
+        borderWidth,
         boxShadow: isOnline && selected
-          ? `0 0 0 1px ${colors.border}, 0 0 10px ${colors.border}2e, 0 0 3px ${colors.border}1a`
+          ? `0 0 0 ${borderWidth}px ${colors.border}, 0 0 10px ${colors.border}2e, 0 0 3px ${colors.border}1a`
           : isOnline
           ? `0 0 10px ${colors.border}2e, 0 0 3px ${colors.border}1a`
           : selected
-          ? `0 0 0 1px ${colors.border}, 0 0 8px ${colors.border}44`
+          ? `0 0 0 ${borderWidth}px ${colors.border}, 0 0 8px ${colors.border}44`
           : 'none',
         opacity: data.status === 'offline' ? 0.55 : 1,
         minWidth: 140,
@@ -74,7 +77,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
       <Handle type="target" position={Position.Top} id="top-t" style={{ opacity: 0, width: 12, height: 12 }} />
 
       {/* Main row */}
-      <div className="flex flex-row items-center gap-2.5 px-2.5 py-2">
+      <div className="flex flex-row items-center gap-2.5 px-2.5 py-2 min-w-0 overflow-hidden">
         {/* Icon */}
         <div
           className="flex items-center justify-center w-7 h-7 rounded-md shrink-0"
@@ -95,15 +98,16 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
           >
             {data.label}
           </div>
-          {data.ip && (
+          {data.ip && splitIps(data.ip).map((ip) => (
             <div
+              key={ip}
               className="font-mono text-[10px] truncate"
               style={{ color: theme.colors.nodeSubtextColor }}
-              title={data.ip}
+              title={ip}
             >
-              {hideIp ? maskIp(data.ip) : data.ip}
+              {hideIp ? maskIp(ip) : ip}
             </div>
-          )}
+          ))}
         </div>
       </div>
 
@@ -111,14 +115,14 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
       {visibleProperties && visibleProperties.length > 0 && (
         <>
           <div style={{ height: 1, background: `${colors.border}44`, margin: '0 8px' }} />
-          <div className="flex flex-col gap-1 px-2.5 py-1.5">
-            {visibleProperties.map((prop, i) => {
+          <div className="flex flex-col gap-1 px-2.5 py-1.5 overflow-hidden">
+            {visibleProperties.map((prop) => {
               const Icon = resolvePropertyIcon(prop.icon)
               return (
-                <div key={i} className="flex items-center gap-1 font-mono text-[10px]" style={{ color: theme.colors.nodeSubtextColor }}>
+                <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px] min-w-0 overflow-hidden" style={{ color: theme.colors.nodeSubtextColor }}>
                   {Icon && <Icon size={9} className="shrink-0" />}
                   <span className="truncate max-w-[60px] shrink-0" title={prop.key}>{prop.key}</span>
-                  <span className="truncate" title={prop.value}>· {prop.value}</span>
+                  <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
                 </div>
               )
             })}

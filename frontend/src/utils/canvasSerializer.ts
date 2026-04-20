@@ -104,8 +104,8 @@ export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
     disk_gb: n.data.disk_gb ?? null,
     show_hardware: n.data.show_hardware ?? false,
     properties: n.data.properties ?? [],
-    width: n.width ?? null,
-    height: n.height ?? null,
+    width: n.measured?.width ?? n.width ?? null,
+    height: n.measured?.height ?? n.height ?? null,
     bottom_handles: n.data.bottom_handles ?? 1,
     pos_x: n.position.x,
     pos_y: n.position.y,
@@ -158,11 +158,8 @@ export function deserializeApiNode(
     position: { x: n.pos_x, y: n.pos_y },
     data: n as unknown as NodeData,
     ...(n.parent_id && parentIsContainer ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
-    ...(n.type === 'proxmox' && n.container_mode !== false
-      ? { width: n.width ?? 300, height: n.height ?? 200 }
-      : {}),
-    ...(n.width && n.type !== 'proxmox' ? { width: n.width } : {}),
-    ...(n.height && n.type !== 'proxmox' ? { height: n.height } : {}),
+    ...(n.width ? { width: n.width } : n.type === 'proxmox' && n.container_mode !== false ? { width: 300 } : {}),
+    ...(n.height ? { height: n.height } : n.type === 'proxmox' && n.container_mode !== false ? { height: 200 } : {}),
   }
 }
 

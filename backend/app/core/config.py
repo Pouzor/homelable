@@ -7,6 +7,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
+def _read_version() -> str:
+    for candidate in [
+        Path(__file__).parent.parent.parent.parent / "VERSION",  # repo root (dev)
+        Path("/app/VERSION"),                                      # Docker image
+    ]:
+        if candidate.exists():
+            return candidate.read_text().strip()
+    return "unknown"
+
+APP_VERSION = _read_version()
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

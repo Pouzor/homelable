@@ -9,6 +9,9 @@ import type { NodeData } from '@/types'
 
 vi.mock('@/stores/canvasStore')
 
+const mockBulkApprove = vi.fn()
+const mockBulkHide = vi.fn()
+
 vi.mock('@/api/client', () => ({
   scanApi: {
     trigger: vi.fn().mockResolvedValue({}),
@@ -16,6 +19,12 @@ vi.mock('@/api/client', () => ({
     hidden: vi.fn().mockResolvedValue({ data: [] }),
     runs: vi.fn().mockResolvedValue({ data: [] }),
     stop: vi.fn().mockResolvedValue({}),
+    clearPending: vi.fn().mockResolvedValue({}),
+    approve: vi.fn().mockResolvedValue({ data: { approved: true, node_id: 'new-node-1' } }),
+    hide: vi.fn().mockResolvedValue({ data: { hidden: true } }),
+    ignore: vi.fn().mockResolvedValue({ data: { ignored: true } }),
+    bulkApprove: (...args: unknown[]) => mockBulkApprove(...args),
+    bulkHide: (...args: unknown[]) => mockBulkHide(...args),
   },
   settingsApi: {
     get: vi.fn().mockResolvedValue({ data: { interval_seconds: 60 } }),
@@ -257,5 +266,102 @@ describe('Sidebar', () => {
     // Click the nav button again to close (use role to avoid matching the panel heading)
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     expect(screen.queryByText('Status check interval (s)')).not.toBeInTheDocument()
+  })
+})
+
+// ── PendingDevicesPanel — bulk select ─────────────────────────────────────────
+
+const DEVICE_A = {
+  id: 'dev-a',
+  ip: '192.168.1.10',
+  hostname: 'host-a',
+  mac: null,
+  os: null,
+  services: [],
+  suggested_type: 'generic',
+  status: 'pending',
+  discovery_source: 'arp',
+}
+
+const DEVICE_B = {
+  id: 'dev-b',
+  ip: '192.168.1.11',
+  hostname: 'host-b',
+  mac: null,
+  os: null,
+  services: [],
+  suggested_type: 'generic',
+  status: 'pending',
+  discovery_source: 'arp',
+}
+
+describe('PendingDevicesPanel — bulk select', () => {
+  beforeEach(() => {
+    mockStore()
+    vi.clearAllMocks()
+    mockBulkApprove.mockResolvedValue({
+      data: { approved: 2, node_ids: ['n1', 'n2'], device_ids: ['dev-a', 'dev-b'], skipped: 0 },
+    })
+    mockBulkHide.mockResolvedValue({ data: { hidden: 2, skipped: 0 } })
+  })
+
+  async function renderWithDevices() {
+    const { scanApi } = await import('@/api/client')
+    vi.mocked(scanApi.pending).mockResolvedValue({ data: [DEVICE_A, DEVICE_B] } as never)
+    render(<Sidebar {...defaultProps} forceView="pending" />)
+    await waitFor(() => expect(screen.getByText('host-a')).toBeInTheDocument())
+  }
+
+  it('renders checkboxes for each device', async () => {
+    await renderWithDevices()
+    const checkboxes = screen.getAllByRole('checkbox')
+    // select-all + 2 device checkboxes
+    expect(checkboxes.length).toBe(3)
+  })
+
+  it('shows bulk action bar when a device is checked', async () => {
+    await renderWithDevices()
+    const [, firstDeviceCheckbox] = screen.getAllByRole('checkbox')
+    fireEvent.click(firstDeviceCheckbox)
+    await waitFor(() => expect(screen.getByText(/Approve \(1\)/)).toBeInTheDocument())
+    expect(screen.getByText(/Hide \(1\)/)).toBeInTheDocument()
+  })
+
+  it('hides bulk action bar when no device is checked', async () => {
+    await renderWithDevices()
+    expect(screen.queryByText(/Approve \(/)).not.toBeInTheDocument()
+  })
+
+  it('select-all checks all devices', async () => {
+    await renderWithDevices()
+    const [selectAll] = screen.getAllByRole('checkbox')
+    fireEvent.click(selectAll)
+    await waitFor(() => expect(screen.getByText(/Approve \(2\)/)).toBeInTheDocument())
+  })
+
+  it('select-all unchecks all when all are selected', async () => {
+    await renderWithDevices()
+    const [selectAll] = screen.getAllByRole('checkbox')
+    fireEvent.click(selectAll) // select all
+    fireEvent.click(selectAll) // deselect all
+    await waitFor(() => expect(screen.queryByText(/Approve \(/)).not.toBeInTheDocument())
+  })
+
+  it('calls bulkApprove with checked ids and removes devices from list', async () => {
+    await renderWithDevices()
+    const [selectAll] = screen.getAllByRole('checkbox')
+    fireEvent.click(selectAll)
+    fireEvent.click(screen.getByText(/Approve \(2\)/))
+    await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-a', 'dev-b']))
+    await waitFor(() => expect(screen.queryByText('host-a')).not.toBeInTheDocument())
+  })
+
+  it('calls bulkHide with checked ids and removes devices from list', async () => {
+    await renderWithDevices()
+    const [selectAll] = screen.getAllByRole('checkbox')
+    fireEvent.click(selectAll)
+    fireEvent.click(screen.getByText(/Hide \(2\)/))
+    await waitFor(() => expect(mockBulkHide).toHaveBeenCalledWith(['dev-a', 'dev-b']))
+    await waitFor(() => expect(screen.queryByText('host-b')).not.toBeInTheDocument())
   })
 })

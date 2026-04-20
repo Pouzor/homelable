@@ -11,6 +11,7 @@ vi.mock('@xyflow/react', () => ({
   Controls: () => null,
   BackgroundVariant: { Dots: 'dots' },
   ConnectionMode: { Loose: 'loose' },
+  Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
   useReactFlow: () => ({ fitView: vi.fn() }),
 }))
 vi.mock('@xyflow/react/dist/style.css', () => ({}))
@@ -143,6 +144,7 @@ const XYFLOW_MOCK = {
   Controls: () => null,
   BackgroundVariant: { Dots: 'dots' },
   ConnectionMode: { Loose: 'loose' },
+  Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
   useReactFlow: () => ({ fitView: vi.fn() }),
 }
 

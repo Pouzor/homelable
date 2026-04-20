@@ -66,13 +66,13 @@ export function GroupNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
             borderBottom: isVisible ? `1px solid ${borderColor}40` : 'none',
             pointerEvents: 'auto',
           }}
-          className="nodrag"
         >
           <Layers size={12} style={{ color: '#00d4ff', flexShrink: 0 }} />
 
           {editing ? (
             <input
               autoFocus
+              className="nodrag"
               value={labelDraft}
               onChange={(e) => setLabelDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -97,11 +97,12 @@ export function GroupNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
 
           {editing ? (
             <>
-              <button onClick={handleRename} style={{ color: '#39d353', background: 'none', border: 'none', cursor: 'pointer', padding: 1 }}><Check size={11} /></button>
-              <button onClick={() => { setLabelDraft(data.label); setEditing(false) }} style={{ color: '#f85149', background: 'none', border: 'none', cursor: 'pointer', padding: 1 }}><X size={11} /></button>
+              <button className="nodrag" onClick={handleRename} style={{ color: '#39d353', background: 'none', border: 'none', cursor: 'pointer', padding: 1 }}><Check size={11} /></button>
+              <button className="nodrag" onClick={() => { setLabelDraft(data.label); setEditing(false) }} style={{ color: '#f85149', background: 'none', border: 'none', cursor: 'pointer', padding: 1 }}><X size={11} /></button>
             </>
           ) : (
             <button
+              className="nodrag"
               onClick={() => { setLabelDraft(data.label); setEditing(true) }}
               style={{ color: '#8b949e', background: 'none', border: 'none', cursor: 'pointer', padding: 1, opacity: selected ? 1 : 0 }}
               title="Rename group"
