@@ -43,7 +43,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
         )
         
         if (!exists) {
-          // CORREÇÃO 3: Estrutura correta de um Node do React Flow
+        
           addNode({
             id: generateUUID(),
             type: res.type === 'qemu' ? 'vm' : 'lxc',
