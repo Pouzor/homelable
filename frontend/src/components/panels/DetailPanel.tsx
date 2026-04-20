@@ -516,7 +516,7 @@ function ServiceForm({ form, onChange, onConfirm, onCancel, confirmLabel, autoFo
           <option value="udp">udp</option>
         </select>
       </div>
-      <Input value={form.path} onChange={(e) => onChange({ ...form, path: e.target.value })} placeholder="Path (/dashboard)" className="bg-[#21262d] border-[#30363d] font-mono text-xs h-7" onKeyDown={(e) => e.key === 'Enter' && onConfirm()} />
+      <Input value={form.path} onChange={(e) => onChange({ ...form, path: e.target.value })} placeholder="Path (/admin)" className="bg-[#21262d] border-[#30363d] font-mono text-xs h-7" onKeyDown={(e) => e.key === 'Enter' && onConfirm()} />
       <div className="flex gap-1.5">
         <Button size="sm" className="flex-1 h-6 text-[10px] bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90" onClick={onConfirm}>{confirmLabel}</Button>
         <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={onCancel}>Cancel</Button>
