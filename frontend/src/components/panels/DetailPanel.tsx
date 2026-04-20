@@ -506,11 +506,33 @@ function ServiceForm({ form, onChange, onConfirm, onCancel, confirmLabel, autoFo
   confirmLabel: string
   autoFocus?: boolean
 }) {
+  const setPort = (value: string) => {
+    const digitsOnly = value.replace(/\D/g, '').slice(0, 5)
+    onChange({ ...form, port: digitsOnly })
+  }
+
+  const clampPort = (value: string) => {
+    if (!value) return ''
+    const parsed = Number.parseInt(value, 10)
+    if (!Number.isFinite(parsed)) return ''
+    return String(Math.max(1, Math.min(65535, parsed)))
+  }
+
   return (
     <div className="flex flex-col gap-1.5 mb-1 p-2 rounded-md bg-[#0d1117] border border-[#30363d]">
       <Input value={form.service_name} onChange={(e) => onChange({ ...form, service_name: e.target.value })} placeholder="Service name" className="bg-[#21262d] border-[#30363d] text-xs h-7" autoFocus={autoFocus} onKeyDown={(e) => e.key === 'Enter' && onConfirm()} />
       <div className="flex gap-1.5">
-        <Input type="number" value={form.port} onChange={(e) => onChange({ ...form, port: e.target.value })} placeholder="Port" min={1} max={65535} className="bg-[#21262d] border-[#30363d] font-mono text-xs h-7 w-28 shrink-0" onKeyDown={(e) => e.key === 'Enter' && onConfirm()} />
+        <Input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={form.port}
+          onChange={(e) => setPort(e.target.value)}
+          onBlur={() => onChange({ ...form, port: clampPort(form.port) })}
+          placeholder="Port"
+          className="bg-[#21262d] border-[#30363d] font-mono text-xs h-7 w-28 shrink-0"
+          onKeyDown={(e) => e.key === 'Enter' && onConfirm()}
+        />
         <select value={form.protocol} onChange={(e) => onChange({ ...form, protocol: e.target.value as 'tcp' | 'udp' })} className="flex-1 bg-[#21262d] border border-[#30363d] rounded-md text-xs h-7 px-1.5 text-foreground">
           <option value="tcp">tcp</option>
           <option value="udp">udp</option>
