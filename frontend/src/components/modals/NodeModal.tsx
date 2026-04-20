@@ -268,7 +268,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   onValueChange={(v) => set('parent_id', v === 'none' ? undefined : v)}
                 >
                   <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
-                    <SelectValue placeholder="None (standalone)" />
+                    <SelectValue placeholder="None (standalone)">
+                      {form.parent_id
+                        ? (parentContainerNodes.find((n) => n.id === form.parent_id)?.label ?? 'None (standalone)')
+                        : 'None (standalone)'}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="bg-[#21262d] border-[#30363d]">
                     <SelectItem value="none" className="text-sm">None (standalone)</SelectItem>
