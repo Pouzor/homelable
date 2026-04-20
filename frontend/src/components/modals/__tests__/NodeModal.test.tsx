@@ -236,18 +236,16 @@ describe('NodeModal', () => {
 
   // ── Container mode ─────────────────────────────────────────────────────
 
-  it('shows Container Mode toggle for proxmox type', () => {
-    renderModal({ initial: { ...BASE, type: 'proxmox' } })
+  const containerModeTypes = ['proxmox', 'vm', 'lxc', 'docker_host'] as const
+  const nonContainerModeTypes = ['isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer', 'iot', 'camera', 'cpl', 'computer', 'generic', 'groupRect', 'group'] as const
+
+  it.each(containerModeTypes)('shows Container Mode toggle for %s type', (type) => {
+    renderModal({ initial: { ...BASE, type } })
     expect(screen.getByText('Container Mode')).toBeDefined()
   })
 
-  it('hides Container Mode for server type', () => {
-    renderModal({ initial: { ...BASE, type: 'server' } })
-    expect(screen.queryByText('Container Mode')).toBeNull()
-  })
-
-  it('hides Container Mode for groupRect type', () => {
-    renderModal({ initial: { ...BASE, type: 'groupRect' } })
+  it.each(nonContainerModeTypes)('hides Container Mode for %s type', (type) => {
+    renderModal({ initial: { ...BASE, type } })
     expect(screen.queryByText('Container Mode')).toBeNull()
   })
 
@@ -260,22 +258,25 @@ describe('NodeModal', () => {
 
   // ── Parent container ──────────────────────────────────────────────────
 
-  it('shows Parent Container when options are provided', () => {
+  const parentContainerVisibleTypes = ['proxmox', 'vm', 'lxc', 'docker_host', 'isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer', 'iot', 'camera', 'cpl', 'computer', 'generic'] as const
+  const parentContainerHiddenTypes = ['groupRect', 'group'] as const
+
+  it.each(parentContainerVisibleTypes)('shows Parent Container for %s type when options are provided', (type) => {
     renderModal({
-      initial: { ...BASE, type: 'server' },
+      initial: { ...BASE, type },
       parentContainerNodes: [{ id: 'c1', label: 'Container 01' }],
     })
     expect(screen.getByText('Parent Container')).toBeDefined()
     expect(screen.getByText('Container 01')).toBeDefined()
   })
 
-  it('hides Parent Container for groupRect type', () => {
-    renderModal({ initial: { ...BASE, type: 'groupRect' }, parentContainerNodes: [{ id: 'c1', label: 'Container 01' }] })
+  it.each(parentContainerHiddenTypes)('hides Parent Container for %s type even when options are provided', (type) => {
+    renderModal({ initial: { ...BASE, type }, parentContainerNodes: [{ id: 'c1', label: 'Container 01' }] })
     expect(screen.queryByText('Parent Container')).toBeNull()
   })
 
-  it('hides Parent Container when no container options are available', () => {
-    renderModal({ initial: { ...BASE, type: 'server' } })
+  it.each(parentContainerVisibleTypes)('hides Parent Container for %s type when no container options are available', (type) => {
+    renderModal({ initial: { ...BASE, type } })
     expect(screen.queryByText('Parent Container')).toBeNull()
   })
 
