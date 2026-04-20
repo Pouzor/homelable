@@ -1,4 +1,4 @@
-import { createElement, useState } from 'react'
+import { createElement, Fragment, useState } from 'react'
 import { RotateCcw, ChevronDown } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -80,9 +80,9 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 </SelectTrigger>
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
                   {NODE_TYPE_GROUPS.map((group, i) => (
-                    <>
+                    <Fragment key={group.label}>
                       {i > 0 && <SelectSeparator key={`sep-${group.label}`} className="bg-[#30363d]" />}
-                      <SelectGroup key={group.label}>
+                      <SelectGroup>
                         <SelectLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 px-2 py-1">
                           {group.label}
                         </SelectLabel>
@@ -92,7 +92,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                           </SelectItem>
                         ))}
                       </SelectGroup>
-                    </>
+                    </Fragment>
                   ))}
                 </SelectContent>
               </Select>
@@ -273,6 +273,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 <button
                   type="button"
                   role="switch"
+                  aria-label="Container Mode"
                   aria-checked={!!form.container_mode}
                   onClick={() => set('container_mode', !form.container_mode)}
                   className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none"
@@ -281,6 +282,33 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   <span
                     className="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
                     style={{ transform: form.container_mode ? 'translateX(16px)' : 'translateX(0)' }}
+                  />
+                </button>
+              </div>
+            )}
+
+            {/* Service visibility */}
+            {form.type !== 'groupRect' && form.type !== 'group' && (
+              <div className="flex items-center justify-between col-span-2 py-1">
+                <div className="flex flex-col gap-0.5">
+                  <Label className="text-xs text-muted-foreground">Show Services</Label>
+                  <span className="text-[10px] text-muted-foreground/60">Display discovered services on the node card</span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Show Services"
+                  aria-checked={form.custom_colors?.show_services === true}
+                  onClick={() => set('custom_colors', {
+                    ...form.custom_colors,
+                    show_services: !(form.custom_colors?.show_services === true),
+                  })}
+                  className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none"
+                  style={{ background: form.custom_colors?.show_services === true ? '#00d4ff' : '#30363d' }}
+                >
+                  <span
+                    className="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                    style={{ transform: form.custom_colors?.show_services === true ? 'translateX(16px)' : 'translateX(0)' }}
                   />
                 </button>
               </div>

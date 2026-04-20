@@ -248,9 +248,30 @@ describe('NodeModal', () => {
 
   it('toggles container_mode on click', () => {
     const { onSubmit } = renderModal({ initial: { ...BASE, type: 'proxmox', container_mode: true } })
-    fireEvent.click(screen.getByRole('switch'))
+    fireEvent.click(screen.getByRole('switch', { name: 'Container Mode' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).container_mode).toBe(false)
+  })
+
+  // ── Show services toggle (modal-only) ───────────────────────────────
+
+  it('shows Show Services toggle for regular nodes', () => {
+    renderModal({ initial: BASE })
+    expect(screen.getByText('Show Services')).toBeDefined()
+    expect(screen.getByRole('switch', { name: 'Show Services' })).toBeDefined()
+  })
+
+  it('hides Show Services toggle for groupRect', () => {
+    renderModal({ initial: { ...BASE, type: 'groupRect' } })
+    expect(screen.queryByText('Show Services')).toBeNull()
+  })
+
+  it('submits custom_colors.show_services=true when toggled on', () => {
+    const { onSubmit } = renderModal({ initial: BASE })
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Services' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    const data = onSubmit.mock.calls[0][0] as Partial<NodeData>
+    expect(data.custom_colors?.show_services).toBe(true)
   })
 
   // ── Parent Proxmox (vm / lxc only) ───────────────────────────────────

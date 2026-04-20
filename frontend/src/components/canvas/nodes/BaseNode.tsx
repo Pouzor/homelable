@@ -1,6 +1,6 @@
 import { createElement, useEffect, useMemo } from 'react'
 import { Handle, Position, NodeResizer, useUpdateNodeInternals, useViewport, type NodeProps, type Node } from '@xyflow/react'
-import { Cpu, MemoryStick, HardDrive, type LucideIcon } from 'lucide-react'
+import { Cpu, MemoryStick, HardDrive, ExternalLink, type LucideIcon } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { resolveNodeIcon } from '@/utils/nodeIcons'
@@ -8,8 +8,9 @@ import { resolvePropertyIcon } from '@/utils/propertyIcons'
 import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { useCanvasStore } from '@/stores/canvasStore'
-import { maskIp, splitIps } from '@/utils/maskIp'
+import { maskIp, primaryIp, splitIps } from '@/utils/maskIp'
 import { BOTTOM_HANDLE_IDS, BOTTOM_HANDLE_POSITIONS } from '@/utils/handleUtils'
+import { getServiceUrl } from '@/utils/serviceUrl'
 
 interface BaseNodeProps extends NodeProps<Node<NodeData>> {
   icon: LucideIcon
@@ -35,6 +36,9 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
   const colors = resolveNodeColors(data, activeTheme)
   const statusColor = theme.colors.statusColors[data.status]
   const isOnline = data.status === 'online'
+  const services = data.services ?? []
+  const showServices = data.custom_colors?.show_services === true
+  const serviceHost = data.ip ? primaryIp(data.ip) : data.hostname
 
   // Properties: prefer new system; fall back to legacy hardware fields for unmigrated nodes
   const visibleProperties = data.properties?.filter((p) => p.visible) ?? null
@@ -109,6 +113,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
             </div>
           ))}
         </div>
+
       </div>
 
       {/* Properties section (new system) */}
@@ -124,6 +129,48 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
                   <span className="truncate max-w-[60px] shrink-0" title={prop.key}>{prop.key}</span>
                   <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
                 </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {showServices && services.length > 0 && (
+        <>
+          <div style={{ height: 1, background: `${colors.border}44`, margin: '0 8px' }} />
+          <div className="flex flex-col gap-1 px-2.5 py-1.5 overflow-hidden">
+            {services.map((svc, idx) => {
+              const url = getServiceUrl(svc, serviceHost)
+              const row = (
+                <div
+                  className="nodrag flex items-center justify-between gap-2 px-1.5 py-1 rounded text-[10px] min-w-0 overflow-hidden"
+                  style={{
+                    background: theme.colors.nodeIconBackground,
+                    color: theme.colors.nodeSubtextColor,
+                  }}
+                >
+                  <span className="font-medium truncate min-w-0" title={svc.service_name}>{svc.service_name}</span>
+                  <span className="font-mono shrink-0 opacity-80 flex items-center gap-1">
+                    <span>{svc.port}</span>
+                    {url && <ExternalLink size={9} className="shrink-0" />}
+                  </span>
+                </div>
+              )
+
+              if (!url) return <div key={`${svc.port}-${svc.protocol}-${svc.service_name}-${idx}`}>{row}</div>
+
+              return (
+                <a
+                  key={`${svc.port}-${svc.protocol}-${svc.service_name}-${idx}`}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block hover:opacity-85 transition-opacity"
+                  title={url}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {row}
+                </a>
               )
             })}
           </div>
