@@ -2,10 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { getServiceUrl } from '@/utils/serviceUrl'
 import type { ServiceInfo } from '@/types'
 
-const svc = (port: number, protocol: 'tcp' | 'udp' = 'tcp', service_name = 'test'): ServiceInfo => ({
-  port,
+const svc = (port?: number, protocol: 'tcp' | 'udp' = 'tcp', service_name = 'test', path?: string): ServiceInfo => ({
+  ...(port != null ? { port } : {}),
   protocol,
   service_name,
+  ...(path ? { path } : {}),
 })
 
 describe('getServiceUrl', () => {
@@ -62,5 +63,21 @@ describe('getServiceUrl', () => {
 
   it('uses host string directly (works with both IP and hostname)', () => {
     expect(getServiceUrl(svc(80), 'myserver.lan')).toBe('http://myserver.lan:80')
+  })
+
+  it('uses the node port when the host already includes one', () => {
+    expect(getServiceUrl(svc(undefined, 'tcp', 'app'), '192.168.1.10:8080')).toBe('http://192.168.1.10:8080')
+  })
+
+  it('lets the service port override the node port', () => {
+    expect(getServiceUrl(svc(3000, 'tcp', 'app'), '192.168.1.10:8080')).toBe('http://192.168.1.10:3000')
+  })
+
+  it('appends a normalized path to the final URL', () => {
+    expect(getServiceUrl(svc(3000, 'tcp', 'app', 'admin/login'), '192.168.1.10')).toBe('http://192.168.1.10:3000/admin/login')
+  })
+
+  it('supports path-only services inheriting the node port', () => {
+    expect(getServiceUrl(svc(undefined, 'tcp', 'app', '/metrics'), '192.168.1.10:9090')).toBe('http://192.168.1.10:9090/metrics')
   })
 })

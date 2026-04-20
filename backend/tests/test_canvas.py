@@ -453,6 +453,15 @@ async def test_save_canvas_persists_services_and_notes(client: AsyncClient, head
     assert node["notes"] == "My NAS device"
 
 
+async def test_save_canvas_persists_service_paths(client: AsyncClient, headers: dict):
+    services = [{"service_name": "Grafana", "protocol": "tcp", "port": 3000, "path": "/login"}]
+    n1 = node_payload(ip="192.168.1.50:8080", services=services)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["nodes"][0]["services"] == services
+
+
 async def test_save_canvas_persists_check_fields(client: AsyncClient, headers: dict):
     n1 = node_payload(check_method="ping", check_target="192.168.1.1")
     await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)

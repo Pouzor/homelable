@@ -359,7 +359,7 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
           <p className="text-xs text-muted-foreground text-center py-4">No pending devices</p>
         )}
         {devices.map((d) => {
-          const namedService = d.services.find((s) => s.category != null && !COMMON_PORTS.has(s.port))
+          const namedService = d.services.find((s) => s.category != null && s.port != null && !COMMON_PORTS.has(s.port))
           const titleService = namedService
             ?? d.services.find((s) => s.port === 80)
             ?? d.services.find((s) => s.port === 443)
