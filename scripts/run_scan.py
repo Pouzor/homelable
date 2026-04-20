@@ -26,9 +26,9 @@ except Exception:
 # Make sure app/ is importable
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-from app.db.database import AsyncSessionLocal, init_db
-from app.db.models import ScanRun
-from app.services.scanner import run_scan
+from app.db.database import AsyncSessionLocal, init_db # type: ignore
+from app.db.models import ScanRun # type: ignore
+from app.services.scanner import run_scan # type: ignore
 
 logger = logging.getLogger(__name__)
 
