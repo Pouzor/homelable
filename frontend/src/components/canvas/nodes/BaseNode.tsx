@@ -152,7 +152,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
                   <span className="font-medium truncate min-w-0" title={svc.service_name}>{svc.service_name}</span>
                   <span className="font-mono shrink-0 opacity-80 flex items-center gap-1">
                     <span>{svc.port}</span>
-                    {url && <ExternalLink size={9} className="shrink-0" />}
+                    <ExternalLink size={9} className={`shrink-0 ${url ? '' : 'opacity-0'}`} />
                   </span>
                 </div>
               )
