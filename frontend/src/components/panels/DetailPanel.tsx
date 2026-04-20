@@ -672,7 +672,7 @@ function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
         <span className="font-mono text-[#8b949e]">{portLabel}/{svc.protocol}</span>
-        {url && <ExternalLink size={10} className="text-muted-foreground" />}
+        <ExternalLink size={10} className={`text-muted-foreground ${url ? '' : 'opacity-0'}`} />
         <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5" title="Edit service"><Pencil size={10} /></button>
         <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5" title="Remove service"><X size={10} /></button>
       </div>
