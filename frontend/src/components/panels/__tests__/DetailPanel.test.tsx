@@ -293,7 +293,7 @@ describe('DetailPanel', () => {
       fireEvent.click(addHeaders[addHeaders.length - 1])
       fireEvent.change(screen.getByPlaceholderText('Service name'), { target: { value: 'nginx' } })
       fireEvent.change(screen.getByPlaceholderText('Port'), { target: { value: '80' } })
-      fireEvent.change(screen.getByPlaceholderText('Path'), { target: { value: '/admin' } })
+      fireEvent.change(screen.getByPlaceholderText('Path (/admin)'), { target: { value: '/admin' } })
       fireEvent.keyDown(screen.getByPlaceholderText('Port'), { key: 'Enter' })
       expect(updateNode).toHaveBeenCalledOnce()
       expect(updateNode.mock.calls[0][1].services[0]).toMatchObject({ service_name: 'nginx', port: 80, protocol: 'tcp', path: '/admin' })
@@ -365,7 +365,7 @@ describe('DetailPanel', () => {
       fireEvent.click(editBtn)
       const nameInput = screen.getByPlaceholderText('Service name') as HTMLInputElement
       expect(nameInput.value).toBe('nginx')
-      const portInput = screen.getByPlaceholderText('Port (/admin)') as HTMLInputElement
+      const portInput = screen.getByPlaceholderText('Port') as HTMLInputElement
       expect(portInput.value).toBe('80')
       const pathInput = screen.getByPlaceholderText('Path (/admin)') as HTMLInputElement
       expect(pathInput.value).toBe('/admin')
@@ -393,7 +393,7 @@ describe('DetailPanel', () => {
       expect(updateNode).toHaveBeenCalledOnce()
       expect(updateNode.mock.calls[0][1].services[0].service_name).toBe('apache')
       expect(updateNode.mock.calls[0][1].services[0].port).toBe(80)
-      expect(updateNode.mock.calls[0][1].services[0].path).toBe('admin')
+      expect(updateNode.mock.calls[0][1].services[0].path).toBe('/admin')
     })
 
     it('cancels edit without updating', () => {
