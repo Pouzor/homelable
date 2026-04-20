@@ -157,11 +157,11 @@ export function deserializeApiNode(
     position: { x: n.pos_x, y: n.pos_y },
     data: { ...n, type: normalizedType } as unknown as NodeData,
     ...(n.parent_id && parentIsContainer ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
-    ...(normalizedType === 'proxmox' && n.container_mode !== false
+    ...(['proxmox', 'vm', 'lxc', 'docker_host'].includes(normalizedType) && n.container_mode !== false
       ? { width: n.width ?? 300, height: n.height ?? 200 }
       : {}),
-    ...(n.width && normalizedType !== 'proxmox' ? { width: n.width } : {}),
-    ...(n.height && normalizedType !== 'proxmox' ? { height: n.height } : {}),
+    ...(n.width && !['proxmox', 'vm', 'lxc', 'docker_host'].includes(normalizedType) ? { width: n.width } : {}),
+    ...(n.height && !['proxmox', 'vm', 'lxc', 'docker_host'].includes(normalizedType) ? { height: n.height } : {}),
   }
 }
 
