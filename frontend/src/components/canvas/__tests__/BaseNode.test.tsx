@@ -20,9 +20,7 @@ vi.mock('@/stores/themeStore', () => ({
 }))
 
 vi.mock('@/stores/canvasStore', () => ({
-  useCanvasStore: (sel: (s: { hideIp: boolean }) => unknown) => sel({
-    hideIp: false,
-  }),
+  useCanvasStore: (sel: (s: { hideIp: boolean }) => unknown) => sel({ hideIp: false }),
 }))
 
 vi.mock('@/utils/themes', () => ({
@@ -63,9 +61,7 @@ vi.mock('@/utils/handleUtils', () => ({
   BOTTOM_HANDLE_POSITIONS: { 1: [50] },
 }))
 
-beforeEach(() => {
-  mockZoom = 1
-})
+beforeEach(() => { mockZoom = 1 })
 
 function makeNode(data: Partial<NodeData>): Node<NodeData> {
   return {
