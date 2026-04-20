@@ -5,7 +5,7 @@ import { applyDagreLayout } from '@/utils/layout'
 import { serializeNode, serializeEdge, deserializeApiNode, deserializeApiEdge, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { generateUUID } from '@/utils/uuid'
 import { generateMarkdownTable } from '@/utils/exportMarkdown'
-import { exportToPng } from '@/utils/export'
+import { ExportModal } from '@/components/modals/ExportModal'
 import { exportCanvasToYaml, downloadYaml } from '@/utils/exportYaml'
 import { parseYamlToCanvas } from '@/utils/importYaml'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -53,6 +53,7 @@ export default function App() {
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null)
   const [editEdgeId, setEditEdgeId] = useState<string | null>(null)
   const [scanConfigOpen, setScanConfigOpen] = useState(false)
+  const [exportModalOpen, setExportModalOpen] = useState(false)
 
   // Declare handleSave before the Ctrl+S effect so it is in scope
   const handleSave = useCallback(async () => {
@@ -305,15 +306,10 @@ export default function App() {
     }
   }, [nodes, edges, snapshotHistory, loadCanvas, markUnsaved])
 
-  const handleExport = useCallback(async () => {
+  const handleExport = useCallback(() => {
     const el = canvasRef.current?.querySelector<HTMLElement>('.react-flow')
     if (!el) { toast.error('Canvas not ready'); return }
-    try {
-      await exportToPng(el)
-      toast.success('Exported as PNG')
-    } catch {
-      toast.error('Export failed')
-    }
+    setExportModalOpen(true)
   }, [])
 
   const handleEdgeConnect = useCallback((connection: Connection) => {
@@ -531,6 +527,12 @@ export default function App() {
           }}
         />
         <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+        <ExportModal
+          open={exportModalOpen}
+          onClose={() => setExportModalOpen(false)}
+          getElement={() => canvasRef.current?.querySelector<HTMLElement>('.react-flow') ?? null}
+        />
 
         <Toaster theme="dark" position="bottom-right" />
       </ReactFlowProvider>
