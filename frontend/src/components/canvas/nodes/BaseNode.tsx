@@ -121,7 +121,6 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
             </div>
           ))}
         </div>
-
       </div>
 
       {/* Properties section (new system) */}
