@@ -101,7 +101,7 @@ export default function App() {
       .then((res) => {
         const { nodes: apiNodes, edges: apiEdges } = res.data
         if (apiNodes.length > 0) {
-          // Build a map of proxmox container mode to know if children should be nested
+          // Build a map of container mode nodes to know if children should be nested
           const proxmoxContainerMap = new Map<string, boolean>(
             (apiNodes as ApiNode[])
               .filter((n) => n.type === 'group' || n.container_mode === true)
@@ -152,7 +152,7 @@ export default function App() {
   const handleAddNode = useCallback((data: Partial<NodeData>) => {
     snapshotHistory()
     const id = generateUUID()
-    const isProxmox = data.type === 'proxmox'
+    const isContainerNode = CONTAINER_MODE_TYPES.has(data.type as NodeData['type'])
     const parentNode = data.parent_id ? nodes.find((n) => n.id === data.parent_id) : null
     // Children position is relative to parent; place near top-left with padding
     const position = parentNode
@@ -165,7 +165,7 @@ export default function App() {
       position,
       data: { status: 'unknown', services: [], ...data } as NodeData,
       ...(data.parent_id ? { parentId: data.parent_id, extent: 'parent' as const } : {}),
-      ...(isProxmox ? { width: 300, height: 200 } : {}),
+      ...(isContainerNode ? { width: 300, height: 200 } : {}),
     }
     addNode(newNode)
     toast.success(`Added "${data.label}"`)
@@ -321,15 +321,15 @@ export default function App() {
     if (!pendingConnection) return
     snapshotHistory()
     onConnect({ ...pendingConnection, ...edgeData } as unknown as Connection)
-    // When a virtual edge is drawn between LXC/VM (top) and Proxmox (bottom), sync parent_id
+    // When a virtual edge is drawn between a child node and a container node, sync parent_id
     if (edgeData.type === 'virtual') {
       const src = nodes.find((n) => n.id === pendingConnection.source)
       const tgt = nodes.find((n) => n.id === pendingConnection.target)
-      const srcType = src?.data.type
-      const tgtType = tgt?.data.type
-      if ((srcType === 'lxc' || srcType === 'vm') && tgtType === 'proxmox') {
+      const srcType = src?.data.type as NodeData['type']
+      const tgtType = tgt?.data.type as NodeData['type']
+      if ((srcType === 'lxc' || srcType === 'vm') && CONTAINER_MODE_TYPES.has(tgtType)) {
         updateNode(pendingConnection.source, { parent_id: pendingConnection.target })
-      } else if (srcType === 'proxmox' && (tgtType === 'lxc' || tgtType === 'vm')) {
+      } else if (CONTAINER_MODE_TYPES.has(srcType) && (tgtType === 'lxc' || tgtType === 'vm')) {
         updateNode(pendingConnection.target, { parent_id: pendingConnection.source })
       }
     }
