@@ -274,6 +274,18 @@ describe('NodeModal', () => {
     expect(data.custom_colors?.show_services).toBe(true)
   })
 
+  it('keeps default colors hint visible when Show Services is toggled on', () => {
+    renderModal({ initial: BASE })
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Services' }))
+    expect(screen.getByText(/Using default colors for/)).toBeDefined()
+  })
+
+  it('does not show Appearance reset when only Show Services is set', () => {
+    renderModal({ initial: BASE })
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Services' }))
+    expect(screen.queryByText('Reset to defaults')).toBeNull()
+  })
+
   // ── Parent Proxmox (vm / lxc only) ───────────────────────────────────
 
   it('shows Parent Proxmox for vm with proxmoxNodes', () => {
