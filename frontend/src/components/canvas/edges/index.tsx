@@ -13,7 +13,7 @@ import type { EdgeData, EdgeType, Waypoint } from '@/types'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { THEMES } from '@/utils/themes'
-import { buildWaypointPath, getWaypointLabelPosition, snap45, snap45both } from './waypointUtils'
+import { buildWaypointPath, getAddWaypointHandlePosition, getWaypointLabelPosition, snap45, snap45both } from './waypointUtils'
 
 const VLAN_COLORS = ['#00d4ff', '#a855f7', '#39d353', '#ff6e00', '#e3b341', '#f85149']
 
@@ -161,9 +161,9 @@ function segmentMidpoints(
   const isSmooth = pathStyle === 'smooth'
 
   return pts.slice(0, -1).map((a, i) => {
-    const b = pts[i + 1]
-    let mx = (a.x + b.x) / 2
-    const my = (a.y + b.y) / 2
+    const base = getAddWaypointHandlePosition(sourceX, sourceY, waypoints, targetX, targetY, i, pathStyle)
+    let mx = base.x
+    const my = base.y
 
     // For smooth style with no existing waypoints, bias the single + handle onto
     // the source handle axis so clicking it creates a perpendicular exit.

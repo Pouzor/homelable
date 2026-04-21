@@ -238,6 +238,50 @@ export function getWaypointLabelPosition(
   return lastSegment.pointAt(1)
 }
 
+function getBezierSegmentPoint(
+  pts: Waypoint[],
+  insertIndex: number,
+  t: number,
+): Waypoint {
+  const i = Math.max(0, Math.min(insertIndex, pts.length - 2))
+  const p0 = pts[Math.max(i - 1, 0)]
+  const p1 = pts[i]
+  const p2 = pts[i + 1]
+  const p3 = pts[Math.min(i + 2, pts.length - 1)]
+  const cp1 = {
+    x: p1.x + (p2.x - p0.x) / 6,
+    y: p1.y + (p2.y - p0.y) / 6,
+  }
+  const cp2 = {
+    x: p2.x - (p3.x - p1.x) / 6,
+    y: p2.y - (p3.y - p1.y) / 6,
+  }
+
+  return interpolateCubic(p1, cp1, cp2, p2, t)
+}
+
+export function getAddWaypointHandlePosition(
+  sourceX: number, sourceY: number,
+  waypoints: Waypoint[],
+  targetX: number, targetY: number,
+  insertIndex: number,
+  pathStyle: string = 'bezier',
+): Waypoint {
+  const pts = [{ x: sourceX, y: sourceY }, ...waypoints, { x: targetX, y: targetY }]
+
+  if (pts.length < 2) return { x: sourceX, y: sourceY }
+
+  if (pathStyle !== 'smooth') {
+    return getBezierSegmentPoint(pts, insertIndex, 0.5)
+  }
+
+  const i = Math.max(0, Math.min(insertIndex, pts.length - 2))
+  return {
+    x: (pts[i].x + pts[i + 1].x) / 2,
+    y: (pts[i].y + pts[i + 1].y) / 2,
+  }
+}
+
 // ── 45° snapping ──────────────────────────────────────────────────────────────
 
 /**
