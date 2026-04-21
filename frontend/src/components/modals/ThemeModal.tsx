@@ -110,6 +110,12 @@ export function ThemeModal({ open, onClose }: ThemeModalProps) {
   }
 
   const handleCardKeyDown = (index: number) => (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      handleApply()
+      return
+    }
+
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
 
     event.preventDefault()
