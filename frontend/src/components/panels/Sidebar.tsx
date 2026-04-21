@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Trash2, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, X } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Trash2, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, X, LogOut } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { useAuthStore } from '@/stores/authStore'
 import { scanApi, settingsApi } from '@/api/client'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
@@ -43,6 +44,7 @@ interface SidebarProps {
 export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeApproved, forceView, highlightPendingId }: SidebarProps) {
   const [_collapsed, setCollapsed] = useState(false)
   const [_activeView, setActiveView] = useState<SidebarView>('canvas')
+  const logout = useAuthStore((s) => s.logout)
 
   // When forceView is set, override local state without useEffect
   const collapsed = forceView ? false : _collapsed
@@ -150,6 +152,14 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeAppro
             collapsed={collapsed}
             active={activeView === 'settings'}
             onClick={() => setActiveView((v) => v === 'settings' ? 'canvas' : 'settings')}
+          />
+        )}
+        {!STANDALONE && (
+          <SidebarItem
+            icon={LogOut}
+            label="Logout"
+            collapsed={collapsed}
+            onClick={logout}
           />
         )}
       </div>
@@ -385,8 +395,8 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
                 <input
                   type="checkbox"
                   checked={checkedIds.has(d.id)}
-                  onClick={(e) => toggleCheck(d.id, e)}
-                  onChange={() => {}}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => { e.stopPropagation(); toggleCheck(d.id, e as unknown as React.MouseEvent) }}
                   className="w-3 h-3 accent-[#00d4ff] cursor-pointer shrink-0"
                 />
                 <span className="text-foreground truncate font-medium">{title}</span>
@@ -627,7 +637,7 @@ function SettingsPanel() {
             min={10}
             max={3600}
             value={interval}
-            onChange={(e) => setIntervalValue(Number(e.target.value))}
+            onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setIntervalValue(v) }}
             className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
           />
           <span className="text-xs text-muted-foreground">seconds</span>
@@ -664,7 +674,7 @@ function VersionBadge() {
       </a>
       {hasUpdate && latest && (
         <a
-          href={latest.url}
+          href={latest.url.startsWith('https://') ? latest.url : '#'}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-[#e3b341]/15 text-[#e3b341] border border-[#e3b341]/30 hover:bg-[#e3b341]/25 transition-colors self-start"
