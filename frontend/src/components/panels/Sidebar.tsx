@@ -395,6 +395,7 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
                 <input
                   type="checkbox"
                   checked={checkedIds.has(d.id)}
+                  onClick={(e) => e.stopPropagation()}
                   onChange={(e) => { e.stopPropagation(); toggleCheck(d.id, e as unknown as React.MouseEvent) }}
                   className="w-3 h-3 accent-[#00d4ff] cursor-pointer shrink-0"
                 />
