@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
 import { toast } from 'sonner'
 import { Check } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -14,17 +14,21 @@ interface ThemeCardProps {
   themeId: ThemeId
   selected: boolean
   onClick: () => void
+  onKeyDown?: (event: KeyboardEvent<HTMLButtonElement>) => void
+  buttonRef?: (element: HTMLButtonElement | null) => void
 }
 
-function ThemeCard({ themeId, selected, onClick }: ThemeCardProps) {
+function ThemeCard({ themeId, selected, onClick, onKeyDown, buttonRef }: ThemeCardProps) {
   const preset = THEMES[themeId]
   const c = preset.colors
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={onClick}
-      className="relative rounded-xl border-2 p-3 text-left transition-all duration-150 focus:outline-none w-full"
+      onKeyDown={onKeyDown}
+      className="relative rounded-xl border-2 p-3 text-left transition-all duration-150 focus:outline-none w-full h-full flex flex-col"
       style={{
         borderColor: selected ? c.nodeAccents.isp.border : c.handleBackground,
         background: c.canvasBackground,
@@ -76,7 +80,7 @@ function ThemeCard({ themeId, selected, onClick }: ThemeCardProps) {
         {preset.label}
       </div>
       <div
-        className="text-xs leading-snug mt-1 line-clamp-3 whitespace-normal wrap-break-word overflow-hidden"
+        className="text-xs leading-snug mt-1 line-clamp-3 whitespace-normal wrap-break-word overflow-hidden min-h-12"
         style={{ color: c.nodeSubtextColor }}
       >
         {preset.description}
@@ -93,6 +97,7 @@ interface ThemeModalProps {
 export function ThemeModal({ open, onClose }: ThemeModalProps) {
   const { activeTheme, setTheme } = useThemeStore()
   const { markUnsaved } = useCanvasStore()
+  const cardRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   // Capture the theme that was active when the modal opened
   const [originalTheme] = useState<ThemeId>(activeTheme)
@@ -102,6 +107,24 @@ export function ThemeModal({ open, onClose }: ThemeModalProps) {
     setSelected(id)
     // Live-preview the selected theme on the canvas
     setTheme(id)
+  }
+
+  const handleCardKeyDown = (index: number) => (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+
+    event.preventDefault()
+    const direction = event.key === 'ArrowRight' ? 1 : -1
+    const nextIndex = (index + direction + THEME_ORDER.length) % THEME_ORDER.length
+    const nextTheme = THEME_ORDER[nextIndex]
+
+    setSelected(nextTheme)
+    setTheme(nextTheme)
+
+    const nextCard = cardRefs.current[nextIndex]
+    if (!nextCard) return
+
+    nextCard.focus({ preventScroll: true })
+    nextCard.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
   }
 
   const handleApply = () => {
@@ -126,13 +149,17 @@ export function ThemeModal({ open, onClose }: ThemeModalProps) {
           <DialogTitle className="text-sm font-semibold">Choose Canvas Style</DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-nowrap gap-3 py-1 overflow-x-auto overflow-y-hidden pb-2 pr-1">
-          {THEME_ORDER.map((id) => (
-            <div key={id} className="shrink-0 w-30 md:w-24">
+        <div className="flex items-stretch flex-nowrap gap-3 py-1 overflow-x-auto overflow-y-hidden pb-2 pr-1">
+          {THEME_ORDER.map((id, index) => (
+            <div key={id} className="shrink-0 w-30 md:w-24 h-full">
               <ThemeCard
                 themeId={id}
                 selected={selected === id}
                 onClick={() => handleSelect(id)}
+                onKeyDown={handleCardKeyDown(index)}
+                buttonRef={(element) => {
+                  cardRefs.current[index] = element
+                }}
               />
             </div>
           ))}
