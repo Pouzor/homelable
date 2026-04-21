@@ -18,6 +18,17 @@ const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
 
 const CHECK_METHODS: CheckMethod[] = ['none', 'ping', 'http', 'https', 'tcp', 'ssh', 'prometheus', 'health']
 
+const CHECK_METHOD_LABELS: Record<CheckMethod, string> = {
+  none: 'None',
+  ping: 'Ping',
+  http: 'HTTP',
+  https: 'HTTPS',
+  tcp: 'TCP',
+  ssh: 'SSH',
+  prometheus: 'Prometheus',
+  health: 'Health',
+}
+
 const DEFAULT_DATA: Partial<NodeData> = {
   type: 'server',
   label: '',
@@ -83,7 +94,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               <Label className="text-xs text-muted-foreground">Type</Label>
               <Select value={form.type} onValueChange={(v) => set('type', v as NodeType)}>
                 <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8 w-full">
-                  <SelectValue />
+                  <SelectValue>{NODE_TYPE_LABELS[(form.type ?? 'server') as NodeType]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
                   {NODE_TYPE_GROUPS.map((group, i) => (
@@ -228,11 +239,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               <Label className="text-xs text-muted-foreground">Check Method</Label>
               <Select value={form.check_method ?? 'ping'} onValueChange={(v) => set('check_method', v as CheckMethod)}>
                 <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
-                  <SelectValue />
+                  <SelectValue>{CHECK_METHOD_LABELS[(form.check_method ?? 'ping') as CheckMethod]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
                   {CHECK_METHODS.map((m) => (
-                    <SelectItem key={m} value={m} className="text-sm font-mono">{m}</SelectItem>
+                    <SelectItem key={m} value={m} className="text-sm">{CHECK_METHOD_LABELS[m]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
