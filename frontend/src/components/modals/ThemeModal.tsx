@@ -70,13 +70,13 @@ function ThemeCard({ themeId, selected, onClick }: ThemeCardProps) {
 
       {/* Label */}
       <div
-        className="text-xs font-semibold leading-tight"
+        className="text-sm font-semibold leading-tight wrap-break-word"
         style={{ color: c.nodeLabelColor }}
       >
         {preset.label}
       </div>
       <div
-        className="text-[10px] leading-snug mt-0.5 line-clamp-2"
+        className="text-xs leading-snug mt-1 line-clamp-3 whitespace-normal wrap-break-word overflow-hidden"
         style={{ color: c.nodeSubtextColor }}
       >
         {preset.description}
@@ -121,19 +121,20 @@ export function ThemeModal({ open, onClose }: ThemeModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleCancel() }}>
-      <DialogContent className="bg-[#161b22] border-[#30363d] w-[90vw] max-w-4xl">
+      <DialogContent className="bg-[#161b22] border-[#30363d] w-fit max-w-[calc(100%-2rem)] sm:max-w-[50vw]">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">Choose Canvas Style</DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-5 gap-3 py-1">
+        <div className="flex flex-nowrap gap-3 py-1 overflow-x-auto overflow-y-hidden pb-2 pr-1">
           {THEME_ORDER.map((id) => (
-            <ThemeCard
-              key={id}
-              themeId={id}
-              selected={selected === id}
-              onClick={() => handleSelect(id)}
-            />
+            <div key={id} className="shrink-0 w-30 md:w-24">
+              <ThemeCard
+                themeId={id}
+                selected={selected === id}
+                onClick={() => handleSelect(id)}
+              />
+            </div>
           ))}
         </div>
 
