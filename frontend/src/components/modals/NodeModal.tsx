@@ -62,6 +62,12 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [labelError, setLabelError] = useState(false)
   const resolvedNodeColors = resolveNodeColors({ type: form.type ?? 'generic', custom_colors: form.custom_colors })
+  const showServicesEnabled = form.custom_colors?.show_services === true
+  const hasAppearanceOverrides = Boolean(
+    form.custom_colors?.border
+    || form.custom_colors?.background
+    || form.custom_colors?.icon
+  )
 
   const set = (key: keyof NodeData, value: unknown) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -299,8 +305,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               <div className="flex items-center justify-between col-span-2 py-1">
                 <div className="flex flex-col gap-0.5">
                   <Label className="text-xs text-muted-foreground">Container Mode</Label>
-                  <span className="text-[10px] text-muted-foreground/60">Allow other nodes to nest inside this node</span>
+                  <span className="text-[10px] text-muted-foreground/60">
+                    Allow other nodes to nest inside this node
+                  </span>
                 </div>
+
                 <button
                   type="button"
                   role="switch"
@@ -311,8 +320,10 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   style={{ background: form.container_mode ? '#ff6e00' : '#30363d' }}
                 >
                   <span
-                    className="pointer-events-none absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-all"
-                    style={{ left: form.container_mode ? 'calc(100% - 18px)' : '2px' }}
+                    className="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                    style={{
+                      transform: form.container_mode ? 'translateX(16px)' : 'translateX(0)',
+                    }}
                   />
                 </button>
               </div>
@@ -329,17 +340,17 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   type="button"
                   role="switch"
                   aria-label="Show Services"
-                  aria-checked={form.custom_colors?.show_services === true}
+                  aria-checked={showServicesEnabled}
                   onClick={() => set('custom_colors', {
                     ...form.custom_colors,
-                    show_services: !(form.custom_colors?.show_services === true),
+                    show_services: !showServicesEnabled,
                   })}
-                  className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus:outline-none"
-                  style={{ background: form.custom_colors?.show_services === true ? resolvedNodeColors.icon : '#30363d' }}
+                  className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors focus:outline-none"
+                  style={{ background: showServicesEnabled ? resolvedNodeColors.icon : '#30363d' }}
                 >
                   <span
-                    className="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
-                    style={{ transform: form.custom_colors?.show_services === true ? 'translateX(16px)' : 'translateX(0)' }}
+                    className="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                    style={{ transform: showServicesEnabled ? 'translateX(16px)' : 'translateX(0)' }}
                   />
                 </button>
               </div>
@@ -349,10 +360,20 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             <div className="flex flex-col gap-2 col-span-2">
               <div className="flex items-center justify-between">
                 <Label className="text-xs text-muted-foreground">Appearance</Label>
-                {form.custom_colors && (
+                {hasAppearanceOverrides && (
                   <button
                     type="button"
-                    onClick={() => set('custom_colors', undefined)}
+                    onClick={() => setForm((f) => {
+                      if (!f.custom_colors) return f
+                      const { border, background, icon, ...rest } = f.custom_colors
+                      void border
+                      void background
+                      void icon
+                      return {
+                        ...f,
+                        custom_colors: Object.keys(rest).length > 0 ? rest : undefined,
+                      }
+                    })}
                     className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                   >
                     <RotateCcw size={10} /> Reset to defaults
@@ -386,9 +407,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   )
                 })}
               </div>
-              {!form.custom_colors && (
-                <p className="text-[10px] text-muted-foreground/50">Using default colors for {NODE_TYPE_LABELS[form.type ?? 'generic']}. Click a swatch to customize.</p>
-              )}
+              <div className="min-h-3.5">
+                {!hasAppearanceOverrides && (
+                  <p className="text-[10px] text-muted-foreground/50">Using default colors for {NODE_TYPE_LABELS[form.type ?? 'generic']}. Click a swatch to customize.</p>
+                )}
+              </div>
             </div>
 
             {/* Bottom connection points (not for group containers) */}
