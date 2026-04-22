@@ -45,7 +45,8 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
   const glow = colors.border
   const proxmoxAccent = theme.colors.nodeAccents.proxmox.border
   const resolvedIcon = resolveNodeIcon(Layers, data.custom_icon)
-
+  const visibleProperties = data.properties?.filter((p) => p.visible) ?? null
+  
   return (
     <>
       <NodeResizer
@@ -142,9 +143,9 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
             />
           </div>
           {/* Properties row */}
-          {Array.isArray(data.properties) && data.properties.filter((p) => p.visible).length > 0 && (
+          {visibleProperties && visibleProperties.length > 0 && (
             <div className="flex flex-row flex-wrap gap-2 w-full">
-              {data.properties.filter((p) => p.visible).map((prop) => {
+              {visibleProperties.map((prop) => {
                 const Icon = resolvePropertyIcon(prop.icon)
                 return (
                   <span key={prop.key} className="flex items-center gap-1 font-mono text-[10px]" style={{ color: theme.colors.nodeSubtextColor }}>
