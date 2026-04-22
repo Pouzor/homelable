@@ -665,13 +665,11 @@ function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?
   const portLabel = hasPort ? String(svc.port) : '';
   const pathLabel = svc.path?.trim() ? svc.path.trim() : '';
 
-  // Calculate available width for path: if name is long, path gets less or no space
-  // We'll use a ref to measure the name width, but for minimal change, estimate by string length
-  const maxTotalWidth = 220; // px, total badge width minus paddings/buttons
-  const nameCharWidth = 7.2; // px per char (approx for font-size 12px)
-  const nameWidth = Math.min(svc.service_name.length * nameCharWidth, maxTotalWidth - 60); // reserve 60px for port/buttons
-  const pathMaxWidth = Math.max(0, maxTotalWidth - nameWidth - 60); // 60px for port/buttons
-  const showPath = pathLabel && pathMaxWidth > 30; // hide path if not enough space
+  const maxTotalWidth = 220;
+  const nameCharWidth = 7.2;
+  const nameWidth = Math.min(svc.service_name.length * nameCharWidth, maxTotalWidth - 60);
+  const pathMaxWidth = Math.max(0, maxTotalWidth - nameWidth - 60);
+  const showPath = pathLabel && pathMaxWidth > 30;
 
   return (
     <div
