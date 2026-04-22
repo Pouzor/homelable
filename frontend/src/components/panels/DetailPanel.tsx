@@ -635,18 +635,26 @@ function PropertyBadge({ prop, onToggleVisible, onEdit, onRemove }: {
         <span className="font-medium truncate text-foreground" title={prop.key}>{prop.key}</span>
         <span className="text-muted-foreground truncate" title={prop.value}>· {prop.value}</span>
       </div>
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1.5 shrink-0">
         <button
           onClick={onToggleVisible}
           title={prop.visible ? 'Hide on node' : 'Show on node'}
-          className="text-[#8b949e] hover:text-[#00d4ff] transition-colors"
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5"
         >
           {prop.visible ? <Eye size={10} /> : <EyeOff size={10} />}
         </button>
-        <button onClick={onEdit} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff]" title="Edit property">
+        <button
+          onClick={onEdit}
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5"
+          title="Edit property"
+        >
           <Pencil size={10} />
         </button>
-        <button onClick={onRemove} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149]" title="Remove property">
+        <button
+          onClick={onRemove}
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5"
+          title="Remove property"
+        >
           <X size={10} />
         </button>
       </div>
