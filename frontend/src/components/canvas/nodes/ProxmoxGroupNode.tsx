@@ -99,6 +99,8 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
                 style={{ color: theme.colors.nodeSubtextColor }}
               >
                 {data.ip}
+                {data.port ? `:${data.port}` : ''}
+                {data.hostname ? `  |  ${data.hostname}` : ''}
               </span>
             )}
           </div>

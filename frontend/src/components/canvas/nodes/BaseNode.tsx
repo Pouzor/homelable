@@ -103,9 +103,11 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
               key={ip}
               className="font-mono text-[10px] truncate"
               style={{ color: theme.colors.nodeSubtextColor }}
-              title={ip}
+              title={ip + (data.port ? `:${data.port}` : '') + (data.hostname ? `  |  ${data.hostname}` : '')}
             >
               {hideIp ? maskIp(ip) : ip}
+              {data.port ? `:${data.port}` : ''}
+              {data.hostname ? `  |  ${data.hostname}` : ''}
             </div>
           ))}
         </div>
