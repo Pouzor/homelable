@@ -109,6 +109,11 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
             </div>
           ))}
         </div>
+        <div
+          className="ml-auto w-1.5 h-1.5 rounded-full shrink-0 -translate-y-1.5"
+          style={{ backgroundColor: statusColor }}
+          title={data.status}
+        />
       </div>
 
       {/* Properties section (new system) */}
@@ -121,7 +126,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
               return (
                 <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px] min-w-0 overflow-hidden" style={{ color: theme.colors.nodeSubtextColor }}>
                   {Icon && <Icon size={9} className="shrink-0" />}
-                  <span className="truncate max-w-[60px] shrink-0" title={prop.key}>{prop.key}</span>
+                  <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
                   <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
                 </div>
               )
@@ -139,7 +144,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
               <div className="flex items-center gap-1 font-mono text-[10px]" style={{ color: theme.colors.nodeSubtextColor }}>
                 <Cpu size={9} className="shrink-0" />
                 {data.cpu_model && (
-                  <span className="truncate max-w-[80px]" title={data.cpu_model}>{data.cpu_model}</span>
+                  <span className="truncate max-w-20" title={data.cpu_model}>{data.cpu_model}</span>
                 )}
                 {data.cpu_count != null && (
                   <span className="shrink-0">{data.cpu_model ? `· ${data.cpu_count}c` : `${data.cpu_count} cores`}</span>
@@ -165,13 +170,6 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
           </div>
         </>
       )}
-
-      {/* Status dot */}
-      <div
-        className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full shrink-0"
-        style={{ backgroundColor: statusColor }}
-        title={data.status}
-      />
 
       {(BOTTOM_HANDLE_POSITIONS[data.bottom_handles ?? 1] ?? BOTTOM_HANDLE_POSITIONS[1]).map((leftPct, idx) => {
         const sourceId = BOTTOM_HANDLE_IDS[idx]
