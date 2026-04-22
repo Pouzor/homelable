@@ -77,15 +77,22 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
             borderBottom: `1px solid ${isOnline ? `${glow}33` : theme.colors.handleBackground}`,
           }}
         >
-          <div
-            className="flex items-center justify-center w-5 h-5 rounded-md shrink-0"
+          <a
+            href={data.ip ? `${data.port ? `http://${data.ip}:${data.port}` : `http://${data.ip}`}` : undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center w-5 h-5 rounded-md shrink-0 focus:outline-none"
             style={{
               color: isOnline ? colors.icon : theme.colors.nodeSubtextColor,
               background: theme.colors.nodeIconBackground,
+              cursor: data.ip ? 'pointer' : 'default',
+              textDecoration: 'none',
             }}
+            title={data.ip ? `Open ${data.ip}${data.port ? `:${data.port}` : ''}` : undefined}
+            tabIndex={0}
           >
             {createElement(resolvedIcon, { size: 12 })}
-          </div>
+          </a>
           <div className="flex flex-col min-w-0 flex-1">
             <span
               className="text-[11px] font-semibold leading-tight truncate"
@@ -94,13 +101,34 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
               {data.label}
             </span>
             {data.ip && (
-              <span
-                className="font-mono text-[9px] truncate"
-                style={{ color: theme.colors.nodeSubtextColor }}
-              >
-                {data.ip}
-                {data.port ? `:${data.port}` : ''}
-                {data.hostname ? `  |  ${data.hostname}` : ''}
+              <span className="font-mono text-[9px] truncate flex gap-1 items-center" style={{ color: theme.colors.nodeSubtextColor }}>
+                <a
+                  href={`http://${data.ip}${data.port ? `:${data.port}` : ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline focus:outline-none"
+                  style={{ cursor: 'pointer', color: theme.colors.nodeSubtextColor }}
+                  tabIndex={0}
+                  title={`Open ${data.ip}${data.port ? `:${data.port}` : ''}`}
+                >
+                  {data.ip}{data.port ? `:${data.port}` : ''}
+                </a>
+                {data.hostname && (
+                  <>
+                    <span aria-hidden="true">|</span>
+                    <a
+                      href={`http://${data.hostname}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline focus:outline-none"
+                      style={{ cursor: 'pointer', color: theme.colors.nodeSubtextColor }}
+                      tabIndex={0}
+                      title={`Open ${data.hostname}`}
+                    >
+                      {data.hostname}
+                    </a>
+                  </>
+                )}
               </span>
             )}
           </div>
