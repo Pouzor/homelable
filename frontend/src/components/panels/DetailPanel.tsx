@@ -660,10 +660,10 @@ const CATEGORY_COLORS: Record<string, string> = {
 }
 
 function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?: string; onEdit: () => void; onRemove: () => void }) {
-  const url = getServiceUrl(svc, host);
-  const color = CATEGORY_COLORS[svc.category ?? ''] ?? '#8b949e';
-  const hasPort = svc.port != null;
-  const portLabel = hasPort ? String(svc.port) : '';
+  const url = getServiceUrl(svc, host)
+  const color = CATEGORY_COLORS[svc.category ?? ''] ?? '#8b949e'
+  const hasPort = svc.port != null
+  const portLabel = hasPort ? String(svc.port) : ''
   const pathLabel = svc.path?.trim() ? svc.path.trim() : ''
 
   return (
