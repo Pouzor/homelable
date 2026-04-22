@@ -659,25 +659,78 @@ const CATEGORY_COLORS: Record<string, string> = {
 }
 
 function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?: string; onEdit: () => void; onRemove: () => void }) {
-  const url = getServiceUrl(svc, host)
-  const color = CATEGORY_COLORS[svc.category ?? ''] ?? '#8b949e'
-  const portLabel = svc.port != null ? String(svc.port) : 'host'
-  const pathLabel = svc.path?.trim() ? svc.path.trim() : null
-  const inner = (
-    <div className="group flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border text-xs transition-colors" style={{ background: '#21262d', borderColor: '#30363d', cursor: url ? 'pointer' : 'default' }}>
-      <div className="flex items-center gap-1.5 min-w-0">
-        <span className="shrink-0 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-        <span className="font-medium truncate" style={{ color }} title={svc.service_name}>{svc.service_name}</span>
-        {pathLabel && <span className="truncate text-[#8b949e]" title={pathLabel}>{pathLabel}</span>}
+  const url = getServiceUrl(svc, host);
+  const color = CATEGORY_COLORS[svc.category ?? ''] ?? '#8b949e';
+  const hasPort = svc.port != null;
+  const portLabel = hasPort ? String(svc.port) : '';
+  const pathLabel = svc.path?.trim() ? svc.path.trim() : '';
+  // Layout: service name takes all available space, path/port are always right-aligned next to buttons, path is hidden if name must truncate
+  return (
+    <div
+      className="group flex items-center border rounded-md text-xs transition-colors px-2 py-1.5 min-w-0"
+      style={{ background: '#21262d', borderColor: '#30363d', position: 'relative' }}
+    >
+      <span className="shrink-0 w-1.5 h-1.5 rounded-full mr-1" style={{ backgroundColor: color }} />
+      <span
+        className="font-medium truncate flex-grow min-w-0"
+        style={{ color, marginRight: 12, maxWidth: '100%' }}
+        title={svc.service_name}
+        tabIndex={0}
+        aria-label={svc.service_name}
+      >
+        {svc.service_name}
+      </span>
+      <div className="flex items-center gap-1 shrink-0" style={{ maxWidth: 180, minWidth: 0 }}>
+        {pathLabel && (
+          <span
+            className="truncate text-[#8b949e] text-right"
+            style={{ minWidth: 0, maxWidth: 70, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
+            title={pathLabel}
+            tabIndex={0}
+            aria-label={pathLabel}
+          >
+            {pathLabel}
+          </span>
+        )}
+        {hasPort && (
+          <span className="font-mono text-[#8b949e]" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{portLabel}/{svc.protocol}</span>
+        )}
+        <span className="inline-flex w-2.5 h-2.5 items-center justify-center shrink-0" aria-hidden="true">
+          {url ? <ExternalLink size={10} className="text-muted-foreground" /> : <span style={{ width: 10, display: 'inline-block' }} />}
+        </span>
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(); }}
+          className="opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5"
+          title="Edit service"
+        >
+          <Pencil size={10} />
+        </button>
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
+          className="opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5"
+          title="Remove service"
+        >
+          <X size={10} />
+        </button>
       </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        <span className="font-mono text-[#8b949e]">{portLabel}/{svc.protocol}</span>
-        {url && <ExternalLink size={10} className="text-muted-foreground" />}
-        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5" title="Edit service"><Pencil size={10} /></button>
-        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5" title="Remove service"><X size={10} /></button>
-      </div>
+      {url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            right: 80,
+            zIndex: 1,
+            opacity: 0,
+          }}
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+      )}
     </div>
-  )
-  if (url) return <a href={url} target="_blank" rel="noopener noreferrer" className="block hover:opacity-80 transition-opacity">{inner}</a>
-  return inner
+  );
 }
