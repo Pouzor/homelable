@@ -41,6 +41,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
   const showLegacyHardware = !data.properties && data.show_hardware &&
     (data.cpu_count != null || data.cpu_model || data.ram_gb != null || data.disk_gb != null)
 
+
   return (
     <div
       className="relative flex flex-col rounded-lg border transition-all duration-200 overflow-hidden"
@@ -76,104 +77,109 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
       />
       <Handle type="target" position={Position.Top} id="top-t" style={{ opacity: 0, width: 12, height: 12 }} />
 
-      {/* Main row */}
-      <div className="flex flex-row items-center gap-2.5 px-2.5 py-2 min-w-0 overflow-hidden">
-        {/* Icon */}
-        {data.ip ? (
-          <a
-            href={`http://${data.ip}${data.port ? `:${data.port}` : ''}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center w-7 h-7 rounded-md shrink-0 focus:outline-none"
-            style={{
-              color: isOnline ? colors.icon : theme.colors.nodeSubtextColor,
-              background: theme.colors.nodeIconBackground,
-              cursor: 'pointer',
-              textDecoration: 'none',
-            }}
-            title={`Open ${data.ip}${data.port ? `:${data.port}` : ''}`}
-            tabIndex={0}
-          >
-            {createElement(resolvedIcon, { size: 15 })}
-          </a>
-        ) : (
-          <div
-            className="flex items-center justify-center w-7 h-7 rounded-md shrink-0"
-            style={{
-              color: isOnline ? colors.icon : theme.colors.nodeSubtextColor,
-              background: theme.colors.nodeIconBackground,
-            }}
-          >
-            {createElement(resolvedIcon, { size: 15 })}
-          </div>
-        )}
-
-        {/* Label + IP */}
-        <div className="flex flex-col min-w-0">
-          <div
-            className="text-xs font-medium leading-tight truncate"
-            style={{ color: theme.colors.nodeLabelColor }}
-            title={data.label}
-          >
-            {data.label}
-          </div>
-          {data.ip && splitIps(data.ip).map((ip) => (
-            <div
-              key={ip}
-              className="font-mono text-[10px] truncate flex gap-1 items-center"
-              style={{ color: theme.colors.nodeSubtextColor }}
-              title={ip + (data.port ? `:${data.port}` : '') + (data.hostname ? `  |  ${data.hostname}` : '')}
+      {/* Header bar with properties */}
+      <div
+        className="flex flex-col gap-1 px-2.5 py-2 min-w-0 overflow-hidden"
+        style={{
+          background: isOnline ? `${colors.border}18` : `${theme.colors.nodeIconBackground}88`,
+          borderBottom: data.container_mode
+            ? `2px solid ${isOnline ? `${colors.border}33` : theme.colors.handleBackground}`
+            : undefined,
+        }}
+      >
+        <div className="flex flex-row items-center gap-2.5 min-w-0"
+        >
+          {/* Icon */}
+          {data.ip ? (
+            <a
+              href={`http://${data.ip}${data.port ? `:${data.port}` : ''}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center w-7 h-7 rounded-md shrink-0 focus:outline-none"
+              style={{
+                color: isOnline ? colors.icon : theme.colors.nodeSubtextColor,
+                background: theme.colors.nodeIconBackground,
+                cursor: 'pointer',
+                textDecoration: 'none',
+              }}
+              title={`Open ${data.ip}${data.port ? `:${data.port}` : ''}`}
+              tabIndex={0}
             >
-              <a
-                href={`http://${ip}${data.port ? `:${data.port}` : ''}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline focus:outline-none"
-                style={{ cursor: 'pointer', color: theme.colors.nodeSubtextColor }}
-                tabIndex={0}
-                title={`Open ${ip}${data.port ? `:${data.port}` : ''}`}
-              >
-                {hideIp ? maskIp(ip) : ip}{data.port ? `:${data.port}` : ''}
-              </a>
-              {data.hostname && (
-                <>
-                  <span aria-hidden="true">|</span>
-                  <a
-                    href={`http://${data.hostname}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:underline focus:outline-none"
-                    style={{ cursor: 'pointer', color: theme.colors.nodeSubtextColor }}
-                    tabIndex={0}
-                    title={`Open ${data.hostname}`}
-                  >
-                    {data.hostname}
-                  </a>
-                </>
-              )}
+              {createElement(resolvedIcon, { size: 15 })}
+            </a>
+          ) : (
+            <div
+              className="flex items-center justify-center w-7 h-7 rounded-md shrink-0"
+              style={{
+                color: isOnline ? colors.icon : theme.colors.nodeSubtextColor,
+                background: theme.colors.nodeIconBackground,
+              }}
+            >
+              {createElement(resolvedIcon, { size: 15 })}
             </div>
-          ))}
+          )}
+          {/* Label + IP */}
+          <div className="flex flex-col min-w-0 flex-1">
+            <div
+              className="text-xs font-medium leading-tight truncate"
+              style={{ color: theme.colors.nodeLabelColor }}
+              title={data.label}
+            >
+              {data.label}
+            </div>
+            {data.ip && splitIps(data.ip).map((ip) => (
+              <div
+                key={ip}
+                className="font-mono text-[10px] flex gap-1 items-center flex-wrap"
+                style={{ color: theme.colors.nodeSubtextColor }}
+                title={ip + (data.port ? `:${data.port}` : '') + (data.hostname ? `  |  ${data.hostname}` : '')}
+              >
+                <a
+                  href={`http://${ip}${data.port ? `:${data.port}` : ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline focus:outline-none"
+                  style={{ cursor: 'pointer', color: theme.colors.nodeSubtextColor }}
+                  tabIndex={0}
+                  title={`Open ${ip}${data.port ? `:${data.port}` : ''}`}
+                >
+                  {hideIp ? maskIp(ip) : ip}{data.port ? `:${data.port}` : ''}
+                </a>
+                {data.hostname && (
+                  <>
+                    <span aria-hidden="true">|</span>
+                    <a
+                      href={`http://${data.hostname}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:underline focus:outline-none"
+                      style={{ cursor: 'pointer', color: theme.colors.nodeSubtextColor }}
+                      tabIndex={0}
+                      title={`Open ${data.hostname}`}
+                    >
+                      {data.hostname}
+                    </a>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
-
-      {/* Properties section (new system) */}
-      {visibleProperties && visibleProperties.length > 0 && (
-        <>
-          <div style={{ height: 1, background: `${colors.border}44`, margin: '0 8px' }} />
-          <div className="flex flex-col gap-1 px-2.5 py-1.5 overflow-hidden">
+        {/* Properties row at the bottom of header bar */}
+        {visibleProperties && visibleProperties.length > 0 && (
+          <div className="flex flex-row flex-wrap gap-2 w-full">
             {visibleProperties.map((prop) => {
               const Icon = resolvePropertyIcon(prop.icon)
               return (
-                <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px] min-w-0 overflow-hidden" style={{ color: theme.colors.nodeSubtextColor }}>
+                <span key={prop.key} className="flex items-center gap-1 font-mono text-[10px]" style={{ color: theme.colors.nodeSubtextColor }}>
                   {Icon && <Icon size={9} className="shrink-0" />}
-                  <span className="truncate max-w-[60px] shrink-0" title={prop.key}>{prop.key}</span>
-                  <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
-                </div>
-              )
-            })}
+                  <span>{prop.key}</span>
+                  <span>· {prop.value}</span>
+                </span>
+              )})}
           </div>
-        </>
-      )}
+        )}
+      </div>
 
       {/* Legacy hardware section — fallback for nodes not yet migrated */}
       {showLegacyHardware && (
