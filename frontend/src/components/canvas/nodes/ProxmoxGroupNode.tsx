@@ -71,7 +71,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
       >
         {/* Header bar */}
         <div
-          className="flex items-center gap-2 px-2.5 py-1.5 shrink-0"
+          className="flex flex-row items-center px-2.5 py-1.5 shrink-0"
           style={{
             background: isOnline ? `${glow}18` : `${theme.colors.nodeIconBackground}88`,
             borderBottom: `1px solid ${isOnline ? `${glow}33` : theme.colors.handleBackground}`,
@@ -104,7 +104,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
           </div>
           {/* Status dot */}
           <div
-            className="w-1.5 h-1.5 rounded-full shrink-0"
+            className="ml-auto w-1.5 h-1.5 rounded-full shrink-0"
             style={{ backgroundColor: statusColor }}
             title={data.status}
           />
@@ -125,7 +125,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
               }}
             >
               {Icon && <Icon size={9} className="shrink-0" />}
-              <span className="truncate max-w-[60px] shrink-0" title={prop.key}>{prop.key}</span>
+              <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
               <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
             </div>
           )
