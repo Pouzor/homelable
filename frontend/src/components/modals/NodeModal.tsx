@@ -11,7 +11,7 @@ import { ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS } from '@/utils
 
 const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
   { label: 'Hardware',       types: ['isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer'] },
-  { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker_host'] },
+  { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker_host', 'docker_container'] },
   { label: 'IoT',            types: ['iot', 'camera', 'cpl'] },
   { label: 'Generic',        types: ['computer', 'generic', 'groupRect'] },
 ]
@@ -49,7 +49,7 @@ interface NodeModalProps {
   onSubmit: (data: Partial<NodeData>) => void
   initial?: Partial<NodeData>
   title?: string
-  parentContainerNodes?: { id: string; label: string }[]
+  parentContainerNodes?: { id: string; label: string; nodeType?: NodeType }[]
 }
 
 // NodeModal is always mounted with a key that changes on open/edit, so useState
@@ -78,6 +78,10 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
     })
     onClose()
   }
+
+  const filteredParentNodes = form.type === 'docker_container'
+    ? parentContainerNodes.filter((n) => n.nodeType === 'docker_host')
+    : parentContainerNodes
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -260,7 +264,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             </div>
 
             {/* Parent container */}
-            {form.type !== 'groupRect' && form.type !== 'group' && parentContainerNodes.length > 0 && (
+            {form.type !== 'groupRect' && form.type !== 'group' && filteredParentNodes.length > 0 && (
               <div className="flex flex-col gap-1.5 col-span-2">
                 <Label className="text-xs text-muted-foreground">Parent Container</Label>
                 <Select
@@ -270,13 +274,13 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
                     <SelectValue placeholder="None (standalone)">
                       {form.parent_id
-                        ? (parentContainerNodes.find((n) => n.id === form.parent_id)?.label ?? 'None (standalone)')
+                        ? (filteredParentNodes.find((n) => n.id === form.parent_id)?.label ?? 'None (standalone)')
                         : 'None (standalone)'}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="bg-[#21262d] border-[#30363d]">
                     <SelectItem value="none" className="text-sm">None (standalone)</SelectItem>
-                    {parentContainerNodes.map((n) => (
+                    {filteredParentNodes.map((n) => (
                       <SelectItem key={n.id} value={n.id} className="text-sm">{n.label}</SelectItem>
                     ))}
                   </SelectContent>

@@ -64,6 +64,17 @@ describe('canvasStore', () => {
     expect(nested?.extent).toBe('parent')
   })
 
+  it('docker_container nests under docker_host with container_mode on', () => {
+    const host = { ...makeNode('dh1', { type: 'docker_host', container_mode: true }), position: { x: 100, y: 100 } }
+    const container = { ...makeNode('dc1', { type: 'docker_container' }), position: { x: 160, y: 180 } }
+    useCanvasStore.getState().addNode(host)
+    useCanvasStore.getState().addNode(container)
+    useCanvasStore.getState().updateNode('dc1', { parent_id: 'dh1' })
+    const node = useCanvasStore.getState().nodes.find((n) => n.id === 'dc1')
+    expect(node?.parentId).toBe('dh1')
+    expect(node?.extent).toBe('parent')
+  })
+
   it('updateNode updates data fields', () => {
     useCanvasStore.getState().addNode(makeNode('n1', { label: 'old' }))
     useCanvasStore.getState().updateNode('n1', { label: 'new', ip: '10.0.0.1' })
@@ -435,6 +446,26 @@ describe('canvasStore', () => {
     expect(edges.find((e) => e.id === 'e1')).toBeUndefined()
     expect(edges.find((e) => e.id === 'e2')).toBeDefined()
     expect(hasUnsavedChanges).toBe(true)
+  })
+
+  it('setProxmoxContainerMode ON sets width/height for docker_host (not just proxmox)', () => {
+    const host: Node<NodeData> = { id: 'dh', type: 'docker_host', position: { x: 0, y: 0 }, data: { label: 'dh', type: 'docker_host', status: 'unknown', services: [], container_mode: false } }
+    useCanvasStore.setState({ nodes: [host] })
+    useCanvasStore.getState().setProxmoxContainerMode('dh', true)
+    const updated = useCanvasStore.getState().nodes.find((n) => n.id === 'dh')
+    expect(updated?.data.container_mode).toBe(true)
+    expect(updated?.width).toBe(300)
+    expect(updated?.height).toBe(200)
+  })
+
+  it('setProxmoxContainerMode OFF clears width/height for docker_host', () => {
+    const host: Node<NodeData> = { id: 'dh', type: 'docker_host', position: { x: 0, y: 0 }, width: 300, height: 200, data: { label: 'dh', type: 'docker_host', status: 'unknown', services: [], container_mode: true } }
+    useCanvasStore.setState({ nodes: [host] })
+    useCanvasStore.getState().setProxmoxContainerMode('dh', false)
+    const updated = useCanvasStore.getState().nodes.find((n) => n.id === 'dh')
+    expect(updated?.data.container_mode).toBe(false)
+    expect(updated?.width).toBeUndefined()
+    expect(updated?.height).toBeUndefined()
   })
 
   it('setProxmoxContainerMode ON nests children inside proxmox', () => {

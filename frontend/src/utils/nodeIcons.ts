@@ -98,8 +98,8 @@ export const ICON_REGISTRY: IconEntry[] = [
   { key: 'radio',       label: 'MQTT / RTL-SDR',       category: 'Automation', icon: Radio },
 
   // --- Containers & Dev ---
-  { key: 'anchor',    label: 'Portainer / Docker',   category: 'Dev & Containers', icon: Anchor },
-  { key: 'package',   label: 'Docker Host',          category: 'Dev & Containers', icon: Package },
+  { key: 'anchor',    label: 'Portainer / Docker',        category: 'Dev & Containers', icon: Anchor },
+  { key: 'package',   label: 'Docker Host / Container',  category: 'Dev & Containers', icon: Package },
   { key: 'gitbranch', label: 'Gitea / Gitlab',       category: 'Dev & Containers', icon: GitBranch },
   { key: 'terminal',  label: 'SSH / Shell',          category: 'Dev & Containers', icon: Terminal },
   { key: 'code',      label: 'VS Code Server',       category: 'Dev & Containers', icon: Code2 },
@@ -132,8 +132,9 @@ export const NODE_TYPE_DEFAULT_ICONS: Record<NodeType, LucideIcon> = {
   printer:      Printer,
   computer:     Monitor,
   cpl:          PlugZap,
-  docker_host:  Anchor,
-  generic:      Circle,
+  docker_host:       Anchor,
+  docker_container:  Package,
+  generic:           Circle,
   group:        Circle,
   groupRect:    Circle,
 }

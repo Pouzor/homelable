@@ -297,7 +297,6 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       let nodes = state.nodes.map((n) => {
         if (n.id === proxmoxId) {
           const withMode = { ...n, data: { ...n.data, container_mode: enabled } }
-          if (n.data.type !== 'proxmox') return withMode
           return enabled
             ? { ...withMode, width: n.width ?? 300, height: n.height ?? 200 }
             : { ...withMode, width: undefined, height: undefined }

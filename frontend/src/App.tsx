@@ -152,7 +152,7 @@ export default function App() {
   const handleAddNode = useCallback((data: Partial<NodeData>) => {
     snapshotHistory()
     const id = generateUUID()
-    const isContainerNode = CONTAINER_MODE_TYPES.has(data.type as NodeData['type'])
+    const isContainerNode = data.container_mode === true
     const parentNode = data.parent_id ? nodes.find((n) => n.id === data.parent_id) : null
     // Children position is relative to parent; place near top-left with padding
     const position = parentNode
@@ -249,7 +249,7 @@ export default function App() {
     }
     // Sync virtual edge when parent_id changes on an LXC/VM node
     const nodeType = data.type ?? existingNode?.data.type
-    if ((nodeType === 'lxc' || nodeType === 'vm') && 'parent_id' in data) {
+    if ((nodeType === 'lxc' || nodeType === 'vm' || nodeType === 'docker_container') && 'parent_id' in data) {
       const oldParentId = existingNode?.data.parent_id ?? null
       const newParentId = data.parent_id ?? null
       if (oldParentId !== newParentId) {
@@ -330,6 +330,10 @@ export default function App() {
       if ((srcType === 'lxc' || srcType === 'vm') && CONTAINER_MODE_TYPES.has(tgtType)) {
         updateNode(pendingConnection.source, { parent_id: pendingConnection.target })
       } else if (CONTAINER_MODE_TYPES.has(srcType) && (tgtType === 'lxc' || tgtType === 'vm')) {
+        updateNode(pendingConnection.target, { parent_id: pendingConnection.source })
+      } else if (srcType === 'docker_container' && tgtType === 'docker_host') {
+        updateNode(pendingConnection.source, { parent_id: pendingConnection.target })
+      } else if (tgtType === 'docker_container' && srcType === 'docker_host') {
         updateNode(pendingConnection.target, { parent_id: pendingConnection.source })
       }
     }
@@ -426,7 +430,7 @@ export default function App() {
           title="Add Node"
           parentContainerNodes={nodes
             .filter((n) => CONTAINER_MODE_TYPES.has(n.data.type) && n.data.container_mode)
-            .map((n) => ({ id: n.id, label: n.data.label }))}
+            .map((n) => ({ id: n.id, label: n.data.label, nodeType: n.data.type }))}
         />
 
         {/* key forces re-mount when editing a different node, resetting form state */}
@@ -439,7 +443,7 @@ export default function App() {
           title="Edit Node"
           parentContainerNodes={nodes
             .filter((n) => n.id !== editNodeId && CONTAINER_MODE_TYPES.has(n.data.type) && n.data.container_mode)
-            .map((n) => ({ id: n.id, label: n.data.label }))}
+            .map((n) => ({ id: n.id, label: n.data.label, nodeType: n.data.type }))}
         />
 
         <EdgeModal
