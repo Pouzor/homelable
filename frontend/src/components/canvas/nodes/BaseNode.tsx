@@ -81,11 +81,10 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         className="flex flex-col gap-1 px-2.5 py-2 min-w-0 overflow-hidden"
         style={{
           background: isOnline ? `${colors.border}18` : `${theme.colors.nodeIconBackground}88`,
-          borderBottom: data.container_mode === true
+          borderBottom: (data.container_mode === true || data.is_group_parent === true)
             ? `2px solid ${isOnline ? `${colors.border}33` : theme.colors.handleBackground}`
             : 'none',
-          // Force override of any inherited/global border
-          ...(data.container_mode === true ? {} : { borderBottom: 'none', borderBottomWidth: 0, borderStyle: 'none', borderColor: 'transparent' }),
+          borderBottomWidth: (data.container_mode === true || data.is_group_parent === true) ? undefined : 0,
         }}
       >
         <div className="flex flex-row items-center gap-2.5 min-w-0"
@@ -130,40 +129,45 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
             </div>
             {data.ip && splitIps(data.ip).map((ip) => (
               <div
-                return (
-                  <div
-                    className="relative flex flex-col rounded-lg border transition-all duration-200 overflow-hidden"
-                    style={{
-                      background: colors.background,
-                      borderColor: colors.border,
-                      borderWidth,
-                      boxShadow: isOnline && selected
-                        ? `0 0 0 ${borderWidth}px ${colors.border}, 0 0 10px ${colors.border}2e, 0 0 3px ${colors.border}1a`
-                        : isOnline
-                        ? `0 0 10px ${colors.border}2e, 0 0 3px ${colors.border}1a`
-                        : selected
-                        ? `0 0 0 ${borderWidth}px ${colors.border}, 0 0 8px ${colors.border}44`
-                        : 'none',
-                      opacity: data.status === 'offline' ? 0.55 : 1,
-                      minWidth: 140,
-                      width: width ? '100%' : undefined,
-                      height: height ? '100%' : undefined,
-                    }}
-                  >
+                key={ip}
+                className="font-mono text-[10px] flex gap-1 items-center flex-wrap"
+                style={{ color: theme.colors.nodeSubtextColor }}
+                title={ip + (data.port ? `:${data.port}` : '') + (data.hostname ? ` ${data.hostname}` : '')}
+              >
+                <a
+                  href={`http://${ip}${data.port ? `:${data.port}` : ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline focus:outline-none"
+                  style={{ cursor: 'pointer', color: theme.colors.nodeSubtextColor }}
+                  tabIndex={0}
+                  title={`Open ${ip}${data.port ? `:${data.port}` : ''}`}
+                >
+                  {hideIp ? maskIp(ip) : ip}{data.port ? `:${data.port}` : ''}
+                </a>
+                {data.hostname && (
+                  <>
+                    <a
+                      href={`http://${data.hostname}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="hover:underline focus:outline-none"
                       style={{ cursor: 'pointer', color: theme.colors.nodeSubtextColor }}
                       tabIndex={0}
                       title={`Open ${data.hostname}`}
-                    <div
-                      className="flex flex-col gap-1 px-2.5 py-2 min-w-0 overflow-hidden"
-                      style={{
-                        background: isOnline ? `${colors.border}18` : `${theme.colors.nodeIconBackground}88`,
-                        borderBottom: data.container_mode === true
-                          ? `2px solid ${isOnline ? `${colors.border}33` : theme.colors.handleBackground}`
-                          : 'none',
-                        ...(data.container_mode === true ? {} : { borderBottom: 'none', borderBottomWidth: 0, borderStyle: 'none', borderColor: 'transparent' }),
-                      }}
                     >
+                      {data.hostname}
+                    </a>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Properties row at the bottom of header bar */}
+        {visibleProperties && visibleProperties.length > 0 && (
+          <div className="flex flex-row flex-wrap gap-2 w-full">
+            {visibleProperties.map((prop) => {
               const Icon = resolvePropertyIcon(prop.icon)
               return (
                 <span key={prop.key} className="flex items-center gap-1 font-mono text-[10px]" style={{ color: theme.colors.nodeSubtextColor }}>
