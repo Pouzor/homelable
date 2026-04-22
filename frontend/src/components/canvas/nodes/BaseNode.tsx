@@ -77,7 +77,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
       <Handle type="target" position={Position.Top} id="top-t" style={{ opacity: 0, width: 12, height: 12 }} />
 
       {/* Main row */}
-      <div className="flex flex-row items-center gap-2.5 px-2.5 py-2 min-w-0 overflow-hidden">
+      <div className="flex flex-row items-start gap-2.5 px-2.5 py-2 min-w-0 overflow-hidden">
         {/* Icon */}
         <div
           className="flex items-center justify-center w-7 h-7 rounded-md shrink-0"
@@ -110,7 +110,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
           ))}
         </div>
         <div
-          className="ml-auto w-1.5 h-1.5 rounded-full shrink-0 -translate-y-1.5"
+          className="ml-auto w-1.5 h-1.5 rounded-full shrink-0 mt-1"
           style={{ backgroundColor: statusColor }}
           title={data.status}
         />
