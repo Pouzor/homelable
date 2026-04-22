@@ -80,11 +80,14 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
       <div
         className="flex flex-col gap-1 px-2.5 py-2 min-w-0 overflow-hidden"
         style={{
-          background: isOnline ? `${colors.border}18` : `${theme.colors.nodeIconBackground}88`,
-          borderBottom: (data.container_mode === true || data.is_group_parent === true)
+          background: data.container_mode === true
+            ? (isOnline ? `${colors.border}18` : `${theme.colors.nodeIconBackground}88`)
+            : 'transparent',
+          borderBottom: data.container_mode === true
             ? `2px solid ${isOnline ? `${colors.border}33` : theme.colors.handleBackground}`
             : 'none',
-          borderBottomWidth: (data.container_mode === true || data.is_group_parent === true) ? undefined : 0,
+          borderBottomWidth: data.container_mode === true ? undefined : 0,
+          boxShadow: 'none',
         }}
       >
         <div className="flex flex-row items-center gap-2.5 min-w-0"
