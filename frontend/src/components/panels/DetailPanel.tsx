@@ -2,6 +2,7 @@ import { createElement, useState } from 'react'
 import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { NODE_TYPE_LABELS, STATUS_COLORS, type ServiceInfo, type NodeData, type NodeProperty } from '@/types'
 import { getServiceUrl } from '@/utils/serviceUrl'
@@ -663,123 +664,85 @@ function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?
   const color = CATEGORY_COLORS[svc.category ?? ''] ?? '#8b949e';
   const hasPort = svc.port != null;
   const portLabel = hasPort ? String(svc.port) : '';
-  const pathLabel = svc.path?.trim() ? svc.path.trim() : '';
-
-  const maxTotalWidth = 220;
-  const nameCharWidth = 7.2;
-  const nameWidth = Math.min(svc.service_name.length * nameCharWidth, maxTotalWidth - 60);
-  const pathMaxWidth = Math.max(0, maxTotalWidth - nameWidth - 60);
-  const showPath = pathLabel && pathMaxWidth > 30;
-
-  const [tooltip, setTooltip] = useState<{ visible: boolean; x: number; y: number; text: string }>({ visible: false, x: 0, y: 0, text: '' });
+  const pathLabel = svc.path?.trim() ? svc.path.trim() : ''
 
   return (
     <div
-      className="group flex items-center border rounded-md text-xs transition-colors px-2 py-1.5 min-w-0"
-      style={{ background: '#21262d', borderColor: '#30363d', position: 'relative' }}
+      className="group flex items-center gap-1 border rounded-md text-xs transition-colors px-2 py-1.5 min-w-0"
+      style={{ background: '#21262d', borderColor: '#30363d' }}
     >
-      <span className="shrink-0 w-1.5 h-1.5 rounded-full mr-1" style={{ backgroundColor: color }} />
-		{url ? (
-		<a
-			href={url}
-			target="_blank"
-			rel="noopener noreferrer"
-			className="font-medium truncate flex-grow min-w-0"
-			style={{ color, marginRight: 12, maxWidth: '100%' }}
-			title={svc.service_name}
-			tabIndex={0}
-			aria-label={svc.service_name}
-			onClick={e => e.stopPropagation()}
-		>
-			{svc.service_name}
-		</a>
-		) : (
-		<span
-			className="font-medium truncate flex-grow min-w-0"
-			style={{ color, marginRight: 12, maxWidth: '100%' }}
-			title={svc.service_name}
-			tabIndex={0}
-			aria-label={svc.service_name}
-		>
-			{svc.service_name}
-		</span>
-		)}
-      <div className="flex items-center gap-1 shrink-0" style={{ maxWidth: 180, minWidth: 0 }}>
-        {showPath && (
-          <span
-            className="truncate text-[#8b949e] text-right"
-            style={{ minWidth: 0, maxWidth: pathMaxWidth, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
-            onMouseEnter={e => {
-				if (e.currentTarget.offsetWidth < e.currentTarget.scrollWidth) {
-					setTooltip({ visible: true, x: e.clientX, y: e.clientY, text: pathLabel });
-				}
-			}}
-			onMouseMove={e => {
-				setTooltip(t => t.visible ? { ...t, x: e.clientX, y: e.clientY } : t);
-			}}
-			onMouseLeave={() => setTooltip(t => ({ ...t, visible: false }))}
-            tabIndex={0}
-            aria-label={pathLabel}
-          >
-            {pathLabel}
-          </span>
+      <span className="shrink-0 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+      {url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium truncate min-w-0 flex-1"
+          style={{ color }}
+          title={svc.service_name}
+          onClick={e => e.stopPropagation()}
+        >
+          {svc.service_name}
+        </a>
+      ) : (
+        <span
+          className="font-medium truncate min-w-0 flex-1"
+          style={{ color }}
+          title={svc.service_name}
+        >
+          {svc.service_name}
+        </span>
+      )}
+      <div className="flex items-center gap-1 shrink-0">
+        {pathLabel && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="truncate text-[#8b949e] max-w-[80px]"
+                  tabIndex={0}
+                  aria-label={pathLabel}
+                >
+                  {pathLabel}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">{pathLabel}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
         {hasPort && (
-          <span className="font-mono text-[#8b949e]" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{portLabel}/{svc.protocol}</span>
+          <span className="font-mono text-[#8b949e] shrink-0">{portLabel}/{svc.protocol}</span>
         )}
-		{url ? (
-		  <a
-			href={url}
-			target="_blank"
-			rel="noopener noreferrer"
-			className="inline-flex w-2.5 h-2.5 items-center justify-center shrink-0"
-			tabIndex={0}
-			aria-label="Open service link"
-			style={{ color: 'inherit' }}
-			onClick={e => e.stopPropagation()}
-		  >
-			<ExternalLink size={10} className="text-muted-foreground" />
-		  </a>
-		) : (
-		  <span style={{ width: 10, display: 'inline-block' }} />
-		)}
+        {url ? (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex w-2.5 h-2.5 items-center justify-center shrink-0"
+            aria-label="Open service link"
+            style={{ color: 'inherit' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <ExternalLink size={10} className="text-muted-foreground" />
+          </a>
+        ) : (
+          <span className="w-2.5 shrink-0" />
+        )}
         <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(); }}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }}
           className="opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5"
           title="Edit service"
         >
           <Pencil size={10} />
         </button>
         <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }}
           className="opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5"
           title="Remove service"
         >
           <X size={10} />
         </button>
       </div>
-
-	  {tooltip.visible && (
-		<div
-			style={{
-			position: 'fixed',
-			left: tooltip.x - 50,
-			top: tooltip.y + 10,
-			background: '#222',
-			color: '#fff',
-			padding: '2px 8px',
-			borderRadius: 4,
-			fontSize: 12,
-			zIndex: 9999,
-			pointerEvents: 'none',
-			boxShadow: '0 2px 8px #0008',
-			whiteSpace: 'nowrap',
-      		overflow: 'visible'
-			}}
-		>
-			{tooltip.text}
-		</div>
-	)}
     </div>
-  );
+  )
 }
