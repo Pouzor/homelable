@@ -66,7 +66,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         minWidth={140}
         minHeight={50}
         lineStyle={{ borderColor: 'transparent' }}
-        handleStyle={{ borderColor: colors.border, background: colors.border, width: 8, height: 8 }}
+        handleStyle={{ borderColor: colors.border, background: colors.border, width: 16, height: 16 }}
       />
       <Handle
         type="source"
