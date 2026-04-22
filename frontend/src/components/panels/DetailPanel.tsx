@@ -63,69 +63,66 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         node={node}
         nodes={nodes}
         onUngroup={() => { ungroup(node.id) }}
-        // Layout: service name always takes precedence, path truncates first or hides if needed, port/protocol always shown
-        return (
-          <div
-            className="group flex items-center border rounded-md text-xs transition-colors px-2 py-1.5 min-w-0"
-            style={{ background: '#21262d', borderColor: '#30363d', position: 'relative' }}
-          >
-            <span className="shrink-0 w-1.5 h-1.5 rounded-full mr-1" style={{ backgroundColor: color }} />
-            <div className="flex items-center min-w-0 flex-grow" style={{ minWidth: 0 }}>
-              <span
-                className="font-medium truncate min-w-0"
-                style={{ color, maxWidth: '100%', marginRight: 8 }}
-                title={svc.service_name}
-                tabIndex={0}
-                aria-label={svc.service_name}
-              >
-                {svc.service_name}
-              </span>
-              {/* Path: only show if name is not too long, truncate path first */}
-              {pathLabel && (
-                <span
-                  className="truncate text-[#8b949e] text-right"
-                  style={{ minWidth: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', marginLeft: 8 }}
-                  title={pathLabel}
-                  tabIndex={0}
-                  aria-label={pathLabel}
-                >
-                  {pathLabel}
-                </span>
-              )}
-            </div>
-            {/* Port/protocol always shown, never truncated, always right-aligned */}
-            {hasPort && (
-              <span className="font-mono text-[#8b949e] ml-2" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{portLabel}/{svc.protocol}</span>
-            )}
-            <span className="inline-flex w-2.5 h-2.5 items-center justify-center shrink-0 ml-2" aria-hidden="true">
-              {url ? <ExternalLink size={10} className="text-muted-foreground" /> : <span style={{ width: 10, display: 'inline-block' }} />}
-            </span>
-            <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(); }}
-              className="opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5"
-              title="Edit service"
-            >
-              <Pencil size={10} />
-            </button>
-            <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove(); }}
-              className="opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5"
-              title="Remove service"
-            >
-              <X size={10} />
-            </button>
-            {url && (
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ position: 'absolute', left: 0, top: 0, bottom: 0, right: 80, zIndex: 1, opacity: 0 }}
-                tabIndex={-1}
-                aria-hidden="true"
-              />
-            )}
-          </div>
-        );
+        onToggleBorder={() => {
+          snapshotHistory()
+          updateNode(node.id, {
+            custom_colors: {
+              ...node.data.custom_colors,
+              show_border: !(node.data.custom_colors?.show_border !== false),
+            },
+          })
+        }}
+        onClose={() => setSelectedNode(null)}
+        onSelectChild={(id) => setSelectedNode(id)}
+      />
+    )
+  }
+
+  // Normal single-node panel
+  const addingService = addingForNode === node.id
+  const editingIndex = editingFor?.nodeId === node.id ? editingFor.index : null
+  const { data } = node
+  const services = data.services ?? []
+  const statusColor = STATUS_COLORS[data.status]
+  const host = data.ip ?? data.hostname
+
+  const handleDelete = () => {
+    if (confirm(`Delete "${data.label}"?`)) {
+      snapshotHistory()
+      deleteNode(node.id)
+    }
+  }
+
+  const handleAddService = () => {
+    const trimmedPort = newSvc.port.trim()
+    const port = trimmedPort === '' ? undefined : parseInt(trimmedPort, 10)
+    if (!newSvc.service_name.trim()) return
+    if (trimmedPort !== '' && (port == null || Number.isNaN(port) || port < 1 || port > 65535)) return
+    snapshotHistory()
+    const path = newSvc.path.trim()
+    const svc: ServiceInfo = {
+      ...(port != null ? { port } : {}),
+      protocol: newSvc.protocol,
+      service_name: newSvc.service_name.trim(),
+      ...(path ? { path } : {}),
+    }
+    updateNode(node.id, { services: [...services, svc] })
+    setNewSvc(EMPTY_FORM)
+    setAddingForNode(null)
+  }
+
+  const handleRemoveService = (index: number) => {
+    snapshotHistory()
+    const updated = services.filter((_, i) => i !== index)
+    updateNode(node.id, { services: updated })
+    if (editingIndex === index) setEditingFor(null)
+  }
+
+  const handleStartEdit = (index: number) => {
+    const svc = services[index]
+    if (!svc) return
+    setEditSvc({ port: svc.port != null ? String(svc.port) : '', protocol: svc.protocol, service_name: svc.service_name, path: svc.path ?? '' })
+    setEditingFor({ nodeId: node.id, index })
     setAddingForNode(null)
   }
 
@@ -667,7 +664,15 @@ function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?
   const hasPort = svc.port != null;
   const portLabel = hasPort ? String(svc.port) : '';
   const pathLabel = svc.path?.trim() ? svc.path.trim() : '';
-  // Layout: service name takes all available space, path/port are always right-aligned next to buttons, path is hidden if name must truncate
+
+  // Calculate available width for path: if name is long, path gets less or no space
+  // We'll use a ref to measure the name width, but for minimal change, estimate by string length
+  const maxTotalWidth = 220; // px, total badge width minus paddings/buttons
+  const nameCharWidth = 7.2; // px per char (approx for font-size 12px)
+  const nameWidth = Math.min(svc.service_name.length * nameCharWidth, maxTotalWidth - 60); // reserve 60px for port/buttons
+  const pathMaxWidth = Math.max(0, maxTotalWidth - nameWidth - 60); // 60px for port/buttons
+  const showPath = pathLabel && pathMaxWidth > 30; // hide path if not enough space
+
   return (
     <div
       className="group flex items-center border rounded-md text-xs transition-colors px-2 py-1.5 min-w-0"
@@ -684,10 +689,10 @@ function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?
         {svc.service_name}
       </span>
       <div className="flex items-center gap-1 shrink-0" style={{ maxWidth: 180, minWidth: 0 }}>
-        {pathLabel && (
+        {showPath && (
           <span
             className="truncate text-[#8b949e] text-right"
-            style={{ minWidth: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
+            style={{ minWidth: 0, maxWidth: pathMaxWidth, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}
             title={pathLabel}
             tabIndex={0}
             aria-label={pathLabel}
