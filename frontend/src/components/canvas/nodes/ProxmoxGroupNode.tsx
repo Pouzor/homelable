@@ -118,7 +118,6 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
                   </a>
                   {data.hostname && (
                     <>
-                      <span aria-hidden="true">|</span>
                       <a
                         href={`http://${data.hostname}`}
                         target="_blank"
