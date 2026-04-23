@@ -234,15 +234,18 @@ describe('NodeModal', () => {
     expect(screen.queryByTitle('Router')).toBeNull()
   })
 
-  // ── Container mode (proxmox only) ─────────────────────────────────────
+  // ── Container mode ─────────────────────────────────────────────────────
 
-  it('shows Container Mode toggle for proxmox type', () => {
-    renderModal({ initial: { ...BASE, type: 'proxmox' } })
+  const containerModeTypes = ['proxmox', 'vm', 'lxc', 'docker_host'] as const
+  const nonContainerModeTypes = ['isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer', 'iot', 'camera', 'cpl', 'computer', 'generic', 'docker_container', 'groupRect', 'group'] as const
+
+  it.each(containerModeTypes)('shows Container Mode toggle for %s type', (type) => {
+    renderModal({ initial: { ...BASE, type } })
     expect(screen.getByText('Container Mode')).toBeDefined()
   })
 
-  it('hides Container Mode for non-proxmox types', () => {
-    renderModal({ initial: BASE })
+  it.each(nonContainerModeTypes)('hides Container Mode for %s type', (type) => {
+    renderModal({ initial: { ...BASE, type } })
     expect(screen.queryByText('Container Mode')).toBeNull()
   })
 
@@ -253,33 +256,48 @@ describe('NodeModal', () => {
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).container_mode).toBe(false)
   })
 
-  // ── Parent Proxmox (vm / lxc only) ───────────────────────────────────
+  // ── Parent container ──────────────────────────────────────────────────
 
-  it('shows Parent Proxmox for vm with proxmoxNodes', () => {
+  const parentContainerVisibleTypes = ['proxmox', 'vm', 'lxc', 'docker_host', 'isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer', 'iot', 'camera', 'cpl', 'computer', 'generic'] as const
+  const parentContainerHiddenTypes = ['groupRect', 'group'] as const
+
+  it.each(parentContainerVisibleTypes)('shows Parent Container for %s type when options are provided', (type) => {
     renderModal({
-      initial: { ...BASE, type: 'vm' },
-      proxmoxNodes: [{ id: 'px1', label: 'PVE-01' }],
+      initial: { ...BASE, type },
+      parentContainerNodes: [{ id: 'c1', label: 'Container 01' }],
     })
-    expect(screen.getByText('Parent Proxmox')).toBeDefined()
-    expect(screen.getByText('PVE-01')).toBeDefined()
+    expect(screen.getByText('Parent Container')).toBeDefined()
+    expect(screen.getByText('Container 01')).toBeDefined()
   })
 
-  it('shows Parent Proxmox for lxc with proxmoxNodes', () => {
+  it.each(parentContainerHiddenTypes)('hides Parent Container for %s type even when options are provided', (type) => {
+    renderModal({ initial: { ...BASE, type }, parentContainerNodes: [{ id: 'c1', label: 'Container 01' }] })
+    expect(screen.queryByText('Parent Container')).toBeNull()
+  })
+
+  it.each(parentContainerVisibleTypes)('hides Parent Container for %s type when no container options are available', (type) => {
+    renderModal({ initial: { ...BASE, type } })
+    expect(screen.queryByText('Parent Container')).toBeNull()
+  })
+
+  it('docker_container shows only docker_host parents', () => {
     renderModal({
-      initial: { ...BASE, type: 'lxc' },
-      proxmoxNodes: [{ id: 'px1', label: 'PVE-01' }],
+      initial: { ...BASE, type: 'docker_container' },
+      parentContainerNodes: [
+        { id: 'h1', label: 'My Docker Host', nodeType: 'docker_host' },
+        { id: 'p1', label: 'My Proxmox', nodeType: 'proxmox' },
+      ],
     })
-    expect(screen.getByText('Parent Proxmox')).toBeDefined()
+    expect(screen.getByText('My Docker Host')).toBeDefined()
+    expect(screen.queryByText('My Proxmox')).toBeNull()
   })
 
-  it('hides Parent Proxmox for server type', () => {
-    renderModal({ initial: BASE, proxmoxNodes: [{ id: 'px1', label: 'PVE-01' }] })
-    expect(screen.queryByText('Parent Proxmox')).toBeNull()
-  })
-
-  it('hides Parent Proxmox for vm when no proxmoxNodes', () => {
-    renderModal({ initial: { ...BASE, type: 'vm' } })
-    expect(screen.queryByText('Parent Proxmox')).toBeNull()
+  it('docker_container hides Parent Container when no docker_host is available', () => {
+    renderModal({
+      initial: { ...BASE, type: 'docker_container' },
+      parentContainerNodes: [{ id: 'p1', label: 'My Proxmox', nodeType: 'proxmox' }],
+    })
+    expect(screen.queryByText('Parent Container')).toBeNull()
   })
 
   // ── Appearance ────────────────────────────────────────────────────────

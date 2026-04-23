@@ -66,7 +66,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         minWidth={140}
         minHeight={50}
         lineStyle={{ borderColor: 'transparent' }}
-        handleStyle={{ borderColor: colors.border, background: colors.border, width: 8, height: 8 }}
+        handleStyle={{ borderColor: colors.border, background: colors.border, width: 16, height: 16 }}
       />
       <Handle
         type="source"
@@ -75,6 +75,13 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         style={{ background: theme.colors.handleBackground, borderColor: theme.colors.handleBorder }}
       />
       <Handle type="target" position={Position.Top} id="top-t" style={{ opacity: 0, width: 12, height: 12 }} />
+
+      {/* Status dot — absolute to avoid affecting node auto-width */}
+      <div
+        className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full"
+        style={{ backgroundColor: statusColor }}
+        title={data.status}
+      />
 
       {/* Main row */}
       <div className="flex flex-row items-center gap-2.5 px-2.5 py-2 min-w-0 overflow-hidden">
@@ -121,7 +128,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
               return (
                 <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px] min-w-0 overflow-hidden" style={{ color: theme.colors.nodeSubtextColor }}>
                   {Icon && <Icon size={9} className="shrink-0" />}
-                  <span className="truncate max-w-[60px] shrink-0" title={prop.key}>{prop.key}</span>
+                  <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
                   <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
                 </div>
               )
@@ -139,7 +146,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
               <div className="flex items-center gap-1 font-mono text-[10px]" style={{ color: theme.colors.nodeSubtextColor }}>
                 <Cpu size={9} className="shrink-0" />
                 {data.cpu_model && (
-                  <span className="truncate max-w-[80px]" title={data.cpu_model}>{data.cpu_model}</span>
+                  <span className="truncate max-w-20" title={data.cpu_model}>{data.cpu_model}</span>
                 )}
                 {data.cpu_count != null && (
                   <span className="shrink-0">{data.cpu_model ? `· ${data.cpu_count}c` : `${data.cpu_count} cores`}</span>
@@ -165,13 +172,6 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
           </div>
         </>
       )}
-
-      {/* Status dot */}
-      <div
-        className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full shrink-0"
-        style={{ backgroundColor: statusColor }}
-        title={data.status}
-      />
 
       {(BOTTOM_HANDLE_POSITIONS[data.bottom_handles ?? 1] ?? BOTTOM_HANDLE_POSITIONS[1]).map((leftPct, idx) => {
         const sourceId = BOTTOM_HANDLE_IDS[idx]

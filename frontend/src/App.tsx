@@ -33,6 +33,7 @@ import type { NodeData, EdgeData } from '@/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STANDALONE_STORAGE_KEY = 'homelable_canvas'
+const CONTAINER_MODE_TYPES = new Set<NodeData['type']>(['proxmox', 'vm', 'lxc', 'docker_host'])
 
 export default function App() {
   const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
@@ -100,11 +101,11 @@ export default function App() {
       .then((res) => {
         const { nodes: apiNodes, edges: apiEdges } = res.data
         if (apiNodes.length > 0) {
-          // Build a map of proxmox container mode to know if children should be nested
+          // Build a map of container mode nodes to know if children should be nested
           const proxmoxContainerMap = new Map<string, boolean>(
             (apiNodes as ApiNode[])
-              .filter((n) => n.type === 'proxmox' || n.type === 'group')
-              .map((n) => [n.id, n.type === 'group' ? true : n.container_mode !== false])
+              .filter((n) => n.type === 'group' || n.container_mode === true)
+              .map((n) => [n.id, true])
           )
           const rfNodes = (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxContainerMap))
           const rfEdges = (apiEdges as ApiEdge[]).map(deserializeApiEdge)
@@ -151,7 +152,7 @@ export default function App() {
   const handleAddNode = useCallback((data: Partial<NodeData>) => {
     snapshotHistory()
     const id = generateUUID()
-    const isProxmox = data.type === 'proxmox'
+    const isContainerNode = data.container_mode === true
     const parentNode = data.parent_id ? nodes.find((n) => n.id === data.parent_id) : null
     // Children position is relative to parent; place near top-left with padding
     const position = parentNode
@@ -164,7 +165,7 @@ export default function App() {
       position,
       data: { status: 'unknown', services: [], ...data } as NodeData,
       ...(data.parent_id ? { parentId: data.parent_id, extent: 'parent' as const } : {}),
-      ...(isProxmox ? { width: 300, height: 200 } : {}),
+      ...(isContainerNode ? { width: 300, height: 200 } : {}),
     }
     addNode(newNode)
     toast.success(`Added "${data.label}"`)
@@ -242,13 +243,13 @@ export default function App() {
     snapshotHistory()
     const existingNode = nodes.find((n) => n.id === editNodeId)
     updateNode(editNodeId, data)
-    // If proxmox container_mode changed, apply structural changes (children parentId, node dimensions)
-    if (data.type === 'proxmox' && typeof data.container_mode === 'boolean') {
+    // If container_mode changed, apply structural changes (children parentId, node dimensions)
+    if (typeof data.container_mode === 'boolean') {
       setProxmoxContainerMode(editNodeId, data.container_mode)
     }
     // Sync virtual edge when parent_id changes on an LXC/VM node
     const nodeType = data.type ?? existingNode?.data.type
-    if ((nodeType === 'lxc' || nodeType === 'vm') && 'parent_id' in data) {
+    if ((nodeType === 'lxc' || nodeType === 'vm' || nodeType === 'docker_container') && 'parent_id' in data) {
       const oldParentId = existingNode?.data.parent_id ?? null
       const newParentId = data.parent_id ?? null
       if (oldParentId !== newParentId) {
@@ -320,15 +321,19 @@ export default function App() {
     if (!pendingConnection) return
     snapshotHistory()
     onConnect({ ...pendingConnection, ...edgeData } as unknown as Connection)
-    // When a virtual edge is drawn between LXC/VM (top) and Proxmox (bottom), sync parent_id
+    // When a virtual edge is drawn between a child node and a container node, sync parent_id
     if (edgeData.type === 'virtual') {
       const src = nodes.find((n) => n.id === pendingConnection.source)
       const tgt = nodes.find((n) => n.id === pendingConnection.target)
-      const srcType = src?.data.type
-      const tgtType = tgt?.data.type
-      if ((srcType === 'lxc' || srcType === 'vm') && tgtType === 'proxmox') {
+      const srcType = src?.data.type as NodeData['type']
+      const tgtType = tgt?.data.type as NodeData['type']
+      if ((srcType === 'lxc' || srcType === 'vm') && CONTAINER_MODE_TYPES.has(tgtType)) {
         updateNode(pendingConnection.source, { parent_id: pendingConnection.target })
-      } else if (srcType === 'proxmox' && (tgtType === 'lxc' || tgtType === 'vm')) {
+      } else if (CONTAINER_MODE_TYPES.has(srcType) && (tgtType === 'lxc' || tgtType === 'vm')) {
+        updateNode(pendingConnection.target, { parent_id: pendingConnection.source })
+      } else if (srcType === 'docker_container' && tgtType === 'docker_host') {
+        updateNode(pendingConnection.source, { parent_id: pendingConnection.target })
+      } else if (tgtType === 'docker_container' && srcType === 'docker_host') {
         updateNode(pendingConnection.target, { parent_id: pendingConnection.source })
       }
     }
@@ -423,7 +428,9 @@ export default function App() {
           onClose={() => setAddNodeOpen(false)}
           onSubmit={handleAddNode}
           title="Add Node"
-          proxmoxNodes={nodes.filter((n) => n.type === 'proxmox').map((n) => ({ id: n.id, label: n.data.label }))}
+          parentContainerNodes={nodes
+            .filter((n) => CONTAINER_MODE_TYPES.has(n.data.type) && n.data.container_mode)
+            .map((n) => ({ id: n.id, label: n.data.label, nodeType: n.data.type }))}
         />
 
         {/* key forces re-mount when editing a different node, resetting form state */}
@@ -434,7 +441,9 @@ export default function App() {
           onSubmit={handleUpdateNode}
           initial={editNode?.data}
           title="Edit Node"
-          proxmoxNodes={nodes.filter((n) => n.type === 'proxmox').map((n) => ({ id: n.id, label: n.data.label }))}
+          parentContainerNodes={nodes
+            .filter((n) => n.id !== editNodeId && CONTAINER_MODE_TYPES.has(n.data.type) && n.data.container_mode)
+            .map((n) => ({ id: n.id, label: n.data.label, nodeType: n.data.type }))}
         />
 
         <EdgeModal
