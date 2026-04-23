@@ -291,10 +291,13 @@ describe('NodeModal', () => {
       ],
     })
 
-    expect(screen.getByText('Docker Host')).toBeDefined()
-    expect(screen.getByText('VM Node')).toBeDefined()
-    expect(screen.getByText('LXC Node')).toBeDefined()
-    expect(screen.getByText('Proxmox Node')).toBeDefined()
+    const parentSelect = screen.getByRole('combobox', { name: /parent container/i, }) || screen.getAllByRole('combobox')[0]
+    const options = Array.from(parentSelect.querySelectorAll('option')).map(
+      (o) => o.textContent?.trim()
+    )
+
+    expect(options).toEqual( expect.arrayContaining([ 'Docker Host', 'VM Node', 'LXC Node', 'Proxmox Node', ])
+    )
   })
 
   // ── Appearance ────────────────────────────────────────────────────────
