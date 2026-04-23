@@ -31,7 +31,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
           position={Position.Left}
           id="cluster-left"
           title="Same cluster"
-          style={{ background: proxmoxAccent, borderColor: `${proxmoxAccent}88`, width: 6, height: 6 }}
+          style={{ background: proxmoxAccent, borderColor: `${proxmoxAccent}88`, width: 16, height: 16 }}
         />
         <Handle
           type="source"
