@@ -79,8 +79,10 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
     onClose()
   }
 
-  const filteredParentNodes = form.type === 'docker_container'
-    ? parentContainerNodes.filter((n) => n.nodeType === 'docker_host')
+  const filteredParentNodes =
+  form.type === 'docker_container'
+    ? parentContainerNodes
+        .filter((n) => n.nodeType !== 'groupRect' && n.nodeType !== 'group')
     : parentContainerNodes
 
   return (
