@@ -280,24 +280,21 @@ describe('NodeModal', () => {
     expect(screen.queryByText('Parent Container')).toBeNull()
   })
 
-  it('docker_container shows only docker_host parents', () => {
+  it('docker_container allows any virtualization node type as parent options', () => {
     renderModal({
       initial: { ...BASE, type: 'docker_container' },
       parentContainerNodes: [
-        { id: 'h1', label: 'My Docker Host', nodeType: 'docker_host' },
-        { id: 'p1', label: 'My Proxmox', nodeType: 'proxmox' },
+        { id: 'h1', label: 'Docker Host', nodeType: 'docker_host' },
+        { id: 'v1', label: 'VM Node', nodeType: 'vm' },
+        { id: 'l1', label: 'LXC Node', nodeType: 'lxc' },
+        { id: 's1', label: 'Proxmox Node', nodeType: 'proxmox' },
       ],
     })
-    expect(screen.getByText('My Docker Host')).toBeDefined()
-    expect(screen.queryByText('My Proxmox')).toBeNull()
-  })
 
-  it('docker_container hides Parent Container when no docker_host is available', () => {
-    renderModal({
-      initial: { ...BASE, type: 'docker_container' },
-      parentContainerNodes: [{ id: 'p1', label: 'My Proxmox', nodeType: 'proxmox' }],
-    })
-    expect(screen.queryByText('Parent Container')).toBeNull()
+    expect(screen.getByText('Docker Host')).toBeDefined()
+    expect(screen.getByText('VM Node')).toBeDefined()
+    expect(screen.getByText('LXC Node')).toBeDefined()
+    expect(screen.getByText('Proxmox Node')).toBeDefined()
   })
 
   // ── Appearance ────────────────────────────────────────────────────────

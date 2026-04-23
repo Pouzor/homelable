@@ -53,6 +53,7 @@ export interface NodeProperty {
 }
 
 export interface NodeData extends Record<string, unknown> {
+  id: string
   label: string
   type: NodeType
   hostname?: string
