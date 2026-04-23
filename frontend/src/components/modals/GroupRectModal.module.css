@@ -1,0 +1,43 @@
+/* Custom colored slider track for accent color */
+.slider-accent::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #00d4ff;
+  border-radius: 2px;
+}
+.slider-accent::-moz-range-track {
+  height: 4px;
+  background: #00d4ff;
+  border-radius: 2px;
+}
+.slider-accent::-ms-fill-lower,
+.slider-accent::-ms-fill-upper {
+  background: #00d4ff;
+  border-radius: 2px;
+}
+
+/* Ensure the slider bar is visible on dark backgrounds */
+.slider-thumb-sm {
+  background: transparent;
+}
+/* Custom slider thumb for smaller circle */
+.slider-thumb-sm::-webkit-slider-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #00d4ff;
+  border: 2px solid #21262d;
+}
+.slider-thumb-sm::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #00d4ff;
+  border: 2px solid #21262d;
+}
+.slider-thumb-sm::-ms-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #00d4ff;
+  border: 2px solid #21262d;
+}
