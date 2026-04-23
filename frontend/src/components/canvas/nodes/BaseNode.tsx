@@ -84,7 +84,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
       />
 
       {/* Main row */}
-      <div className="flex flex-row items-center gap-2.5 px-2.5 py-2 min-w-0 overflow-hidden">
+      <div className="flex flex-row items-center gap-2.5 px-2.5 py-2 min-w-0 overflow-hidden pr-6">
         {/* Icon */}
         <div
           className="flex items-center justify-center w-7 h-7 rounded-md shrink-0"
