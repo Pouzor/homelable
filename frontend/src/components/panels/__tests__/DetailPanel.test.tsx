@@ -442,7 +442,8 @@ describe('DetailPanel', () => {
     it('displays full comma-separated IP string as link text', () => {
       setupStore({ ip: '192.168.1.10, 192.168.1.11' })
       render(<DetailPanel onEdit={vi.fn()} />)
-      expect(screen.getByText(/192\.168\.1\.10, 192\.168\.1\.11/)).toBeDefined()
+      expect(screen.getByRole('link', { name: '192.168.1.10' })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: '192.168.1.11' })).toBeInTheDocument()
     })
   })
 
