@@ -21,7 +21,7 @@ export function ContainerGroupNode(props: NodeProps<Node<NodeData>>) {
 	const statusColor = theme.colors.statusColors[data.status];
 	const isOnline = data.status === 'online';
 	const glow = colors.border;
-	const containerAccent = theme.colors.nodeAccents.proxmox.border;
+	const containerAccent = colors.border;
 	const resolvedIcon = resolveNodeIcon(Layers, data.custom_icon);
 
 	return (
@@ -49,8 +49,8 @@ export function ContainerGroupNode(props: NodeProps<Node<NodeData>>) {
 				<div
 					className="flex flex-row items-start gap-2 px-2.5 py-1.5 shrink-0"
 					style={{
-						background: isOnline ? `${glow}18` : `${theme.colors.nodeIconBackground}88`,
-						borderBottom: `1px solid ${isOnline ? `${glow}33` : theme.colors.handleBackground}`,
+						background: isOnline ? `${glow}33` : `${glow}08`,
+						borderBottom: `1px solid ${isOnline ? `${glow}33` : `${glow}22`}`,
 					}}
 				>
 					<div
@@ -89,9 +89,7 @@ export function ContainerGroupNode(props: NodeProps<Node<NodeData>>) {
 				</div>
 
 				{/* Properties */}
-				{data.properties
-					?.filter((p) => p.visible)
-					.map((prop, i, arr) => {
+				{data.properties?.filter((p) => p.visible).map((prop, i, arr) => {
 						const Icon = resolvePropertyIcon(prop.icon);
 						return (
 							<div
@@ -105,14 +103,10 @@ export function ContainerGroupNode(props: NodeProps<Node<NodeData>>) {
 								}}
 							>
 								{Icon && <Icon size={9} className="shrink-0" />}
-								<span className="truncate max-w-15 shrink-0" title={prop.key}>
-									{prop.key}
-								</span>
-								<span className="truncate min-w-0" title={prop.value}>
-									· {prop.value}
-								</span>
+								<span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
+								<span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
 							</div>
-						);
+						)
 					})}
 
 				{/* Inner area — React Flow places children here */}
