@@ -1,0 +1,27 @@
+/* SidebarItem pointer on hover */
+.sidebar-pointer:hover {
+  cursor: pointer !important;
+}
+/* Consistent border radius for all modal input/select/button elements */
+.modal-radius {
+  border-radius: 6px !important;
+}
+
+/* Pointer cursor for close X */
+.modal-close-pointer:hover {
+  cursor: pointer !important;
+}
+
+/* Subtle hover background for cancel button */
+.modal-cancel-hover:hover {
+  background: #21262d !important;
+}
+/* Shared hover/focus border effect for interactive modal elements */
+.modal-interactive {
+  transition: border-color 0.15s;
+}
+.modal-interactive:hover,
+.modal-interactive:focus {
+  border-color: #fff !important;
+  outline: none;
+}

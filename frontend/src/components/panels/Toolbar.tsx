@@ -39,7 +39,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       <div className="flex-1" />
       <Button
         size="sm" variant="ghost"
-        className="gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
+        className="gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer hover:bg-[#21262d]"
         onClick={onUndo}
         disabled={past.length === 0}
         title="Undo (Ctrl+Z)"
@@ -48,7 +48,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       </Button>
       <Button
         size="sm" variant="ghost"
-        className="gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
+        className="gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer hover:bg-[#21262d]"
         onClick={onRedo}
         disabled={future.length === 0}
         title="Redo (Ctrl+Y)"
@@ -56,13 +56,13 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
         <Redo2 size={14} />
       </Button>
       <div className="w-px h-4 bg-border mx-1" />
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={onAutoLayout}>
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onAutoLayout}>
         <LayoutDashboard size={14} /> Auto Layout
       </Button>
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={onChangeStyle}>
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onChangeStyle}>
         <Palette size={14} /> Style
       </Button>
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={() => fileInputRef.current?.click()} title="Import from YAML">
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={() => fileInputRef.current?.click()} title="Import from YAML">
         <Upload size={14} /> Import
       </Button>
       <input
@@ -72,21 +72,21 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
         className="hidden"
         onChange={handleFileChange}
       />
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={onExportYaml} title="Export canvas as YAML">
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExportYaml} title="Export canvas as YAML">
         <Download size={14} /> Export
       </Button>
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={onExport} title="Download canvas as PNG">
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExport} title="Download canvas as PNG">
         <FileDown size={14} /> PNG
       </Button>
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={onExportMd} title="Copy inventory as Markdown table">
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExportMd} title="Copy inventory as Markdown table">
         <Table2 size={14} /> MD
       </Button>
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground" onClick={onShortcuts} title="Keyboard shortcuts (?)">
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onShortcuts} title="Keyboard shortcuts (?)">
         <HelpCircle size={14} />
       </Button>
       <Button
         size="sm"
-        className="gap-1.5 relative"
+        className="gap-1.5 relative cursor-pointer border border-transparent hover:border-white"
         style={{
           background: hasUnsavedChanges ? '#00d4ff' : undefined,
           color: hasUnsavedChanges ? '#0d1117' : undefined,

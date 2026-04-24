@@ -199,7 +199,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
     <aside className="w-72 shrink-0 flex flex-col border-l border-border bg-[#161b22] overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="font-semibold text-sm text-foreground truncate">{data.label}</span>
-        <button aria-label="Close panel" onClick={() => setSelectedNode(null)} className="text-muted-foreground hover:text-foreground transition-colors">
+        <button aria-label="Close panel" onClick={() => setSelectedNode(null)} className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
           <X size={16} />
         </button>
       </div>
@@ -258,7 +258,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
           <span className="text-xs text-muted-foreground">Properties{properties.length > 0 ? ` (${properties.length})` : ''}</span>
           <button
             onClick={() => { setAddingProp((v) => !v); setEditingPropIndex(null) }}
-            className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors"
+            className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer"
           >
             <Plus size={10} /> Add
           </button>
@@ -304,7 +304,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
       <div className="px-4 py-3 border-t border-border">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-muted-foreground">Services{services.length > 0 ? ` (${services.length})` : ''}</span>
-          <button onClick={() => { setAddingForNode((v) => v === node.id ? null : node.id); setEditingFor(null) }} className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors">
+          <button onClick={() => { setAddingForNode((v) => v === node.id ? null : node.id); setEditingFor(null) }} className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer">
             <Plus size={10} /> Add
           </button>
         </div>
@@ -331,10 +331,10 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
       )}
 
       <div className="mt-auto flex gap-2 px-4 py-3 border-t border-border">
-        <Button size="sm" variant="secondary" className="flex-1 gap-1.5" onClick={() => onEdit(node.id)}>
+        <Button size="sm" variant="secondary" className="flex-1 gap-1.5 cursor-pointer" onClick={() => onEdit(node.id)}>
           <Edit size={14} /> Edit
         </Button>
-        <Button size="sm" variant="destructive" className="gap-1.5" aria-label="Delete node" onClick={handleDelete}>
+        <Button size="sm" variant="destructive" className="gap-1.5 cursor-pointer" aria-label="Delete node" onClick={handleDelete}>
           <Trash2 size={14} />
         </Button>
       </div>
