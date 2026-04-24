@@ -1,6 +1,6 @@
 import type { NodeType, EdgeType, NodeStatus } from '@/types'
 
-export type ThemeId = 'default' | 'dark' | 'light' | 'neon' | 'matrix'
+export type ThemeId = 'default' | 'dark' | 'light' | 'neon' | 'matrix' | 'custom'
 
 export interface ThemeColors {
   // Per node-type accent (border + icon)
@@ -315,7 +315,63 @@ export const THEMES: Record<ThemeId, ThemePreset> = {
       reactFlowColorMode: 'dark',
     },
   },
+
+  custom: {
+    id: 'custom',
+    label: 'Custom',
+    description: 'Your own colors per node and edge type',
+    colors: {
+      nodeAccents: {
+        isp:              { border: '#00d4ff', icon: '#00d4ff' },
+        router:           { border: '#00d4ff', icon: '#00d4ff' },
+        switch:           { border: '#39d353', icon: '#39d353' },
+        server:           { border: '#a855f7', icon: '#a855f7' },
+        proxmox:          { border: '#ff6e00', icon: '#ff6e00' },
+        vm:               { border: '#a855f7', icon: '#a855f7' },
+        lxc:              { border: '#00d4ff', icon: '#00d4ff' },
+        nas:              { border: '#39d353', icon: '#39d353' },
+        iot:              { border: '#e3b341', icon: '#e3b341' },
+        ap:               { border: '#00d4ff', icon: '#00d4ff' },
+        camera:           { border: '#8b949e', icon: '#8b949e' },
+        printer:          { border: '#8b949e', icon: '#8b949e' },
+        computer:         { border: '#a855f7', icon: '#a855f7' },
+        cpl:              { border: '#e3b341', icon: '#e3b341' },
+        docker_host:      { border: '#2496ED', icon: '#2496ED' },
+        docker_container: { border: '#0ea5e9', icon: '#0ea5e9' },
+        generic:          { border: '#8b949e', icon: '#8b949e' },
+        groupRect:        { border: '#00d4ff', icon: '#00d4ff' },
+        group:            { border: '#00d4ff', icon: '#00d4ff' },
+      },
+      nodeCardBackground: '#21262d',
+      nodeIconBackground: '#161b22',
+      nodeLabelColor:     '#e6edf3',
+      nodeSubtextColor:   '#8b949e',
+      statusColors: {
+        online:  '#39d353',
+        offline: '#f85149',
+        pending: '#e3b341',
+        unknown: '#8b949e',
+      },
+      edgeColors: {
+        ethernet: '#30363d',
+        wifi:     '#00d4ff',
+        iot:      '#e3b341',
+        vlan:     '#00d4ff',
+        virtual:  '#8b949e',
+        cluster:  '#ff6e00',
+      },
+      edgeSelectedColor:  '#00d4ff',
+      edgeLabelBackground:'#161b22',
+      edgeLabelColor:     '#8b949e',
+      edgeLabelBorder:    '#30363d',
+      canvasBackground:   '#0d1117',
+      canvasDotColor:     '#30363d',
+      handleBackground:   '#30363d',
+      handleBorder:       '#8b949e',
+      reactFlowColorMode: 'dark',
+    },
+  },
 }
 
 // Ordered list for display in the modal
-export const THEME_ORDER: ThemeId[] = ['default', 'dark', 'light', 'neon', 'matrix']
+export const THEME_ORDER: ThemeId[] = ['default', 'dark', 'light', 'neon', 'matrix', 'custom']

@@ -78,6 +78,7 @@ class CanvasState(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     viewport: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    custom_style: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

@@ -722,3 +722,98 @@ describe('canvasStore', () => {
     expect(updated?.sourceHandle).toBe('bottom')
   })
 })
+
+describe('canvasStore — custom style apply', () => {
+  beforeEach(() => {
+    useCanvasStore.setState({
+      nodes: [],
+      edges: [],
+      hasUnsavedChanges: false,
+      selectedNodeId: null,
+      selectedNodeIds: [],
+      editingGroupRectId: null,
+      past: [],
+      future: [],
+      clipboard: [],
+    })
+  })
+
+  const serverStyle = {
+    borderColor: '#ff0000',
+    borderOpacity: 1,
+    bgColor: '#111111',
+    bgOpacity: 1,
+    iconColor: '#ff0000',
+    iconOpacity: 1,
+    width: 220,
+    height: 90,
+  }
+
+  it('applyTypeNodeStyle updates matching nodes custom_colors', () => {
+    useCanvasStore.setState({
+      nodes: [makeNode('n1', { type: 'server' }), makeNode('n2', { type: 'proxmox' })],
+      edges: [],
+    })
+    useCanvasStore.getState().applyTypeNodeStyle('server', serverStyle)
+
+    const n1 = useCanvasStore.getState().nodes.find((n) => n.id === 'n1')!
+    const n2 = useCanvasStore.getState().nodes.find((n) => n.id === 'n2')!
+    expect(n1.data.custom_colors?.border).toBe('#ff0000')
+    expect(n1.width).toBe(220)
+    expect(n1.height).toBe(90)
+    expect(n2.data.custom_colors?.border).toBeUndefined()
+  })
+
+  it('applyTypeNodeStyle with opacity < 1 produces rgba', () => {
+    useCanvasStore.setState({ nodes: [makeNode('n1', { type: 'server' })], edges: [] })
+    useCanvasStore.getState().applyTypeNodeStyle('server', { ...serverStyle, borderOpacity: 0.5 })
+
+    const n1 = useCanvasStore.getState().nodes.find((n) => n.id === 'n1')!
+    expect(n1.data.custom_colors?.border).toMatch(/^rgba\(/)
+  })
+
+  it('applyTypeNodeStyle marks canvas unsaved', () => {
+    useCanvasStore.setState({ nodes: [makeNode('n1')], edges: [] })
+    useCanvasStore.getState().applyTypeNodeStyle('server', serverStyle)
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  it('applyTypeEdgeStyle updates matching edges', () => {
+    const e1: Edge<EdgeData> = { id: 'e1', source: 'n1', target: 'n2', type: 'ethernet', data: { type: 'ethernet' } }
+    const e2: Edge<EdgeData> = { id: 'e2', source: 'n1', target: 'n2', type: 'wifi', data: { type: 'wifi' } }
+    useCanvasStore.setState({ nodes: [], edges: [e1, e2] })
+
+    useCanvasStore.getState().applyTypeEdgeStyle('ethernet', { color: '#00ff00', opacity: 1, pathStyle: 'smooth', animated: 'flow' })
+
+    const updated1 = useCanvasStore.getState().edges.find((e) => e.id === 'e1')!
+    const updated2 = useCanvasStore.getState().edges.find((e) => e.id === 'e2')!
+    expect(updated1.data?.custom_color).toBe('#00ff00')
+    expect(updated1.data?.path_style).toBe('smooth')
+    expect(updated1.data?.animated).toBe('flow')
+    expect(updated2.data?.custom_color).toBeUndefined()
+  })
+
+  it('applyAllCustomStyles applies all defined types', () => {
+    const proxmoxNode = makeNode('np', { type: 'proxmox' })
+    const serverNode = makeNode('ns', { type: 'server' })
+    const e1: Edge<EdgeData> = { id: 'e1', source: 'np', target: 'ns', type: 'ethernet', data: { type: 'ethernet' } }
+    useCanvasStore.setState({ nodes: [proxmoxNode, serverNode], edges: [e1] })
+
+    useCanvasStore.getState().applyAllCustomStyles({
+      nodes: {
+        proxmox: { borderColor: '#ff6e00', borderOpacity: 1, bgColor: '#111', bgOpacity: 1, iconColor: '#ff6e00', iconOpacity: 1, width: 0, height: 0 },
+      },
+      edges: {
+        ethernet: { color: '#aabbcc', opacity: 1, pathStyle: 'bezier', animated: 'none' },
+      },
+    })
+
+    const np = useCanvasStore.getState().nodes.find((n) => n.id === 'np')!
+    const ns = useCanvasStore.getState().nodes.find((n) => n.id === 'ns')!
+    const e = useCanvasStore.getState().edges.find((e) => e.id === 'e1')!
+    expect(np.data.custom_colors?.border).toBe('#ff6e00')
+    expect(ns.data.custom_colors?.border).toBeUndefined()
+    expect(e.data?.custom_color).toBe('#aabbcc')
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+})
