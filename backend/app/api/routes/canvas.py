@@ -25,6 +25,7 @@ async def load_canvas(db: AsyncSession = Depends(get_db), _: str = Depends(get_c
         nodes=[NodeResponse.model_validate(n) for n in nodes],
         edges=[EdgeResponse.model_validate(e) for e in edges],
         viewport=viewport,
+        custom_style=state.custom_style if state else None,
     )
 
 
@@ -67,13 +68,14 @@ async def save_canvas(
         else:
             db.add(Edge(**edge_data.model_dump()))
 
-    # Upsert viewport
+    # Upsert viewport + custom style
     state = await db.get(CanvasState, 1)
     if state:
         state.viewport = body.viewport
+        state.custom_style = body.custom_style
         state.saved_at = datetime.now(timezone.utc)
     else:
-        db.add(CanvasState(id=1, viewport=body.viewport))
+        db.add(CanvasState(id=1, viewport=body.viewport, custom_style=body.custom_style))
 
     await db.commit()
     return {"saved": True}
