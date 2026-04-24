@@ -80,10 +80,6 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
     onClose()
   }
 
-  const filteredParentNodes = form.type === 'docker_container'
-    ? parentContainerNodes.filter((n) => n.nodeType === 'docker_host')
-    : parentContainerNodes
-
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-md">
@@ -268,7 +264,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             </div>
 
             {/* Parent container */}
-            {form.type !== 'groupRect' && form.type !== 'group' && filteredParentNodes.length > 0 && (
+            {form.type !== 'groupRect' && form.type !== 'group' && parentContainerNodes.length > 0 && (
               <div className="flex flex-col gap-1.5 col-span-2">
                 <Label className="text-xs text-muted-foreground">Parent Container</Label>
                 <Select
@@ -278,13 +274,13 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Parent container selector">
                     <SelectValue placeholder="None (standalone)">
                       {form.parent_id
-                        ? (filteredParentNodes.find((n) => n.id === form.parent_id)?.label ?? 'None (standalone)')
+                        ? (parentContainerNodes.find((n) => n.id === form.parent_id)?.label ?? 'None (standalone)')
                         : 'None (standalone)'}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="bg-[#21262d] border-[#30363d]">
                     <SelectItem value="none" className="text-sm">None (standalone)</SelectItem>
-                    {filteredParentNodes.map((n) => (
+                    {parentContainerNodes.map((n) => (
                       <SelectItem key={n.id} value={n.id} className="text-sm">{n.label}</SelectItem>
                     ))}
                   </SelectContent>
