@@ -110,7 +110,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
                   {NODE_TYPE_GROUPS.map((group, i) => (
                     <Fragment key={group.label}>
-                      {i > 0 && <SelectSeparator key={`sep-${group.label}`} className="bg-[#30363d]" />}
+                      {i > 0 && <SelectSeparator className="bg-[#30363d]" />}
                       <SelectGroup>
                         <SelectLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 px-2 py-1">
                           {group.label}
@@ -319,9 +319,9 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   style={{ background: form.container_mode ? '#ff6e00' : '#30363d' }}
                 >
                   <span
-                    className="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                    className="pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out"
                     style={{
-                      transform: form.container_mode ? 'translateX(16px)' : 'translateX(0)',
+                      transform: form.container_mode ? 'translateX(16px)' : 'translateX(0)'
                     }}
                   />
                 </button>
@@ -330,7 +330,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
 
             {/* Service visibility */}
             {form.type !== 'groupRect' && form.type !== 'group' && (
-              <div className="flex items-center justify-between col-span-2 py-1">
+              <div className="flex items-start justify-between col-span-2 py-1">
                 <div className="flex flex-col gap-0.5">
                   <Label className="text-xs text-muted-foreground">Show Services</Label>
                   <span className="text-[10px] text-muted-foreground/60">Display discovered services on the node card</span>
@@ -344,11 +344,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                     ...form.custom_colors,
                     show_services: !showServicesEnabled,
                   })}
-                  className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors focus:outline-none"
+                  className="relative inline-flex h-5 w-9 mt-1 shrink-0 cursor-pointer rounded-full transition-colors focus:outline-none"
                   style={{ background: showServicesEnabled ? resolvedNodeColors.icon : '#30363d' }}
                 >
                   <span
-                    className="pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm transition-transform"
+                    className="pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out"
                     style={{ transform: showServicesEnabled ? 'translateX(16px)' : 'translateX(0)' }}
                   />
                 </button>
