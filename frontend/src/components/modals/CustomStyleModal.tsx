@@ -142,7 +142,8 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
       </div>
 
       <div className="border-t border-[#30363d] pt-3">
-        <div className="text-xs text-[#8b949e] mb-2">Default size (0 = auto)</div>
+        <div className="text-xs text-[#8b949e] mb-1">Default size</div>
+        <div className="text-xs text-[#8b949e]/60 mb-2">0 = auto (min 140 × 50 px, grows with content)</div>
         <div className="flex gap-3">
           <div className="flex items-center gap-2">
             <span className="text-xs text-[#8b949e]">W</span>
