@@ -139,7 +139,6 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 type="button"
                 onClick={() => setIconPickerOpen((o) => !o)}
                 className={`flex items-center justify-between gap-2 h-8 px-3 bg-[#21262d] border border-[#30363d] text-sm transition-colors w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
-                tabIndex={0}
                 aria-label="Icon picker trigger"
               >
                 <span className="flex items-center gap-2 min-w-0">
@@ -186,7 +185,6 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                                 title={entry.label}
                                 onClick={() => { set('custom_icon', isSelected ? undefined : entry.key); setIconPickerOpen(false) }}
                                 className={`flex items-center justify-center w-7 h-7 rounded transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
-                                tabIndex={0}
                                 aria-label={`Select icon ${entry.label}`}
                                 style={{
                                   background: isSelected ? '#00d4ff22' : 'transparent',

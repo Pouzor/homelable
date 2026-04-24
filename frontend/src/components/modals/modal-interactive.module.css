@@ -22,6 +22,6 @@
 }
 .modal-interactive:hover,
 .modal-interactive:focus {
-  border-color: #fff !important;
+  border-color: #8b949e !important;
   outline: none;
 }
