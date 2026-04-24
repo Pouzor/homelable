@@ -2,7 +2,7 @@ import { createElement, useState } from 'react'
 import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
+
 import { useCanvasStore } from '@/stores/canvasStore'
 import { NODE_TYPE_LABELS, STATUS_COLORS, type ServiceInfo, type NodeData, type NodeProperty } from '@/types'
 import { getServiceUrl } from '@/utils/serviceUrl'
@@ -662,9 +662,6 @@ const CATEGORY_COLORS: Record<string, string> = {
 function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?: string; onEdit: () => void; onRemove: () => void }) {
   const url = getServiceUrl(svc, host)
   const color = CATEGORY_COLORS[svc.category ?? ''] ?? '#8b949e'
-
-  const hasPort = svc.port != null
-  const portLabel = hasPort ? String(svc.port) : 'host'
   const pathLabel = svc.path?.trim() ? svc.path.trim() : ''
 
   return (
@@ -680,7 +677,7 @@ function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium truncate"
+            className="font-medium truncate min-w-0 flex-1"
             style={{ color }}
             title={svc.service_name}
             onClick={e => e.stopPropagation()}
@@ -689,7 +686,7 @@ function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?
           </a>
         ) : (
           <span
-            className="font-medium truncate"
+            className="font-medium truncate min-w-0 flex-1"
             style={{ color }}
             title={svc.service_name}
           >
@@ -698,27 +695,21 @@ function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?
         )}
 
         {pathLabel && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  className="truncate text-[#8b949e] max-w-[80px]"
-                  tabIndex={0}
-                  aria-label={pathLabel}
-                >
-                  {pathLabel}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="top">{pathLabel}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <span
+            className="shrink-0 text-[#8b949e] text-right w-16 truncate"
+            title={pathLabel}
+          >
+            {pathLabel}
+          </span>
         )}
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
-        <span className="font-mono text-[#8b949e]">
-          {portLabel}/{svc.protocol}
-        </span>
+        {svc.port != null && (
+          <span className="font-mono text-[#8b949e]">
+            {svc.port}/{svc.protocol}
+          </span>
+        )}
 
         {url ? (
           <a
