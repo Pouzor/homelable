@@ -119,7 +119,7 @@ export default function App() {
         }
       })
       .catch(() => loadCanvas(demoNodes, demoEdges))
-  }, [isAuthenticated, loadCanvas, setTheme])
+  }, [isAuthenticated, loadCanvas, setTheme, setCustomStyle])
 
   // Keep refs for store actions so keydown handler is always up-to-date without re-registering
   const undoRef = useRef(undo)
