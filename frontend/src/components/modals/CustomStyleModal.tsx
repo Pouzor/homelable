@@ -172,8 +172,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
 
       <Button
         size="sm"
-        variant="outline"
-        className="self-start border-[#30363d] text-[#e6edf3] hover:bg-[#21262d]"
+        className="self-start bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
         onClick={onApplyToExisting}
       >
         Apply to existing {NODE_TYPE_LABELS[nodeType]} nodes
@@ -248,8 +247,7 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
 
       <Button
         size="sm"
-        variant="outline"
-        className="self-start border-[#30363d] text-[#e6edf3] hover:bg-[#21262d]"
+        className="self-start bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
         onClick={onApplyToExisting}
       >
         Apply to existing {EDGE_TYPE_LABELS[edgeType]} edges
