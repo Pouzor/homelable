@@ -2,6 +2,7 @@ import { createElement, useState } from 'react'
 import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { NODE_TYPE_LABELS, STATUS_COLORS, type ServiceInfo, type NodeData, type NodeProperty } from '@/types'
 import { getServiceUrl } from '@/utils/serviceUrl'
@@ -661,23 +662,110 @@ const CATEGORY_COLORS: Record<string, string> = {
 function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?: string; onEdit: () => void; onRemove: () => void }) {
   const url = getServiceUrl(svc, host)
   const color = CATEGORY_COLORS[svc.category ?? ''] ?? '#8b949e'
-  const portLabel = svc.port != null ? String(svc.port) : 'host'
+  const hasPort = svc.port != null
+  const portLabel = hasPort ? String(svc.port) : 'host'
   const pathLabel = svc.path?.trim() ? svc.path.trim() : null
-  const inner = (
-    <div className="group flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border text-xs transition-colors" style={{ background: '#21262d', borderColor: '#30363d', cursor: url ? 'pointer' : 'default' }}>
-      <div className="flex items-center gap-1.5 min-w-0">
-        <span className="shrink-0 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-        <span className="font-medium truncate" style={{ color }} title={svc.service_name}>{svc.service_name}</span>
-        {pathLabel && <span className="truncate text-[#8b949e]" title={pathLabel}>{pathLabel}</span>}
+
+  return (
+    <div
+      className="group flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border text-xs transition-colors min-w-0"
+      style={{
+        background: '#21262d',
+        borderColor: '#30363d',
+        cursor: url ? 'pointer' : 'default',
+      }}
+    >
+      {/* Left side */}
+      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+        <span
+          className="shrink-0 w-1.5 h-1.5 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+
+        {url ? (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium truncate"
+            style={{ color }}
+            title={svc.service_name}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {svc.service_name}
+          </a>
+        ) : (
+          <span
+            className="font-medium truncate"
+            style={{ color }}
+            title={svc.service_name}
+          >
+            {svc.service_name}
+          </span>
+        )}
+
+        {pathLabel && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="truncate text-[#8b949e] max-w-[80px]"
+                  title={pathLabel}
+                >
+                  {pathLabel}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top">{pathLabel}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
+
+      {/* Right side */}
       <div className="flex items-center gap-1.5 shrink-0">
-        <span className="font-mono text-[#8b949e]">{portLabel}/{svc.protocol}</span>
-        <ExternalLink size={10} className={`text-muted-foreground ${url ? '' : 'opacity-0'}`} />
-        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5" title="Edit service"><Pencil size={10} /></button>
-        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5" title="Remove service"><X size={10} /></button>
+        <span className="font-mono text-[#8b949e]">
+          {portLabel}/{svc.protocol}
+        </span>
+
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ExternalLink
+              size={10}
+              className="text-muted-foreground"
+            />
+          </a>
+        )}
+
+        {/* Hover actions (from feature branch) */}
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onEdit()
+          }}
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5"
+          title="Edit service"
+        >
+          <Pencil size={10} />
+        </button>
+
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onRemove()
+          }}
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5"
+          title="Remove service"
+        >
+          <X size={10} />
+        </button>
       </div>
     </div>
   )
-  if (url) return <a href={url} target="_blank" rel="noopener noreferrer" className="block hover:opacity-80 transition-opacity">{inner}</a>
-  return inner
 }

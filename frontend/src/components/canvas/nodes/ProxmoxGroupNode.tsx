@@ -5,6 +5,8 @@ import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { resolveNodeIcon } from '@/utils/nodeIcons'
 import { resolvePropertyIcon } from '@/utils/propertyIcons'
+import { useCanvasStore } from '@/stores/canvasStore'
+import { maskIp, splitIps } from '@/utils/maskIp'
 import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { BaseNode } from './BaseNode'
@@ -13,6 +15,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
   const { data, selected } = props
 
   const activeTheme = useThemeStore((s) => s.activeTheme)
+  const hideIp = useCanvasStore((s) => s.hideIp)
   const theme = THEMES[activeTheme]
   const colors = resolveNodeColors(data, activeTheme)
 
@@ -53,7 +56,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
         minHeight={160}
         isVisible={selected}
         lineStyle={{ borderColor: glow, opacity: 0.6 }}
-        handleStyle={{ borderColor: glow, backgroundColor: theme.colors.nodeCardBackground }}
+        handleStyle={{ borderColor: glow, backgroundColor: theme.colors.nodeCardBackground, width: 6, height: 6 }}
       />
 
       {/* Group border */}
@@ -71,7 +74,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
       >
         {/* Header bar */}
         <div
-          className="flex items-center gap-2 px-2.5 py-1.5 shrink-0"
+          className="flex flex-row items-start gap-2 px-2.5 py-1.5 shrink-0"
           style={{
             background: isOnline ? `${glow}18` : `${theme.colors.nodeIconBackground}88`,
             borderBottom: `1px solid ${isOnline ? `${glow}33` : theme.colors.handleBackground}`,
@@ -93,18 +96,19 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
             >
               {data.label}
             </span>
-            {data.ip && (
+            {data.ip && splitIps(data.ip).map((ip) => (
               <span
+                key={ip}
                 className="font-mono text-[9px] truncate"
                 style={{ color: theme.colors.nodeSubtextColor }}
               >
-                {data.ip}
+                {hideIp ? maskIp(ip) : ip}
               </span>
-            )}
+            ))}
           </div>
           {/* Status dot */}
           <div
-            className="w-1.5 h-1.5 rounded-full shrink-0"
+            className="ml-auto w-1.5 h-1.5 rounded-full shrink-0"
             style={{ backgroundColor: statusColor }}
             title={data.status}
           />
@@ -125,7 +129,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
               }}
             >
               {Icon && <Icon size={9} className="shrink-0" />}
-              <span className="truncate max-w-[60px] shrink-0" title={prop.key}>{prop.key}</span>
+              <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
               <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
             </div>
           )

@@ -13,7 +13,8 @@ export type NodeType =
   | 'printer'
   | 'computer'
   | 'cpl'
-  | 'docker'
+  | 'docker_host'
+  | 'docker_container'
   | 'generic'
   | 'groupRect'
   | 'group'
@@ -128,7 +129,8 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   printer: 'Printer',
   computer: 'Computer',
   cpl: 'CPL / Powerline',
-  docker: 'Docker Host',
+  docker_host: 'Docker Host',
+  docker_container: 'Docker Container',
   generic: 'Generic Device',
   groupRect: 'Group Rectangle',
   group: 'Node Group',

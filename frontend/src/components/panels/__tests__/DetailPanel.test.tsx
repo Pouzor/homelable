@@ -445,4 +445,46 @@ describe('DetailPanel', () => {
       expect(screen.getByText(/192\.168\.1\.10, 192\.168\.1\.11/)).toBeDefined()
     })
   })
+
+  describe('ServiceBadge rendering', () => {
+    it('renders service name and port/protocol label', () => {
+      setupStore({ services: [{ port: 8080, protocol: 'tcp', service_name: 'nginx', path: '' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText('nginx')).toBeDefined()
+      expect(screen.getByText('8080/tcp')).toBeDefined()
+    })
+
+    it('renders path label when path is set', () => {
+      setupStore({ services: [{ port: 80, protocol: 'tcp', service_name: 'web', path: '/admin' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText('/admin')).toBeDefined()
+    })
+
+    it('renders no path text when path is empty', () => {
+      setupStore({ services: [{ port: 80, protocol: 'tcp', service_name: 'web', path: '' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.queryByText('/')).toBeNull()
+    })
+
+    it('renders port/protocol omitted when port is absent', () => {
+      setupStore({ services: [{ protocol: 'tcp', service_name: 'health', path: '' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText('health')).toBeDefined()
+      expect(screen.queryByText(/\/tcp/)).toBeNull()
+    })
+
+    it('renders service name as link when ip and port are set', () => {
+      setupStore({ ip: '192.168.1.10', services: [{ port: 8080, protocol: 'tcp', service_name: 'nginx', path: '' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const link = screen.getByRole('link', { name: 'nginx' })
+      expect(link.getAttribute('href')).toContain('192.168.1.10')
+      expect(link.getAttribute('target')).toBe('_blank')
+    })
+
+    it('renders service name as plain text when no url can be built', () => {
+      setupStore({ ip: undefined, services: [{ protocol: 'tcp', service_name: 'health', path: '' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText('health').tagName).not.toBe('A')
+    })
+  })
 })
