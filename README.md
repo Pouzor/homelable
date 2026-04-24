@@ -99,7 +99,7 @@ The page shows your canvas in pan/zoom-only mode — no editing, no credentials 
 
 ---
 
-## MCP Server (AI Integration) (optionnal)
+## MCP Server (AI Integration) (optional)
 
 Homelable can exposes a [Model Context Protocol](https://modelcontextprotocol.io) server so any MCP-compatible AI client (Claude Code, Claude Desktop, Open WebUI…) can read your homelab topology and act on it.
 
