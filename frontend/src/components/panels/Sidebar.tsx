@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { scanApi, settingsApi } from '@/api/client'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
+
 import { PendingDeviceModal, type PendingDevice } from '@/components/modals/PendingDeviceModal'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
@@ -593,7 +594,7 @@ function ScanHistoryPanel() {
             <div className="text-[#8b949e] text-[10px] font-mono truncate">{r.ranges.join(', ')}</div>
           )}
           {r.error && (
-            <div className="text-[#f85149] text-[10px] mt-1 leading-tight break-words whitespace-pre-wrap">
+            <div className="text-[#f85149] text-[10px] mt-1 leading-tight wrap-break-word whitespace-pre-wrap">
               {r.error}
             </div>
           )}
@@ -749,7 +750,7 @@ function SidebarItem({ icon: Icon, label, collapsed, active, badge, accent, onCl
   const btn = (
     <button
       onClick={onClick}
-      className={`relative flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-sm transition-colors ${
+      className={`relative flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-sm transition-colors cursor-pointer ${
         active
           ? 'bg-[#00d4ff]/10 text-[#00d4ff]'
           : accent
