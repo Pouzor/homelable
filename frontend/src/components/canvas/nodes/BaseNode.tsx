@@ -156,11 +156,37 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
                     color: theme.colors.nodeSubtextColor,
                   }}
                 >
-                  <span className="font-medium truncate min-w-0" title={svc.service_name}>{svc.service_name}</span>
-                  <span className="font-mono shrink-0 opacity-80 flex items-center gap-1">
-                    <span>{svc.port}</span>
-                    <ExternalLink size={9} className={`shrink-0 ${url ? '' : 'opacity-0'}`} />
-                  </span>
+                  
+                  <div className="flex items-center justify-between gap-2 w-full min-w-0">
+                    {/* LEFT: service name */}
+                    <span
+                      className="font-medium truncate"
+                      style={{ minWidth: 0 }}
+                      title={svc.service_name}
+                    >
+                      {svc.service_name}
+                    </span>
+
+                    {/* RIGHT: path + port */}
+                    <div className="flex items-center gap-2 shrink-0 min-w-0">
+                      {svc.path && (
+                        <span
+                          className="truncate text-[#8b949e] text-right max-w-[80px]"
+                          title={svc.path}
+                        >
+                          {svc.path}
+                        </span>
+                      )}
+
+                      <span className="font-mono opacity-80 flex items-center gap-1">
+                        <span>{svc.port}</span>
+                        <ExternalLink
+                          size={9}
+                          className={`shrink-0 ${url ? '' : 'opacity-0'}`}
+                        />
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )
 
