@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { ExportModal } from '../ExportModal'
 
+// Mocks must be declared before importing the component to ensure they are used
 const mockExportToPng = vi.fn()
 vi.mock('@/utils/export', () => ({
   exportToPng: (...args: unknown[]) => mockExportToPng(...args),
@@ -12,6 +12,24 @@ vi.mock('@/utils/export', () => ({
   ],
 }))
 
+const mockExportCanvasToBase64 = vi.fn(() => 'BASE64_PAYLOAD')
+vi.mock('@/utils/exportCanvas', () => ({
+  exportCanvasToBase64: (...args: unknown[]) => mockExportCanvasToBase64(...args),
+  importCanvasFromBase64: vi.fn(),
+}))
+
+vi.mock('@/stores/canvasStore', () => ({
+  // `useCanvasStore` should accept a selector function and return the selected slice.
+  useCanvasStore: (selector: (s: { nodes: unknown[]; edges: unknown[] }) => unknown) =>
+    // Provide a minimal store shape for tests
+    selector({ nodes: [], edges: [] }),
+}))
+
+const mockToast = { toast: { success: vi.fn(), error: vi.fn() } }
+vi.mock('sonner', () => mockToast)
+
+import { ExportModal } from '../ExportModal'
+
 const el = document.createElement('div')
 const getElement = () => el
 const onClose = vi.fn()
@@ -20,6 +38,9 @@ describe('ExportModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockExportToPng.mockResolvedValue(undefined)
+    // mock clipboard
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(navigator as any).clipboard = { writeText: vi.fn() }
   })
 
   it('renders all three quality options', () => {
@@ -70,5 +91,13 @@ describe('ExportModal', () => {
   it('does not render when closed', () => {
     render(<ExportModal open={false} onClose={onClose} getElement={getElement} />)
     expect(screen.queryByText('Export as PNG')).not.toBeInTheDocument()
+  })
+
+  it('exports to base64, copies to clipboard and shows toast on Base64 button click', async () => {
+    render(<ExportModal open onClose={onClose} getElement={getElement} />)
+    const btn = screen.getByRole('button', { name: /copy as base64/i })
+    fireEvent.click(btn)
+    await waitFor(() => expect((navigator as any).clipboard.writeText).toHaveBeenCalledWith('BASE64_PAYLOAD'))
+    expect(mockToast.toast.success).toHaveBeenCalled()
   })
 })
