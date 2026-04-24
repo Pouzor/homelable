@@ -662,23 +662,63 @@ function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?
   const url = getServiceUrl(svc, host)
   const color = CATEGORY_COLORS[svc.category ?? ''] ?? '#8b949e'
   const pathLabel = svc.path?.trim() ? svc.path.trim() : null
-  const inner = (
-    <div className="group flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border text-xs transition-colors" style={{ background: '#21262d', borderColor: '#30363d', cursor: url ? 'pointer' : 'default' }}>
+  return (
+    <div className="group flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border text-xs transition-colors" style={{ background: '#21262d', borderColor: '#30363d' }}>
       <div className="flex items-center gap-1.5 min-w-0">
         <span className="shrink-0 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-        <span className="font-medium truncate" style={{ color }} title={svc.service_name}>{svc.service_name}</span>
-        {pathLabel && <span className="truncate text-[#8b949e]" title={pathLabel}>{pathLabel}</span>}
+        {url ? (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline focus:underline font-medium truncate cursor-pointer"
+            style={{ color }}
+            aria-label={svc.service_name}
+            title={svc.service_name}
+          >
+            {svc.service_name}
+          </a>
+        ) : (
+          <span className="font-medium truncate" style={{ color }} title={svc.service_name}>{svc.service_name}</span>
+        )}
+        {pathLabel && (
+          <span className="truncate text-[#8b949e]" title={pathLabel}>{pathLabel}</span>
+        )}
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
-        {svc.port != null && (
+        {svc.port != null && url ? (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline focus:underline font-mono text-[#8b949e] cursor-pointer"
+            aria-label={`${svc.service_name} ${svc.port}/${svc.protocol}`}
+            title={`${svc.port}/${svc.protocol}`}
+          >
+            {svc.port}/{svc.protocol}
+          </a>
+        ) : svc.port != null ? (
           <span className="font-mono text-[#8b949e]">{svc.port}/{svc.protocol}</span>
+        ) : null}
+        {url ? (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground cursor-pointer"
+            aria-label={`Open ${svc.service_name} in new tab`}
+            title={`Open ${svc.service_name} in new tab`}
+            tabIndex={0}
+            onClick={e => e.stopPropagation()}
+          >
+            <ExternalLink size={10} />
+          </a>
+        ) : (
+          <ExternalLink size={10} className="text-muted-foreground opacity-0" />
         )}
-        <ExternalLink size={10} className={`text-muted-foreground ${url ? '' : 'opacity-0'}`} />
-        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5" title="Edit service"><Pencil size={10} /></button>
-        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5" title="Remove service"><X size={10} /></button>
+        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5 cursor-pointer" title="Edit service"><Pencil size={10} /></button>
+        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5 cursor-pointer" title="Remove service"><X size={10} /></button>
       </div>
     </div>
   )
-  if (url) return <a href={url} target="_blank" rel="noopener noreferrer" className="block hover:opacity-80 transition-opacity">{inner}</a>
-  return inner
 }
