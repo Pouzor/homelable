@@ -150,3 +150,26 @@ export const EDGE_TYPE_LABELS: Record<EdgeType, string> = {
   virtual: 'Virtual',
   cluster: 'Cluster',
 }
+
+export interface NodeTypeStyle {
+  borderColor: string
+  borderOpacity: number
+  bgColor: string
+  bgOpacity: number
+  iconColor: string
+  iconOpacity: number
+  width: number
+  height: number
+}
+
+export interface EdgeTypeStyle {
+  color: string
+  opacity: number
+  pathStyle: EdgePathStyle
+  animated: 'none' | 'snake' | 'flow' | 'basic'
+}
+
+export interface CustomStyleDef {
+  nodes: Partial<Record<NodeType, NodeTypeStyle>>
+  edges: Partial<Record<EdgeType, EdgeTypeStyle>>
+}

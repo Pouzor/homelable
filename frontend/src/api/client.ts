@@ -33,6 +33,7 @@ export const canvasApi = {
     nodes: object[]
     edges: object[]
     viewport: object
+    custom_style?: object | null
   }) => api.post('/canvas/save', payload),
 }
 

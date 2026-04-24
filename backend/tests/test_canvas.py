@@ -557,3 +557,42 @@ async def test_save_canvas_edge_update_existing(client: AsyncClient, headers: di
     edge = canvas["edges"][0]
     assert edge["label"] == "updated"
     assert edge["custom_color"] == "#ff0000"
+
+
+# ── custom_style ──────────────────────────────────────────────────────────────
+
+async def test_save_and_load_custom_style(client: AsyncClient, headers: dict):
+    custom_style = {
+        "nodes": {
+            "server": {"borderColor": "#ff0000", "borderOpacity": 0.8, "bgColor": "#000000", "bgOpacity": 1, "iconColor": "#ff0000", "iconOpacity": 1, "width": 200, "height": 80},
+        },
+        "edges": {
+            "ethernet": {"color": "#00ff00", "opacity": 1, "pathStyle": "bezier", "animated": "none"},
+        },
+    }
+    payload = {"nodes": [], "edges": [], "viewport": {"theme_id": "custom"}, "custom_style": custom_style}
+    res = await client.post("/api/v1/canvas/save", json=payload, headers=headers)
+    assert res.status_code == 200
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["custom_style"] is not None
+    assert canvas["custom_style"]["nodes"]["server"]["borderColor"] == "#ff0000"
+    assert canvas["custom_style"]["edges"]["ethernet"]["color"] == "#00ff00"
+
+
+async def test_load_canvas_custom_style_null_by_default(client: AsyncClient, headers: dict):
+    res = await client.get("/api/v1/canvas", headers=headers)
+    assert res.status_code == 200
+    assert res.json()["custom_style"] is None
+
+
+async def test_save_canvas_custom_style_overwrite(client: AsyncClient, headers: dict):
+    style_v1 = {"nodes": {"server": {"borderColor": "#aabbcc", "borderOpacity": 1, "bgColor": "#000000", "bgOpacity": 1, "iconColor": "#aabbcc", "iconOpacity": 1, "width": 0, "height": 0}}, "edges": {}}
+    style_v2 = {"nodes": {"proxmox": {"borderColor": "#ff6e00", "borderOpacity": 1, "bgColor": "#111111", "bgOpacity": 1, "iconColor": "#ff6e00", "iconOpacity": 1, "width": 0, "height": 0}}, "edges": {}}
+
+    await client.post("/api/v1/canvas/save", json={"nodes": [], "edges": [], "viewport": {}, "custom_style": style_v1}, headers=headers)
+    await client.post("/api/v1/canvas/save", json={"nodes": [], "edges": [], "viewport": {}, "custom_style": style_v2}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert "proxmox" in canvas["custom_style"]["nodes"]
+    assert "server" not in canvas["custom_style"]["nodes"]

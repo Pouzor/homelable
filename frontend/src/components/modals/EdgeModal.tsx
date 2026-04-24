@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import modalStyles from './modal-interactive.module.css'
 import { RotateCcw } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -68,8 +69,8 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Link Type</Label>
             <Select value={type} onValueChange={(v) => setType(v as EdgeType)}>
-              <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
-                <SelectValue />
+              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Edge type selector">
+                <SelectValue>{EDGE_TYPE_LABELS[type]}</SelectValue>
               </SelectTrigger>
               <SelectContent className="bg-[#21262d] border-[#30363d]">
                 {EDGE_TYPES.map(([value, label]) => (
@@ -89,7 +90,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
                 value={vlanId}
                 onChange={(e) => setVlanId(e.target.value)}
                 placeholder="e.g. 20"
-                className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
+                className={`bg-[#21262d] border-[#30363d] font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
               />
             </div>
           )}
@@ -100,19 +101,21 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="e.g. 1G, trunk..."
-              className="bg-[#21262d] border-[#30363d] text-sm h-8"
+              className={`bg-[#21262d] border-[#30363d] text-sm h-8 ${modalStyles['modal-radius']}`}
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Path Style</Label>
-            <div className="flex rounded-md overflow-hidden border border-[#30363d]">
+            <div className={`flex rounded-md overflow-hidden border border-[#30363d] ${modalStyles['modal-interactive']}`}> 
               {(['bezier', 'smooth'] as EdgePathStyle[]).map((style) => (
                 <button
                   key={style}
                   type="button"
                   onClick={() => setPathStyle(style)}
-                  className="flex-1 py-1 text-xs capitalize transition-colors"
+                  className="flex-1 py-1 text-xs capitalize transition-colors cursor-pointer"
+                  tabIndex={0}
+                  aria-label={`Path style ${style}`}
                   style={{
                     background: pathStyle === style ? '#00d4ff22' : '#21262d',
                     color: pathStyle === style ? '#00d4ff' : '#8b949e',
@@ -127,13 +130,15 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
 
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Animation</Label>
-            <div className="flex rounded-md overflow-hidden border border-[#30363d]">
+            <div className={`flex rounded-md overflow-hidden border border-[#30363d] ${modalStyles['modal-interactive']}`}> 
               {(['none', 'basic', 'snake', 'flow'] as AnimMode[]).map((mode, i) => (
                 <button
                   key={mode}
                   type="button"
                   onClick={() => setAnimation(mode)}
-                  className="flex-1 py-1 text-xs capitalize transition-colors"
+                  className="flex-1 py-1 text-xs capitalize transition-colors cursor-pointer"
+                  tabIndex={0}
+                  aria-label={`Animation mode ${mode}`}
                   style={{
                     background: animation === mode ? '#00d4ff22' : '#21262d',
                     color: animation === mode ? '#00d4ff' : '#8b949e',
@@ -160,8 +165,10 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
               )}
             </div>
             <label
-              className="relative flex items-center gap-2.5 px-2.5 h-8 rounded-md border cursor-pointer"
+              className={`relative flex items-center gap-2.5 px-2.5 h-8 rounded-md border cursor-pointer ${modalStyles['modal-interactive']}`}
               style={{ borderColor: customColor ? effectiveColor : '#30363d', background: '#21262d' }}
+              tabIndex={0}
+              aria-label="Edge color picker"
             >
               <input
                 type="color"
@@ -189,13 +196,13 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
 
           <div className="flex justify-between gap-2 pt-1">
             {onDelete ? (
-              <Button type="button" variant="ghost" size="sm" className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10" onClick={handleDelete}>
+              <Button type="button" variant="ghost" size="sm" className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10 cursor-pointer" onClick={handleDelete}>
                 Delete
               </Button>
             ) : <span />}
             <div className="flex gap-2">
-              <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-              <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90">
+              <Button type="button" variant="ghost" size="sm" className="cursor-pointer" onClick={onClose}>Cancel</Button>
+              <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer">
                 {onDelete ? 'Save' : 'Connect'}
               </Button>
             </div>

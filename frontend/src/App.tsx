@@ -29,7 +29,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { canvasApi } from '@/api/client'
 import { demoNodes, demoEdges } from '@/utils/demoData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
-import type { NodeData, EdgeData } from '@/types'
+import type { NodeData, EdgeData, CustomStyleDef } from '@/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STANDALONE_STORAGE_KEY = 'homelable_canvas'
@@ -39,7 +39,7 @@ export default function App() {
   const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated } = useAuthStore()
-  const { activeTheme, setTheme } = useThemeStore()
+  const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
 
   useStatusPolling()
 
@@ -60,20 +60,20 @@ export default function App() {
   const handleSave = useCallback(async () => {
     try {
       if (STANDALONE) {
-        localStorage.setItem(STANDALONE_STORAGE_KEY, JSON.stringify({ nodes, edges, theme_id: activeTheme }))
+        localStorage.setItem(STANDALONE_STORAGE_KEY, JSON.stringify({ nodes, edges, theme_id: activeTheme, custom_style: customStyle }))
         markSaved()
         toast.success('Canvas saved')
         return
       }
       const nodesToSave = nodes.map(serializeNode)
       const edgesToSave = edges.map(serializeEdge)
-      await canvasApi.save({ nodes: nodesToSave, edges: edgesToSave, viewport: { theme_id: activeTheme } })
+      await canvasApi.save({ nodes: nodesToSave, edges: edgesToSave, viewport: { theme_id: activeTheme }, custom_style: customStyle })
       markSaved()
       toast.success('Canvas saved')
     } catch {
       toast.error('Save failed')
     }
-  }, [nodes, edges, markSaved, activeTheme])
+  }, [nodes, edges, markSaved, activeTheme, customStyle])
 
   // Keep a ref so the keydown handler always calls the latest version
   const handleSaveRef = useRef(handleSave)
@@ -85,8 +85,9 @@ export default function App() {
       try {
         const saved = localStorage.getItem(STANDALONE_STORAGE_KEY)
         if (saved) {
-          const { nodes: savedNodes, edges: savedEdges, theme_id } = JSON.parse(saved)
+          const { nodes: savedNodes, edges: savedEdges, theme_id, custom_style } = JSON.parse(saved)
           if (theme_id) setTheme(theme_id)
+          if (custom_style) setCustomStyle(custom_style)
           loadCanvas(savedNodes, savedEdges)
         } else {
           loadCanvas(demoNodes, demoEdges)
@@ -111,13 +112,14 @@ export default function App() {
           const rfEdges = (apiEdges as ApiEdge[]).map(deserializeApiEdge)
           const savedTheme = res.data.viewport?.theme_id
           if (savedTheme) setTheme(savedTheme)
+          if (res.data.custom_style) setCustomStyle(res.data.custom_style as CustomStyleDef)
           loadCanvas(rfNodes, rfEdges)
         } else {
           loadCanvas(demoNodes, demoEdges)
         }
       })
       .catch(() => loadCanvas(demoNodes, demoEdges))
-  }, [isAuthenticated, loadCanvas, setTheme])
+  }, [isAuthenticated, loadCanvas, setTheme, setCustomStyle])
 
   // Keep refs for store actions so keydown handler is always up-to-date without re-registering
   const undoRef = useRef(undo)

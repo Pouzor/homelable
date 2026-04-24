@@ -27,3 +27,17 @@ export function rgbaToHex8(hex6: string, alpha: number): string {
   const alphaHex = alphaByte.toString(16).padStart(2, '0')
   return `${hex6}${alphaHex}`
 }
+
+/**
+ * Combine a hex color and opacity (0–1) into a CSS rgba() string.
+ * Returns the plain hex when opacity is 1.
+ */
+export function applyOpacity(hex: string, opacity: number): string {
+  if (opacity >= 1) return hex
+  let h = hex.replace('#', '')
+  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2]
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${Math.round(opacity * 100) / 100})`
+}

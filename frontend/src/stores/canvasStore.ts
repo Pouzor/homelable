@@ -9,9 +9,10 @@ import {
   applyEdgeChanges,
   addEdge,
 } from '@xyflow/react'
-import type { NodeData, EdgeData } from '@/types'
+import type { NodeData, EdgeData, NodeType, EdgeType, NodeTypeStyle, EdgeTypeStyle, CustomStyleDef } from '@/types'
 import { generateUUID } from '@/utils/uuid'
 import { normalizeHandle, removedBottomHandleIds } from '@/utils/handleUtils'
+import { applyOpacity } from '@/utils/colorUtils'
 
 type HistoryEntry = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
 
@@ -58,6 +59,9 @@ interface CanvasState {
   notifyScanDeviceFound: () => void
   hideIp: boolean
   toggleHideIp: () => void
+  applyTypeNodeStyle: (nodeType: NodeType, style: NodeTypeStyle) => void
+  applyTypeEdgeStyle: (edgeType: EdgeType, style: EdgeTypeStyle) => void
+  applyAllCustomStyles: (def: CustomStyleDef) => void
 }
 
 export const useCanvasStore = create<CanvasState>((set) => ({
@@ -468,4 +472,82 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   },
 
   clearFitViewPending: () => set({ fitViewPending: false }),
+
+  applyTypeNodeStyle: (nodeType, style) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        if (n.data.type !== nodeType) return n
+        return {
+          ...n,
+          width: style.width > 0 ? style.width : n.width,
+          height: style.height > 0 ? style.height : n.height,
+          data: {
+            ...n.data,
+            custom_colors: {
+              ...n.data.custom_colors,
+              border: applyOpacity(style.borderColor, style.borderOpacity),
+              background: applyOpacity(style.bgColor, style.bgOpacity),
+              icon: applyOpacity(style.iconColor, style.iconOpacity),
+            },
+          },
+        }
+      }),
+      hasUnsavedChanges: true,
+    })),
+
+  applyTypeEdgeStyle: (edgeType, style) =>
+    set((state) => ({
+      edges: state.edges.map((e) => {
+        if ((e.data?.type ?? 'ethernet') !== edgeType) return e
+        return {
+          ...e,
+          data: {
+            ...e.data,
+            type: edgeType,
+            custom_color: applyOpacity(style.color, style.opacity),
+            path_style: style.pathStyle,
+            animated: style.animated,
+          } as EdgeData,
+        }
+      }),
+      hasUnsavedChanges: true,
+    })),
+
+  applyAllCustomStyles: (def) =>
+    set((state) => {
+      const nodes = state.nodes.map((n) => {
+        const style = def.nodes[n.data.type]
+        if (!style) return n
+        return {
+          ...n,
+          width: style.width > 0 ? style.width : n.width,
+          height: style.height > 0 ? style.height : n.height,
+          data: {
+            ...n.data,
+            custom_colors: {
+              ...n.data.custom_colors,
+              border: applyOpacity(style.borderColor, style.borderOpacity),
+              background: applyOpacity(style.bgColor, style.bgOpacity),
+              icon: applyOpacity(style.iconColor, style.iconOpacity),
+            },
+          },
+        }
+      })
+      const edges = state.edges.map((e) => {
+        const edgeType = (e.data?.type ?? 'ethernet') as EdgeType
+        const style = def.edges[edgeType]
+        if (!style) return e
+        return {
+          ...e,
+          data: {
+            ...e.data,
+            type: edgeType,
+            custom_color: applyOpacity(style.color, style.opacity),
+            path_style: style.pathStyle,
+            animated: style.animated,
+          } as EdgeData,
+        }
+      })
+      return { nodes, edges, hasUnsavedChanges: true }
+    }),
 }))

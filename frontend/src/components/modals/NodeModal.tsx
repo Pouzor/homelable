@@ -1,4 +1,5 @@
 import { Fragment, createElement, useState } from 'react'
+import modalStyles from './modal-interactive.module.css'
 import { RotateCcw, ChevronDown } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -96,7 +97,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs text-muted-foreground">Type</Label>
               <Select value={form.type} onValueChange={(v) => set('type', v as NodeType)}>
-                <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8 w-full">
+                <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Node type selector">
                   <SelectValue>{NODE_TYPE_LABELS[(form.type ?? 'server') as NodeType]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
@@ -137,7 +138,8 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               <button
                 type="button"
                 onClick={() => setIconPickerOpen((o) => !o)}
-                className="flex items-center justify-between gap-2 h-8 px-3 rounded-md bg-[#21262d] border border-[#30363d] text-sm hover:border-[#8b949e] transition-colors w-full"
+                className={`flex items-center justify-between gap-2 h-8 px-3 bg-[#21262d] border border-[#30363d] text-sm transition-colors w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
+                aria-label="Icon picker trigger"
               >
                 <span className="flex items-center gap-2 min-w-0">
                   {(() => {
@@ -160,7 +162,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   value={iconSearch}
                   onChange={(e) => setIconSearch(e.target.value)}
                   placeholder="Search icons…"
-                  className="bg-[#21262d] border-[#30363d] text-xs h-7"
+                  className={`bg-[#21262d] border-[#30363d] text-xs h-7 ${modalStyles['modal-radius']}`}
                   autoFocus
                 />
                 <div className="flex flex-col gap-2 max-h-52 overflow-y-auto">
@@ -182,7 +184,8 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                                 type="button"
                                 title={entry.label}
                                 onClick={() => { set('custom_icon', isSelected ? undefined : entry.key); setIconPickerOpen(false) }}
-                                className="flex items-center justify-center w-7 h-7 rounded transition-colors"
+                                className={`flex items-center justify-center w-7 h-7 rounded transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
+                                aria-label={`Select icon ${entry.label}`}
                                 style={{
                                   background: isSelected ? '#00d4ff22' : 'transparent',
                                   border: isSelected ? '1px solid #00d4ff88' : '1px solid transparent',
@@ -210,7 +213,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 value={form.label ?? ''}
                 onChange={(e) => { set('label', e.target.value); if (labelError) setLabelError(false) }}
                 placeholder="My Server"
-                className={`bg-[#21262d] text-sm h-8 ${labelError ? 'border-[#f85149] focus-visible:ring-[#f85149]' : 'border-[#30363d]'}`}
+                className={`bg-[#21262d] text-sm h-8 ${labelError ? 'border-[#f85149] focus-visible:ring-[#f85149]' : 'border-[#30363d]'} ${modalStyles['modal-radius']}`}
               />
               {labelError && <p className="text-[11px] text-[#f85149]">Label is required</p>}
             </div>
@@ -222,26 +225,27 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 value={form.hostname ?? ''}
                 onChange={(e) => set('hostname', e.target.value)}
                 placeholder="server.lan"
-                className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
+                className={`bg-[#21262d] border-[#30363d] font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
               />
             </div>
 
             {/* IP */}
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">IP Address <span className="text-muted-foreground/50">(comma-separated)</span></Label>
+              <Label className="text-xs text-muted-foreground">IP Address</Label>
               <Input
                 value={form.ip ?? ''}
                 onChange={(e) => set('ip', e.target.value)}
                 placeholder="192.168.1.x, 2001:db8::1"
-                className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
+                className={`bg-[#21262d] border-[#30363d] font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
               />
+              <span className="text-[10px] text-muted-foreground/50">comma-separated</span>
             </div>
 
             {/* Check method */}
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs text-muted-foreground">Check Method</Label>
               <Select value={form.check_method ?? 'ping'} onValueChange={(v) => set('check_method', v as CheckMethod)}>
-                <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
+                <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Check method selector">
                   <SelectValue>{CHECK_METHOD_LABELS[(form.check_method ?? 'ping') as CheckMethod]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
@@ -259,7 +263,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 value={form.check_target ?? ''}
                 onChange={(e) => set('check_target', e.target.value)}
                 placeholder="http://..."
-                className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
+                className={`bg-[#21262d] border-[#30363d] font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
               />
             </div>
 
@@ -271,7 +275,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   value={form.parent_id ?? 'none'}
                   onValueChange={(v) => set('parent_id', v === 'none' ? undefined : v)}
                 >
-                  <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
+                  <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Parent container selector">
                     <SelectValue placeholder="None (standalone)">
                       {form.parent_id
                         ? (filteredParentNodes.find((n) => n.id === form.parent_id)?.label ?? 'None (standalone)')
@@ -300,7 +304,9 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   role="switch"
                   aria-checked={!!form.container_mode}
                   onClick={() => set('container_mode', !form.container_mode)}
-                  className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors focus:outline-none"
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors focus:outline-none ${modalStyles['modal-interactive']}`}
+                  tabIndex={0}
+                  aria-label="Toggle container mode"
                   style={{ background: form.container_mode ? '#ff6e00' : '#30363d' }}
                 >
                   <span
@@ -333,9 +339,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   return (
                     <div key={key} className="flex flex-col gap-1 items-center">
                       <label
-                        className="relative w-full h-7 rounded-md border cursor-pointer overflow-hidden transition-all"
+                        className={`relative w-full h-7 rounded-md border cursor-pointer overflow-hidden transition-all ${modalStyles['modal-interactive']}`}
                         style={{ borderColor: isCustom ? currentValue : '#30363d' }}
                         title={`${key.charAt(0).toUpperCase() + key.slice(1)}: ${currentValue}`}
+                        tabIndex={0}
+                        aria-label={`Color picker for ${key}`}
                       >
                         <input
                           type="color"
@@ -363,7 +371,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   value={String(form.bottom_handles ?? 1)}
                   onValueChange={(v) => set('bottom_handles', parseInt(v ?? '1', 10))}
                 >
-                  <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
+                  <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Bottom connection points selector">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-[#21262d] border-[#30363d]">
@@ -383,22 +391,37 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 value={form.notes ?? ''}
                 onChange={(e) => set('notes', e.target.value)}
                 placeholder="Optional notes"
-                className="bg-[#21262d] border-[#30363d] text-sm h-8"
+                className={`bg-[#21262d] border-[#30363d] text-sm h-8 ${modalStyles['modal-radius']}`}
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
-            >
-              {title === 'Add Node' ? 'Add' : 'Save'}
-            </Button>
+          <div className="flex justify-between gap-2 pt-1">
+            {/* Show delete button only for edit mode (not add) */}
+            {title !== 'Add Node' ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10 cursor-pointer"
+                onClick={() => { if (window.confirm('Delete this node?')) onSubmit({ ...form, _delete: true }); onClose(); }}
+                style={{ minWidth: 64 }}
+              >
+                Delete
+              </Button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <Button type="button" variant="ghost" size="sm" className={`cursor-pointer ${modalStyles['modal-cancel-hover']}`} onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer"
+              >
+                {title === 'Add Node' ? 'Add' : 'Save'}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>

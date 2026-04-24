@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import modalStyles from './modal-interactive.module.css'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -129,7 +130,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
               value={form.label}
               onChange={(e) => set('label', e.target.value)}
               placeholder="Zone name…"
-              className="bg-[#21262d] border-[#30363d] text-sm h-8"
+              className={`bg-[#21262d] border-[#30363d] text-sm h-8 ${modalStyles['modal-radius']}`}
             />
           </div>
 
@@ -137,7 +138,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Font</Label>
             <Select value={form.font} onValueChange={(v: string | null) => set('font', v ?? 'inter')}>
-              <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
+              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}> 
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-[#21262d] border-[#30363d]">
@@ -162,7 +163,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                     type="button"
                     title={value}
                     onClick={() => set('text_position', value)}
-                    className="h-8 rounded text-base transition-colors"
+                    className={`h-8 rounded text-base transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -187,7 +188,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                     key={value}
                     type="button"
                     onClick={() => set('label_position', value)}
-                    className="flex items-center justify-center h-8 rounded text-xs transition-colors"
+                    className={`flex items-center justify-center h-8 rounded text-xs transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -248,7 +249,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                     key={value}
                     type="button"
                     onClick={() => set('text_size', value)}
-                    className="flex items-center justify-center h-8 rounded transition-colors"
+                    className={`flex items-center justify-center h-8 rounded transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -275,7 +276,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                     type="button"
                     title={label}
                     onClick={() => set('border_style', value)}
-                    className="flex flex-col items-center justify-center h-10 rounded text-xs gap-0.5 transition-colors"
+                    className={`flex flex-col items-center justify-center h-10 rounded text-xs gap-0.5 transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -301,7 +302,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                     key={value}
                     type="button"
                     onClick={() => set('border_width', value)}
-                    className="flex items-center justify-center h-8 rounded text-xs transition-colors"
+                    className={`flex items-center justify-center h-8 rounded text-xs transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -319,7 +320,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Z-Order (1 = furthest back)</Label>
             <Select value={String(form.z_order)} onValueChange={(v: string | null) => set('z_order', v !== null ? Number(v) : 1)}>
-              <SelectTrigger className="bg-[#21262d] border-[#30363d] text-sm h-8">
+              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']}`}> 
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-[#21262d] border-[#30363d]">
@@ -338,17 +339,17 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10"
+                className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10 cursor-pointer"
                 onClick={() => { onDelete(); onClose() }}
               >
                 Delete
               </Button>
             )}
             <div className="flex gap-2 ml-auto">
-              <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+              <Button type="button" variant="ghost" size="sm" className={`cursor-pointer ${modalStyles['modal-cancel-hover']}`} onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90">
+              <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer">
                 {title === 'Add Zone' ? 'Add' : 'Save'}
               </Button>
             </div>

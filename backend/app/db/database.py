@@ -84,6 +84,8 @@ async def init_db() -> None:
             await conn.exec_driver_sql("ALTER TABLE edges ADD COLUMN waypoints JSON")
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN properties JSON")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE canvas_state ADD COLUMN custom_style JSON")
         # Migrate hardware columns → properties JSON (idempotent: only runs on nodes where properties IS NULL)
         with suppress(OperationalError):
             rows = await conn.exec_driver_sql(
