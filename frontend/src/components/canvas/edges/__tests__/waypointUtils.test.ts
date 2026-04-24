@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildWaypointPath, distToSegment, findInsertIndex, snap45, snap45both } from '../waypointUtils'
+import { buildWaypointPath, distToSegment, findInsertIndex, getAddWaypointHandlePosition, getWaypointLabelPosition, snap45, snap45both } from '../waypointUtils'
 
 describe('buildWaypointPath — bezier (default)', () => {
   it('builds a catmull-rom curve with no waypoints (start = end clamp)', () => {
@@ -171,5 +171,37 @@ describe('findInsertIndex', () => {
       { x: 150, y: 105 },
     )
     expect(idx).toBe(2)
+  })
+})
+
+describe('getWaypointLabelPosition', () => {
+  it('uses the routed midpoint for a symmetric bezier waypoint path', () => {
+    const point = getWaypointLabelPosition(0, 0, [{ x: 50, y: 100 }], 100, 0)
+    expect(point.x).toBeCloseTo(50, 0)
+    expect(point.y).toBeCloseTo(100, 0)
+  })
+
+  it('uses the routed midpoint for a smooth waypoint path', () => {
+    const point = getWaypointLabelPosition(0, 0, [{ x: 50, y: 0 }, { x: 50, y: 100 }], 100, 100, 'smooth')
+    expect(point.x).toBeCloseTo(50, 0)
+    expect(point.y).toBeCloseTo(50, 0)
+  })
+
+  it('falls back to the source point when the path is degenerate', () => {
+    const point = getWaypointLabelPosition(10, 20, [], 10, 20, 'smooth')
+    expect(point).toEqual({ x: 10, y: 20 })
+  })
+})
+
+describe('getAddWaypointHandlePosition', () => {
+  it('places bezier add handle on the rendered curved segment', () => {
+    const point = getAddWaypointHandlePosition(0, 0, [{ x: 50, y: 100 }], 100, 0, 0, 'bezier')
+    expect(point.x).toBeCloseTo(21.875, 3)
+    expect(point.y).toBeCloseTo(56.25, 3)
+  })
+
+  it('keeps smooth add handle at straight segment midpoint', () => {
+    const point = getAddWaypointHandlePosition(0, 0, [{ x: 50, y: 0 }, { x: 50, y: 100 }], 100, 100, 1, 'smooth')
+    expect(point).toEqual({ x: 50, y: 50 })
   })
 })
