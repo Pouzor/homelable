@@ -1,26 +1,25 @@
-import { IspNode, RouterNode, SwitchNode, ServerNode, VmNode, LxcNode, NasNode, IotNode, ApNode, CameraNode, PrinterNode, ComputerNode, CplNode, DockerHostNode, DockerContainerNode, GenericNode } from './index'
-import { ProxmoxGroupNode } from './ProxmoxGroupNode'
+import { DynamicNode } from './DynamicNode'
 import { GroupRectNode } from './GroupRectNode'
 import { GroupNode } from './GroupNode'
 
 export const nodeTypes = {
-  isp: IspNode,
-  router: RouterNode,
-  switch: SwitchNode,
-  server: ServerNode,
-  proxmox: ProxmoxGroupNode,
-  vm: VmNode,
-  lxc: LxcNode,
-  nas: NasNode,
-  iot: IotNode,
-  ap: ApNode,
-  camera: CameraNode,
-  printer: PrinterNode,
-  computer: ComputerNode,
-  cpl: CplNode,
-  docker_host: DockerHostNode,
-  docker_container: DockerContainerNode,
-  generic: GenericNode,
+  isp: DynamicNode,
+  router: DynamicNode,
+  switch: DynamicNode,
+  server: DynamicNode,
+  nas: DynamicNode,
+  ap: DynamicNode,
+  printer: DynamicNode,
+  proxmox: DynamicNode,
+  vm: DynamicNode,
+  lxc: DynamicNode,
+  docker_host: DynamicNode,
+  docker_container: DynamicNode,
+  iot: DynamicNode,
+  camera: DynamicNode,
+  cpl: DynamicNode,
+  computer: DynamicNode,
+  generic: DynamicNode,
   groupRect: GroupRectNode,
   group: GroupNode,
 }
