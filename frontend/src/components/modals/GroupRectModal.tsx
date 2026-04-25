@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { TextPosition } from '@/types'
 import { hexToRgba, rgbaToHex8 } from '@/utils/colorUtils'
+import styles from './GroupRectModal.module.css' // Import custom CSS for slider thumb
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'none'
 
@@ -88,6 +89,8 @@ const TEXT_POSITIONS: { value: TextPosition; label: string }[] = [
   { value: 'bottom-right',  label: '↘' },
 ]
 
+const getFontLabel = (value: string) => FONTS.find((f) => f.value === value)?.label ?? value
+
 interface GroupRectModalProps {
   open: boolean
   onClose: () => void
@@ -137,10 +140,21 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
           {/* Font */}
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Font</Label>
-            <Select value={form.font} onValueChange={(v: string | null) => set('font', v ?? 'inter')}>
-              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}> 
-                <SelectValue />
+
+            <Select
+              value={form.font}
+              onValueChange={(v: string | null) => set('font', v ?? 'inter')}
+            >
+              <SelectTrigger
+                className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
+                aria-label="Font selector"
+              >
+                {/* ✅ show human-readable label instead of raw value */}
+                <SelectValue>
+                  {getFontLabel(form.font)}
+                </SelectValue>
               </SelectTrigger>
+
               <SelectContent className="bg-[#21262d] border-[#30363d]">
                 {FONTS.map((f) => (
                   <SelectItem key={f.value} value={f.value} className="text-sm">
@@ -164,6 +178,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                     title={value}
                     onClick={() => set('text_position', value)}
                     className={`h-8 rounded text-base transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
+                    aria-label={`Text position ${label}`}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -189,6 +204,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                     type="button"
                     onClick={() => set('label_position', value)}
                     className={`flex items-center justify-center h-8 rounded text-xs transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
+                    aria-label={`Label position ${label}`}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -228,8 +244,9 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                       max={100}
                       value={alpha}
                       onChange={(e) => set(key, rgbaToHex8(hex6, Number(e.target.value)))}
-                      className="w-full h-1 accent-[#00d4ff] cursor-pointer"
+                      className={`w-full h-1 cursor-pointer mt-2 ${styles['slider-thumb']} ${styles['slider-accent']}`}
                       title={`Opacity: ${alpha}%`}
+                      style={{ accentColor: '#00d4ff' }}
                     />
                     <span className="text-[9px] text-muted-foreground/60">{label} {alpha}%</span>
                   </div>
@@ -250,6 +267,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                     type="button"
                     onClick={() => set('text_size', value)}
                     className={`flex items-center justify-center h-8 rounded transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
+                    aria-label={`Text size ${label}`}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -277,6 +295,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                     title={label}
                     onClick={() => set('border_style', value)}
                     className={`flex flex-col items-center justify-center h-10 rounded text-xs gap-0.5 transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
+                    aria-label={`Border style ${label}`}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -303,6 +322,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                     type="button"
                     onClick={() => set('border_width', value)}
                     className={`flex items-center justify-center h-8 rounded text-xs transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
+                    aria-label={`Border width ${label}`}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -318,11 +338,23 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
 
           {/* Z-order */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Z-Order (1 = furthest back)</Label>
-            <Select value={String(form.z_order)} onValueChange={(v: string | null) => set('z_order', v !== null ? Number(v) : 1)}>
-              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']}`}> 
+            <Label className="text-xs text-muted-foreground">
+              Z-Order (1 = furthest back)
+            </Label>
+
+            <Select
+              value={String(form.z_order)}
+              onValueChange={(v: string | null) =>
+                set('z_order', v !== null ? Number(v) : 1)
+              }
+            >
+              <SelectTrigger
+                className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']}`}
+                aria-label="Z-order selector"
+              >
                 <SelectValue />
               </SelectTrigger>
+
               <SelectContent className="bg-[#21262d] border-[#30363d]">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                   <SelectItem key={n} value={String(n)} className="text-sm font-mono">
