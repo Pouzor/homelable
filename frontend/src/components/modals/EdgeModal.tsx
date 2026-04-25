@@ -129,6 +129,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
                   >
                     ▲
                   </button>
+                  
                   {/* Down */}
                   <button
                     type="button"
