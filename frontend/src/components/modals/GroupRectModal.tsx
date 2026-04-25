@@ -89,6 +89,8 @@ const TEXT_POSITIONS: { value: TextPosition; label: string }[] = [
   { value: 'bottom-right',  label: '↘' },
 ]
 
+const getFontLabel = (value: string) => FONTS.find((f) => f.value === value)?.label ?? value
+
 interface GroupRectModalProps {
   open: boolean
   onClose: () => void
@@ -138,12 +140,19 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
           {/* Font */}
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Font</Label>
-            <Select value={form.font} onValueChange={(v: string | null) => set('font', v ?? 'inter')}>
+
+            <Select
+              value={form.font}
+              onValueChange={(v: string | null) => set('font', v ?? 'inter')}
+            >
               <SelectTrigger
                 className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
                 aria-label="Font selector"
               >
-                <SelectValue />
+                {/* ✅ show human-readable label instead of raw value */}
+                <SelectValue>
+                  {getFontLabel(form.font)}
+                </SelectValue>
               </SelectTrigger>
 
               <SelectContent className="bg-[#21262d] border-[#30363d]">
@@ -235,7 +244,7 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                       max={100}
                       value={alpha}
                       onChange={(e) => set(key, rgbaToHex8(hex6, Number(e.target.value)))}
-                      className={`w-full h-1 cursor-pointer mt-2 ${styles['slider-thumb-sm']} ${styles['slider-accent']}`}
+                      className={`w-full h-1 cursor-pointer mt-2 ${styles['slider-thumb']} ${styles['slider-accent']}`}
                       title={`Opacity: ${alpha}%`}
                       style={{ accentColor: '#00d4ff' }}
                     />

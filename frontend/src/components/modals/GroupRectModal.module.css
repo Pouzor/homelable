@@ -16,27 +16,27 @@
 }
 
 /* Ensure the slider bar is visible on dark backgrounds */
-.slider-thumb-sm {
+.slider-thumb {
   background: transparent;
 }
 /* Custom slider thumb for smaller circle */
-.slider-thumb-sm::-webkit-slider-thumb {
-  width: 10px;
-  height: 10px;
+.slider-thumb::-webkit-slider-thumb {
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   background: #00d4ff;
   border: 2px solid #21262d;
 }
-.slider-thumb-sm::-moz-range-thumb {
-  width: 10px;
-  height: 10px;
+.slider-thumb::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   background: #00d4ff;
   border: 2px solid #21262d;
 }
-.slider-thumb-sm::-ms-thumb {
-  width: 10px;
-  height: 10px;
+.slider-thumb::-ms-thumb {
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
   background: #00d4ff;
   border: 2px solid #21262d;
