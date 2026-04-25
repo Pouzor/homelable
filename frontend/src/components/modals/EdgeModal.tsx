@@ -69,12 +69,17 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Link Type</Label>
             <Select value={type} onValueChange={(v) => setType(v as EdgeType)}>
-              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Edge type selector">
-                <SelectValue>{EDGE_TYPE_LABELS[type]}</SelectValue>
+              <SelectTrigger
+                className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
+                aria-label="Edge type selector"
+              >
+                <SelectValue> {EDGE_TYPE_LABELS[type]} </SelectValue>
               </SelectTrigger>
               <SelectContent className="bg-[#21262d] border-[#30363d]">
                 {EDGE_TYPES.map(([value, label]) => (
-                  <SelectItem key={value} value={value} className="text-sm">{label}</SelectItem>
+                  <SelectItem key={value} value={value} className="text-sm">
+                    {label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -83,15 +88,77 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
           {type === 'vlan' && (
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs text-muted-foreground">VLAN ID</Label>
-              <Input
-                type="number"
-                min={1}
-                max={4094}
-                value={vlanId}
-                onChange={(e) => setVlanId(e.target.value)}
-                placeholder="e.g. 20"
-                className={`bg-[#21262d] border-[#30363d] font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
-              />
+
+              <div className="relative">
+                <Input
+                  type="number"
+                  min={1}
+                  max={4094}
+                  value={vlanId}
+                  onChange={(e) => setVlanId(e.target.value)}
+                  placeholder="e.g. 20"
+                  className={`bg-[#21262d] border-[#30363d] text-sm h-8 font-mono pr-9 ${modalStyles['modal-radius']} ${modalStyles['no-spinner']}`}
+                />
+
+                {/* Stepper controls */}
+                <div className="absolute right-[1px] top-[1px] bottom-[1px] flex flex-col w-7 rounded overflow-hidden border border-[#30363d] bg-[#161b22]">
+                  {/* Up */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVlanId((prev) =>
+                        String(Math.min(4094, Number(prev || 0) + 1))
+                      )
+                    }
+                    disabled={Number(vlanId) >= 4094}
+                    className="
+                      flex-1 flex items-center justify-center
+                      text-[10px]
+                      text-muted-foreground
+                      hover:text-[#00d4ff]
+                      hover:bg-[#21262d]
+                      cursor-pointer
+                      focus:outline-none
+                      focus-visible:ring-1
+                      focus-visible:ring-[#00d4ff]
+                      disabled:opacity-30
+                      disabled:cursor-not-allowed
+                      transition-colors
+                    "
+                    aria-label="Increase VLAN ID"
+                  >
+                    ▲
+                  </button>
+                  
+                  {/* Down */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVlanId((prev) =>
+                        String(Math.max(1, Number(prev || 0) - 1))
+                      )
+                    }
+                    disabled={Number(vlanId) <= 1}
+                    className="
+                      flex-1 flex items-center justify-center
+                      text-[10px]
+                      text-muted-foreground
+                      hover:text-[#00d4ff]
+                      hover:bg-[#21262d]
+                      cursor-pointer
+                      focus:outline-none
+                      focus-visible:ring-1
+                      focus-visible:ring-[#00d4ff]
+                      disabled:opacity-30
+                      disabled:cursor-not-allowed
+                      transition-colors
+                    "
+                    aria-label="Decrease VLAN ID"
+                  >
+                    ▼
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 

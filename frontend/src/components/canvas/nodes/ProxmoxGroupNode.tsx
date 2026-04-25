@@ -51,17 +51,11 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
 
   return (
     <>
-      <NodeResizer
-        minWidth={220}
-        minHeight={160}
-        isVisible={selected}
-        lineStyle={{ borderColor: glow, opacity: 0.6 }}
-        handleStyle={{ borderColor: glow, backgroundColor: theme.colors.nodeCardBackground, width: 6, height: 6 }}
-      />
+
 
       {/* Group border */}
       <div
-        className="w-full h-full rounded-xl border-2 flex flex-col overflow-hidden"
+        className="relative w-full h-full rounded-lg border-2 flex flex-col overflow-hidden"
         style={{
           borderColor: selected ? glow : `${glow}88`,
           background: isOnline ? `${colors.background}cc` : `${colors.background}aa`,
@@ -72,6 +66,13 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
             : 'none',
         }}
       >
+              <NodeResizer
+        isVisible={selected}
+        minWidth={140}
+        minHeight={50}
+        lineStyle={{ borderColor: 'transparent' }}
+        handleStyle={{ borderColor: colors.border, background: colors.border, width: 16, height: 16 }}
+      />
         {/* Header bar */}
         <div
           className="flex flex-row items-start gap-2 px-2.5 py-1.5 shrink-0"

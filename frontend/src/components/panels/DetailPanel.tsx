@@ -6,7 +6,6 @@ import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/comp
 import { useCanvasStore } from '@/stores/canvasStore'
 import { NODE_TYPE_LABELS, STATUS_COLORS, type ServiceInfo, type NodeData, type NodeProperty } from '@/types'
 import { getServiceUrl } from '@/utils/serviceUrl'
-import { primaryIp } from '@/utils/maskIp'
 import { PROPERTY_ICONS, PROPERTY_ICON_NAMES, resolvePropertyIcon } from '@/utils/propertyIcons'
 import type { Node } from '@xyflow/react'
 
@@ -226,9 +225,25 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         {data.ip && (
           <div className="flex justify-between gap-2 items-baseline">
             <span className="text-muted-foreground text-xs shrink-0">IP Address</span>
-            <a href={`http://${primaryIp(data.ip)}`} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[#00d4ff] hover:underline truncate flex items-center gap-1" title={data.ip}>
-              {data.ip}<ExternalLink size={10} className="shrink-0" />
-            </a>
+            <span className="flex flex-wrap items-baseline justify-end gap-0.5 flex-1 min-w-0 text-xs font-mono text-[#00d4ff]">
+              {data.ip.split(',').map((ip) => {
+                const trimmedIp = ip.trim();
+                return (
+                  <a
+                    key={trimmedIp}
+                    href={`http://${trimmedIp}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline flex items-center gap-1 px-1"
+                    title={trimmedIp}
+                    style={{ maxWidth: 120 }}
+                  >
+                    {trimmedIp}
+                    <ExternalLink size={10} className="shrink-0" />
+                  </a>
+                );
+              })}
+            </span>
           </div>
         )}
         {data.mac && <DetailRow label="MAC" value={data.mac} mono />}
