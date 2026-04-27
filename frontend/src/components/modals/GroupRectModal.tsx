@@ -149,7 +149,6 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                 className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
                 aria-label="Font selector"
               >
-                {/* ✅ show human-readable label instead of raw value */}
                 <SelectValue>
                   {getFontLabel(form.font)}
                 </SelectValue>
@@ -338,20 +337,11 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
 
           {/* Z-order */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">
-              Z-Order (1 = furthest back)
-            </Label>
+            <Label className="text-xs text-muted-foreground">Z-Order (1 = furthest back)</Label>
 
-            <Select
-              value={String(form.z_order)}
-              onValueChange={(v: string | null) =>
-                set('z_order', v !== null ? Number(v) : 1)
-              }
+            <Select value={String(form.z_order)} onValueChange={(v: string | null) => set('z_order', v !== null ? Number(v) : 1)}
             >
-              <SelectTrigger
-                className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']}`}
-                aria-label="Z-order selector"
-              >
+              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']}`} aria-label="Z-order selector">
                 <SelectValue />
               </SelectTrigger>
 
