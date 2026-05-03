@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { TextPosition } from '@/types'
 import { hexToRgba, rgbaToHex8 } from '@/utils/colorUtils'
-import styles from './GroupRectModal.module.css' // Import custom CSS for slider thumb
+import styles from './GroupRectModal.module.css'
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'none'
 
@@ -338,13 +338,10 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
           {/* Z-order */}
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Z-Order (1 = furthest back)</Label>
-
-            <Select value={String(form.z_order)} onValueChange={(v: string | null) => set('z_order', v !== null ? Number(v) : 1)}
-            >
+            <Select value={String(form.z_order)} onValueChange={(v: string | null) => set('z_order', v !== null ? Number(v) : 1)}>
               <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']}`} aria-label="Z-order selector">
                 <SelectValue />
               </SelectTrigger>
-
               <SelectContent className="bg-[#21262d] border-[#30363d]">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                   <SelectItem key={n} value={String(n)} className="text-sm font-mono">
