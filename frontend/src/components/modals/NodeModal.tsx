@@ -404,7 +404,12 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 variant="ghost"
                 size="sm"
                 className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10 cursor-pointer"
-                onClick={() => { if (window.confirm('Delete this node?')) onSubmit({ ...form, _delete: true }); onClose(); }}
+                onClick={() => {
+                  if (window.confirm('Delete this node?')) {
+                    onSubmit({ ...form, _delete: true })
+                    onClose()
+                  }
+                }}
                 style={{ minWidth: 64 }}
               >
                 Delete

@@ -83,6 +83,28 @@ describe('NodeModal', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  // ── Delete confirm ────────────────────────────────────────────────────
+
+  it('deletes and closes when Delete confirm is accepted', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { onClose, onSubmit } = renderModal({ title: 'Edit Node', initial: BASE })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ _delete: true }))
+    expect(onClose).toHaveBeenCalledOnce()
+    confirmSpy.mockRestore()
+  })
+
+  // Regression: bare-if without braces used to call onClose() unconditionally,
+  // closing the modal even when the user cancelled the confirm dialog.
+  it('does not delete or close when Delete confirm is cancelled', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const { onClose, onSubmit } = renderModal({ title: 'Edit Node', initial: BASE })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
   // ── Label validation ──────────────────────────────────────────────────
 
   it('blocks submit and shows error when label is empty', () => {
