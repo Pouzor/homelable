@@ -44,6 +44,7 @@ export const THEMES: Record<ThemeId, ThemePreset> = {
       nodeAccents: {
         isp:          { border: '#00d4ff', icon: '#00d4ff' },
         router:       { border: '#00d4ff', icon: '#00d4ff' },
+        firewall:     { border: '#f85149', icon: '#f85149' },
         switch:       { border: '#39d353', icon: '#39d353' },
         server:       { border: '#a855f7', icon: '#a855f7' },
         proxmox:      { border: '#ff6e00', icon: '#ff6e00' },
@@ -100,6 +101,7 @@ export const THEMES: Record<ThemeId, ThemePreset> = {
       nodeAccents: {
         isp:           { border: '#22d3ee', icon: '#22d3ee' },
         router:        { border: '#22d3ee', icon: '#22d3ee' },
+        firewall:      { border: '#ef4444', icon: '#ef4444' },
         switch:        { border: '#4ade80', icon: '#4ade80' },
         server:        { border: '#c084fc', icon: '#c084fc' },
         proxmox:       { border: '#fb923c', icon: '#fb923c' },
@@ -156,6 +158,7 @@ export const THEMES: Record<ThemeId, ThemePreset> = {
       nodeAccents: {
         isp:           { border: '#0284c7', icon: '#0284c7' },
         router:        { border: '#0284c7', icon: '#0284c7' },
+        firewall:      { border: '#dc2626', icon: '#dc2626' },
         switch:        { border: '#16a34a', icon: '#16a34a' },
         server:        { border: '#7c3aed', icon: '#7c3aed' },
         proxmox:       { border: '#ea580c', icon: '#ea580c' },
@@ -212,6 +215,7 @@ export const THEMES: Record<ThemeId, ThemePreset> = {
       nodeAccents: {
         isp:          { border: '#00ffff', icon: '#00ffff' },
         router:       { border: '#00ffff', icon: '#00ffff' },
+        firewall:     { border: '#ff0040', icon: '#ff0040' },
         switch:       { border: '#00ff80', icon: '#00ff80' },
         server:       { border: '#ff00ff', icon: '#ff00ff' },
         proxmox:      { border: '#ff8800', icon: '#ff8800' },
@@ -268,6 +272,7 @@ export const THEMES: Record<ThemeId, ThemePreset> = {
       nodeAccents: {
         isp:          { border: '#00ff41', icon: '#00ff41' },
         router:       { border: '#00ff41', icon: '#00ff41' },
+        firewall:     { border: '#88ff00', icon: '#88ff00' },
         switch:       { border: '#00cc33', icon: '#00cc33' },
         server:       { border: '#008822', icon: '#008822' },
         proxmox:      { border: '#33ff66', icon: '#33ff66' },
@@ -324,6 +329,7 @@ export const THEMES: Record<ThemeId, ThemePreset> = {
       nodeAccents: {
         isp:              { border: '#00d4ff', icon: '#00d4ff' },
         router:           { border: '#00d4ff', icon: '#00d4ff' },
+        firewall:         { border: '#f85149', icon: '#f85149' },
         switch:           { border: '#39d353', icon: '#39d353' },
         server:           { border: '#a855f7', icon: '#a855f7' },
         proxmox:          { border: '#ff6e00', icon: '#ff6e00' },
