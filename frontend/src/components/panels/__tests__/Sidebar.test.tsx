@@ -267,6 +267,18 @@ describe('Sidebar', () => {
     await waitFor(() => expect(screen.getByText('No scans yet')).toBeInTheDocument())
   })
 
+  // Regression: forceView used to override local state on every render, freezing
+  // the sidebar on whichever view the parent forced (e.g. 'history' after a scan).
+  it('allows switching views after forceView is set by parent', async () => {
+    const { rerender } = render(<Sidebar {...defaultProps} forceView="history" />)
+    await waitFor(() => expect(screen.getByText('No scans yet')).toBeInTheDocument())
+    // Parent keeps forceView as 'history'; user clicks another nav item.
+    rerender(<Sidebar {...defaultProps} forceView="history" />)
+    fireEvent.click(screen.getByText('Pending Devices'))
+    await waitFor(() => expect(screen.getByText('No pending devices')).toBeInTheDocument())
+    expect(screen.queryByText('No scans yet')).not.toBeInTheDocument()
+  })
+
   it('toggles Settings panel on Settings click', async () => {
     render(<Sidebar {...defaultProps} />)
     fireEvent.click(screen.getByText('Settings'))

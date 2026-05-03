@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS } from '@/utils/nodeIcons'
+import { MIN_BOTTOM_HANDLES, MAX_BOTTOM_HANDLES, clampBottomHandles } from '@/utils/handleUtils'
 
 const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
-  { label: 'Hardware',       types: ['isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer'] },
+  { label: 'Hardware',       types: ['isp', 'router', 'firewall', 'switch', 'server', 'nas', 'ap', 'printer'] },
   { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker_host', 'docker_container'] },
   { label: 'IoT',            types: ['iot', 'camera', 'cpl'] },
   { label: 'Generic',        types: ['computer', 'generic', 'groupRect'] },
@@ -366,21 +367,24 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {/* Bottom connection points (not for group containers) */}
             {form.type !== 'groupRect' && form.type !== 'group' && (
               <div className="flex flex-col gap-1.5 col-span-2">
-                <Label className="text-xs text-muted-foreground">Bottom Connection Points</Label>
-                <Select
-                  value={String(form.bottom_handles ?? 1)}
-                  onValueChange={(v) => set('bottom_handles', parseInt(v ?? '1', 10))}
-                >
-                  <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Bottom connection points selector">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#21262d] border-[#30363d]">
-                    <SelectItem value="1" className="text-sm">1 - center</SelectItem>
-                    <SelectItem value="2" className="text-sm">2 - left / right</SelectItem>
-                    <SelectItem value="3" className="text-sm">3 - left / center / right</SelectItem>
-                    <SelectItem value="4" className="text-sm">4 - evenly spaced</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-muted-foreground">Bottom Connection Points</Label>
+                  <span className="text-xs font-mono text-foreground">{clampBottomHandles(form.bottom_handles ?? 1)}</span>
+                </div>
+                <input
+                  type="range"
+                  min={MIN_BOTTOM_HANDLES}
+                  max={MAX_BOTTOM_HANDLES}
+                  step={1}
+                  value={clampBottomHandles(form.bottom_handles ?? 1)}
+                  onChange={(e) => set('bottom_handles', clampBottomHandles(Number(e.target.value)))}
+                  aria-label="Bottom connection points slider"
+                  className="w-full accent-[#00d4ff] cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground/60 font-mono">
+                  <span>{MIN_BOTTOM_HANDLES}</span>
+                  <span>{MAX_BOTTOM_HANDLES}</span>
+                </div>
               </div>
             )}
 
@@ -404,7 +408,12 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 variant="ghost"
                 size="sm"
                 className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10 cursor-pointer"
-                onClick={() => { if (window.confirm('Delete this node?')) onSubmit({ ...form, _delete: true }); onClose(); }}
+                onClick={() => {
+                  if (window.confirm('Delete this node?')) {
+                    onSubmit({ ...form, _delete: true })
+                    onClose()
+                  }
+                }}
                 style={{ minWidth: 64 }}
               >
                 Delete

@@ -9,7 +9,7 @@ import {
   // Storage & Databases
   Database, Archive, Cloud, FolderOpen,
   // Security & Auth
-  Shield, ShieldCheck, Lock, Key, Users, UserCheck,
+  Shield, ShieldCheck, Lock, Key, Users, UserCheck, Flame,
   // Automation & IoT
   Zap, Workflow, Bot, Home, Thermometer, Lightbulb, Radio,
   // Transfers & sync
@@ -34,6 +34,7 @@ export const ICON_REGISTRY: IconEntry[] = [
   // --- Infrastructure ---
   { key: 'globe',      label: 'Globe / ISP',          category: 'Infrastructure', icon: Globe },
   { key: 'router',     label: 'Router',               category: 'Infrastructure', icon: Router },
+  { key: 'flame',      label: 'Firewall',             category: 'Infrastructure', icon: Flame },
   { key: 'network',    label: 'Switch / Network',     category: 'Infrastructure', icon: Network },
   { key: 'server',     label: 'Server',               category: 'Infrastructure', icon: Server },
   { key: 'layers',     label: 'Proxmox / Hypervisor', category: 'Infrastructure', icon: Layers },
@@ -120,6 +121,7 @@ export const ICON_MAP: Record<string, LucideIcon> = Object.fromEntries(
 export const NODE_TYPE_DEFAULT_ICONS: Record<NodeType, LucideIcon> = {
   isp:          Globe,
   router:       Router,
+  firewall:     Flame,
   switch:       Network,
   server:       Server,
   proxmox:      Layers,

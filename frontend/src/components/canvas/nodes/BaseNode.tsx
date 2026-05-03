@@ -9,7 +9,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { maskIp, splitIps } from '@/utils/maskIp'
-import { BOTTOM_HANDLE_IDS, BOTTOM_HANDLE_POSITIONS } from '@/utils/handleUtils'
+import { bottomHandleId, bottomHandlePositions, clampBottomHandles } from '@/utils/handleUtils'
 
 interface BaseNodeProps extends NodeProps<Node<NodeData>> {
   icon: LucideIcon
@@ -56,7 +56,8 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
           ? `0 0 0 ${borderWidth}px ${colors.border}, 0 0 8px ${colors.border}44`
           : 'none',
         opacity: data.status === 'offline' ? 0.55 : 1,
-        minWidth: 140,
+        // Grow node width when many bottom handles so each stays clickable (~14px slot).
+        minWidth: Math.max(140, clampBottomHandles(data.bottom_handles ?? 1) * 14),
         width: width ? '100%' : undefined,
         height: height ? '100%' : undefined,
       }}
@@ -173,9 +174,9 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         </>
       )}
 
-      {(BOTTOM_HANDLE_POSITIONS[data.bottom_handles ?? 1] ?? BOTTOM_HANDLE_POSITIONS[1]).map((leftPct, idx) => {
-        const sourceId = BOTTOM_HANDLE_IDS[idx]
-        const targetId = idx === 0 ? 'bottom-t' : `bottom-${idx + 1}-t`
+      {bottomHandlePositions(data.bottom_handles ?? 1).map((leftPct, idx) => {
+        const sourceId = bottomHandleId(idx)
+        const targetId = `${sourceId}-t`
         return (
           <span key={sourceId}>
             <Handle

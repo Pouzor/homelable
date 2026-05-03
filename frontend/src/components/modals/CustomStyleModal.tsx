@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import {
   Globe, Router, Network, Server, Layers, Box, Container, HardDrive,
-  Cpu, Wifi, Camera, Printer, Monitor, PlugZap, Anchor, Package, Circle,
+  Cpu, Wifi, Camera, Printer, Monitor, PlugZap, Anchor, Package, Circle, Flame,
   type LucideIcon,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -19,7 +19,7 @@ import { NODE_TYPE_LABELS, EDGE_TYPE_LABELS } from '@/types'
 // ── Node types exposed for custom style (skip groupRect/group) ───────────────
 
 const EDITABLE_NODE_TYPES: NodeType[] = [
-  'isp', 'router', 'switch', 'server', 'proxmox', 'vm', 'lxc', 'nas',
+  'isp', 'router', 'firewall', 'switch', 'server', 'proxmox', 'vm', 'lxc', 'nas',
   'iot', 'ap', 'camera', 'printer', 'computer', 'cpl', 'docker_host',
   'docker_container', 'generic',
 ]
@@ -27,7 +27,7 @@ const EDITABLE_NODE_TYPES: NodeType[] = [
 const EDITABLE_EDGE_TYPES: EdgeType[] = ['ethernet', 'wifi', 'iot', 'vlan', 'virtual', 'cluster']
 
 const NODE_ICONS: Record<string, LucideIcon> = {
-  isp: Globe, router: Router, switch: Network, server: Server, proxmox: Layers,
+  isp: Globe, router: Router, firewall: Flame, switch: Network, server: Server, proxmox: Layers,
   vm: Box, lxc: Container, nas: HardDrive, iot: Cpu, ap: Wifi,
   camera: Camera, printer: Printer, computer: Monitor, cpl: PlugZap,
   docker_host: Anchor, docker_container: Package, generic: Circle,

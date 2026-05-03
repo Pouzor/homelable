@@ -43,13 +43,19 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeApproved, forceView, highlightPendingId }: SidebarProps) {
-  const [_collapsed, setCollapsed] = useState(false)
-  const [_activeView, setActiveView] = useState<SidebarView>('canvas')
+  const [collapsed, setCollapsed] = useState(false)
+  const [activeView, setActiveView] = useState<SidebarView>(forceView ?? 'canvas')
+  const [prevForceView, setPrevForceView] = useState(forceView)
   const logout = useAuthStore((s) => s.logout)
 
-  // When forceView is set, override local state without useEffect
-  const collapsed = forceView ? false : _collapsed
-  const activeView = forceView ?? _activeView
+  // forceView acts as a one-shot trigger from parent; user clicks afterwards still control view.
+  if (forceView !== prevForceView) {
+    setPrevForceView(forceView)
+    if (forceView) {
+      setActiveView(forceView)
+      setCollapsed(false)
+    }
+  }
 
   const { nodes, hasUnsavedChanges, hideIp, toggleHideIp } = useCanvasStore()
 
