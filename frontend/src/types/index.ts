@@ -1,6 +1,7 @@
 export type NodeType =
   | 'isp'
   | 'router'
+  | 'firewall'
   | 'switch'
   | 'server'
   | 'proxmox'
@@ -92,6 +93,7 @@ export interface NodeData extends Record<string, unknown> {
     height?: number
   }
   custom_icon?: string
+  /** Number of bottom connection points, 1..48. Default 1 (centered). */
   bottom_handles?: number
 }
 
@@ -116,6 +118,7 @@ export interface EdgeData extends Record<string, unknown> {
 export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   isp: 'ISP / Modem',
   router: 'Router',
+  firewall: 'Firewall',
   switch: 'Switch',
   server: 'Server',
   proxmox: 'Proxmox VE',

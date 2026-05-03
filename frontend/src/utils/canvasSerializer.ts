@@ -1,6 +1,6 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData, Waypoint } from '@/types'
-import { normalizeHandle } from '@/utils/handleUtils'
+import { normalizeHandle, clampBottomHandles } from '@/utils/handleUtils'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -104,7 +104,7 @@ export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
     properties: n.data.properties ?? [],
     width: n.measured?.width ?? n.width ?? null,
     height: n.measured?.height ?? n.height ?? null,
-    bottom_handles: n.data.bottom_handles ?? 1,
+    bottom_handles: clampBottomHandles(n.data.bottom_handles ?? 1),
     pos_x: n.position.x,
     pos_y: n.position.y,
   }
@@ -155,7 +155,7 @@ export function deserializeApiNode(
     id: n.id,
     type: normalizedType,
     position: { x: n.pos_x, y: n.pos_y },
-    data: { ...n, type: normalizedType } as unknown as NodeData,
+    data: { ...n, type: normalizedType, bottom_handles: clampBottomHandles(n.bottom_handles ?? 1) } as unknown as NodeData,
     ...(n.parent_id && parentIsContainer ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
     ...(['proxmox', 'vm', 'lxc', 'docker_host'].includes(normalizedType) && n.container_mode !== false
       ? { width: n.width ?? 300, height: n.height ?? 200 }

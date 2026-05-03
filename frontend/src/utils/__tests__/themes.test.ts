@@ -3,7 +3,7 @@ import { THEMES, THEME_ORDER, type ThemeId } from '../themes'
 import type { NodeType, EdgeType, NodeStatus } from '@/types'
 
 const NODE_TYPES: NodeType[] = [
-  'isp', 'router', 'switch', 'server', 'proxmox', 'vm', 'lxc',
+  'isp', 'router', 'firewall', 'switch', 'server', 'proxmox', 'vm', 'lxc',
   'nas', 'iot', 'ap', 'camera', 'printer', 'computer', 'cpl', 'docker_host', 'docker_container', 'generic', 'groupRect',
 ]
 const EDGE_TYPES: EdgeType[] = ['ethernet', 'wifi', 'iot', 'vlan', 'virtual', 'cluster']

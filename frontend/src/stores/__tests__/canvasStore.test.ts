@@ -721,6 +721,24 @@ describe('canvasStore', () => {
     const updated = useCanvasStore.getState().edges.find((e) => e.id === 'e1')
     expect(updated?.sourceHandle).toBe('bottom')
   })
+
+  // Regression: handle cap raised from 4 to 48 — remap must scale.
+  it('remaps high-count handles when shrinking from 12 to 2', () => {
+    const node = makeNode('n1', { bottom_handles: 12 })
+    const edges = [
+      { ...makeEdge('e2', 'n1', 'n2'), sourceHandle: 'bottom-2' },
+      { ...makeEdge('e3', 'n1', 'n2'), sourceHandle: 'bottom-5' },
+      { ...makeEdge('e12', 'n1', 'n2'), sourceHandle: 'bottom-12' },
+    ]
+    useCanvasStore.setState({ nodes: [node, makeNode('n2')], edges })
+
+    useCanvasStore.getState().updateNode('n1', { bottom_handles: 2 })
+
+    const after = useCanvasStore.getState().edges
+    expect(after.find((e) => e.id === 'e2')?.sourceHandle).toBe('bottom-2')
+    expect(after.find((e) => e.id === 'e3')?.sourceHandle).toBe('bottom')
+    expect(after.find((e) => e.id === 'e12')?.sourceHandle).toBe('bottom')
+  })
 })
 
 describe('canvasStore — custom style apply', () => {

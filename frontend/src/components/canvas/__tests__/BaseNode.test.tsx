@@ -56,8 +56,9 @@ vi.mock('@/utils/propertyIcons', () => ({
 }))
 
 vi.mock('@/utils/handleUtils', () => ({
-  BOTTOM_HANDLE_IDS: ['bottom'],
-  BOTTOM_HANDLE_POSITIONS: { 1: [50] },
+  bottomHandleId: (idx: number) => idx === 0 ? 'bottom' : `bottom-${idx + 1}`,
+  bottomHandlePositions: () => [50],
+  clampBottomHandles: (n: unknown) => typeof n === 'number' ? n : 1,
 }))
 
 beforeEach(() => { mockZoom = 1 })
