@@ -8,6 +8,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+try:
+    import aiomqtt  # type: ignore[import]
+except ImportError:  # pragma: no cover
+    aiomqtt = None  # type: ignore[assignment]
+
 _NETWORKMAP_REQUEST_TOPIC = "{base_topic}/bridge/request/networkmap"
 _NETWORKMAP_RESPONSE_TOPIC = "{base_topic}/bridge/response/networkmap"
 _CONNECTION_TIMEOUT = 5.0   # seconds to verify broker reachability
@@ -54,7 +59,6 @@ def parse_networkmap(payload: dict) -> tuple[list[dict], list[dict]]:
         friendly_name: str = source.get("friendlyName") or source.get("friendly_name") or ieee
         model: str | None = source.get("modelID") or source.get("model")
         vendor: str | None = source.get("vendor")
-        description: str | None = source.get("description")
 
         if ieee not in seen_ids:
             seen_ids.add(ieee)
@@ -78,7 +82,10 @@ def parse_networkmap(payload: dict) -> tuple[list[dict], list[dict]]:
         # Walk the route targets to build edges and collect additional nodes
         targets = route.get("routes", [])
         for target_entry in targets:
-            target_ieee = target_entry.get("target", {}).get("ieeeAddr") or target_entry.get("target", {}).get("ieee_address") or ""
+            target_src = target_entry.get("target", {})
+            target_ieee = (
+                target_src.get("ieeeAddr") or target_src.get("ieee_address") or ""
+            )
             lqi: int | None = target_entry.get("lqi")
 
             if not target_ieee:
@@ -149,13 +156,8 @@ async def fetch_networkmap(
         ConnectionError: if the broker cannot be reached.
         ValueError: if the response payload is malformed.
     """
-    try:
-        import aiomqtt  # type: ignore[import]
-    except ImportError as exc:  # pragma: no cover
-        raise ImportError(
-            "aiomqtt is required for Zigbee import. "
-            "Install it with: pip install aiomqtt"
-        ) from exc
+    if aiomqtt is None:  # pragma: no cover
+        raise ImportError("aiomqtt is required for Zigbee import. Install it with: pip install aiomqtt")
 
     request_topic = _NETWORKMAP_REQUEST_TOPIC.format(base_topic=base_topic)
     response_topic = _NETWORKMAP_RESPONSE_TOPIC.format(base_topic=base_topic)
@@ -212,10 +214,8 @@ async def test_mqtt_connection(
 
     Returns True on success, raises ConnectionError on failure.
     """
-    try:
-        import aiomqtt  # type: ignore[import]
-    except ImportError as exc:  # pragma: no cover
-        raise ImportError("aiomqtt is required") from exc
+    if aiomqtt is None:  # pragma: no cover
+        raise ImportError("aiomqtt is required")
 
     try:
         async with aiomqtt.Client(

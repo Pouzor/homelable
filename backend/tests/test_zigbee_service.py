@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
+import aiomqtt  # noqa: F401
 import pytest
 
 from app.services.zigbee_service import (
@@ -14,9 +14,10 @@ from app.services.zigbee_service import (
     _z2m_type_to_homelable,
     fetch_networkmap,
     parse_networkmap,
-    test_mqtt_connection,
 )
-
+from app.services.zigbee_service import (
+    test_mqtt_connection as _test_mqtt_connection,
+)
 
 # ---------------------------------------------------------------------------
 # Helper builders
@@ -341,7 +342,7 @@ async def test_test_mqtt_connection_success() -> None:
         mock_aiomqtt.Client.return_value = _FakeClient()
         mock_aiomqtt.MqttError = Exception
 
-        result = await test_mqtt_connection("localhost", 1883)
+        result = await _test_mqtt_connection("localhost", 1883)
     assert result is True
 
 
@@ -359,4 +360,4 @@ async def test_test_mqtt_connection_failure() -> None:
         mock_aiomqtt.MqttError = Exception
 
         with pytest.raises(ConnectionError):
-            await test_mqtt_connection("bad-host", 1883)
+            await _test_mqtt_connection("bad-host", 1883)
