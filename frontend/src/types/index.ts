@@ -19,6 +19,9 @@ export type NodeType =
   | 'generic'
   | 'groupRect'
   | 'group'
+  | 'zigbee_coordinator'
+  | 'zigbee_router'
+  | 'zigbee_enddevice'
 
 export type TextPosition =
   | 'top-left'
@@ -136,6 +139,9 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   generic: 'Generic Device',
   groupRect: 'Group Rectangle',
   group: 'Node Group',
+  zigbee_coordinator: 'Zigbee Coordinator',
+  zigbee_router: 'Zigbee Router',
+  zigbee_enddevice: 'Zigbee End Device',
 }
 
 export const STATUS_COLORS: Record<NodeStatus, string> = {

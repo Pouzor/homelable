@@ -19,6 +19,7 @@ import { LoginPage } from '@/components/LoginPage'
 import { NodeModal } from '@/components/modals/NodeModal'
 import { EdgeModal } from '@/components/modals/EdgeModal'
 import { ScanConfigModal } from '@/components/modals/ScanConfigModal'
+import { ZigbeeImportModal } from '@/components/zigbee/ZigbeeImportModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
 import { ThemeModal } from '@/components/modals/ThemeModal'
 import { SearchModal } from '@/components/modals/SearchModal'
@@ -30,6 +31,7 @@ import { canvasApi } from '@/api/client'
 import { demoNodes, demoEdges } from '@/utils/demoData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
 import type { NodeData, EdgeData, CustomStyleDef } from '@/types'
+import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STANDALONE_STORAGE_KEY = 'homelable_canvas'
@@ -55,6 +57,7 @@ export default function App() {
   const [editEdgeId, setEditEdgeId] = useState<string | null>(null)
   const [scanConfigOpen, setScanConfigOpen] = useState(false)
   const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [zigbeeImportOpen, setZigbeeImportOpen] = useState(false)
 
   // Declare handleSave before the Ctrl+S effect so it is in scope
   const handleSave = useCallback(async () => {
@@ -315,6 +318,48 @@ export default function App() {
     setExportModalOpen(true)
   }, [])
 
+  const handleZigbeeAddToCanvas = useCallback((zigbeeNodes: ZigbeeNode[], zigbeeEdges: ZigbeeEdge[]) => {
+    snapshotHistory()
+    // Place nodes in a grid starting at x=500, y=100
+    const COLS = 4
+    const SPACING_X = 170
+    const SPACING_Y = 100
+    zigbeeNodes.forEach((zn, i) => {
+      const id = zn.id
+      const col = i % COLS
+      const row = Math.floor(i / COLS)
+      const position = { x: 500 + col * SPACING_X, y: 100 + row * SPACING_Y }
+      const newNode: import('@xyflow/react').Node<NodeData> = {
+        id,
+        type: zn.type,
+        position,
+        data: {
+          label: zn.friendly_name,
+          type: zn.type as NodeData['type'],
+          status: 'unknown' as const,
+          services: [],
+          ...(zn.lqi != null ? { properties: [{ key: 'LQI', value: String(zn.lqi), icon: 'signal', visible: true }] } : {}),
+          ...(zn.model ? { os: zn.model } : {}),
+          ...(zn.parent_id ? { parent_id: zn.parent_id } : {}),
+        },
+      }
+      addNode(newNode)
+    })
+    // Add IoT edges between Zigbee devices
+    zigbeeEdges.forEach((ze) => {
+      const sourceId = ze.source
+      const targetId = ze.target
+      onConnect({
+        source: sourceId,
+        sourceHandle: 'top',
+        target: targetId,
+        targetHandle: 'top-t',
+        type: 'iot',
+      } as unknown as import('@xyflow/react').Connection)
+    })
+    markUnsaved()
+  }, [addNode, onConnect, snapshotHistory, markUnsaved])
+
   const handleEdgeConnect = useCallback((connection: Connection) => {
     setPendingConnection(connection)
   }, [])
@@ -384,6 +429,7 @@ export default function App() {
             onAddNode={() => setAddNodeOpen(true)}
             onAddGroupRect={() => setAddGroupRectOpen(true)}
             onScan={() => setScanConfigOpen(true)}
+            onZigbeeImport={() => setZigbeeImportOpen(true)}
             onSave={handleSave}
             onNodeApproved={setEditNodeId}
             forceView={sidebarForceView}
@@ -480,6 +526,14 @@ export default function App() {
               setSidebarForceView(undefined)
               setTimeout(() => setSidebarForceView('history'), 0)
             }}
+          />
+        )}
+
+        {!STANDALONE && (
+          <ZigbeeImportModal
+            open={zigbeeImportOpen}
+            onClose={() => setZigbeeImportOpen(false)}
+            onAddToCanvas={handleZigbeeAddToCanvas}
           />
         )}
 

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Trash2, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, X, LogOut } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Trash2, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, X, LogOut, Network } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -36,13 +36,14 @@ interface SidebarProps {
   onAddNode: () => void
   onAddGroupRect: () => void
   onScan: () => void
+  onZigbeeImport: () => void
   onSave: () => void
   onNodeApproved: (nodeId: string) => void
   forceView?: SidebarView
   highlightPendingId?: string
 }
 
-export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeApproved, forceView, highlightPendingId }: SidebarProps) {
+export function Sidebar({ onAddNode, onAddGroupRect, onScan, onZigbeeImport, onSave, onNodeApproved, forceView, highlightPendingId }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [activeView, setActiveView] = useState<SidebarView>(forceView ?? 'canvas')
   const [prevForceView, setPrevForceView] = useState(forceView)
@@ -137,6 +138,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onSave, onNodeAppro
         <SidebarItem icon={Plus} label="Add Node" collapsed={collapsed} onClick={onAddNode} />
         <SidebarItem icon={Square} label="Add Zone" collapsed={collapsed} onClick={onAddGroupRect} />
         {!STANDALONE && <SidebarItem icon={ScanLine} label="Scan Network" collapsed={collapsed} onClick={handleScan} />}
+        {!STANDALONE && <SidebarItem icon={Network} label="Zigbee Import" collapsed={collapsed} onClick={onZigbeeImport} />}
         <SidebarItem
           icon={hideIp ? EyeOff : Eye}
           label={hideIp ? 'Show IPs' : 'Hide IPs'}

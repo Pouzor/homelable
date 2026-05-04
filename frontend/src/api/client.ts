@@ -72,3 +72,26 @@ export const settingsApi = {
   get: () => api.get<{ interval_seconds: number }>('/settings'),
   save: (data: { interval_seconds: number }) => api.post<{ interval_seconds: number }>('/settings', data),
 }
+
+export const zigbeeApi = {
+  testConnection: (data: {
+    mqtt_host: string
+    mqtt_port: number
+    mqtt_username?: string
+    mqtt_password?: string
+  }) =>
+    api.post<{ connected: boolean; message: string }>('/zigbee/test-connection', data),
+
+  importNetwork: (data: {
+    mqtt_host: string
+    mqtt_port: number
+    mqtt_username?: string
+    mqtt_password?: string
+    base_topic?: string
+  }) =>
+    api.post<{
+      nodes: import('@/components/zigbee/types').ZigbeeNode[]
+      edges: import('@/components/zigbee/types').ZigbeeEdge[]
+      device_count: number
+    }>('/zigbee/import', data),
+}
