@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 try:
-    import aiomqtt  # type: ignore[import]
+    import aiomqtt
 except ImportError:  # pragma: no cover
     aiomqtt = None  # type: ignore[assignment]
 
@@ -29,41 +30,45 @@ def _z2m_type_to_homelable(device_type: str) -> str:
     return mapping.get(device_type, "zigbee_enddevice")
 
 
-def parse_networkmap(payload: dict) -> tuple[list[dict], list[dict]]:
+def parse_networkmap(
+    payload: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Parse a Z2M networkmap response payload into node + edge lists.
 
     Returns:
         (nodes, edges) where each node/edge is a plain dict with the fields
         expected by ZigbeeNodeOut / ZigbeeEdgeOut.
     """
-    data = payload.get("data", {})
-    routes = data.get("routes", [])
+    data: dict[str, Any] = payload.get("data", {})
+    routes: list[dict[str, Any]] = data.get("routes", [])
 
-    nodes_list: list[dict] = []
-    edges_list: list[dict] = []
+    nodes_list: list[dict[str, Any]] = []
+    edges_list: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
 
     # Coordinator is always present; find it first so we can wire the hierarchy
     coordinator_id: str | None = None
 
     for route in routes:
-        source = route.get("source", {})
+        source: dict[str, Any] = route.get("source", {})
         if not source:
             continue
 
-        ieee = source.get("ieeeAddr") or source.get("ieee_address") or ""
+        ieee: str = source.get("ieeeAddr") or source.get("ieee_address") or ""
         if not ieee:
             continue
 
         device_type: str = source.get("type", "EndDevice")
-        friendly_name: str = source.get("friendlyName") or source.get("friendly_name") or ieee
-        model: str | None = source.get("modelID") or source.get("model")
-        vendor: str | None = source.get("vendor")
+        friendly_name: str = (
+            source.get("friendlyName") or source.get("friendly_name") or ieee
+        )
+        model: str | None = source.get("modelID") or source.get("model") or None
+        vendor: str | None = source.get("vendor") or None
 
         if ieee not in seen_ids:
             seen_ids.add(ieee)
             node_type = _z2m_type_to_homelable(device_type)
-            node: dict = {
+            node: dict[str, Any] = {
                 "id": ieee,
                 "label": friendly_name,
                 "type": node_type,
@@ -80,10 +85,10 @@ def parse_networkmap(payload: dict) -> tuple[list[dict], list[dict]]:
                 coordinator_id = ieee
 
         # Walk the route targets to build edges and collect additional nodes
-        targets = route.get("routes", [])
+        targets: list[dict[str, Any]] = route.get("routes", [])
         for target_entry in targets:
-            target_src = target_entry.get("target", {})
-            target_ieee = (
+            target_src: dict[str, Any] = target_entry.get("target", {})
+            target_ieee: str = (
                 target_src.get("ieeeAddr") or target_src.get("ieee_address") or ""
             )
             lqi: int | None = target_entry.get("lqi")
@@ -93,12 +98,17 @@ def parse_networkmap(payload: dict) -> tuple[list[dict], list[dict]]:
 
             if target_ieee not in seen_ids:
                 seen_ids.add(target_ieee)
-                t_source = target_entry.get("target", {})
-                t_type: str = t_source.get("type", "EndDevice")
-                t_fn: str = t_source.get("friendlyName") or t_source.get("friendly_name") or target_ieee
-                t_model: str | None = t_source.get("modelID") or t_source.get("model")
-                t_vendor: str | None = t_source.get("vendor")
-                t_node: dict = {
+                t_type: str = target_src.get("type", "EndDevice")
+                t_fn: str = (
+                    target_src.get("friendlyName")
+                    or target_src.get("friendly_name")
+                    or target_ieee
+                )
+                t_model: str | None = (
+                    target_src.get("modelID") or target_src.get("model") or None
+                )
+                t_vendor: str | None = target_src.get("vendor") or None
+                t_node: dict[str, Any] = {
                     "id": target_ieee,
                     "label": t_fn,
                     "type": _z2m_type_to_homelable(t_type),
@@ -121,7 +131,6 @@ def parse_networkmap(payload: dict) -> tuple[list[dict], list[dict]]:
             if node["device_type"] == "Router":
                 node["parent_id"] = coordinator_id
             elif node["device_type"] == "EndDevice":
-                # Try to find the nearest router from the edge list
                 parent = _find_parent_router(node["id"], router_ids, edges_list)
                 node["parent_id"] = parent or coordinator_id
 
@@ -131,14 +140,16 @@ def parse_networkmap(payload: dict) -> tuple[list[dict], list[dict]]:
 def _find_parent_router(
     device_id: str,
     router_ids: set[str],
-    edges: list[dict],
+    edges: list[dict[str, Any]],
 ) -> str | None:
     """Return the first router that has a direct edge to device_id."""
     for edge in edges:
-        if edge["target"] == device_id and edge["source"] in router_ids:
-            return edge["source"]
-        if edge["source"] == device_id and edge["target"] in router_ids:
-            return edge["target"]
+        src: str = edge["source"]
+        tgt: str = edge["target"]
+        if tgt == device_id and src in router_ids:
+            return src
+        if src == device_id and tgt in router_ids:
+            return tgt
     return None
 
 
@@ -148,7 +159,7 @@ async def fetch_networkmap(
     base_topic: str,
     username: str | None = None,
     password: str | None = None,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Connect to the MQTT broker, request the Z2M networkmap, and return (nodes, edges).
 
     Raises:
@@ -157,13 +168,16 @@ async def fetch_networkmap(
         ValueError: if the response payload is malformed.
     """
     if aiomqtt is None:  # pragma: no cover
-        raise ImportError("aiomqtt is required for Zigbee import. Install it with: pip install aiomqtt")
+        raise ImportError(
+            "aiomqtt is required for Zigbee import. "
+            "Install it with: pip install aiomqtt"
+        )
 
     request_topic = _NETWORKMAP_REQUEST_TOPIC.format(base_topic=base_topic)
     response_topic = _NETWORKMAP_RESPONSE_TOPIC.format(base_topic=base_topic)
 
     result_event: asyncio.Event = asyncio.Event()
-    response_payload: dict = {}
+    response_payload: dict[str, Any] = {}
 
     try:
         async with aiomqtt.Client(
@@ -182,10 +196,16 @@ async def fetch_networkmap(
             async def _wait_for_response() -> None:
                 async for message in client.messages:
                     if str(message.topic) == response_topic:
+                        raw = message.payload
                         try:
-                            response_payload.update(json.loads(message.payload))
+                            payload_str = (
+                                raw.decode() if isinstance(raw, bytes | bytearray) else str(raw)
+                            )
+                            response_payload.update(json.loads(payload_str))
                         except (json.JSONDecodeError, TypeError) as exc:
-                            raise ValueError(f"Malformed networkmap response: {exc}") from exc
+                            raise ValueError(
+                                f"Malformed networkmap response: {exc}"
+                            ) from exc
                         result_event.set()
                         break
 
@@ -229,4 +249,6 @@ async def test_mqtt_connection(
     except aiomqtt.MqttError as exc:
         raise ConnectionError(f"MQTT connection failed: {exc}") from exc
     except asyncio.TimeoutError as exc:
-        raise TimeoutError(f"Connection to {mqtt_host}:{mqtt_port} timed out") from exc
+        raise TimeoutError(
+            f"Connection to {mqtt_host}:{mqtt_port} timed out"
+        ) from exc
