@@ -727,7 +727,7 @@ function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?
 
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5"
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5 cursor-pointer"
           title="Edit service"
         >
           <Pencil size={10} />
@@ -735,7 +735,7 @@ function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?
 
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5"
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5 cursor-pointer"
           title="Remove service"
         >
           <X size={10} />
