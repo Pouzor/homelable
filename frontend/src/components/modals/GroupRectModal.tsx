@@ -140,20 +140,12 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
           {/* Font */}
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Font</Label>
-
-            <Select
-              value={form.font}
-              onValueChange={(v: string | null) => set('font', v ?? 'inter')}
-            >
-              <SelectTrigger
-                className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
-                aria-label="Font selector"
-              >
+            <Select value={form.font} onValueChange={(v: string | null) => set('font', v ?? 'inter')}>
+              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Font selector">
                 <SelectValue>
                   {getFontLabel(form.font)}
                 </SelectValue>
               </SelectTrigger>
-
               <SelectContent className="bg-[#21262d] border-[#30363d]">
                 {FONTS.map((f) => (
                   <SelectItem key={f.value} value={f.value} className="text-sm">
