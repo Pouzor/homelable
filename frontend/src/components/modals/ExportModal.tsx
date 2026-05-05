@@ -3,6 +3,10 @@ import { Download, Loader2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { exportToPng, EXPORT_QUALITY_OPTIONS, type ExportQuality } from '@/utils/export'
+import { exportCanvasToBase64 } from '@/utils/exportCanvas'
+import { useCanvasStore } from '@/stores/canvasStore'
+import { serializeNode, serializeEdge } from '@/utils/canvasSerializer'
+import { toast } from 'sonner'
 
 interface ExportModalProps {
   open: boolean
@@ -13,6 +17,8 @@ interface ExportModalProps {
 export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
   const [quality, setQuality] = useState<ExportQuality>('high')
   const [exporting, setExporting] = useState(false)
+  const nodes = useCanvasStore((s) => s.nodes)
+  const edges = useCanvasStore((s) => s.edges)
 
   const handleExport = async () => {
     const el = getElement()
@@ -23,6 +29,26 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
       onClose()
     } finally {
       setExporting(false)
+    }
+  }
+
+  const handleExportBase64 = async () => {
+    const nodesPayload = nodes.map(serializeNode)
+    const edgesPayload = edges.map(serializeEdge)
+    const payload = {
+      schema_version: 1,
+      canvas: {
+        nodes: nodesPayload,
+        edges: edgesPayload,
+        meta: { label: 'Canvas Export', created_at: new Date().toISOString() },
+      },
+    }
+    const b64 = exportCanvasToBase64(payload)
+    try {
+      await navigator.clipboard.writeText(b64)
+      toast.success('Copied Base64 to clipboard')
+    } catch (err) {
+      toast.error('Failed to copy Base64 to clipboard')
     }
   }
 
@@ -54,6 +80,7 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
 
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={onClose} disabled={exporting}>Cancel</Button>
+          <Button variant="outline" onClick={handleExportBase64} disabled={exporting}>Copy as Base64</Button>
           <Button
             onClick={handleExport}
             disabled={exporting}
