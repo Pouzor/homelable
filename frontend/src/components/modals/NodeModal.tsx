@@ -349,7 +349,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   style={{ background: showServicesEnabled ? resolvedNodeColors.icon : '#30363d' }}
                 >
                   <span
-                    className="pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out"
+                    className="pointer-events-none absolute top-px left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out"
                     style={{ transform: showServicesEnabled ? 'translateX(16px)' : 'translateX(0)' }}
                   />
                 </button>
