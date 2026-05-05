@@ -85,7 +85,14 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
   const { data } = node
   const services = data.services ?? []
   const statusColor = STATUS_COLORS[data.status]
-  const host = data.ip ?? data.hostname
+  const host = data.ip ? primaryIp(data.ip) : data.hostname
+  const ipAddresses = data.ip
+    ? data.ip
+        .split(/[\n,;]+/)
+        .map((ip) => primaryIp(ip.trim()))
+        .filter(Boolean)
+        .filter((ip, index, all) => all.indexOf(ip) === index)
+    : []
 
   const handleDelete = () => {
     if (confirm(`Delete "${data.label}"?`)) {
@@ -223,12 +230,26 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
             </a>
           </div>
         )}
-        {data.ip && (
-          <div className="flex justify-between gap-2 items-baseline">
-            <span className="text-muted-foreground text-xs shrink-0">IP Address</span>
-            <a href={`http://${primaryIp(data.ip)}`} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[#00d4ff] hover:underline truncate flex items-center gap-1" title={data.ip}>
-              {data.ip}<ExternalLink size={10} className="shrink-0" />
-            </a>
+        {ipAddresses.length > 0 && (
+          <div className="flex justify-between gap-2 items-start">
+            <span className="text-muted-foreground text-xs shrink-0">{ipAddresses.length > 1 ? 'IP Addresses' : 'IP Address'}</span>
+            <div className="flex flex-wrap justify-end items-center gap-y-1 max-w-[65%]">
+              {ipAddresses.map((ip, index) => (
+                <span key={`${ip}-${index}`} className="inline-flex items-center">
+                  <a
+                    href={`http://${ip}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-mono text-[#00d4ff] hover:underline inline-flex items-center gap-1 break-all"
+                    title={ip}
+                  >
+                    {ip}
+                    <ExternalLink size={10} className="shrink-0" />
+                  </a>
+                  {index < ipAddresses.length - 1 && <span className="text-muted-foreground/70 px-1">,</span>}
+                </span>
+              ))}
+            </div>
           </div>
         )}
         {data.mac && <DetailRow label="MAC" value={data.mac} mono />}
