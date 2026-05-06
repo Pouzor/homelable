@@ -21,6 +21,30 @@ _CONNECTION_TIMEOUT = 5.0   # seconds to verify broker reachability
 _NETWORKMAP_TIMEOUT = 10.0  # seconds to wait for the networkmap response
 
 
+def _sanitize_mqtt_error(exc: BaseException) -> str:
+    """Return a generic, credential-free message for an MQTT error.
+
+    The raw aiomqtt/paho error string can include the broker URI with
+    embedded credentials (e.g. ``mqtt://user:pass@host``) or auth-related
+    detail that should not leak to API clients. Map known patterns to
+    coarse categories; default to a generic failure message. The original
+    exception is logged at WARNING level for operator debugging.
+    """
+    logger.warning("MQTT error (sanitized for client): %r", exc)
+    raw = str(exc).lower()
+    if "not authoriz" in raw or "bad user" in raw or "bad username" in raw:
+        return "Authentication failed"
+    if "refused" in raw:
+        return "Connection refused by broker"
+    if "name or service not known" in raw or "getaddrinfo" in raw or "nodename nor servname" in raw:
+        return "Broker hostname could not be resolved"
+    if "ssl" in raw or "tls" in raw or "certificate" in raw:
+        return "TLS handshake failed"
+    if "timed out" in raw or "timeout" in raw:
+        return "Connection to broker timed out"
+    return "MQTT connection failed"
+
+
 def _build_tls_context(insecure: bool) -> ssl.SSLContext:
     """Build an SSL context for MQTT TLS. If insecure, skip verification."""
     ctx = ssl.create_default_context()
@@ -231,11 +255,9 @@ async def fetch_networkmap(
             await asyncio.wait_for(_wait_for_response(), timeout=_NETWORKMAP_TIMEOUT)
 
     except aiomqtt.MqttError as exc:
-        raise ConnectionError(f"MQTT connection failed: {exc}") from exc
+        raise ConnectionError(_sanitize_mqtt_error(exc)) from exc
     except asyncio.TimeoutError as exc:
-        raise TimeoutError(
-            f"Timed out waiting for networkmap response from {mqtt_host}:{mqtt_port}"
-        ) from exc
+        raise TimeoutError("Timed out waiting for networkmap response") from exc
 
     if not response_payload:
         raise ValueError("Empty networkmap response received")
@@ -271,8 +293,6 @@ async def test_mqtt_connection(
         ):
             return True
     except aiomqtt.MqttError as exc:
-        raise ConnectionError(f"MQTT connection failed: {exc}") from exc
+        raise ConnectionError(_sanitize_mqtt_error(exc)) from exc
     except asyncio.TimeoutError as exc:
-        raise TimeoutError(
-            f"Connection to {mqtt_host}:{mqtt_port} timed out"
-        ) from exc
+        raise TimeoutError("Connection to broker timed out") from exc

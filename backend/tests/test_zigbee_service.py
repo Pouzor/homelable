@@ -437,3 +437,67 @@ async def test_test_mqtt_connection_insecure_passes_no_verify_context() -> None:
         ctx = mock_aiomqtt.Client.call_args.kwargs["tls_context"]
         assert ctx.verify_mode == ssl.CERT_NONE
         assert ctx.check_hostname is False
+
+
+# ---------------------------------------------------------------------------
+# Sanitize MQTT errors
+# ---------------------------------------------------------------------------
+
+from app.services.zigbee_service import _sanitize_mqtt_error  # noqa: E402
+
+
+def test_sanitize_auth_error_does_not_leak_credentials() -> None:
+    msg = _sanitize_mqtt_error(
+        Exception("Not authorized: bad username or password for user=admin pwd=secret")
+    )
+    assert msg == "Authentication failed"
+    assert "admin" not in msg
+    assert "secret" not in msg
+
+
+def test_sanitize_refused() -> None:
+    assert _sanitize_mqtt_error(Exception("Connection refused")) == "Connection refused by broker"
+
+
+def test_sanitize_dns_failure_strips_host() -> None:
+    msg = _sanitize_mqtt_error(
+        Exception("[Errno 8] nodename nor servname provided, or not known: broker.internal.lan")
+    )
+    assert msg == "Broker hostname could not be resolved"
+    assert "broker.internal.lan" not in msg
+
+
+def test_sanitize_tls_error() -> None:
+    assert _sanitize_mqtt_error(
+        Exception("[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed")
+    ) == "TLS handshake failed"
+
+
+def test_sanitize_unknown_falls_back_to_generic() -> None:
+    msg = _sanitize_mqtt_error(Exception("mqtt://admin:hunter2@broker:1883 weird state"))
+    assert msg == "MQTT connection failed"
+    assert "hunter2" not in msg
+    assert "admin" not in msg
+
+
+@pytest.mark.asyncio
+async def test_fetch_networkmap_does_not_leak_creds_in_connection_error() -> None:
+    class _FakeClient:
+        async def __aenter__(self):
+            raise Exception("Not authorized: rejected mqtt://admin:hunter2@host")
+
+        async def __aexit__(self, *_):
+            pass
+
+    with patch("app.services.zigbee_service.aiomqtt") as mock_aiomqtt:
+        mock_aiomqtt.Client.return_value = _FakeClient()
+        mock_aiomqtt.MqttError = Exception
+
+        with pytest.raises(ConnectionError) as ei:
+            await fetch_networkmap(
+                mqtt_host="host", mqtt_port=1883, base_topic="zigbee2mqtt"
+            )
+    msg = str(ei.value)
+    assert "hunter2" not in msg
+    assert "admin" not in msg
+    assert msg == "Authentication failed"

@@ -78,6 +78,6 @@ async def test_zigbee_connection(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except (ConnectionError, TimeoutError) as exc:
         return ZigbeeTestConnectionResponse(connected=False, message=str(exc))
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected error during connection test")
-        return ZigbeeTestConnectionResponse(connected=False, message=f"Unexpected error: {exc}")
+        return ZigbeeTestConnectionResponse(connected=False, message="Unexpected error")
