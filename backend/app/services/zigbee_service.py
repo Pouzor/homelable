@@ -150,7 +150,13 @@ def parse_networkmap(
         if node["device_type"] == "Coordinator":
             coordinator_id = node["id"]
 
-    edges_list: list[dict[str, Any]] = []
+    # Z2M `links` is bidirectional/mesh: every pair appears twice and routers
+    # carry sibling-mesh paths. Walk it only to extract LQI per device and to
+    # resolve which router an end device hangs off; do NOT emit edges directly
+    # from links. The final edge set is the strict parent→child tree built
+    # from parent_id below — that avoids duplicate edges and keeps the visual
+    # flow consistent (parent bottom → child top).
+    raw_edges: list[dict[str, Any]] = []
     lqi_by_id: dict[str, int] = {}
 
     for link in raw_links:
@@ -164,7 +170,7 @@ def parse_networkmap(
             continue
         if src not in seen_ids or tgt not in seen_ids:
             continue
-        edges_list.append({"source": src, "target": tgt})
+        raw_edges.append({"source": src, "target": tgt})
         lqi = link.get("lqi") or link.get("linkquality")
         if isinstance(lqi, int) and tgt not in lqi_by_id:
             lqi_by_id[tgt] = lqi
@@ -180,8 +186,15 @@ def parse_networkmap(
             if node["device_type"] == "Router":
                 node["parent_id"] = coordinator_id
             elif node["device_type"] == "EndDevice":
-                parent = _find_parent_router(node["id"], router_ids, edges_list)
+                parent = _find_parent_router(node["id"], router_ids, raw_edges)
                 node["parent_id"] = parent or coordinator_id
+
+    # Final edges = strict parent → child tree (one edge per non-coordinator)
+    edges_list: list[dict[str, Any]] = [
+        {"source": node["parent_id"], "target": node["id"]}
+        for node in nodes_list
+        if node.get("parent_id")
+    ]
 
     return nodes_list, edges_list
 
@@ -227,7 +240,6 @@ async def fetch_networkmap(
     request_topic = _NETWORKMAP_REQUEST_TOPIC.format(base_topic=base_topic)
     response_topic = _NETWORKMAP_RESPONSE_TOPIC.format(base_topic=base_topic)
 
-    result_event: asyncio.Event = asyncio.Event()
     response_payload: dict[str, Any] = {}
 
     tls_context = _build_tls_context(tls_insecure) if tls else None
@@ -242,6 +254,11 @@ async def fetch_networkmap(
             tls_context=tls_context,
         ) as client:
             await client.subscribe(response_topic)
+            # Give the broker a brief window to register the subscription
+            # before we publish the request. Without this, brokers that
+            # race SUBACK with our PUBLISH may deliver the response before
+            # the subscription is active and we'd hang until timeout.
+            await asyncio.sleep(0.1)
             await client.publish(
                 request_topic,
                 json.dumps({"type": "raw", "routes": False}),
@@ -249,19 +266,19 @@ async def fetch_networkmap(
 
             async def _wait_for_response() -> None:
                 async for message in client.messages:
-                    if str(message.topic) == response_topic:
-                        raw = message.payload
-                        try:
-                            payload_str = (
-                                raw.decode() if isinstance(raw, bytes | bytearray) else str(raw)
-                            )
-                            response_payload.update(json.loads(payload_str))
-                        except (json.JSONDecodeError, TypeError) as exc:
-                            raise ValueError(
-                                f"Malformed networkmap response: {exc}"
-                            ) from exc
-                        result_event.set()
-                        break
+                    if str(message.topic) != response_topic:
+                        continue
+                    raw = message.payload
+                    try:
+                        payload_str = (
+                            raw.decode() if isinstance(raw, bytes | bytearray) else str(raw)
+                        )
+                        response_payload.update(json.loads(payload_str))
+                    except (json.JSONDecodeError, TypeError) as exc:
+                        raise ValueError(
+                            f"Malformed networkmap response: {exc}"
+                        ) from exc
+                    return
 
             await asyncio.wait_for(_wait_for_response(), timeout=_NETWORKMAP_TIMEOUT)
 

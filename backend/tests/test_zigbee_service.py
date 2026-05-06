@@ -218,6 +218,56 @@ class TestParseNetworkmap:
         _, edges = parse_networkmap(payload)
         assert edges == []
 
+    def test_bidirectional_links_yield_single_edge(self) -> None:
+        """Z2M links are bidirectional — every pair appears twice. The output
+        must collapse to a single parent→child edge (no back-link, no dup)."""
+        coord = "0x0000"
+        router = "0x0001"
+        payload = _wrap(
+            nodes=[_make_node(coord, "Coordinator"), _make_node(router, "Router")],
+            links=[
+                _make_link(coord, router),
+                _make_link(router, coord),  # reverse direction
+            ],
+        )
+        _, edges = parse_networkmap(payload)
+        assert edges == [{"source": coord, "target": router}]
+
+    def test_router_mesh_siblings_dropped(self) -> None:
+        """Router↔router mesh paths in `links` must NOT produce sibling edges
+        in the final tree. Each router gets exactly one edge from coordinator."""
+        coord = "0x0000"
+        r1 = "0x0001"
+        r2 = "0x0002"
+        payload = _wrap(
+            nodes=[
+                _make_node(coord, "Coordinator"),
+                _make_node(r1, "Router"),
+                _make_node(r2, "Router"),
+            ],
+            links=[
+                _make_link(coord, r1),
+                _make_link(coord, r2),
+                _make_link(r1, r2),  # mesh sibling — must be dropped
+                _make_link(r2, r1),
+            ],
+        )
+        _, edges = parse_networkmap(payload)
+        pairs = {(e["source"], e["target"]) for e in edges}
+        assert pairs == {(coord, r1), (coord, r2)}
+
+    def test_coordinator_has_no_incoming_edge(self) -> None:
+        coord = "0x0000"
+        end = "0x0001"
+        payload = _wrap(
+            nodes=[_make_node(coord, "Coordinator"), _make_node(end, "EndDevice")],
+            links=[_make_link(end, coord)],  # back-edge from end to coord
+        )
+        _, edges = parse_networkmap(payload)
+        # No edge should target the coordinator
+        assert all(e["target"] != coord for e in edges)
+        assert edges == [{"source": coord, "target": end}]
+
 
 # ---------------------------------------------------------------------------
 # _find_parent_router
@@ -284,11 +334,15 @@ async def test_fetch_networkmap_success() -> None:
     class _FakeMessage:
         topic = "zigbee2mqtt/bridge/response/networkmap"
         payload = json.dumps(SAMPLE_RESPONSE_PAYLOAD).encode()
+        _yielded = False
 
         def __aiter__(self):
             return self
 
         async def __anext__(self):
+            if self._yielded:
+                raise StopAsyncIteration
+            self._yielded = True
             return self
 
     class _FakeClient:

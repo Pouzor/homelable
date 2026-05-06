@@ -345,18 +345,24 @@ export default function App() {
       }
       addNode(newNode)
     })
-    // Add IoT edges between Zigbee devices
+    // Add IoT edges between Zigbee devices: parent bottom -> child top
     zigbeeEdges.forEach((ze) => {
-      const sourceId = ze.source
-      const targetId = ze.target
       onConnect({
-        source: sourceId,
-        sourceHandle: 'top',
-        target: targetId,
+        source: ze.source,
+        sourceHandle: 'bottom',
+        target: ze.target,
         targetHandle: 'top-t',
         type: 'iot',
       } as unknown as import('@xyflow/react').Connection)
     })
+    // Auto-select only the freshly imported nodes so the user can drag the
+    // whole subtree as a group.
+    const importedIds = new Set(zigbeeNodes.map((zn) => zn.id))
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((n) => ({ ...n, selected: importedIds.has(n.id) })),
+      selectedNodeIds: Array.from(importedIds),
+      selectedNodeId: importedIds.size === 1 ? Array.from(importedIds)[0] : null,
+    }))
     markUnsaved()
   }, [addNode, onConnect, snapshotHistory, markUnsaved])
 
