@@ -20,34 +20,43 @@ from app.services.zigbee_service import (
 )
 
 # ---------------------------------------------------------------------------
-# Helper builders
+# Helper builders — real Z2M `bridge/response/networkmap` shape
+# (data.value.nodes + data.value.links)
 # ---------------------------------------------------------------------------
 
-def _make_route(
+def _make_node(
     ieee: str,
     device_type: str = "EndDevice",
     friendly_name: str | None = None,
-    targets: list[dict[str, Any]] | None = None,
+    model: str | None = None,
+    vendor: str | None = None,
 ) -> dict[str, Any]:
-    """Build a minimal Z2M route entry for testing."""
+    entry: dict[str, Any] = {
+        "ieeeAddr": ieee,
+        "type": device_type,
+        "friendlyName": friendly_name or ieee,
+    }
+    if model or vendor:
+        entry["definition"] = {"model": model, "vendor": vendor}
+    return entry
+
+
+def _make_link(source_ieee: str, target_ieee: str, lqi: int = 200) -> dict[str, Any]:
     return {
-        "source": {
-            "ieeeAddr": ieee,
-            "type": device_type,
-            "friendlyName": friendly_name or ieee,
-        },
-        "routes": targets or [],
+        "source": {"ieeeAddr": source_ieee},
+        "target": {"ieeeAddr": target_ieee},
+        "lqi": lqi,
     }
 
 
-def _make_target(
-    ieee: str,
-    device_type: str = "EndDevice",
-    lqi: int = 200,
-) -> dict[str, Any]:
+def _wrap(nodes: list[dict[str, Any]], links: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     return {
-        "target": {"ieeeAddr": ieee, "type": device_type, "friendlyName": ieee},
-        "lqi": lqi,
+        "data": {
+            "type": "raw",
+            "routes": False,
+            "value": {"nodes": nodes, "links": links or []},
+        },
+        "status": "ok",
     }
 
 
@@ -79,19 +88,13 @@ class TestParseNetworkmap:
         assert nodes == []
         assert edges == []
 
-    def test_empty_routes(self) -> None:
-        nodes, edges = parse_networkmap({"data": {"routes": []}})
+    def test_empty_value(self) -> None:
+        nodes, edges = parse_networkmap(_wrap([], []))
         assert nodes == []
         assert edges == []
 
     def test_coordinator_only(self) -> None:
-        payload = {
-            "data": {
-                "routes": [
-                    _make_route("0x0000000000000000", "Coordinator", "Coordinator"),
-                ]
-            }
-        }
+        payload = _wrap([_make_node("0x0000000000000000", "Coordinator", "Coordinator")])
         nodes, edges = parse_networkmap(payload)
         assert len(nodes) == 1
         assert nodes[0]["type"] == "zigbee_coordinator"
@@ -103,24 +106,17 @@ class TestParseNetworkmap:
         router_ieee = "0x0000000000000001"
         end_ieee = "0x0000000000000002"
 
-        payload = {
-            "data": {
-                "routes": [
-                    _make_route(
-                        coord_ieee,
-                        "Coordinator",
-                        "Coordinator",
-                        targets=[_make_target(router_ieee, "Router")],
-                    ),
-                    _make_route(
-                        router_ieee,
-                        "Router",
-                        "my_router",
-                        targets=[_make_target(end_ieee, "EndDevice")],
-                    ),
-                ]
-            }
-        }
+        payload = _wrap(
+            nodes=[
+                _make_node(coord_ieee, "Coordinator", "Coordinator"),
+                _make_node(router_ieee, "Router", "my_router"),
+                _make_node(end_ieee, "EndDevice"),
+            ],
+            links=[
+                _make_link(coord_ieee, router_ieee),
+                _make_link(router_ieee, end_ieee),
+            ],
+        )
 
         nodes, edges = parse_networkmap(payload)
         node_by_id = {n["id"]: n for n in nodes}
@@ -136,75 +132,90 @@ class TestParseNetworkmap:
         # Parent hierarchy
         assert node_by_id[router_ieee]["parent_id"] == coord_ieee
         assert node_by_id[end_ieee]["parent_id"] == router_ieee
+        assert len(edges) == 2
 
     def test_no_duplicate_nodes(self) -> None:
         ieee = "0x0000000000000001"
-        payload = {
-            "data": {
-                "routes": [
-                    _make_route(ieee, "Router"),
-                    _make_route(ieee, "Router"),  # duplicate
-                ]
-            }
-        }
+        payload = _wrap(
+            nodes=[_make_node(ieee, "Router"), _make_node(ieee, "Router")],
+        )
         nodes, _ = parse_networkmap(payload)
         assert len(nodes) == 1
 
     def test_edges_built_correctly(self) -> None:
         coord = "0x0000"
         router = "0x0001"
-        payload = {
-            "data": {
-                "routes": [
-                    _make_route(
-                        coord,
-                        "Coordinator",
-                        targets=[_make_target(router, "Router")],
-                    )
-                ]
-            }
-        }
+        payload = _wrap(
+            nodes=[_make_node(coord, "Coordinator"), _make_node(router, "Router")],
+            links=[_make_link(coord, router)],
+        )
         _, edges = parse_networkmap(payload)
         assert len(edges) == 1
         assert edges[0]["source"] == coord
         assert edges[0]["target"] == router
 
     def test_friendly_name_used_as_label(self) -> None:
-        payload = {
-            "data": {
-                "routes": [
-                    _make_route("0xABCD", "EndDevice", "Living Room Sensor")
-                ]
-            }
-        }
+        payload = _wrap([_make_node("0xABCD", "EndDevice", "Living Room Sensor")])
         nodes, _ = parse_networkmap(payload)
         assert nodes[0]["label"] == "Living Room Sensor"
 
     def test_enddevice_falls_back_to_coordinator_when_no_router(self) -> None:
         coord = "0x0000"
         end = "0x0003"
-        payload = {
-            "data": {
-                "routes": [
-                    _make_route(coord, "Coordinator"),
-                    _make_route(end, "EndDevice"),
-                ]
-            }
-        }
+        payload = _wrap([_make_node(coord, "Coordinator"), _make_node(end, "EndDevice")])
         nodes, _ = parse_networkmap(payload)
         end_node = next(n for n in nodes if n["id"] == end)
         assert end_node["parent_id"] == coord
 
     def test_missing_ieee_skipped(self) -> None:
-        payload = {
-            "data": {
-                "routes": [
-                    {"source": {}, "routes": []},  # no ieeeAddr
-                ]
-            }
-        }
+        payload = _wrap([{"type": "EndDevice"}])  # no ieeeAddr
         nodes, edges = parse_networkmap(payload)
         assert nodes == []
+        assert edges == []
+
+    def test_lqi_propagated_from_link_to_target_node(self) -> None:
+        coord = "0x0000"
+        end = "0x0001"
+        payload = _wrap(
+            nodes=[_make_node(coord, "Coordinator"), _make_node(end, "EndDevice")],
+            links=[_make_link(coord, end, lqi=180)],
+        )
+        nodes, _ = parse_networkmap(payload)
+        end_node = next(n for n in nodes if n["id"] == end)
+        assert end_node["lqi"] == 180
+
+    def test_definition_model_and_vendor_extracted(self) -> None:
+        payload = _wrap([
+            _make_node("0xAA", "EndDevice", "Sensor", model="WSDCGQ11LM", vendor="Aqara"),
+        ])
+        nodes, _ = parse_networkmap(payload)
+        assert nodes[0]["model"] == "WSDCGQ11LM"
+        assert nodes[0]["vendor"] == "Aqara"
+
+    def test_legacy_shape_without_value_wrapper(self) -> None:
+        """Some Z2M variants put nodes/links directly under data."""
+        payload = {"data": {"nodes": [_make_node("0x01", "Coordinator")], "links": []}}
+        nodes, _ = parse_networkmap(payload)
+        assert len(nodes) == 1
+        assert nodes[0]["type"] == "zigbee_coordinator"
+
+    def test_routes_bool_is_ignored(self) -> None:
+        """`routes: false` echo from the request must not crash the parser."""
+        payload = {"data": {"routes": False, "type": "raw", "value": {"nodes": [], "links": []}}}
+        nodes, edges = parse_networkmap(payload)
+        assert nodes == []
+        assert edges == []
+
+    def test_malformed_nodes_not_list_raises(self) -> None:
+        with pytest.raises(ValueError, match="not a list"):
+            parse_networkmap({"data": {"value": {"nodes": "oops", "links": []}}})
+
+    def test_link_to_unknown_node_dropped(self) -> None:
+        payload = _wrap(
+            nodes=[_make_node("0x01", "Coordinator")],
+            links=[_make_link("0x01", "0xDEAD")],  # 0xDEAD not in nodes
+        )
+        _, edges = parse_networkmap(payload)
         assert edges == []
 
 
@@ -238,26 +249,31 @@ class TestFindParentRouter:
 
 SAMPLE_RESPONSE_PAYLOAD = {
     "data": {
-        "routes": [
-            {
-                "source": {
+        "type": "raw",
+        "routes": False,
+        "value": {
+            "nodes": [
+                {
                     "ieeeAddr": "0x00000000",
                     "type": "Coordinator",
                     "friendlyName": "Coordinator",
                 },
-                "routes": [
-                    {
-                        "target": {
-                            "ieeeAddr": "0x00000001",
-                            "type": "Router",
-                            "friendlyName": "router_1",
-                        },
-                        "lqi": 230,
-                    }
-                ],
-            }
-        ]
-    }
+                {
+                    "ieeeAddr": "0x00000001",
+                    "type": "Router",
+                    "friendlyName": "router_1",
+                },
+            ],
+            "links": [
+                {
+                    "source": {"ieeeAddr": "0x00000000"},
+                    "target": {"ieeeAddr": "0x00000001"},
+                    "lqi": 230,
+                }
+            ],
+        },
+    },
+    "status": "ok",
 }
 
 

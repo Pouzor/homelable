@@ -55,7 +55,7 @@ Click **Fetch Devices**. Homelable will:
 1. Connect to the broker
 2. Subscribe to the response topic
 3. Publish `{"type": "raw", "routes": false}` to the request topic
-4. Wait up to 10 seconds for the network map response
+4. Wait up to 60 seconds for the network map response (large meshes can take 30 s+)
 5. Parse and group devices by type
 
 ### 5. Select and add to canvas

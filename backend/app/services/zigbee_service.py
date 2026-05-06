@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover
 _NETWORKMAP_REQUEST_TOPIC = "{base_topic}/bridge/request/networkmap"
 _NETWORKMAP_RESPONSE_TOPIC = "{base_topic}/bridge/response/networkmap"
 _CONNECTION_TIMEOUT = 5.0   # seconds to verify broker reachability
-_NETWORKMAP_TIMEOUT = 10.0  # seconds to wait for the networkmap response
+_NETWORKMAP_TIMEOUT = 180.0  # seconds to wait for the networkmap response (large meshes can be slow)
 
 
 def _sanitize_mqtt_error(exc: BaseException) -> str:
@@ -68,99 +68,110 @@ def _z2m_type_to_homelable(device_type: str) -> str:
     return mapping.get(device_type, "zigbee_enddevice")
 
 
+def _node_from_z2m(raw: dict[str, Any]) -> dict[str, Any] | None:
+    """Build a homelable node dict from a Z2M raw networkmap node entry."""
+    ieee: str = raw.get("ieeeAddr") or raw.get("ieee_address") or ""
+    if not ieee:
+        return None
+    device_type: str = raw.get("type") or "EndDevice"
+    friendly_name: str = (
+        raw.get("friendlyName") or raw.get("friendly_name") or ieee
+    )
+    definition: dict[str, Any] = raw.get("definition") or {}
+    model: str | None = (
+        raw.get("modelID")
+        or raw.get("model")
+        or definition.get("model")
+        or None
+    )
+    vendor: str | None = raw.get("vendor") or definition.get("vendor") or None
+    return {
+        "id": ieee,
+        "label": friendly_name,
+        "type": _z2m_type_to_homelable(device_type),
+        "ieee_address": ieee,
+        "friendly_name": friendly_name,
+        "device_type": device_type,
+        "model": model,
+        "vendor": vendor,
+        "lqi": None,
+        "parent_id": None,
+    }
+
+
 def parse_networkmap(
     payload: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Parse a Z2M networkmap response payload into node + edge lists.
+    """Parse a Z2M ``bridge/response/networkmap`` payload into node + edge lists.
 
-    Returns:
-        (nodes, edges) where each node/edge is a plain dict with the fields
-        expected by ZigbeeNodeOut / ZigbeeEdgeOut.
+    Z2M raw response shape::
+
+        {
+          "data": {
+            "type": "raw",
+            "routes": false,
+            "value": {
+              "nodes": [{"ieeeAddr": ..., "type": "Coordinator|Router|EndDevice",
+                         "friendlyName": ..., "definition": {"model": ..., "vendor": ...}}],
+              "links": [{"source": {"ieeeAddr": ...}, "target": {"ieeeAddr": ...},
+                         "lqi": 200, "depth": 1}]
+            }
+          },
+          "status": "ok"
+        }
+
+    Older or alternate shapes may put nodes/links directly under ``data``.
+    Both are accepted.
     """
-    data: dict[str, Any] = payload.get("data", {})
-    routes: list[dict[str, Any]] = data.get("routes", [])
+    data: dict[str, Any] = payload.get("data") or {}
+    value = data.get("value")
+    container: dict[str, Any] = value if isinstance(value, dict) else data
+
+    raw_nodes: list[dict[str, Any]] = container.get("nodes") or []
+    raw_links: list[dict[str, Any]] = container.get("links") or []
+
+    if not isinstance(raw_nodes, list):
+        raise ValueError("Malformed networkmap: 'nodes' is not a list")
+    if not isinstance(raw_links, list):
+        raise ValueError("Malformed networkmap: 'links' is not a list")
 
     nodes_list: list[dict[str, Any]] = []
-    edges_list: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
-
-    # Coordinator is always present; find it first so we can wire the hierarchy
     coordinator_id: str | None = None
 
-    for route in routes:
-        source: dict[str, Any] = route.get("source", {})
-        if not source:
+    for entry in raw_nodes:
+        if not isinstance(entry, dict):
             continue
-
-        ieee: str = source.get("ieeeAddr") or source.get("ieee_address") or ""
-        if not ieee:
+        node = _node_from_z2m(entry)
+        if node is None or node["id"] in seen_ids:
             continue
+        seen_ids.add(node["id"])
+        nodes_list.append(node)
+        if node["device_type"] == "Coordinator":
+            coordinator_id = node["id"]
 
-        device_type: str = source.get("type", "EndDevice")
-        friendly_name: str = (
-            source.get("friendlyName") or source.get("friendly_name") or ieee
-        )
-        model: str | None = source.get("modelID") or source.get("model") or None
-        vendor: str | None = source.get("vendor") or None
+    edges_list: list[dict[str, Any]] = []
+    lqi_by_id: dict[str, int] = {}
 
-        if ieee not in seen_ids:
-            seen_ids.add(ieee)
-            node_type = _z2m_type_to_homelable(device_type)
-            node: dict[str, Any] = {
-                "id": ieee,
-                "label": friendly_name,
-                "type": node_type,
-                "ieee_address": ieee,
-                "friendly_name": friendly_name,
-                "device_type": device_type,
-                "model": model,
-                "vendor": vendor,
-                "lqi": None,
-                "parent_id": None,
-            }
-            nodes_list.append(node)
-            if device_type == "Coordinator":
-                coordinator_id = ieee
+    for link in raw_links:
+        if not isinstance(link, dict):
+            continue
+        src_obj = link.get("source") or {}
+        tgt_obj = link.get("target") or {}
+        src = src_obj.get("ieeeAddr") if isinstance(src_obj, dict) else None
+        tgt = tgt_obj.get("ieeeAddr") if isinstance(tgt_obj, dict) else None
+        if not src or not tgt:
+            continue
+        if src not in seen_ids or tgt not in seen_ids:
+            continue
+        edges_list.append({"source": src, "target": tgt})
+        lqi = link.get("lqi") or link.get("linkquality")
+        if isinstance(lqi, int) and tgt not in lqi_by_id:
+            lqi_by_id[tgt] = lqi
 
-        # Walk the route targets to build edges and collect additional nodes
-        targets: list[dict[str, Any]] = route.get("routes", [])
-        for target_entry in targets:
-            target_src: dict[str, Any] = target_entry.get("target", {})
-            target_ieee: str = (
-                target_src.get("ieeeAddr") or target_src.get("ieee_address") or ""
-            )
-            lqi: int | None = target_entry.get("lqi")
-
-            if not target_ieee:
-                continue
-
-            if target_ieee not in seen_ids:
-                seen_ids.add(target_ieee)
-                t_type: str = target_src.get("type", "EndDevice")
-                t_fn: str = (
-                    target_src.get("friendlyName")
-                    or target_src.get("friendly_name")
-                    or target_ieee
-                )
-                t_model: str | None = (
-                    target_src.get("modelID") or target_src.get("model") or None
-                )
-                t_vendor: str | None = target_src.get("vendor") or None
-                t_node: dict[str, Any] = {
-                    "id": target_ieee,
-                    "label": t_fn,
-                    "type": _z2m_type_to_homelable(t_type),
-                    "ieee_address": target_ieee,
-                    "friendly_name": t_fn,
-                    "device_type": t_type,
-                    "model": t_model,
-                    "vendor": t_vendor,
-                    "lqi": lqi,
-                    "parent_id": None,
-                }
-                nodes_list.append(t_node)
-
-            edges_list.append({"source": ieee, "target": target_ieee})
+    for node in nodes_list:
+        if node["id"] in lqi_by_id:
+            node["lqi"] = lqi_by_id[node["id"]]
 
     # Build parent_id hierarchy: coordinator → routers → end devices
     if coordinator_id:

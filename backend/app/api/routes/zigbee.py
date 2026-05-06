@@ -27,8 +27,8 @@ async def import_zigbee_network(
     """Fetch the Zigbee2MQTT network map and return nodes + edges ready for canvas drop.
 
     Connects to the specified MQTT broker, publishes a networkmap request to
-    ``<base_topic>/bridge/request/networkmap``, and waits up to 10 s for the
-    response.  The devices are returned as typed homelable nodes with a
+    ``<base_topic>/bridge/request/networkmap``, and waits up to 60 s for the
+    response (large meshes can take 30 s+).  The devices are returned as typed homelable nodes with a
     coordinator → router → end-device hierarchy.
     """
     try:
