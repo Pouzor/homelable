@@ -361,3 +361,79 @@ async def test_test_mqtt_connection_failure() -> None:
 
         with pytest.raises(ConnectionError):
             await _test_mqtt_connection("bad-host", 1883)
+
+
+# ---------------------------------------------------------------------------
+# TLS context
+# ---------------------------------------------------------------------------
+
+import ssl  # noqa: E402
+
+from app.services.zigbee_service import _build_tls_context  # noqa: E402
+
+
+def test_build_tls_context_secure_verifies_cert() -> None:
+    ctx = _build_tls_context(insecure=False)
+    assert ctx.check_hostname is True
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+
+
+def test_build_tls_context_insecure_disables_verification() -> None:
+    ctx = _build_tls_context(insecure=True)
+    assert ctx.check_hostname is False
+    assert ctx.verify_mode == ssl.CERT_NONE
+
+
+@pytest.mark.asyncio
+async def test_test_mqtt_connection_passes_tls_context() -> None:
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+    with patch("app.services.zigbee_service.aiomqtt") as mock_aiomqtt:
+        mock_aiomqtt.Client.return_value = _FakeClient()
+        mock_aiomqtt.MqttError = Exception
+
+        await _test_mqtt_connection("host", 8883, tls=True)
+        kwargs = mock_aiomqtt.Client.call_args.kwargs
+        assert kwargs["tls_context"] is not None
+        assert kwargs["tls_context"].verify_mode == ssl.CERT_REQUIRED
+
+
+@pytest.mark.asyncio
+async def test_test_mqtt_connection_no_tls_context_when_disabled() -> None:
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+    with patch("app.services.zigbee_service.aiomqtt") as mock_aiomqtt:
+        mock_aiomqtt.Client.return_value = _FakeClient()
+        mock_aiomqtt.MqttError = Exception
+
+        await _test_mqtt_connection("host", 1883, tls=False)
+        assert mock_aiomqtt.Client.call_args.kwargs["tls_context"] is None
+
+
+@pytest.mark.asyncio
+async def test_test_mqtt_connection_insecure_passes_no_verify_context() -> None:
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            pass
+
+    with patch("app.services.zigbee_service.aiomqtt") as mock_aiomqtt:
+        mock_aiomqtt.Client.return_value = _FakeClient()
+        mock_aiomqtt.MqttError = Exception
+
+        await _test_mqtt_connection("host", 8883, tls=True, tls_insecure=True)
+        ctx = mock_aiomqtt.Client.call_args.kwargs["tls_context"]
+        assert ctx.verify_mode == ssl.CERT_NONE
+        assert ctx.check_hostname is False

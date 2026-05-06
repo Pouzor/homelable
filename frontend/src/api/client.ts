@@ -79,6 +79,8 @@ export const zigbeeApi = {
     mqtt_port: number
     mqtt_username?: string
     mqtt_password?: string
+    mqtt_tls?: boolean
+    mqtt_tls_insecure?: boolean
   }) =>
     api.post<{ connected: boolean; message: string }>('/zigbee/test-connection', data),
 
@@ -88,6 +90,8 @@ export const zigbeeApi = {
     mqtt_username?: string
     mqtt_password?: string
     base_topic?: string
+    mqtt_tls?: boolean
+    mqtt_tls_insecure?: boolean
   }) =>
     api.post<{
       nodes: import('@/components/zigbee/types').ZigbeeNode[]

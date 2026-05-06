@@ -20,6 +20,9 @@ interface ConnectionForm {
   mqtt_username: string
   mqtt_password: string
   base_topic: string
+  mqtt_tls: boolean
+  mqtt_tls_insecure: boolean
+  port_user_edited: boolean
 }
 
 const DEFAULT_FORM: ConnectionForm = {
@@ -28,6 +31,9 @@ const DEFAULT_FORM: ConnectionForm = {
   mqtt_username: '',
   mqtt_password: '',
   base_topic: 'zigbee2mqtt',
+  mqtt_tls: false,
+  mqtt_tls_insecure: false,
+  port_user_edited: false,
 }
 
 const DEVICE_TYPE_ICON = {
@@ -58,14 +64,35 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas }: ZigbeeImport
   const [checked, setChecked] = useState<Set<string>>(new Set())
 
   const updateField = (field: keyof ConnectionForm, value: string) =>
-    setForm((f) => ({ ...f, [field]: value }))
+    setForm((f) => ({
+      ...f,
+      [field]: value,
+      ...(field === 'mqtt_port' ? { port_user_edited: true } : {}),
+    }))
+
+  const toggleTls = (next: boolean) =>
+    setForm((f) => {
+      const port = f.port_user_edited
+        ? f.mqtt_port
+        : next
+          ? '8883'
+          : '1883'
+      return {
+        ...f,
+        mqtt_tls: next,
+        mqtt_tls_insecure: next ? f.mqtt_tls_insecure : false,
+        mqtt_port: port,
+      }
+    })
 
   const buildPayload = () => ({
     mqtt_host: form.mqtt_host.trim(),
-    mqtt_port: Number(form.mqtt_port) || 1883,
+    mqtt_port: Number(form.mqtt_port) || (form.mqtt_tls ? 8883 : 1883),
     mqtt_username: form.mqtt_username.trim() || undefined,
     mqtt_password: form.mqtt_password || undefined,
     base_topic: form.base_topic.trim() || 'zigbee2mqtt',
+    mqtt_tls: form.mqtt_tls,
+    mqtt_tls_insecure: form.mqtt_tls_insecure,
   })
 
   const handleTestConnection = async () => {
@@ -74,9 +101,11 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas }: ZigbeeImport
     try {
       const res = await zigbeeApi.testConnection({
         mqtt_host: form.mqtt_host.trim(),
-        mqtt_port: Number(form.mqtt_port) || 1883,
+        mqtt_port: Number(form.mqtt_port) || (form.mqtt_tls ? 8883 : 1883),
         mqtt_username: form.mqtt_username.trim() || undefined,
         mqtt_password: form.mqtt_password || undefined,
+        mqtt_tls: form.mqtt_tls,
+        mqtt_tls_insecure: form.mqtt_tls_insecure,
       })
       if (res.data.connected) {
         setConnectionStatus('ok')
@@ -207,8 +236,36 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas }: ZigbeeImport
                   onChange={(e) => updateField('mqtt_password', e.target.value)}
                   placeholder="••••••••"
                   type="password"
+                  autoComplete="new-password"
                   className="text-sm bg-[#0d1117] border-border"
                 />
+              </div>
+              <div className="col-span-2 flex items-center gap-4 pt-1">
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.mqtt_tls}
+                    onChange={(e) => toggleTls(e.target.checked)}
+                    className="w-3 h-3 accent-[#00d4ff] cursor-pointer"
+                  />
+                  Use TLS (port 8883)
+                </label>
+                <label
+                  className={`flex items-center gap-1.5 text-xs cursor-pointer ${
+                    form.mqtt_tls ? 'text-[#f85149]' : 'text-muted-foreground/40 cursor-not-allowed'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.mqtt_tls_insecure}
+                    disabled={!form.mqtt_tls}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, mqtt_tls_insecure: e.target.checked }))
+                    }
+                    className="w-3 h-3 accent-[#f85149] cursor-pointer disabled:cursor-not-allowed"
+                  />
+                  Skip cert verify (self-signed only)
+                </label>
               </div>
             </div>
 

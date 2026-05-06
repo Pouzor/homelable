@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import ssl
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,19 @@ _NETWORKMAP_REQUEST_TOPIC = "{base_topic}/bridge/request/networkmap"
 _NETWORKMAP_RESPONSE_TOPIC = "{base_topic}/bridge/response/networkmap"
 _CONNECTION_TIMEOUT = 5.0   # seconds to verify broker reachability
 _NETWORKMAP_TIMEOUT = 10.0  # seconds to wait for the networkmap response
+
+
+def _build_tls_context(insecure: bool) -> ssl.SSLContext:
+    """Build an SSL context for MQTT TLS. If insecure, skip verification."""
+    ctx = ssl.create_default_context()
+    if insecure:
+        logger.warning(
+            "MQTT TLS certificate verification is DISABLED — "
+            "use only with self-signed brokers on trusted networks."
+        )
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
 def _z2m_type_to_homelable(device_type: str) -> str:
@@ -159,6 +173,8 @@ async def fetch_networkmap(
     base_topic: str,
     username: str | None = None,
     password: str | None = None,
+    tls: bool = False,
+    tls_insecure: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Connect to the MQTT broker, request the Z2M networkmap, and return (nodes, edges).
 
@@ -179,6 +195,8 @@ async def fetch_networkmap(
     result_event: asyncio.Event = asyncio.Event()
     response_payload: dict[str, Any] = {}
 
+    tls_context = _build_tls_context(tls_insecure) if tls else None
+
     try:
         async with aiomqtt.Client(
             hostname=mqtt_host,
@@ -186,6 +204,7 @@ async def fetch_networkmap(
             username=username,
             password=password,
             timeout=_CONNECTION_TIMEOUT,
+            tls_context=tls_context,
         ) as client:
             await client.subscribe(response_topic)
             await client.publish(
@@ -229,6 +248,8 @@ async def test_mqtt_connection(
     mqtt_port: int,
     username: str | None = None,
     password: str | None = None,
+    tls: bool = False,
+    tls_insecure: bool = False,
 ) -> bool:
     """Attempt a quick MQTT connection to verify broker reachability.
 
@@ -237,6 +258,8 @@ async def test_mqtt_connection(
     if aiomqtt is None:  # pragma: no cover
         raise ImportError("aiomqtt is required")
 
+    tls_context = _build_tls_context(tls_insecure) if tls else None
+
     try:
         async with aiomqtt.Client(
             hostname=mqtt_host,
@@ -244,6 +267,7 @@ async def test_mqtt_connection(
             username=username,
             password=password,
             timeout=_CONNECTION_TIMEOUT,
+            tls_context=tls_context,
         ):
             return True
     except aiomqtt.MqttError as exc:

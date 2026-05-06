@@ -152,6 +152,8 @@ async def test_import_with_credentials(client: AsyncClient, headers: dict) -> No
         base_topic="z2m",
         username="admin",
         password="secret",
+        tls=False,
+        tls_insecure=False,
     )
 
 
@@ -226,3 +228,57 @@ async def test_import_missing_mqtt_host(client: AsyncClient, headers: dict) -> N
         headers=headers,
     )
     assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_import_with_tls_passes_flags(client: AsyncClient, headers: dict) -> None:
+    with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
+        mock_fetch.return_value = ([], [])
+        res = await client.post(
+            "/api/v1/zigbee/import",
+            json={
+                "mqtt_host": "broker.example.com",
+                "mqtt_port": 8883,
+                "mqtt_tls": True,
+            },
+            headers=headers,
+        )
+    assert res.status_code == 200
+    kwargs = mock_fetch.call_args.kwargs
+    assert kwargs["tls"] is True
+    assert kwargs["tls_insecure"] is False
+
+
+@pytest.mark.asyncio
+async def test_import_tls_insecure_requires_tls(client: AsyncClient, headers: dict) -> None:
+    res = await client.post(
+        "/api/v1/zigbee/import",
+        json={
+            "mqtt_host": "broker.example.com",
+            "mqtt_port": 1883,
+            "mqtt_tls": False,
+            "mqtt_tls_insecure": True,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_test_connection_with_tls(client: AsyncClient, headers: dict) -> None:
+    with patch("app.api.routes.zigbee.test_mqtt_connection") as mock_conn:
+        mock_conn.return_value = True
+        res = await client.post(
+            "/api/v1/zigbee/test-connection",
+            json={
+                "mqtt_host": "broker.example.com",
+                "mqtt_port": 8883,
+                "mqtt_tls": True,
+                "mqtt_tls_insecure": True,
+            },
+            headers=headers,
+        )
+    assert res.status_code == 200
+    kwargs = mock_conn.call_args.kwargs
+    assert kwargs["tls"] is True
+    assert kwargs["tls_insecure"] is True

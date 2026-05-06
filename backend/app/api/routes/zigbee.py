@@ -38,6 +38,8 @@ async def import_zigbee_network(
             base_topic=payload.base_topic,
             username=payload.mqtt_username,
             password=payload.mqtt_password,
+            tls=payload.mqtt_tls,
+            tls_insecure=payload.mqtt_tls_insecure,
         )
     except ImportError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -68,6 +70,8 @@ async def test_zigbee_connection(
             mqtt_port=payload.mqtt_port,
             username=payload.mqtt_username,
             password=payload.mqtt_password,
+            tls=payload.mqtt_tls,
+            tls_insecure=payload.mqtt_tls_insecure,
         )
         return ZigbeeTestConnectionResponse(connected=True, message="Connection successful")
     except ImportError as exc:
