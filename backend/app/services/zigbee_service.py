@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover
 _NETWORKMAP_REQUEST_TOPIC = "{base_topic}/bridge/request/networkmap"
 _NETWORKMAP_RESPONSE_TOPIC = "{base_topic}/bridge/response/networkmap"
 _CONNECTION_TIMEOUT = 5.0   # seconds to verify broker reachability
-_NETWORKMAP_TIMEOUT = 180.0  # seconds to wait for the networkmap response (large meshes can be slow)
+_NETWORKMAP_TIMEOUT = 300.0  # seconds to wait for the networkmap response (large meshes can be slow)
 
 
 def _sanitize_mqtt_error(exc: BaseException) -> str:

@@ -309,6 +309,9 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas }: ZigbeeImport
                 Fetch Devices
               </Button>
             </div>
+            <p className="text-[11px] text-muted-foreground italic">
+              Fetching the network map can take several minutes on large meshes.
+            </p>
           </div>
 
           {/* Device List */}
