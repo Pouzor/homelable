@@ -12,7 +12,12 @@ interface ZigbeeImportModalProps {
   open: boolean
   onClose: () => void
   onAddToCanvas: (nodes: ZigbeeNode[], edges: ZigbeeEdge[]) => void
+  onPendingImported?: (
+    coordinator?: { id: string; label: string; ieee_address: string } | null,
+  ) => void
 }
+
+type ImportMode = 'pending' | 'canvas'
 
 interface ConnectionForm {
   mqtt_host: string
@@ -54,7 +59,7 @@ const DEVICE_TYPE_COLOR = {
   zigbee_enddevice: '#e3b341',
 } as const
 
-export function ZigbeeImportModal({ open, onClose, onAddToCanvas }: ZigbeeImportModalProps) {
+export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onPendingImported }: ZigbeeImportModalProps) {
   const [form, setForm] = useState<ConnectionForm>(DEFAULT_FORM)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [connectionMsg, setConnectionMsg] = useState('')
@@ -62,6 +67,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas }: ZigbeeImport
   const [devices, setDevices] = useState<ZigbeeNode[]>([])
   const [edges, setEdges] = useState<ZigbeeEdge[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [importMode, setImportMode] = useState<ImportMode>('pending')
 
   const updateField = (field: keyof ConnectionForm, value: string) =>
     setForm((f) => ({
@@ -120,24 +126,45 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas }: ZigbeeImport
     }
   }
 
+  const extractError = (err: unknown): string | undefined => {
+    if (err && typeof err === 'object' && 'response' in err) {
+      return (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+    }
+    return undefined
+  }
+
   const handleFetchDevices = async () => {
     if (!form.mqtt_host.trim()) { toast.error('Enter a broker hostname'); return }
     setLoading(true)
     try {
-      const res = await zigbeeApi.importNetwork(buildPayload())
-      setDevices(res.data.nodes)
-      setEdges(res.data.edges)
-      setChecked(new Set(res.data.nodes.map((n) => n.id)))
-      if (res.data.device_count === 0) {
-        toast.info('No Zigbee devices found in the network map')
+      if (importMode === 'pending') {
+        const res = await zigbeeApi.importToPending(buildPayload())
+        const { pending_created, pending_updated, coordinator, coordinator_already_existed, device_count } = res.data
+        if (device_count === 0) {
+          toast.info('No Zigbee devices found in the network map')
+        } else {
+          const coordMsg = coordinator_already_existed
+            ? 'coordinator already on canvas'
+            : 'coordinator added to canvas'
+          toast.success(
+            `Imported ${pending_created} new, updated ${pending_updated} (${coordMsg})`,
+          )
+        }
+        onPendingImported?.(coordinator)
+        handleClose()
       } else {
-        toast.success(`Found ${res.data.device_count} device${res.data.device_count !== 1 ? 's' : ''}`)
+        const res = await zigbeeApi.importNetwork(buildPayload())
+        setDevices(res.data.nodes)
+        setEdges(res.data.edges)
+        setChecked(new Set(res.data.nodes.map((n) => n.id)))
+        if (res.data.device_count === 0) {
+          toast.info('No Zigbee devices found in the network map')
+        } else {
+          toast.success(`Found ${res.data.device_count} device${res.data.device_count !== 1 ? 's' : ''}`)
+        }
       }
     } catch (err: unknown) {
-      const msg = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
-        : undefined
-      toast.error(msg ?? 'Failed to fetch Zigbee devices')
+      toast.error(extractError(err) ?? 'Failed to fetch Zigbee devices')
     } finally {
       setLoading(false)
     }
@@ -169,6 +196,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas }: ZigbeeImport
     setChecked(new Set())
     setConnectionStatus('idle')
     setConnectionMsg('')
+    setImportMode('pending')
     onClose()
   }
 
@@ -285,6 +313,29 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas }: ZigbeeImport
               </div>
             )}
 
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-muted-foreground">Send devices to:</span>
+              <label className="flex items-center gap-1.5 cursor-pointer text-foreground">
+                <input
+                  type="radio"
+                  name="zigbee-import-mode"
+                  checked={importMode === 'pending'}
+                  onChange={() => setImportMode('pending')}
+                  className="accent-[#00d4ff] cursor-pointer"
+                />
+                Pending section
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer text-foreground">
+                <input
+                  type="radio"
+                  name="zigbee-import-mode"
+                  checked={importMode === 'canvas'}
+                  onChange={() => setImportMode('canvas')}
+                  className="accent-[#00d4ff] cursor-pointer"
+                />
+                Canvas directly
+              </label>
+            </div>
             <div className="flex gap-2">
               <Button
                 size="sm"
@@ -306,7 +357,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas }: ZigbeeImport
                 disabled={loading || connectionStatus === 'testing'}
               >
                 {loading ? <Loader2 size={13} className="animate-spin" /> : <Network size={13} />}
-                Fetch Devices
+                {importMode === 'pending' ? 'Import to Pending' : 'Fetch Devices'}
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground italic">

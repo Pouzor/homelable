@@ -6,6 +6,7 @@ vi.mock('@/api/client', () => ({
   zigbeeApi: {
     testConnection: vi.fn(),
     importNetwork: vi.fn(),
+    importToPending: vi.fn(),
   },
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
@@ -50,6 +51,7 @@ describe('ZigbeeImportModal', () => {
   beforeEach(() => {
     vi.mocked(zigbeeApi.testConnection).mockReset()
     vi.mocked(zigbeeApi.importNetwork).mockReset()
+    vi.mocked(zigbeeApi.importToPending).mockReset()
     vi.mocked(toast.success).mockReset()
     vi.mocked(toast.error).mockReset()
     vi.mocked(toast.info).mockReset()
@@ -109,12 +111,17 @@ describe('ZigbeeImportModal', () => {
     })
   })
 
+  const selectCanvasMode = () => {
+    fireEvent.click(screen.getByRole('radio', { name: /canvas directly/i }))
+  }
+
   it('fetches devices and renders them grouped by type', async () => {
     vi.mocked(zigbeeApi.importNetwork).mockResolvedValue({
       data: { nodes: sampleNodes, edges: [], device_count: 2 },
     } as never)
 
     render(<ZigbeeImportModal {...defaultProps} />)
+    selectCanvasMode()
     const hostInput = screen.getByPlaceholderText('192.168.1.x or mqtt.local')
     fireEvent.change(hostInput, { target: { value: '192.168.1.100' } })
     fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
@@ -132,6 +139,7 @@ describe('ZigbeeImportModal', () => {
     } as never)
 
     render(<ZigbeeImportModal {...defaultProps} />)
+    selectCanvasMode()
     const hostInput = screen.getByPlaceholderText('192.168.1.x or mqtt.local')
     fireEvent.change(hostInput, { target: { value: '192.168.1.100' } })
     fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
@@ -147,6 +155,7 @@ describe('ZigbeeImportModal', () => {
     } as never)
 
     render(<ZigbeeImportModal {...defaultProps} />)
+    selectCanvasMode()
     const hostInput = screen.getByPlaceholderText('192.168.1.x or mqtt.local')
     fireEvent.change(hostInput, { target: { value: '192.168.1.100' } })
     fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
@@ -167,5 +176,46 @@ describe('ZigbeeImportModal', () => {
     render(<ZigbeeImportModal {...defaultProps} />)
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(defaultProps.onClose).toHaveBeenCalledOnce()
+  })
+
+  it('imports to pending by default and notifies parent', async () => {
+    vi.mocked(zigbeeApi.importToPending).mockResolvedValue({
+      data: {
+        pending_created: 2,
+        pending_updated: 0,
+        coordinator: { id: 'coord-uuid', label: 'Coordinator', ieee_address: '0x0000' },
+        coordinator_already_existed: false,
+        links_recorded: 1,
+        device_count: 3,
+      },
+    } as never)
+    const onPendingImported = vi.fn()
+
+    render(<ZigbeeImportModal {...defaultProps} onPendingImported={onPendingImported} />)
+    const hostInput = screen.getByPlaceholderText('192.168.1.x or mqtt.local')
+    fireEvent.change(hostInput, { target: { value: '192.168.1.100' } })
+    fireEvent.click(screen.getByRole('button', { name: /import to pending/i }))
+
+    await waitFor(() => {
+      expect(zigbeeApi.importToPending).toHaveBeenCalled()
+      expect(onPendingImported).toHaveBeenCalled()
+      expect(defaultProps.onClose).toHaveBeenCalled()
+    })
+    expect(zigbeeApi.importNetwork).not.toHaveBeenCalled()
+  })
+
+  it('switching to canvas mode calls importNetwork and not importToPending', async () => {
+    vi.mocked(zigbeeApi.importNetwork).mockResolvedValue({
+      data: { nodes: sampleNodes, edges: [], device_count: 2 },
+    } as never)
+
+    render(<ZigbeeImportModal {...defaultProps} />)
+    fireEvent.click(screen.getByRole('radio', { name: /canvas directly/i }))
+    const hostInput = screen.getByPlaceholderText('192.168.1.x or mqtt.local')
+    fireEvent.change(hostInput, { target: { value: '192.168.1.100' } })
+    fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
+
+    await waitFor(() => expect(zigbeeApi.importNetwork).toHaveBeenCalled())
+    expect(zigbeeApi.importToPending).not.toHaveBeenCalled()
   })
 })

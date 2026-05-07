@@ -58,10 +58,24 @@ export const scanApi = {
   hidden: () => api.get('/scan/hidden'),
   runs: () => api.get('/scan/runs'),
   clearPending: () => api.delete('/scan/pending'),
-  approve: (id: string, nodeData: object) => api.post(`/scan/pending/${id}/approve`, nodeData),
+  approve: (id: string, nodeData: object) =>
+    api.post<{
+      approved: boolean
+      node_id: string
+      edges_created: number
+      edges: { id: string; source: string; target: string }[]
+    }>(`/scan/pending/${id}/approve`, nodeData),
   hide: (id: string) => api.post(`/scan/pending/${id}/hide`),
   ignore: (id: string) => api.post(`/scan/pending/${id}/ignore`),
-  bulkApprove: (ids: string[]) => api.post<{ approved: number; node_ids: string[]; device_ids: string[]; skipped: number }>('/scan/pending/bulk-approve', { device_ids: ids }),
+  bulkApprove: (ids: string[]) =>
+    api.post<{
+      approved: number
+      node_ids: string[]
+      device_ids: string[]
+      edges_created: number
+      edges: { id: string; source: string; target: string }[]
+      skipped: number
+    }>('/scan/pending/bulk-approve', { device_ids: ids }),
   bulkHide: (ids: string[]) => api.post<{ hidden: number; skipped: number }>('/scan/pending/bulk-hide', { device_ids: ids }),
   stop: (runId: string) => api.post(`/scan/${runId}/stop`),
   getConfig: () => api.get<{ ranges: string[] }>('/scan/config'),
@@ -98,4 +112,22 @@ export const zigbeeApi = {
       edges: import('@/components/zigbee/types').ZigbeeEdge[]
       device_count: number
     }>('/zigbee/import', data),
+
+  importToPending: (data: {
+    mqtt_host: string
+    mqtt_port: number
+    mqtt_username?: string
+    mqtt_password?: string
+    base_topic?: string
+    mqtt_tls?: boolean
+    mqtt_tls_insecure?: boolean
+  }) =>
+    api.post<{
+      pending_created: number
+      pending_updated: number
+      coordinator: { id: string; label: string; ieee_address: string } | null
+      coordinator_already_existed: boolean
+      links_recorded: number
+      device_count: number
+    }>('/zigbee/import-pending', data),
 }

@@ -76,3 +76,20 @@ class ZigbeeImportResponse(BaseModel):
 class ZigbeeTestConnectionResponse(BaseModel):
     connected: bool
     message: str
+
+
+class ZigbeeCoordinatorOut(BaseModel):
+    id: str
+    label: str
+    ieee_address: str
+
+
+class ZigbeeImportPendingResponse(BaseModel):
+    """Result of importing a Z2M network into the pending section."""
+
+    pending_created: int
+    pending_updated: int
+    coordinator: ZigbeeCoordinatorOut | None = None
+    coordinator_already_existed: bool = False
+    links_recorded: int
+    device_count: int

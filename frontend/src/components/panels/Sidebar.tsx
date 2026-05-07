@@ -180,6 +180,25 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onZigbeeImport, onS
 
 const COMMON_PORTS = new Set([22, 80, 443])
 
+function injectAutoEdges(edges: { id: string; source: string; target: string }[] | undefined) {
+  if (!edges || edges.length === 0) return
+  useCanvasStore.setState((state) => ({
+    edges: [
+      ...state.edges,
+      ...edges.map((e) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: 'bottom',
+        targetHandle: 'top-t',
+        type: 'iot',
+        data: { type: 'iot' as const },
+      })),
+    ],
+    hasUnsavedChanges: true,
+  }))
+}
+
 function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: (nodeId: string) => void; highlightId?: string }) {
   const [devices, setDevices] = useState<PendingDevice[]>([])
   const [loading, setLoading] = useState(false)
@@ -237,14 +256,15 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
       approvedDevices.forEach((d, i) => {
         const nodeId = deviceToNode[d.id]
         if (!nodeId) return
+        const fallbackLabel = d.friendly_name ?? d.hostname ?? d.ip ?? d.ieee_address ?? 'device'
         addNode({
           id: nodeId,
           type: (d.suggested_type ?? 'generic') as import('@/types').NodeType,
           position: { x: 400 + (i % 4) * 160, y: 300 + Math.floor(i / 4) * 100 },
           data: {
-            label: d.hostname ?? d.ip,
+            label: fallbackLabel,
             type: (d.suggested_type ?? 'generic') as import('@/types').NodeType,
-            ip: d.ip,
+            ip: d.ip ?? undefined,
             hostname: d.hostname ?? undefined,
             status: 'unknown' as const,
             services: (d.services ?? []) as import('@/types').ServiceInfo[],
@@ -252,9 +272,11 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
         })
         onNodeApproved(nodeId)
       })
+      injectAutoEdges(res.data.edges)
       setDevices((prev) => prev.filter((d) => !ids.includes(d.id)))
       setCheckedIds(new Set())
-      toast.success(`Approved ${res.data.approved} device${res.data.approved !== 1 ? 's' : ''}`)
+      const linkExtra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
+      toast.success(`Approved ${res.data.approved} device${res.data.approved !== 1 ? 's' : ''}${linkExtra}`)
     } catch {
       toast.error('Failed to bulk approve devices')
     }
@@ -285,10 +307,11 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
 
   const handleApprove = async (device: PendingDevice) => {
     try {
+      const fallbackLabel = device.friendly_name ?? device.hostname ?? device.ip ?? device.ieee_address ?? 'device'
       const nodeData = {
-        label: device.hostname ?? device.ip,
+        label: fallbackLabel,
         type: (device.suggested_type ?? 'generic') as import('@/types').NodeType,
-        ip: device.ip,
+        ip: device.ip ?? undefined,
         hostname: device.hostname ?? undefined,
         status: 'unknown',
         services: (device.services ?? []) as import('@/types').ServiceInfo[],
@@ -301,7 +324,9 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
         position: { x: 400, y: 300 },
         data: { ...nodeData, status: 'unknown' as const },
       })
-      toast.success(`Approved ${nodeData.label}`)
+      injectAutoEdges(res.data.edges)
+      const extra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
+      toast.success(`Approved ${nodeData.label}${extra}`)
       setDevices((prev) => prev.filter((d) => d.id !== device.id))
       setSelected(null)
       onNodeApproved(nodeId)
@@ -378,20 +403,30 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
           <p className="text-xs text-muted-foreground text-center py-4">No pending devices</p>
         )}
         {devices.map((d) => {
+          const isZigbee = d.discovery_source === 'zigbee'
           const namedService = d.services.find((s) => s.category != null && s.port != null && !COMMON_PORTS.has(s.port))
           const titleService = namedService
             ?? d.services.find((s) => s.port === 80)
             ?? d.services.find((s) => s.port === 443)
             ?? d.services.find((s) => s.port === 22)
-          const title = titleService?.service_name ?? d.hostname ?? d.ip
-          const showIpBelow = title !== d.ip
+          const title = isZigbee
+            ? (d.friendly_name ?? d.hostname ?? d.ieee_address ?? 'zigbee device')
+            : (titleService?.service_name ?? d.hostname ?? d.ip ?? 'device')
+          const showIpBelow = !isZigbee && d.ip != null && title !== d.ip
           const hasSsh = d.services.some((s) => s.port === 22)
           const hasHttp = d.services.some((s) => s.port === 80)
           const hasHttps = d.services.some((s) => s.port === 443)
           const otherCount = d.services.filter((s) => s.port !== 22 && s.port !== 80 && s.port !== 443).length
           const virtualBadge = detectVirtualBadge(d.mac)
-          const sourceColor = d.discovery_source === 'mdns' ? '#a855f7' : '#8b949e'
-          const sourceLabel = d.discovery_source === 'mdns' ? 'mDNS' : d.discovery_source === 'arp' ? 'ARP' : null
+          const sourceColor =
+            d.discovery_source === 'mdns' ? '#a855f7'
+            : d.discovery_source === 'zigbee' ? '#00d4ff'
+            : '#8b949e'
+          const sourceLabel =
+            d.discovery_source === 'mdns' ? 'mDNS'
+            : d.discovery_source === 'arp' ? 'ARP'
+            : d.discovery_source === 'zigbee' ? 'ZIG'
+            : null
           const isHighlighted = d.id === highlightId
           return (
             <button
@@ -418,7 +453,7 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
                   {sourceLabel && <ServiceBadge label={sourceLabel} color={sourceColor} />}
                   {virtualBadge && (
                     <Tooltip>
-                      <TooltipTrigger>
+                      <TooltipTrigger asChild>
                         <span><ServiceBadge label={virtualBadge.label} color="#ff6e00" /></span>
                       </TooltipTrigger>
                       <TooltipContent side="right">{virtualBadge.title}</TooltipContent>
@@ -428,6 +463,7 @@ function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: 
                   {hasHttp && <ServiceBadge label="HTTP" color="#00d4ff" />}
                   {hasHttps && <ServiceBadge label="HTTPS" color="#39d353" />}
                   {otherCount > 0 && <ServiceBadge label={`+${otherCount}`} color="#8b949e" />}
+                  {isZigbee && d.lqi != null && <ServiceBadge label={`LQI ${d.lqi}`} color="#8b949e" />}
                 </div>
               )}
             </button>

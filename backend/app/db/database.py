@@ -81,6 +81,72 @@ async def init_db() -> None:
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN discovery_source TEXT")
         with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN ieee_address TEXT")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_nodes_ieee_address ON nodes(ieee_address)")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN ieee_address TEXT")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_pending_devices_ieee_address "
+                "ON pending_devices(ieee_address)"
+            )
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN friendly_name TEXT")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN device_subtype TEXT")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN model TEXT")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN vendor TEXT")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN lqi INTEGER")
+        # Drop NOT NULL on pending_devices.ip (Zigbee devices have no IP).
+        # SQLite can't ALTER column nullability — rebuild the table if needed.
+        with suppress(OperationalError):
+            info = await conn.exec_driver_sql("PRAGMA table_info(pending_devices)")
+            cols = info.fetchall()
+            ip_col = next((c for c in cols if c[1] == "ip"), None)
+            # PRAGMA table_info row layout: (cid, name, type, notnull, dflt, pk)
+            if ip_col and ip_col[3] == 1:
+                logger.info("Migrating pending_devices: dropping NOT NULL on ip column")
+                await conn.exec_driver_sql("PRAGMA foreign_keys = OFF")
+                await conn.exec_driver_sql(
+                    "CREATE TABLE pending_devices_new ("
+                    "id VARCHAR PRIMARY KEY,"
+                    "ip VARCHAR,"
+                    "mac VARCHAR, hostname VARCHAR, os VARCHAR, services JSON,"
+                    "suggested_type VARCHAR,"
+                    "status VARCHAR,"
+                    "discovery_source VARCHAR,"
+                    "ieee_address VARCHAR,"
+                    "friendly_name VARCHAR,"
+                    "device_subtype VARCHAR,"
+                    "model VARCHAR,"
+                    "vendor VARCHAR,"
+                    "lqi INTEGER,"
+                    "discovered_at DATETIME"
+                    ")"
+                )
+                await conn.exec_driver_sql(
+                    "INSERT INTO pending_devices_new "
+                    "(id, ip, mac, hostname, os, services, suggested_type, status, "
+                    "discovery_source, ieee_address, friendly_name, device_subtype, "
+                    "model, vendor, lqi, discovered_at) "
+                    "SELECT id, ip, mac, hostname, os, services, suggested_type, status, "
+                    "discovery_source, ieee_address, friendly_name, device_subtype, "
+                    "model, vendor, lqi, discovered_at FROM pending_devices"
+                )
+                await conn.exec_driver_sql("DROP TABLE pending_devices")
+                await conn.exec_driver_sql(
+                    "ALTER TABLE pending_devices_new RENAME TO pending_devices"
+                )
+                await conn.exec_driver_sql(
+                    "CREATE INDEX IF NOT EXISTS ix_pending_devices_ieee_address "
+                    "ON pending_devices(ieee_address)"
+                )
+                await conn.exec_driver_sql("PRAGMA foreign_keys = ON")
+        with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE edges ADD COLUMN waypoints JSON")
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN properties JSON")
