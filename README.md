@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/pouzor-homelable-badge.png)](https://mseep.ai/app/pouzor-homelable)
+
 # Homelable
 
 Homelable is a self-hosted infrastructure visualization solution. It provides a network scanning feature to accelerate the identification of machines and services deployed on your local infrastructure.
