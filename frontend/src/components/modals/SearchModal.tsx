@@ -33,8 +33,10 @@ export function SearchModal({ open, onClose, onOpenPending }: SearchModalProps) 
   ).slice(0, 6)
 
   const pendingResults = q.length === 0 ? [] : pendingDevices.filter((d) =>
-    d.ip.toLowerCase().includes(q) ||
+    d.ip?.toLowerCase().includes(q) ||
     d.hostname?.toLowerCase().includes(q) ||
+    d.friendly_name?.toLowerCase().includes(q) ||
+    d.ieee_address?.toLowerCase().includes(q) ||
     d.services.some((s) =>
       s.service_name?.toLowerCase().includes(q) ||
       s.category?.toLowerCase().includes(q)
