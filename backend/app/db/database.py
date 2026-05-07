@@ -5,12 +5,29 @@ from contextlib import suppress
 from pathlib import Path
 
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import APP_VERSION, settings
 
 logger = logging.getLogger(__name__)
+
+
+async def _try_migrate(conn: AsyncConnection, sql: str, *, label: str) -> None:
+    """Run an idempotent migration statement, logging any error.
+
+    Distinguishes 'already applied' errors (debug) from genuine failures
+    (warning) so silent corruption is avoided. Used for new in-commit
+    migrations; existing legacy ALTERs above remain wrapped in suppress.
+    """
+    try:
+        await conn.exec_driver_sql(sql)
+    except OperationalError as exc:
+        msg = str(exc).lower()
+        if "duplicate column" in msg or "already exists" in msg:
+            logger.debug("Migration %s skipped (already applied): %s", label, exc)
+        else:
+            logger.warning("Migration %s failed: %s", label, exc)
 
 # Ensure the data directory exists before SQLite tries to open the file
 Path(settings.sqlite_path).parent.mkdir(parents=True, exist_ok=True)
@@ -80,30 +97,30 @@ async def init_db() -> None:
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN bottom_handles INTEGER NOT NULL DEFAULT 1")
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN discovery_source TEXT")
-        with suppress(OperationalError):
-            await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN ieee_address TEXT")
-        with suppress(OperationalError):
-            await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_nodes_ieee_address ON nodes(ieee_address)")
-        with suppress(OperationalError):
-            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN ieee_address TEXT")
-        with suppress(OperationalError):
-            await conn.exec_driver_sql(
+        # --- Zigbee schema migrations (logged variant per CLAUDE.md feedback) ---
+        zigbee_migrations: list[tuple[str, str]] = [
+            ("nodes.ieee_address", "ALTER TABLE nodes ADD COLUMN ieee_address TEXT"),
+            (
+                "nodes.ieee_address.index",
+                "CREATE INDEX IF NOT EXISTS ix_nodes_ieee_address ON nodes(ieee_address)",
+            ),
+            ("pending_devices.ieee_address", "ALTER TABLE pending_devices ADD COLUMN ieee_address TEXT"),
+            (
+                "pending_devices.ieee_address.index",
                 "CREATE INDEX IF NOT EXISTS ix_pending_devices_ieee_address "
-                "ON pending_devices(ieee_address)"
-            )
-        with suppress(OperationalError):
-            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN friendly_name TEXT")
-        with suppress(OperationalError):
-            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN device_subtype TEXT")
-        with suppress(OperationalError):
-            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN model TEXT")
-        with suppress(OperationalError):
-            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN vendor TEXT")
-        with suppress(OperationalError):
-            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN lqi INTEGER")
+                "ON pending_devices(ieee_address)",
+            ),
+            ("pending_devices.friendly_name", "ALTER TABLE pending_devices ADD COLUMN friendly_name TEXT"),
+            ("pending_devices.device_subtype", "ALTER TABLE pending_devices ADD COLUMN device_subtype TEXT"),
+            ("pending_devices.model", "ALTER TABLE pending_devices ADD COLUMN model TEXT"),
+            ("pending_devices.vendor", "ALTER TABLE pending_devices ADD COLUMN vendor TEXT"),
+            ("pending_devices.lqi", "ALTER TABLE pending_devices ADD COLUMN lqi INTEGER"),
+        ]
+        for label, sql in zigbee_migrations:
+            await _try_migrate(conn, sql, label=label)
         # Drop NOT NULL on pending_devices.ip (Zigbee devices have no IP).
         # SQLite can't ALTER column nullability — rebuild the table if needed.
-        with suppress(OperationalError):
+        try:
             info = await conn.exec_driver_sql("PRAGMA table_info(pending_devices)")
             cols = info.fetchall()
             ip_col = next((c for c in cols if c[1] == "ip"), None)
@@ -146,6 +163,9 @@ async def init_db() -> None:
                     "ON pending_devices(ieee_address)"
                 )
                 await conn.exec_driver_sql("PRAGMA foreign_keys = ON")
+        except OperationalError as exc:
+            logger.warning("pending_devices ip-nullable rebuild failed: %s", exc)
+        # --- end Zigbee schema migrations -------------------------------------
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE edges ADD COLUMN waypoints JSON")
         with suppress(OperationalError):
