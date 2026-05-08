@@ -233,20 +233,19 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         {ipAddresses.length > 0 && (
           <div className="flex justify-between gap-2 items-start">
             <span className="text-muted-foreground text-xs shrink-0">{ipAddresses.length > 1 ? 'IP Addresses' : 'IP Address'}</span>
-            <div className="flex flex-wrap justify-end items-center gap-y-1 max-w-[65%]">
+            <div className="flex flex-wrap justify-end items-center gap-x-2 gap-y-1 max-w-[65%]">
               {ipAddresses.map((ip, index) => (
-                <span key={`${ip}-${index}`} className="inline-flex items-center">
+                <span key={`${ip}-${index}`} className="inline-flex items-center shrink-0 whitespace-nowrap">
                   <a
                     href={`http://${ip}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs font-mono text-[#00d4ff] hover:underline inline-flex items-center gap-1 break-all"
+                    className="text-xs font-mono text-[#00d4ff] hover:underline inline-flex items-center gap-1"
                     title={ip}
                   >
                     {ip}
                     <ExternalLink size={10} className="shrink-0" />
                   </a>
-                  {index < ipAddresses.length - 1 && <span className="text-muted-foreground/70 px-1">,</span>}
                 </span>
               ))}
             </div>
