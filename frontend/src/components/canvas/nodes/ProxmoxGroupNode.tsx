@@ -57,7 +57,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
         minHeight={160}
         isVisible={selected}
         lineStyle={{ borderColor: 'transparent' }}
-        handleStyle={{ borderColor: glow, backgroundColor: colors.border, width: 10, height: 10 }}
+        handleStyle={{ borderColor: glow, backgroundColor: colors.border, width: 12, height: 12 }}
       />
 
       {/* Group border */}

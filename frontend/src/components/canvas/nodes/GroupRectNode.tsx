@@ -70,8 +70,8 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
   }
 
   const handleStyle: React.CSSProperties = {
-    width: 10,
-    height: 10,
+    width: 12,
+    height: 12,
     background: borderColor,
     border: '2px solid #0d1117',
     borderRadius: '50%',
