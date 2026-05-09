@@ -224,11 +224,26 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   }
 
   const handleClearAll = async () => {
+    const targets = filtered
+    if (targets.length === 0) return
+    const filtersActive = targets.length !== devices.length
     try {
-      await scanApi.clearPending()
-      setDevices([])
-      setSelectedIds(new Set())
-      toast.success('Pending devices cleared')
+      if (filtersActive) {
+        const results = await Promise.allSettled(targets.map((d) => scanApi.ignore(d.id)))
+        const failed = results.filter((r) => r.status === 'rejected').length
+        const removedIds = new Set(
+          targets.filter((_, i) => results[i].status === 'fulfilled').map((d) => d.id)
+        )
+        setDevices((prev) => prev.filter((d) => !removedIds.has(d.id)))
+        setSelectedIds(new Set())
+        if (failed > 0) toast.error(`Removed ${removedIds.size}, ${failed} failed`)
+        else toast.success(`Removed ${removedIds.size} device${removedIds.size !== 1 ? 's' : ''}`)
+      } else {
+        await scanApi.clearPending()
+        setDevices([])
+        setSelectedIds(new Set())
+        toast.success('Pending devices cleared')
+      }
     } catch {
       toast.error('Failed to clear pending devices')
     }
@@ -374,7 +389,11 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
                   <RefreshCw size={14} />
                 </button>
                 {statusFilter === 'pending' && devices.length > 0 && (
-                  <button onClick={handleClearAll} className="text-muted-foreground hover:text-[#f85149] p-1.5 rounded transition-colors" title="Clear all pending">
+                  <button
+                    onClick={handleClearAll}
+                    className="text-muted-foreground hover:text-[#f85149] p-1.5 rounded transition-colors"
+                    title={filtered.length !== devices.length ? `Remove ${filtered.length} filtered` : 'Clear all pending'}
+                  >
                     <Trash2 size={14} />
                   </button>
                 )}
