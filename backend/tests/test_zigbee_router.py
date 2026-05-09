@@ -314,106 +314,78 @@ _PENDING_EDGES = [
 
 
 @pytest.mark.asyncio
-async def test_import_pending_creates_coordinator_and_pending(
+async def test_import_pending_endpoint_creates_zigbee_scan_run(
     client: AsyncClient, headers: dict
 ) -> None:
-    with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
-        mock_fetch.return_value = (_PENDING_NODES, _PENDING_EDGES)
+    """Endpoint returns a ScanRun (kind=zigbee, status=running) immediately;
+    the actual networkmap fetch + pending persist runs in the background."""
+    from unittest.mock import AsyncMock
+
+    with patch(
+        "app.api.routes.zigbee._background_zigbee_import",
+        new_callable=AsyncMock,
+    ):
         res = await client.post(
             "/api/v1/zigbee/import-pending",
             json={"mqtt_host": "localhost", "mqtt_port": 1883},
             headers=headers,
         )
     assert res.status_code == 200
-    data = res.json()
-    assert data["device_count"] == 3
-    assert data["pending_created"] == 2  # router + enddevice
-    assert data["pending_updated"] == 0
-    assert data["coordinator"] is not None
-    assert data["coordinator"]["ieee_address"] == "0xCOORD"
-    assert data["coordinator_already_existed"] is False
-    assert data["links_recorded"] == 2
-
-    pending = await client.get("/api/v1/scan/pending", headers=headers)
-    assert pending.status_code == 200
-    rows = pending.json()
-    ieees = {r["ieee_address"] for r in rows}
-    assert ieees == {"0xR1", "0xE1"}
-    router = next(r for r in rows if r["ieee_address"] == "0xR1")
-    assert router["model"] == "CC2530"
-    assert router["lqi"] == 220
-    assert router["device_subtype"] == "Router"
-    assert router["discovery_source"] == "zigbee"
+    run = res.json()
+    assert run["kind"] == "zigbee"
+    assert run["status"] == "running"
+    assert run["ranges"] == ["localhost:1883"]
 
 
 @pytest.mark.asyncio
-async def test_import_pending_idempotent_updates_existing(
-    client: AsyncClient, headers: dict
+async def test_persist_pending_import_creates_coordinator_and_pending(
+    db_session,
 ) -> None:
-    with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
-        mock_fetch.return_value = (_PENDING_NODES, _PENDING_EDGES)
-        await client.post(
-            "/api/v1/zigbee/import-pending",
-            json={"mqtt_host": "localhost", "mqtt_port": 1883},
-            headers=headers,
-        )
+    from app.api.routes.zigbee import _persist_pending_import
 
-        bumped = [dict(n) for n in _PENDING_NODES]
-        bumped[1]["lqi"] = 99
-        res = await client.post(
-            "/api/v1/zigbee/import-pending",
-            json={"mqtt_host": "localhost", "mqtt_port": 1883},
-            headers=headers,
-        )
-        # second call: returns the bumped data
-        mock_fetch.return_value = (bumped, _PENDING_EDGES)
-        res = await client.post(
-            "/api/v1/zigbee/import-pending",
-            json={"mqtt_host": "localhost", "mqtt_port": 1883},
-            headers=headers,
-        )
-
-    assert res.status_code == 200
-    data = res.json()
-    assert data["pending_created"] == 0
-    assert data["pending_updated"] == 2
-    assert data["coordinator_already_existed"] is True
-    assert data["links_recorded"] == 2
-
-    pending = await client.get("/api/v1/scan/pending", headers=headers)
-    router = next(r for r in pending.json() if r["ieee_address"] == "0xR1")
-    assert router["lqi"] == 99
+    result = await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+    assert result.device_count == 3
+    assert result.pending_created == 2
+    assert result.pending_updated == 0
+    assert result.coordinator is not None
+    assert result.coordinator.ieee_address == "0xCOORD"
+    assert result.coordinator_already_existed is False
+    assert result.links_recorded == 2
 
 
 @pytest.mark.asyncio
-async def test_import_pending_replaces_links(
-    client: AsyncClient, headers: dict, db_session
+async def test_persist_pending_import_idempotent_updates_existing(
+    db_session,
 ) -> None:
-    """Re-importing wipes old zigbee links and inserts only the fresh set."""
+    from app.api.routes.zigbee import _persist_pending_import
+
+    await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+
+    bumped = [dict(n) for n in _PENDING_NODES]
+    bumped[1]["lqi"] = 99
+    result = await _persist_pending_import(db_session, bumped, _PENDING_EDGES)
+
+    assert result.pending_created == 0
+    assert result.pending_updated == 2
+    assert result.coordinator_already_existed is True
+    assert result.links_recorded == 2
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_replaces_links(db_session) -> None:
     from sqlalchemy import select
 
+    from app.api.routes.zigbee import _persist_pending_import
     from app.db.models import PendingDeviceLink
 
-    with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
-        mock_fetch.return_value = (_PENDING_NODES, _PENDING_EDGES)
-        await client.post(
-            "/api/v1/zigbee/import-pending",
-            json={"mqtt_host": "localhost", "mqtt_port": 1883},
-            headers=headers,
-        )
+    await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
 
-        new_edges = [{"source": "0xCOORD", "target": "0xR1"}]
-        mock_fetch.return_value = (_PENDING_NODES[:2], new_edges)
-        await client.post(
-            "/api/v1/zigbee/import-pending",
-            json={"mqtt_host": "localhost", "mqtt_port": 1883},
-            headers=headers,
-        )
+    new_edges = [{"source": "0xCOORD", "target": "0xR1"}]
+    await _persist_pending_import(db_session, _PENDING_NODES[:2], new_edges)
 
-    result = await db_session.execute(select(PendingDeviceLink))
-    links = result.scalars().all()
-    assert len(links) == 1
-    assert (links[0].source_ieee, links[0].target_ieee) == ("0xCOORD", "0xR1")
+    rows = (await db_session.execute(select(PendingDeviceLink))).scalars().all()
+    assert len(rows) == 1
+    assert (rows[0].source_ieee, rows[0].target_ieee) == ("0xCOORD", "0xR1")
 
 
 @pytest.mark.asyncio

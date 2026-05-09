@@ -541,25 +541,9 @@ export default function App() {
             open={zigbeeImportOpen}
             onClose={() => setZigbeeImportOpen(false)}
             onAddToCanvas={handleZigbeeAddToCanvas}
-            onPendingImported={(coordinator) => {
-              useCanvasStore.getState().notifyScanDeviceFound()
-              if (coordinator) {
-                const exists = useCanvasStore.getState().nodes.some((n) => n.id === coordinator.id)
-                if (!exists) {
-                  addNode({
-                    id: coordinator.id,
-                    type: 'zigbee_coordinator',
-                    position: { x: 600, y: 100 },
-                    data: {
-                      label: coordinator.label,
-                      type: 'zigbee_coordinator' as NodeData['type'],
-                      status: 'unknown' as const,
-                      services: [],
-                    },
-                  })
-                  markUnsaved()
-                }
-              }
+            onPendingImported={() => {
+              setSidebarForceView(undefined)
+              setTimeout(() => setSidebarForceView('history'), 0)
             }}
           />
         )}

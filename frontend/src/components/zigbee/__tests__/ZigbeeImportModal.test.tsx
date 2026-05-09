@@ -181,12 +181,14 @@ describe('ZigbeeImportModal', () => {
   it('imports to pending by default and notifies parent', async () => {
     vi.mocked(zigbeeApi.importToPending).mockResolvedValue({
       data: {
-        pending_created: 2,
-        pending_updated: 0,
-        coordinator: { id: 'coord-uuid', label: 'Coordinator', ieee_address: '0x0000' },
-        coordinator_already_existed: false,
-        links_recorded: 1,
-        device_count: 3,
+        id: 'run-1',
+        status: 'running',
+        kind: 'zigbee',
+        ranges: ['192.168.1.100:1883'],
+        devices_found: 0,
+        started_at: '2026-01-01T00:00:00Z',
+        finished_at: null,
+        error: null,
       },
     } as never)
     const onPendingImported = vi.fn()

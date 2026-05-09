@@ -28,6 +28,7 @@ class PendingDeviceResponse(BaseModel):
 class ScanRunResponse(BaseModel):
     id: str
     status: str
+    kind: str = "ip"
     ranges: list[str]
     devices_found: int
     started_at: datetime

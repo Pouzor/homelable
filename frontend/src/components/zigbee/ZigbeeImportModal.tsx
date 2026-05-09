@@ -138,19 +138,9 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onPendingImpor
     setLoading(true)
     try {
       if (importMode === 'pending') {
-        const res = await zigbeeApi.importToPending(buildPayload())
-        const { pending_created, pending_updated, coordinator, coordinator_already_existed, device_count } = res.data
-        if (device_count === 0) {
-          toast.info('No Zigbee devices found in the network map')
-        } else {
-          const coordMsg = coordinator_already_existed
-            ? 'coordinator already on canvas'
-            : 'coordinator added to canvas'
-          toast.success(
-            `Imported ${pending_created} new, updated ${pending_updated} (${coordMsg})`,
-          )
-        }
-        onPendingImported?.(coordinator)
+        await zigbeeApi.importToPending(buildPayload())
+        toast.success('Zigbee import started — track progress in Scan History')
+        onPendingImported?.(null)
         handleClose()
       } else {
         const res = await zigbeeApi.importNetwork(buildPayload())

@@ -20,6 +20,7 @@ const PENDING_TRIGGERS: { kind: 'pending' | 'hidden'; icon: typeof ScanLine; lab
 interface ScanRun {
   id: string
   status: string
+  kind?: string
   ranges: string[]
   devices_found: number
   started_at: string
@@ -197,11 +198,18 @@ function ScanHistoryPanel() {
       const res = await scanApi.runs()
       const next: ScanRun[] = res.data
 
-      // Toast when a run transitions from running → error
+      // Surface transitions and refresh dependent UI
       for (const run of next) {
         const prev = prevRunsRef.current.find((r) => r.id === run.id)
         if (prev?.status === 'running' && run.status === 'error') {
           toast.error(`Scan failed: ${run.error ?? 'unknown error'}`)
+        }
+        if (prev?.status === 'running' && run.status === 'done') {
+          if (run.kind === 'zigbee') {
+            toast.success(`Zigbee import done — ${run.devices_found} device${run.devices_found !== 1 ? 's' : ''}`)
+          }
+          // Notify pending modal/canvas to refresh
+          useCanvasStore.getState().notifyScanDeviceFound()
         }
       }
       prevRunsRef.current = next
@@ -263,6 +271,14 @@ function ScanHistoryPanel() {
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: statusColor(r.status) }} />
             <span className="font-mono text-foreground capitalize">{r.status}</span>
             {r.status === 'running' && <Loader2 size={10} className="animate-spin text-[#e3b341]" />}
+            <span
+              className="text-[9px] font-mono px-1 py-0.5 rounded uppercase tracking-wider"
+              style={r.kind === 'zigbee'
+                ? { background: '#00d4ff22', color: '#00d4ff' }
+                : { background: '#a855f722', color: '#a855f7' }}
+            >
+              {r.kind === 'zigbee' ? 'ZIG' : 'IP'}
+            </span>
             <span className="ml-auto text-muted-foreground font-mono">{r.devices_found} found</span>
             {r.status === 'running' && (
               <Tooltip>

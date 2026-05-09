@@ -1,16 +1,18 @@
 """FastAPI router for Zigbee2MQTT import."""
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.db.database import get_db
-from app.db.models import Node, PendingDevice, PendingDeviceLink
+from app.db.database import AsyncSessionLocal, get_db
+from app.db.models import Node, PendingDevice, PendingDeviceLink, ScanRun
+from app.schemas.scan import ScanRunResponse
 from app.schemas.zigbee import (
     ZigbeeCoordinatorOut,
     ZigbeeEdgeOut,
@@ -66,48 +68,59 @@ async def import_zigbee_network(
     return ZigbeeImportResponse(nodes=nodes, edges=edges, device_count=len(nodes))
 
 
-@router.post("/import-pending", response_model=ZigbeeImportPendingResponse)
+@router.post("/import-pending", response_model=ScanRunResponse)
 async def import_zigbee_to_pending(
     payload: ZigbeeImportRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
-) -> ZigbeeImportPendingResponse:
-    """Fetch the Z2M networkmap and store devices in the pending section.
+) -> ScanRun:
+    """Queue a Zigbee2MQTT pending import as a background scan run.
 
-    Coordinator is auto-approved (creates a canvas Node directly with
-    ``ieee_address`` set). Routers and end devices are upserted into
-    ``pending_devices`` keyed by IEEE address. The discovered parent→child
-    edges are persisted as ``pending_device_links`` rows so that approving a
-    pending device later can auto-create the corresponding Edge when the
-    other endpoint already exists as a canvas Node.
-
-    Re-importing replaces all zigbee-discovered links and updates pending
-    rows in place; pending devices not present in the new map are kept
-    untouched (the user may be mid-approval).
+    Returns the ScanRun row immediately so the UI can close the import
+    modal and surface progress under Scan History (kind=zigbee). The
+    actual MQTT fetch + pending upsert happens in the background.
     """
-    try:
-        nodes_raw, edges_raw = await fetch_networkmap(
-            mqtt_host=payload.mqtt_host,
-            mqtt_port=payload.mqtt_port,
-            base_topic=payload.base_topic,
-            username=payload.mqtt_username,
-            password=payload.mqtt_password,
-            tls=payload.mqtt_tls,
-            tls_insecure=payload.mqtt_tls_insecure,
-        )
-    except ImportError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    except ConnectionError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except TimeoutError as exc:
-        raise HTTPException(status_code=504, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        logger.exception("Unexpected error during Zigbee pending import")
-        raise HTTPException(status_code=500, detail="Unexpected error during Zigbee import") from exc
+    run = ScanRun(
+        status="running",
+        kind="zigbee",
+        ranges=[f"{payload.mqtt_host}:{payload.mqtt_port}"],
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+    background_tasks.add_task(_background_zigbee_import, run.id, payload)
+    return run
 
-    return await _persist_pending_import(db, nodes_raw, edges_raw)
+
+async def _background_zigbee_import(run_id: str, payload: ZigbeeImportRequest) -> None:
+    async with AsyncSessionLocal() as db:
+        try:
+            nodes_raw, edges_raw = await fetch_networkmap(
+                mqtt_host=payload.mqtt_host,
+                mqtt_port=payload.mqtt_port,
+                base_topic=payload.base_topic,
+                username=payload.mqtt_username,
+                password=payload.mqtt_password,
+                tls=payload.mqtt_tls,
+                tls_insecure=payload.mqtt_tls_insecure,
+            )
+            result = await _persist_pending_import(db, nodes_raw, edges_raw)
+            run = await db.get(ScanRun, run_id)
+            if run:
+                run.status = "done"
+                run.devices_found = result.device_count
+                run.finished_at = datetime.now(timezone.utc)
+                await db.commit()
+        except Exception as exc:
+            logger.exception("Zigbee import %s failed", run_id)
+            await db.rollback()
+            run = await db.get(ScanRun, run_id)
+            if run:
+                run.status = "error"
+                run.error = str(exc)[:500]
+                run.finished_at = datetime.now(timezone.utc)
+                await db.commit()
 
 
 async def _persist_pending_import(

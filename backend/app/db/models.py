@@ -128,6 +128,7 @@ class ScanRun(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     status: Mapped[str] = mapped_column(String, default="running")
+    kind: Mapped[str] = mapped_column(String, default="ip", server_default="ip")
     ranges: Mapped[list[str]] = mapped_column(JSON, default=list)
     devices_found: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

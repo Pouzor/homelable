@@ -125,11 +125,13 @@ export const zigbeeApi = {
     mqtt_tls_insecure?: boolean
   }) =>
     api.post<{
-      pending_created: number
-      pending_updated: number
-      coordinator: { id: string; label: string; ieee_address: string } | null
-      coordinator_already_existed: boolean
-      links_recorded: number
-      device_count: number
+      id: string
+      status: string
+      kind: string
+      ranges: string[]
+      devices_found: number
+      started_at: string
+      finished_at: string | null
+      error: string | null
     }>('/zigbee/import-pending', data),
 }
