@@ -258,7 +258,6 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       toast.success(`Approved ${nodeData.label}${extra}`)
       setDevices((prev) => prev.filter((d) => d.id !== device.id))
       setSelected(null)
-      onNodeApproved(nodeId)
     } catch {
       toast.error('Failed to approve device')
     }
@@ -352,7 +351,8 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectMode, selectedIds, filtered])
 
   return (
     <>
