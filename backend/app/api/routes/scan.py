@@ -174,6 +174,41 @@ async def bulk_hide_devices(
     return {"hidden": len(devices), "skipped": len(payload.device_ids) - len(devices)}
 
 
+@router.post("/pending/{device_id}/restore", response_model=dict)
+async def restore_device(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> dict[str, Any]:
+    device = await db.get(PendingDevice, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if device.status != "hidden":
+        raise HTTPException(status_code=409, detail="Device is not hidden")
+    device.status = "pending"
+    await db.commit()
+    return {"restored": True, "device_id": device_id}
+
+
+@router.post("/pending/bulk-restore", response_model=dict)
+async def bulk_restore_devices(
+    payload: BulkActionRequest,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> dict[str, Any]:
+    result = await db.execute(
+        select(PendingDevice).where(
+            PendingDevice.id.in_(payload.device_ids),
+            PendingDevice.status == "hidden",
+        )
+    )
+    devices = result.scalars().all()
+    for device in devices:
+        device.status = "pending"
+    await db.commit()
+    return {"restored": len(devices), "skipped": len(payload.device_ids) - len(devices)}
+
+
 @router.post("/pending/{device_id}/approve", response_model=dict)
 async def approve_device(
     device_id: str,

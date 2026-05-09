@@ -23,6 +23,7 @@ import { ZigbeeImportModal } from '@/components/zigbee/ZigbeeImportModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
 import { ThemeModal } from '@/components/modals/ThemeModal'
 import { SearchModal } from '@/components/modals/SearchModal'
+import { PendingDevicesModal } from '@/components/modals/PendingDevicesModal'
 import { ShortcutsModal } from '@/components/modals/ShortcutsModal'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -47,8 +48,16 @@ export default function App() {
 
   const [themeModalOpen, setThemeModalOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-  const [sidebarForceView, setSidebarForceView] = useState<'pending' | 'history' | undefined>(undefined)
-  const [highlightPendingId, setHighlightPendingId] = useState<string | undefined>(undefined)
+  const [sidebarForceView, setSidebarForceView] = useState<'history' | undefined>(undefined)
+  const [pendingModalOpen, setPendingModalOpen] = useState(false)
+  const [pendingModalStatus, setPendingModalStatus] = useState<'pending' | 'hidden'>('pending')
+  const [pendingHighlightId, setPendingHighlightId] = useState<string | undefined>(undefined)
+  const openPendingModal = useCallback((deviceId?: string, status: 'pending' | 'hidden' = 'pending') => {
+    setPendingHighlightId(undefined)
+    setPendingModalStatus(status)
+    setPendingModalOpen(true)
+    if (deviceId) setTimeout(() => setPendingHighlightId(deviceId), 0)
+  }, [])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [addNodeOpen, setAddNodeOpen] = useState(false)
   const [addGroupRectOpen, setAddGroupRectOpen] = useState(false)
@@ -437,9 +446,8 @@ export default function App() {
             onScan={() => setScanConfigOpen(true)}
             onZigbeeImport={() => setZigbeeImportOpen(true)}
             onSave={handleSave}
-            onNodeApproved={setEditNodeId}
             forceView={sidebarForceView}
-            highlightPendingId={highlightPendingId}
+            onOpenPending={openPendingModal}
           />
           <div className="flex flex-col flex-1 min-w-0">
             <Toolbar
@@ -461,14 +469,7 @@ export default function App() {
                   onEdgeDoubleClick={handleEdgeDoubleClick}
                   onNodeDoubleClick={handleNodeDoubleClick}
                   onNodeDragStart={snapshotHistory}
-                  onOpenPending={(deviceId) => {
-                    setHighlightPendingId(undefined)
-                    setSidebarForceView(undefined)
-                    setTimeout(() => {
-                      setHighlightPendingId(deviceId)
-                      setSidebarForceView('pending')
-                    }, 0)
-                  }}
+                  onOpenPending={(deviceId) => openPendingModal(deviceId)}
                 />
               </div>
               {(selectedNodeId || selectedNodeIds.length > 1) && <DetailPanel onEdit={handleEditNode} />}
@@ -608,16 +609,16 @@ export default function App() {
         <SearchModal
           open={searchOpen}
           onClose={() => setSearchOpen(false)}
-          onOpenPending={(deviceId) => {
-            setHighlightPendingId(undefined)
-            setSidebarForceView(undefined)
-            setTimeout(() => {
-              setHighlightPendingId(deviceId)
-              setSidebarForceView('pending')
-            }, 0)
-          }}
+          onOpenPending={(deviceId) => openPendingModal(deviceId)}
         />
         <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+        <PendingDevicesModal
+          open={pendingModalOpen}
+          onClose={() => setPendingModalOpen(false)}
+          highlightId={pendingHighlightId}
+          initialStatus={pendingModalStatus}
+        />
 
         <ExportModal
           open={exportModalOpen}

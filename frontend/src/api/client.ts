@@ -77,6 +77,8 @@ export const scanApi = {
       skipped: number
     }>('/scan/pending/bulk-approve', { device_ids: ids }),
   bulkHide: (ids: string[]) => api.post<{ hidden: number; skipped: number }>('/scan/pending/bulk-hide', { device_ids: ids }),
+  restore: (id: string) => api.post<{ restored: boolean; device_id: string }>(`/scan/pending/${id}/restore`),
+  bulkRestore: (ids: string[]) => api.post<{ restored: number; skipped: number }>('/scan/pending/bulk-restore', { device_ids: ids }),
   stop: (runId: string) => api.post(`/scan/${runId}/stop`),
   getConfig: () => api.get<{ ranges: string[] }>('/scan/config'),
   saveConfig: (data: { ranges: string[] }) => api.post('/scan/config', data),

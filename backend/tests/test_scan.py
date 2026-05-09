@@ -140,6 +140,49 @@ async def test_hide_device(client: AsyncClient, headers, pending_device):
     assert len(hidden_res.json()) == 1
 
 
+# --- Restore hidden device ---
+
+@pytest.mark.asyncio
+async def test_restore_device(client: AsyncClient, headers, pending_device):
+    # Hide first
+    await client.post(f"/api/v1/scan/pending/{pending_device.id}/hide", headers=headers)
+
+    # Restore
+    res = await client.post(f"/api/v1/scan/pending/{pending_device.id}/restore", headers=headers)
+    assert res.status_code == 200
+    assert res.json()["restored"] is True
+
+    # Now back in pending, gone from hidden
+    pending_res = await client.get("/api/v1/scan/pending", headers=headers)
+    assert len(pending_res.json()) == 1
+    hidden_res = await client.get("/api/v1/scan/hidden", headers=headers)
+    assert hidden_res.json() == []
+
+
+@pytest.mark.asyncio
+async def test_restore_device_rejects_non_hidden(client: AsyncClient, headers, pending_device):
+    res = await client.post(f"/api/v1/scan/pending/{pending_device.id}/restore", headers=headers)
+    assert res.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_bulk_restore_devices(client: AsyncClient, headers, pending_device):
+    # Hide
+    await client.post(f"/api/v1/scan/pending/{pending_device.id}/hide", headers=headers)
+
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-restore",
+        headers=headers,
+        json={"device_ids": [pending_device.id]},
+    )
+    assert res.status_code == 200
+    assert res.json()["restored"] == 1
+    assert res.json()["skipped"] == 0
+
+    pending_res = await client.get("/api/v1/scan/pending", headers=headers)
+    assert len(pending_res.json()) == 1
+
+
 # --- Ignore device ---
 
 @pytest.mark.asyncio

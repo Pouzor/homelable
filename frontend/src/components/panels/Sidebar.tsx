@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Trash2, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, X, LogOut, Network } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, LogOut, Network } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -8,19 +8,14 @@ import { scanApi, settingsApi } from '@/api/client'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
 
-import { PendingDeviceModal, type PendingDevice } from '@/components/modals/PendingDeviceModal'
-
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
-type SidebarView = 'canvas' | 'pending' | 'hidden' | 'history' | 'settings'
+type SidebarView = 'canvas' | 'history' | 'settings'
 
-const ALL_VIEWS = [
-  { id: 'canvas' as SidebarView, icon: LayoutDashboard, label: 'Canvas' },
-  { id: 'pending' as SidebarView, icon: ScanLine, label: 'Pending Devices' },
-  { id: 'hidden' as SidebarView, icon: EyeOff, label: 'Hidden Devices' },
-  { id: 'history' as SidebarView, icon: Clock, label: 'Scan History' },
+const PENDING_TRIGGERS: { kind: 'pending' | 'hidden'; icon: typeof ScanLine; label: string }[] = [
+  { kind: 'pending', icon: ScanLine, label: 'Pending Devices' },
+  { kind: 'hidden', icon: EyeOff, label: 'Hidden Devices' },
 ]
-const VIEWS = STANDALONE ? ALL_VIEWS.slice(0, 1) : ALL_VIEWS
 
 interface ScanRun {
   id: string
@@ -38,12 +33,11 @@ interface SidebarProps {
   onScan: () => void
   onZigbeeImport: () => void
   onSave: () => void
-  onNodeApproved: (nodeId: string) => void
   forceView?: SidebarView
-  highlightPendingId?: string
+  onOpenPending: (deviceId?: string, status?: 'pending' | 'hidden') => void
 }
 
-export function Sidebar({ onAddNode, onAddGroupRect, onScan, onZigbeeImport, onSave, onNodeApproved, forceView, highlightPendingId }: SidebarProps) {
+export function Sidebar({ onAddNode, onAddGroupRect, onScan, onZigbeeImport, onSave, forceView, onOpenPending }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [activeView, setActiveView] = useState<SidebarView>(forceView ?? 'canvas')
   const [prevForceView, setPrevForceView] = useState(forceView)
@@ -88,23 +82,36 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onZigbeeImport, onS
 
       {/* Views */}
       <nav className="flex flex-col gap-0.5 p-2">
-        {VIEWS.map(({ id, icon: Icon, label }) => (
+        <SidebarItem
+          icon={LayoutDashboard}
+          label="Canvas"
+          collapsed={collapsed}
+          active={activeView === 'canvas'}
+          onClick={() => setActiveView('canvas')}
+        />
+        {!STANDALONE && PENDING_TRIGGERS.map((t) => (
           <SidebarItem
-            key={id}
-            icon={Icon}
-            label={label}
+            key={t.kind}
+            icon={t.icon}
+            label={t.label}
             collapsed={collapsed}
-            active={activeView === id}
-            onClick={() => setActiveView(id)}
+            onClick={() => onOpenPending(undefined, t.kind)}
           />
         ))}
+        {!STANDALONE && (
+          <SidebarItem
+            icon={Clock}
+            label="Scan History"
+            collapsed={collapsed}
+            active={activeView === 'history'}
+            onClick={() => setActiveView('history')}
+          />
+        )}
       </nav>
 
       {/* View content (only when expanded) */}
       {!collapsed && activeView !== 'canvas' && (
         <div className="flex-1 min-h-0 overflow-y-auto border-t border-border">
-          {activeView === 'pending' && <PendingDevicesPanel onNodeApproved={onNodeApproved} highlightId={highlightPendingId} />}
-          {activeView === 'hidden' && <HiddenDevicesPanel />}
           {activeView === 'history' && <ScanHistoryPanel />}
           {activeView === 'settings' && <SettingsPanel />}
         </div>
@@ -178,361 +185,6 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onZigbeeImport, onS
   )
 }
 
-const COMMON_PORTS = new Set([22, 80, 443])
-
-function injectAutoEdges(edges: { id: string; source: string; target: string }[] | undefined) {
-  if (!edges || edges.length === 0) return
-  useCanvasStore.setState((state) => ({
-    edges: [
-      ...state.edges,
-      ...edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        sourceHandle: 'bottom',
-        targetHandle: 'top-t',
-        type: 'iot',
-        data: { type: 'iot' as const },
-      })),
-    ],
-    hasUnsavedChanges: true,
-  }))
-}
-
-function PendingDevicesPanel({ onNodeApproved, highlightId }: { onNodeApproved: (nodeId: string) => void; highlightId?: string }) {
-  const [devices, setDevices] = useState<PendingDevice[]>([])
-  const [loading, setLoading] = useState(false)
-  const [selected, setSelected] = useState<PendingDevice | null>(null)
-  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
-  const { addNode, scanEventTs } = useCanvasStore()
-  const highlightRef = useRef<HTMLButtonElement>(null)
-
-  const allChecked = devices.length > 0 && checkedIds.size === devices.length
-  const someChecked = checkedIds.size > 0
-
-  const toggleCheck = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setCheckedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
-  }
-
-  const toggleAll = () => {
-    setCheckedIds(allChecked ? new Set() : new Set(devices.map((d) => d.id)))
-  }
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await scanApi.pending()
-      setDevices(res.data)
-    } catch {
-      toast.error('Failed to load pending devices')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const handleClearAll = async () => {
-    try {
-      await scanApi.clearPending()
-      setDevices([])
-      setCheckedIds(new Set())
-      toast.success('Pending devices cleared')
-    } catch {
-      toast.error('Failed to clear pending devices')
-    }
-  }
-
-  const handleBulkApprove = async () => {
-    const ids = [...checkedIds]
-    try {
-      const res = await scanApi.bulkApprove(ids)
-      const deviceToNode: Record<string, string> = {}
-      res.data.device_ids.forEach((did, i) => { deviceToNode[did] = res.data.node_ids[i] })
-      const approvedDevices = devices.filter((d) => ids.includes(d.id))
-      approvedDevices.forEach((d, i) => {
-        const nodeId = deviceToNode[d.id]
-        if (!nodeId) return
-        const fallbackLabel = d.friendly_name ?? d.hostname ?? d.ip ?? d.ieee_address ?? 'device'
-        addNode({
-          id: nodeId,
-          type: (d.suggested_type ?? 'generic') as import('@/types').NodeType,
-          position: { x: 400 + (i % 4) * 160, y: 300 + Math.floor(i / 4) * 100 },
-          data: {
-            label: fallbackLabel,
-            type: (d.suggested_type ?? 'generic') as import('@/types').NodeType,
-            ip: d.ip ?? undefined,
-            hostname: d.hostname ?? undefined,
-            status: 'unknown' as const,
-            services: (d.services ?? []) as import('@/types').ServiceInfo[],
-          },
-        })
-        onNodeApproved(nodeId)
-      })
-      injectAutoEdges(res.data.edges)
-      setDevices((prev) => prev.filter((d) => !ids.includes(d.id)))
-      setCheckedIds(new Set())
-      const linkExtra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
-      toast.success(`Approved ${res.data.approved} device${res.data.approved !== 1 ? 's' : ''}${linkExtra}`)
-    } catch {
-      toast.error('Failed to bulk approve devices')
-    }
-  }
-
-  const handleBulkHide = async () => {
-    const ids = [...checkedIds]
-    try {
-      const res = await scanApi.bulkHide(ids)
-      setDevices((prev) => prev.filter((d) => !ids.includes(d.id)))
-      setCheckedIds(new Set())
-      toast.success(`Hidden ${res.data.hidden} device${res.data.hidden !== 1 ? 's' : ''}`)
-    } catch {
-      toast.error('Failed to bulk hide devices')
-    }
-  }
-
-  useEffect(() => { load() }, [load])
-
-  useEffect(() => {
-    if (scanEventTs > 0) load()
-  }, [scanEventTs, load])
-
-  useEffect(() => {
-    if (!highlightId || loading) return
-    highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [highlightId, loading])
-
-  const handleApprove = async (device: PendingDevice) => {
-    try {
-      const fallbackLabel = device.friendly_name ?? device.hostname ?? device.ip ?? device.ieee_address ?? 'device'
-      const nodeData = {
-        label: fallbackLabel,
-        type: (device.suggested_type ?? 'generic') as import('@/types').NodeType,
-        ip: device.ip ?? undefined,
-        hostname: device.hostname ?? undefined,
-        status: 'unknown',
-        services: (device.services ?? []) as import('@/types').ServiceInfo[],
-      }
-      const res = await scanApi.approve(device.id, nodeData)
-      const nodeId = res.data.node_id
-      addNode({
-        id: nodeId,
-        type: nodeData.type,
-        position: { x: 400, y: 300 },
-        data: { ...nodeData, status: 'unknown' as const },
-      })
-      injectAutoEdges(res.data.edges)
-      const extra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
-      toast.success(`Approved ${nodeData.label}${extra}`)
-      setDevices((prev) => prev.filter((d) => d.id !== device.id))
-      setSelected(null)
-      onNodeApproved(nodeId)
-    } catch {
-      toast.error('Failed to approve device')
-    }
-  }
-
-  const handleHide = async (device: PendingDevice) => {
-    try {
-      await scanApi.hide(device.id)
-      setDevices((prev) => prev.filter((d) => d.id !== device.id))
-      toast.success('Device hidden')
-    } catch {
-      toast.error('Failed to hide device')
-    }
-  }
-
-  const handleIgnore = async (device: PendingDevice) => {
-    try {
-      await scanApi.ignore(device.id)
-      setDevices((prev) => prev.filter((d) => d.id !== device.id))
-    } catch {
-      toast.error('Failed to ignore device')
-    }
-  }
-
-  return (
-    <>
-      <div className="p-2">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5">
-            {devices.length > 0 && (
-              <input
-                type="checkbox"
-                checked={allChecked}
-                ref={(el) => { if (el) el.indeterminate = someChecked && !allChecked }}
-                onChange={toggleAll}
-                className="w-3 h-3 accent-[#00d4ff] cursor-pointer"
-                title="Select all"
-              />
-            )}
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Pending</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button onClick={load} className="text-muted-foreground hover:text-foreground p-0.5" title="Refresh">
-              <RefreshCw size={12} />
-            </button>
-            {devices.length > 0 && (
-              <button onClick={handleClearAll} className="text-muted-foreground hover:text-[#f85149] p-0.5" title="Clear all pending">
-                <X size={12} />
-              </button>
-            )}
-          </div>
-        </div>
-        {someChecked && (
-          <div className="flex items-center gap-1 mb-2">
-            <button
-              onClick={handleBulkApprove}
-              className="flex-1 text-[10px] py-1 px-2 rounded bg-[#39d353]/20 text-[#39d353] hover:bg-[#39d353]/30 transition-colors font-medium"
-            >
-              Approve ({checkedIds.size})
-            </button>
-            <button
-              onClick={handleBulkHide}
-              className="flex-1 text-[10px] py-1 px-2 rounded bg-[#8b949e]/20 text-[#8b949e] hover:bg-[#8b949e]/30 transition-colors font-medium"
-            >
-              Hide ({checkedIds.size})
-            </button>
-          </div>
-        )}
-        {loading && <Loader2 size={14} className="animate-spin text-muted-foreground mx-auto my-4" />}
-        {!loading && devices.length === 0 && (
-          <p className="text-xs text-muted-foreground text-center py-4">No pending devices</p>
-        )}
-        {devices.map((d) => {
-          const isZigbee = d.discovery_source === 'zigbee'
-          const namedService = d.services.find((s) => s.category != null && s.port != null && !COMMON_PORTS.has(s.port))
-          const titleService = namedService
-            ?? d.services.find((s) => s.port === 80)
-            ?? d.services.find((s) => s.port === 443)
-            ?? d.services.find((s) => s.port === 22)
-          const title = isZigbee
-            ? (d.friendly_name ?? d.hostname ?? d.ieee_address ?? 'zigbee device')
-            : (titleService?.service_name ?? d.hostname ?? d.ip ?? 'device')
-          const showIpBelow = !isZigbee && d.ip != null && title !== d.ip
-          const hasSsh = d.services.some((s) => s.port === 22)
-          const hasHttp = d.services.some((s) => s.port === 80)
-          const hasHttps = d.services.some((s) => s.port === 443)
-          const otherCount = d.services.filter((s) => s.port !== 22 && s.port !== 80 && s.port !== 443).length
-          const virtualBadge = detectVirtualBadge(d.mac)
-          const sourceColor =
-            d.discovery_source === 'mdns' ? '#a855f7'
-            : d.discovery_source === 'zigbee' ? '#00d4ff'
-            : '#8b949e'
-          const sourceLabel =
-            d.discovery_source === 'mdns' ? 'mDNS'
-            : d.discovery_source === 'arp' ? 'ARP'
-            : d.discovery_source === 'zigbee' ? 'ZIG'
-            : null
-          const isHighlighted = d.id === highlightId
-          return (
-            <button
-              key={d.id}
-              ref={isHighlighted ? highlightRef : null}
-              onClick={() => setSelected(d)}
-              className={`w-full mb-1.5 p-2 rounded-md text-xs text-left transition-colors border ${isHighlighted ? 'bg-[#2d3748] border-[#e3b341]' : checkedIds.has(d.id) ? 'bg-[#21262d] border-[#00d4ff]/40' : 'bg-[#21262d] border-transparent hover:bg-[#30363d] hover:border-[#30363d]'}`}
-            >
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={checkedIds.has(d.id)}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => { e.stopPropagation(); toggleCheck(d.id, e as unknown as React.MouseEvent) }}
-                  className="w-3 h-3 accent-[#00d4ff] cursor-pointer shrink-0"
-                />
-                <span className="text-foreground truncate font-medium">{title}</span>
-              </div>
-              {showIpBelow && (
-                <div className="font-mono text-muted-foreground truncate pl-3 text-[10px] mt-0.5">{d.ip}</div>
-              )}
-              {(hasSsh || hasHttp || hasHttps || otherCount > 0 || virtualBadge || sourceLabel) && (
-                <div className="flex items-center gap-1 pl-3 mt-1.5 flex-wrap">
-                  {sourceLabel && <ServiceBadge label={sourceLabel} color={sourceColor} />}
-                  {virtualBadge && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span><ServiceBadge label={virtualBadge.label} color="#ff6e00" /></span>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">{virtualBadge.title}</TooltipContent>
-                    </Tooltip>
-                  )}
-                  {hasSsh && <ServiceBadge label="SSH" color="#a855f7" />}
-                  {hasHttp && <ServiceBadge label="HTTP" color="#00d4ff" />}
-                  {hasHttps && <ServiceBadge label="HTTPS" color="#39d353" />}
-                  {otherCount > 0 && <ServiceBadge label={`+${otherCount}`} color="#8b949e" />}
-                  {isZigbee && d.lqi != null && <ServiceBadge label={`LQI ${d.lqi}`} color="#8b949e" />}
-                </div>
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      <PendingDeviceModal
-        device={selected}
-        onClose={() => setSelected(null)}
-        onApprove={handleApprove}
-        onHide={handleHide}
-        onIgnore={handleIgnore}
-      />
-    </>
-  )
-}
-
-function HiddenDevicesPanel() {
-  const [devices, setDevices] = useState<PendingDevice[]>([])
-  const [loading, setLoading] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await scanApi.hidden()
-      setDevices(res.data)
-    } catch {
-      toast.error('Failed to load hidden devices')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [load])
-
-  const handleIgnore = async (id: string) => {
-    try {
-      await scanApi.ignore(id)
-      setDevices((prev) => prev.filter((d) => d.id !== id))
-    } catch {
-      toast.error('Failed to remove device')
-    }
-  }
-
-  return (
-    <div className="p-2">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Hidden</span>
-        <button onClick={load} className="text-muted-foreground hover:text-foreground p-0.5">
-          <RefreshCw size={12} />
-        </button>
-      </div>
-      {loading && <Loader2 size={14} className="animate-spin text-muted-foreground mx-auto my-4" />}
-      {!loading && devices.length === 0 && (
-        <p className="text-xs text-muted-foreground text-center py-4">No hidden devices</p>
-      )}
-      {devices.map((d) => (
-        <div key={d.id} className="mb-2 p-2 rounded-md bg-[#21262d] text-xs">
-          <div className="font-mono text-foreground">{d.ip}</div>
-          {d.hostname && <div className="text-muted-foreground truncate">{d.hostname}</div>}
-          <div className="flex gap-1 mt-1.5">
-            <ActionButton icon={Trash2} label="Remove" color="red" onClick={() => handleIgnore(d.id)} />
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
 
 function ScanHistoryPanel() {
   const [runs, setRuns] = useState<ScanRun[]>([])
@@ -728,55 +380,6 @@ function VersionBadge() {
         </a>
       )}
     </div>
-  )
-}
-
-const MAC_OUI: Record<string, { label: string; title: string }> = {
-  '52:54:00': { label: 'QEMU', title: 'QEMU/KVM Virtual Machine' },
-  'bc:24:11': { label: 'PVE',  title: 'Proxmox Virtual Machine or LXC' },
-  '00:50:56': { label: 'VMware', title: 'VMware Virtual Machine' },
-  '00:0c:29': { label: 'VMware', title: 'VMware Virtual Machine' },
-  '08:00:27': { label: 'VBox',  title: 'VirtualBox Virtual Machine' },
-  '00:15:5d': { label: 'Hyper-V', title: 'Hyper-V Virtual Machine' },
-}
-
-function detectVirtualBadge(mac: string | null) {
-  if (!mac) return null
-  return MAC_OUI[mac.toLowerCase().slice(0, 8)] ?? null
-}
-
-function ServiceBadge({ label, color }: { label: string; color: string }) {
-  return (
-    <span
-      className="px-1 py-0.5 rounded text-[9px] font-mono font-medium leading-none border"
-      style={{ color, borderColor: `${color}40`, backgroundColor: `${color}15` }}
-    >
-      {label}
-    </span>
-  )
-}
-
-interface ActionButtonProps {
-  icon: React.ElementType
-  label: string
-  color?: 'green' | 'red'
-  onClick: () => void
-}
-
-function ActionButton({ icon: Icon, label, color, onClick }: ActionButtonProps) {
-  const colorClass =
-    color === 'green' ? 'text-[#39d353] hover:bg-[#39d353]/10' :
-    color === 'red' ? 'text-[#f85149] hover:bg-[#f85149]/10' :
-    'text-muted-foreground hover:text-foreground hover:bg-[#30363d]'
-  return (
-    <Tooltip>
-      <TooltipTrigger>
-        <button onClick={onClick} className={`p-1 rounded ${colorClass} transition-colors`}>
-          <Icon size={11} />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{label}</TooltipContent>
-    </Tooltip>
   )
 }
 
