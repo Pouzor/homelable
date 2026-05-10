@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useReactFlow, type Node, type NodeDragHandler } from '@xyflow/react'
+import { useReactFlow, type Node, type OnNodeDrag } from '@xyflow/react'
 import { computeSnap, unionBox, type Box, type Guide } from '@/utils/alignment'
 import {
   type AlignmentSettings,
@@ -8,6 +8,8 @@ import {
   subscribeAlignmentSettings,
 } from '@/utils/alignmentSettings'
 import type { NodeData } from '@/types'
+
+type NodeDrag = OnNodeDrag<Node<NodeData>>
 
 function nodeBox(n: Node<NodeData>): Box | null {
   // Skip nodes with a parent — alignment between absolute & parent-relative
@@ -46,7 +48,7 @@ export function useAlignmentGuides() {
     })
   }, [])
 
-  const onNodeDrag: NodeDragHandler = useCallback((_event, dragNode, dragNodes) => {
+  const onNodeDrag: NodeDrag = useCallback((_event, dragNode, dragNodes) => {
     if (!settings.enabled || altDownRef.current) {
       if (guides.length > 0) setGuides([])
       return
@@ -77,7 +79,7 @@ export function useAlignmentGuides() {
     }
   }, [settings.enabled, settings.threshold, getNodes, setNodes, guides.length])
 
-  const onNodeDragStop: NodeDragHandler = useCallback(() => {
+  const onNodeDragStop: NodeDrag = useCallback(() => {
     if (guides.length > 0) setGuides([])
   }, [guides.length])
 
