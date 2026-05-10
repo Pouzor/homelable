@@ -19,6 +19,7 @@ export type NodeType =
   | 'generic'
   | 'groupRect'
   | 'group'
+  | 'text'
   | 'zigbee_coordinator'
   | 'zigbee_router'
   | 'zigbee_enddevice'
@@ -99,6 +100,8 @@ export interface NodeData extends Record<string, unknown> {
   custom_icon?: string
   /** Number of bottom connection points, 1..48. Default 1 (centered). */
   bottom_handles?: number
+  /** Text node content (type === 'text') */
+  text_content?: string
 }
 
 export type EdgePathStyle = 'bezier' | 'smooth'
@@ -140,6 +143,7 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   generic: 'Generic Device',
   groupRect: 'Group Rectangle',
   group: 'Node Group',
+  text: 'Text',
   zigbee_coordinator: 'Zigbee Coordinator',
   zigbee_router: 'Zigbee Router',
   zigbee_enddevice: 'Zigbee End Device',

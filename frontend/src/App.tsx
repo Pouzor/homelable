@@ -21,6 +21,7 @@ import { EdgeModal } from '@/components/modals/EdgeModal'
 import { ScanConfigModal } from '@/components/modals/ScanConfigModal'
 import { ZigbeeImportModal } from '@/components/zigbee/ZigbeeImportModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
+import { TextModal, type TextFormData } from '@/components/modals/TextModal'
 import { ThemeModal } from '@/components/modals/ThemeModal'
 import { SearchModal } from '@/components/modals/SearchModal'
 import { PendingDevicesModal } from '@/components/modals/PendingDevicesModal'
@@ -39,7 +40,7 @@ const STANDALONE_STORAGE_KEY = 'homelable_canvas'
 const CONTAINER_MODE_TYPES = new Set<NodeData['type']>(['proxmox', 'vm', 'lxc', 'docker_host'])
 
 export default function App() {
-  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
+  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated } = useAuthStore()
   const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
@@ -61,6 +62,7 @@ export default function App() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [addNodeOpen, setAddNodeOpen] = useState(false)
   const [addGroupRectOpen, setAddGroupRectOpen] = useState(false)
+  const [addTextOpen, setAddTextOpen] = useState(false)
   const [editNodeId, setEditNodeId] = useState<string | null>(null)
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null)
   const [editEdgeId, setEditEdgeId] = useState<string | null>(null)
@@ -240,6 +242,62 @@ export default function App() {
     setNodeZIndex(editingGroupRectId, data.z_order - 10)
     setEditingGroupRectId(null)
   }, [editingGroupRectId, nodes, updateNode, setNodeZIndex, setEditingGroupRectId, snapshotHistory])
+
+  const handleAddText = useCallback((data: TextFormData) => {
+    snapshotHistory()
+    const id = generateUUID()
+    const newNode: Node<NodeData> = {
+      id,
+      type: 'text',
+      position: { x: 250, y: 250 },
+      data: {
+        label: '',
+        type: 'text',
+        status: 'unknown',
+        services: [],
+        text_content: data.text,
+        custom_colors: {
+          border: data.border_color,
+          border_style: data.border_style,
+          border_width: data.border_width,
+          background: data.background_color,
+          text_color: data.text_color,
+          text_size: data.text_size,
+          font: data.font,
+        },
+      },
+      width: 200,
+      height: 60,
+    }
+    addNode(newNode)
+  }, [addNode, snapshotHistory])
+
+  const handleUpdateText = useCallback((data: TextFormData) => {
+    if (!editingTextId) return
+    snapshotHistory()
+    const existing = nodes.find((n) => n.id === editingTextId)
+    updateNode(editingTextId, {
+      text_content: data.text,
+      custom_colors: {
+        ...existing?.data.custom_colors,
+        border: data.border_color,
+        border_style: data.border_style,
+        border_width: data.border_width,
+        background: data.background_color,
+        text_color: data.text_color,
+        text_size: data.text_size,
+        font: data.font,
+      },
+    })
+    setEditingTextId(null)
+  }, [editingTextId, nodes, updateNode, setEditingTextId, snapshotHistory])
+
+  const handleDeleteText = useCallback(() => {
+    if (!editingTextId) return
+    snapshotHistory()
+    deleteNode(editingTextId)
+    setEditingTextId(null)
+  }, [editingTextId, deleteNode, setEditingTextId, snapshotHistory])
 
   const handleDeleteGroupRect = useCallback(() => {
     if (!editingGroupRectId) return
@@ -443,6 +501,7 @@ export default function App() {
           <Sidebar
             onAddNode={() => setAddNodeOpen(true)}
             onAddGroupRect={() => setAddGroupRectOpen(true)}
+            onAddText={() => setAddTextOpen(true)}
             onScan={() => setScanConfigOpen(true)}
             onZigbeeImport={() => setZigbeeImportOpen(true)}
             onSave={handleSave}
@@ -581,6 +640,37 @@ export default function App() {
             }
           })()}
           title="Edit Zone"
+        />
+
+        <TextModal
+          open={addTextOpen}
+          onClose={() => setAddTextOpen(false)}
+          onSubmit={handleAddText}
+          title="Add Text"
+        />
+
+        <TextModal
+          key={editingTextId ?? 'text-edit'}
+          open={!!editingTextId}
+          onClose={() => setEditingTextId(null)}
+          onSubmit={handleUpdateText}
+          onDelete={handleDeleteText}
+          initial={(() => {
+            const n = editingTextId ? nodes.find((nd) => nd.id === editingTextId) : null
+            if (!n) return undefined
+            const rc = n.data.custom_colors ?? {}
+            return {
+              text: n.data.text_content ?? n.data.label ?? '',
+              font: rc.font ?? 'inter',
+              text_color: rc.text_color ?? '#e6edf3',
+              text_size: rc.text_size ?? 14,
+              border_color: rc.border ?? '#30363d',
+              border_style: (rc.border_style ?? 'none') as TextFormData['border_style'],
+              border_width: rc.border_width ?? 1,
+              background_color: rc.background ?? '#00000000',
+            }
+          })()}
+          title="Edit Text"
         />
 
         {/* key forces re-mount on open so useState captures current theme as original */}

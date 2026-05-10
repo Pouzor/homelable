@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, LogOut, Network } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, LogOut, Network, Type } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -31,6 +31,7 @@ interface ScanRun {
 interface SidebarProps {
   onAddNode: () => void
   onAddGroupRect: () => void
+  onAddText: () => void
   onScan: () => void
   onZigbeeImport: () => void
   onSave: () => void
@@ -38,7 +39,7 @@ interface SidebarProps {
   onOpenPending: (deviceId?: string, status?: 'pending' | 'hidden') => void
 }
 
-export function Sidebar({ onAddNode, onAddGroupRect, onScan, onZigbeeImport, onSave, forceView, onOpenPending }: SidebarProps) {
+export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onSave, forceView, onOpenPending }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [activeView, setActiveView] = useState<SidebarView>(forceView ?? 'canvas')
   const [prevForceView, setPrevForceView] = useState(forceView)
@@ -55,7 +56,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onZigbeeImport, onS
 
   const { nodes, hasUnsavedChanges, hideIp, toggleHideIp } = useCanvasStore()
 
-  const networkNodes = nodes.filter((n) => n.data.type !== 'groupRect')
+  const networkNodes = nodes.filter((n) => n.data.type !== 'groupRect' && n.data.type !== 'text')
   const onlineCount = networkNodes.filter((n) => n.data.status === 'online').length
   const offlineCount = networkNodes.filter((n) => n.data.status === 'offline').length
 
@@ -145,6 +146,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onScan, onZigbeeImport, onS
       <div className="flex flex-col gap-0.5 p-2 border-t border-border">
         <SidebarItem icon={Plus} label="Add Node" collapsed={collapsed} onClick={onAddNode} />
         <SidebarItem icon={Square} label="Add Zone" collapsed={collapsed} onClick={onAddGroupRect} />
+        <SidebarItem icon={Type} label="Add Text" collapsed={collapsed} onClick={onAddText} />
         {!STANDALONE && <SidebarItem icon={ScanLine} label="Scan Network" collapsed={collapsed} onClick={handleScan} />}
         {!STANDALONE && <SidebarItem icon={Network} label="Zigbee Import" collapsed={collapsed} onClick={onZigbeeImport} />}
         <SidebarItem
