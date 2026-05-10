@@ -234,7 +234,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         {data.mac && <DetailRow label="MAC" value={data.mac} mono />}
         {data.os && <DetailRow label="OS" value={data.os} />}
         {data.check_method && <DetailRow label="Check" value={data.check_method} mono />}
-        {data.last_seen && <DetailRow label="Last Seen" value={new Date(data.last_seen.endsWith('Z') ? data.last_seen : data.last_seen + 'Z').toLocaleString()} />}
+        {data.last_seen && <DetailRow label="Last Seen" value={new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(data.last_seen) ? data.last_seen : data.last_seen + 'Z').toLocaleString()} />}
       </div>
 
       {/* Properties section */}
