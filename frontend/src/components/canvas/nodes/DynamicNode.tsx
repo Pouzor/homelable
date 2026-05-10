@@ -9,6 +9,7 @@ type AppNodeProps = NodeProps<AppNode>
 
 const BASE_NODE_MAP: Record<NodeType, React.ComponentType<AppNodeProps>> = {
   isp: Nodes.IspNode,
+  firewall: Nodes.FirewallNode,
   router: Nodes.RouterNode,
   switch: Nodes.SwitchNode,
   server: Nodes.ServerNode,
