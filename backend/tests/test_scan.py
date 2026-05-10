@@ -529,6 +529,37 @@ async def test_bulk_approve_approves_devices(client: AsyncClient, headers, two_p
 
 
 @pytest.mark.asyncio
+async def test_bulk_approve_sets_default_check_method(client: AsyncClient, headers, two_pending_devices, db_session):
+    """Approved devices with an IP must default to ping; otherwise scheduler skips them."""
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    ids = [d.id for d in two_pending_devices]
+    res = await client.post("/api/v1/scan/pending/bulk-approve", json={"device_ids": ids}, headers=headers)
+    assert res.status_code == 200
+    nodes = (await db_session.execute(select(NodeModel))).scalars().all()
+    for n in nodes:
+        if n.ip:
+            assert n.check_method == "ping", f"node {n.id} created without check_method"
+
+
+@pytest.mark.asyncio
+async def test_approve_device_sets_default_check_method(client: AsyncClient, headers, pending_device, db_session):
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    res = await client.post(
+        f"/api/v1/scan/pending/{pending_device.id}/approve",
+        json={"label": "h", "type": "generic", "ip": "192.168.1.10", "status": "unknown", "services": []},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (await db_session.execute(select(NodeModel))).scalars().first()
+    assert node is not None
+    assert node.check_method == "ping"
+
+
+@pytest.mark.asyncio
 async def test_bulk_approve_skips_already_approved(client: AsyncClient, headers, two_pending_devices):
     ids = [d.id for d in two_pending_devices]
     # Approve first device individually first

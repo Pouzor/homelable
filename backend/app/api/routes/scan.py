@@ -133,6 +133,9 @@ async def bulk_approve_devices(
             status="unknown",
             services=device.services or [],
             ieee_address=device.ieee_address,
+            # Default to ping so the status checker actually polls the new node.
+            # Without this the scheduler skips it (check_method NULL → no check).
+            check_method="ping" if device.ip else None,
         )
         db.add(node)
         created_nodes.append(node)
@@ -230,6 +233,10 @@ async def approve_device(
         status=node_data.status,
         services=node_data.services or [],
         ieee_address=device.ieee_address,
+        # Honour caller-supplied check_method, else default to ping when an IP exists
+        # so the scheduler doesn't silently skip the new node.
+        check_method=node_data.check_method or ("ping" if node_data.ip else None),
+        check_target=node_data.check_target,
     )
     db.add(node)
     await db.flush()
