@@ -49,6 +49,7 @@ vi.mock('@/utils/nodeIcons', () => ({
 vi.mock('@/utils/maskIp', () => ({
   maskIp: (ip: string) => ip,
   splitIps: (ip: string) => ip ? ip.split(',').map((s: string) => s.trim()).filter(Boolean) : [],
+  primaryIp: (ip: string) => ip ? ip.split(',')[0].trim() : '',
 }))
 
 vi.mock('@/utils/propertyIcons', () => ({
@@ -166,6 +167,49 @@ describe('BaseNode — properties rendering', () => {
     expect(screen.getByText('My Server')).toBeDefined()
     expect(screen.getByText('192.168.1.10')).toBeDefined()
     expect(screen.getByText('OS')).toBeDefined()
+  })
+})
+
+describe('BaseNode — services visibility toggle', () => {
+  it('does not render service toggle button on the node', () => {
+    renderBaseNode({ services: [{ service_name: 'nginx', port: 80, protocol: 'tcp' }] })
+    expect(screen.queryByTitle('Show services')).toBeNull()
+  })
+
+  it('renders service rows when services are toggled on', () => {
+    renderBaseNode({
+      ip: '192.168.1.10',
+      custom_colors: { show_services: true },
+      services: [
+        { service_name: 'nginx', port: 80, protocol: 'tcp' },
+        { service_name: 'ssh', port: 22, protocol: 'tcp' },
+      ],
+    })
+
+    expect(screen.getByText('nginx')).toBeDefined()
+    expect(screen.getByText('80')).toBeDefined()
+    expect(screen.getByText('ssh')).toBeDefined()
+  })
+
+  it('renders clickable service links for web services', () => {
+    renderBaseNode({
+      ip: '192.168.1.10',
+      custom_colors: { show_services: true },
+      services: [{ service_name: 'nginx', port: 80, protocol: 'tcp' }],
+    })
+
+    const link = screen.getByRole('link', { name: /nginx/i }) as HTMLAnchorElement
+    expect(link.getAttribute('href')).toBe('http://192.168.1.10:80')
+  })
+
+  it('keeps non-web services as non-clickable rows', () => {
+    renderBaseNode({
+      ip: '192.168.1.10',
+      custom_colors: { show_services: true },
+      services: [{ service_name: 'ssh', port: 22, protocol: 'tcp' }],
+    })
+
+    expect(screen.queryByRole('link', { name: /ssh/i })).toBeNull()
   })
 })
 

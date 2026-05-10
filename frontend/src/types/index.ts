@@ -82,6 +82,7 @@ export interface NodeData extends Record<string, unknown> {
     border?: string
     background?: string
     icon?: string
+    show_services?: boolean
     // Group rectangle extras (type === 'groupRect')
     text_color?: string
     text_position?: TextPosition
