@@ -74,23 +74,33 @@ export function useAlignmentGuides() {
       return
     }
     const all = getNodes()
-    const ids = new Set((dragNodes.length > 0 ? dragNodes : [dragNode]).map((n) => n.id))
-    const draggedBoxes = all.filter((n) => ids.has(n.id)).map(nodeBox).filter((b): b is Box => b !== null)
-    if (draggedBoxes.length === 0) {
+    const draggedIds = new Set((dragNodes.length > 0 ? dragNodes : [dragNode]).map((n) => n.id))
+    // Restrict the snap to top-level dragged nodes. nodeBox returns null for
+    // parented nodes; if we kept their ids in pendingSnap, onNodeDragStop
+    // would shift their parent-relative position by the same delta the parent
+    // already moves by, double-snapping the child. Children follow the parent
+    // automatically; no extra shift needed.
+    const draggedBoxEntries = all
+      .filter((n) => draggedIds.has(n.id))
+      .map((n) => ({ id: n.id, box: nodeBox(n) }))
+      .filter((e): e is { id: string; box: Box } => e.box !== null)
+    if (draggedBoxEntries.length === 0) {
       clearState()
       return
     }
-    const dragged = draggedBoxes.length === 1 ? draggedBoxes[0] : unionBox(draggedBoxes)
+    const snapIds = new Set(draggedBoxEntries.map((e) => e.id))
+    const boxes = draggedBoxEntries.map((e) => e.box)
+    const dragged = boxes.length === 1 ? boxes[0] : unionBox(boxes)
     if (!dragged) return
     const candidates = all
-      .filter((n) => !ids.has(n.id))
+      .filter((n) => !draggedIds.has(n.id))
       .map(nodeBox)
       .filter((b): b is Box => b !== null)
     const result = computeSnap(dragged, candidates, settings.threshold)
     setGuides(result.guides)
     pendingSnapRef.current =
       result.deltaX !== 0 || result.deltaY !== 0
-        ? { deltaX: result.deltaX, deltaY: result.deltaY, ids }
+        ? { deltaX: result.deltaX, deltaY: result.deltaY, ids: snapIds }
         : null
   }, [settings.enabled, settings.threshold, getNodes, clearState])
 
