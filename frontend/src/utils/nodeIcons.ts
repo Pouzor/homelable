@@ -19,7 +19,7 @@ import {
   // Communications
   Mail, MessageSquare, Phone,
   // Misc devices
-  Printer, Smartphone, Search, Filter, BookOpen, PlugZap,
+  Printer, Smartphone, Search, Filter, BookOpen, PlugZap, Type,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -142,6 +142,7 @@ export const NODE_TYPE_DEFAULT_ICONS: Record<NodeType, LucideIcon> = {
   generic:           Circle,
   group:        Circle,
   groupRect:    Circle,
+  text:         Type,
 }
 
 /** Resolve the display icon for a node — custom_icon takes priority over type default. */
