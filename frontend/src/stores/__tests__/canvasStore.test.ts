@@ -724,6 +724,36 @@ describe('canvasStore', () => {
     expect(stored?.height).toBeUndefined()
   })
 
+  it('updateNode preserves height for group type when properties change (children must not vanish)', () => {
+    const group: Node<NodeData> = {
+      id: 'g1',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      width: 360,
+      height: 240,
+      data: { label: 'Zone', type: 'group', status: 'unknown', services: [] },
+    }
+    useCanvasStore.setState({ nodes: [group], edges: [] })
+    useCanvasStore.getState().updateNode('g1', { properties: [] })
+    const stored = useCanvasStore.getState().nodes.find((n) => n.id === 'g1')
+    expect(stored?.height).toBe(240)
+    expect(stored?.width).toBe(360)
+  })
+
+  it('updateNode preserves height for groupRect when properties change', () => {
+    const rect: Node<NodeData> = {
+      id: 'r1',
+      type: 'groupRect',
+      position: { x: 0, y: 0 },
+      width: 360,
+      height: 240,
+      data: { label: 'Rect', type: 'groupRect', status: 'unknown', services: [] },
+    }
+    useCanvasStore.setState({ nodes: [rect], edges: [] })
+    useCanvasStore.getState().updateNode('r1', { properties: [] })
+    expect(useCanvasStore.getState().nodes.find((n) => n.id === 'r1')?.height).toBe(240)
+  })
+
   // ── bottom_handles edge remapping ──────────────────────────────────────────
 
   it('remaps source edges to "bottom" when bottom_handles is reduced', () => {

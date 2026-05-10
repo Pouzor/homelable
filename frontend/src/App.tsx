@@ -465,6 +465,11 @@ export default function App() {
   }, [])
 
   const handleNodeDoubleClick = useCallback((node: Node<NodeData>) => {
+    // 'group' uses inline rename (pencil button in header). Opening the
+    // generic NodeModal would clobber the group's height (via the
+    // properties-clears-height rule in updateNode) and lose its children.
+    // 'groupRect' has its own onDoubleClick that already routes to GroupRectModal.
+    if (node.data.type === 'group' || node.data.type === 'groupRect') return
     handleEditNode(node.id)
   }, [handleEditNode])
 

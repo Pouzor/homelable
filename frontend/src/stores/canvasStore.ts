@@ -209,7 +209,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         if (n.id !== id) return n
         const updated: Node<NodeData> = { ...n, data: { ...n.data, ...data } }
         // When properties change, clear stored height so the node auto-sizes to fit new content
-        if ('properties' in data && n.data.type !== 'proxmox' && n.data.type !== 'groupRect') {
+        if ('properties' in data && n.data.type !== 'proxmox' && n.data.type !== 'groupRect' && n.data.type !== 'group') {
           updated.height = undefined
         }
         if ('parent_id' in data) {
