@@ -12,7 +12,7 @@ import type { NodeData } from '@/types'
 type NodeDrag = OnNodeDrag<Node<NodeData>>
 
 function nodeBox(n: Node<NodeData>): Box | null {
-  // Skip nodes with a parent — alignment between absolute & parent-relative
+  // Skip parented nodes — alignment between absolute and parent-relative
   // coordinates is misleading. Top-level nodes only for v1.
   if (n.parentId) return null
   const width = n.measured?.width ?? n.width ?? null
@@ -21,9 +21,24 @@ function nodeBox(n: Node<NodeData>): Box | null {
   return { id: n.id, x: n.position.x, y: n.position.y, width, height }
 }
 
+/**
+ * Drag-time alignment guides + snap (draw.io / Figma style).
+ *
+ * Snap is applied on drag stop (not during drag) to avoid racing React Flow's
+ * internal drag handler, which computes positions from the cursor offset
+ * captured at drag start. Guides update live for visual feedback.
+ *
+ * Settings (enabled, threshold) live in localStorage and propagate same-tab
+ * via a CustomEvent so the panel and the hook stay in sync.
+ */
 export function useAlignmentGuides() {
   const [settings, setSettings] = useState<AlignmentSettings>(readAlignmentSettings)
   const [guides, setGuides] = useState<Guide[]>([])
+  // ref mirror of guides so callbacks don't need it in their deps
+  const guidesRef = useRef<Guide[]>([])
+  useEffect(() => { guidesRef.current = guides }, [guides])
+  // latest snap deltas, applied on drag stop
+  const pendingSnapRef = useRef<{ deltaX: number; deltaY: number; ids: Set<string> } | null>(null)
   const altDownRef = useRef(false)
   const { setNodes, getNodes } = useReactFlow<Node<NodeData>>()
 
@@ -48,40 +63,50 @@ export function useAlignmentGuides() {
     })
   }, [])
 
+  const clearState = useCallback(() => {
+    if (guidesRef.current.length > 0) setGuides([])
+    pendingSnapRef.current = null
+  }, [])
+
   const onNodeDrag: NodeDrag = useCallback((_event, dragNode, dragNodes) => {
     if (!settings.enabled || altDownRef.current) {
-      if (guides.length > 0) setGuides([])
+      clearState()
       return
     }
     const all = getNodes()
-    const draggedSet = new Set((dragNodes.length > 0 ? dragNodes : [dragNode]).map((n) => n.id))
-    const draggedBoxes = all.filter((n) => draggedSet.has(n.id)).map(nodeBox).filter((b): b is Box => b !== null)
+    const ids = new Set((dragNodes.length > 0 ? dragNodes : [dragNode]).map((n) => n.id))
+    const draggedBoxes = all.filter((n) => ids.has(n.id)).map(nodeBox).filter((b): b is Box => b !== null)
     if (draggedBoxes.length === 0) {
-      if (guides.length > 0) setGuides([])
+      clearState()
       return
     }
     const dragged = draggedBoxes.length === 1 ? draggedBoxes[0] : unionBox(draggedBoxes)
     if (!dragged) return
     const candidates = all
-      .filter((n) => !draggedSet.has(n.id))
+      .filter((n) => !ids.has(n.id))
       .map(nodeBox)
       .filter((b): b is Box => b !== null)
     const result = computeSnap(dragged, candidates, settings.threshold)
     setGuides(result.guides)
-    if (result.deltaX !== 0 || result.deltaY !== 0) {
+    pendingSnapRef.current =
+      result.deltaX !== 0 || result.deltaY !== 0
+        ? { deltaX: result.deltaX, deltaY: result.deltaY, ids }
+        : null
+  }, [settings.enabled, settings.threshold, getNodes, clearState])
+
+  const onNodeDragStop: NodeDrag = useCallback(() => {
+    const pending = pendingSnapRef.current
+    if (pending) {
       setNodes((ns) =>
         ns.map((n) =>
-          draggedSet.has(n.id)
-            ? { ...n, position: { x: n.position.x + result.deltaX, y: n.position.y + result.deltaY } }
+          pending.ids.has(n.id)
+            ? { ...n, position: { x: n.position.x + pending.deltaX, y: n.position.y + pending.deltaY } }
             : n,
         ),
       )
     }
-  }, [settings.enabled, settings.threshold, getNodes, setNodes, guides.length])
-
-  const onNodeDragStop: NodeDrag = useCallback(() => {
-    if (guides.length > 0) setGuides([])
-  }, [guides.length])
+    clearState()
+  }, [setNodes, clearState])
 
   return { guides, settings, update, onNodeDrag, onNodeDragStop }
 }
