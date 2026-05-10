@@ -248,14 +248,16 @@ export default function App() {
     const id = generateUUID()
     const newNode: Node<NodeData> = {
       id,
+      // Text lives in `label` because the API serializer only persists top-level
+      // node fields; text_content is not in the schema and was lost on reload.
+      // TextNode and the edit modal both already fall back to label.
       type: 'text',
       position: { x: 250, y: 250 },
       data: {
-        label: '',
+        label: data.text,
         type: 'text',
         status: 'unknown',
         services: [],
-        text_content: data.text,
         custom_colors: {
           border: data.border_color,
           border_style: data.border_style,
@@ -277,7 +279,10 @@ export default function App() {
     snapshotHistory()
     const existing = nodes.find((n) => n.id === editingTextId)
     updateNode(editingTextId, {
-      text_content: data.text,
+      label: data.text,
+      // Clear stale text_content if present from older builds — label is the
+      // source of truth now.
+      text_content: undefined,
       custom_colors: {
         ...existing?.data.custom_colors,
         border: data.border_color,
