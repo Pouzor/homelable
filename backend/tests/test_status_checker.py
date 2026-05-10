@@ -169,6 +169,31 @@ async def test_ping_uses_unix_args_on_non_windows():
     assert "-c" in captured["args"]
     assert "-W" in captured["args"]
     assert "-n" not in captured["args"]
+    # Linux: -W is in seconds; 1s is the intended timeout
+    w_idx = captured["args"].index("-W")
+    assert captured["args"][w_idx + 1] == "1"
+
+
+@pytest.mark.asyncio
+async def test_ping_uses_macos_millisecond_timeout():
+    """macOS ping(8) -W is milliseconds, not seconds. 1ms would fail any RTT >1ms."""
+    captured = {}
+
+    async def fake_exec(*args, **kwargs):
+        captured["args"] = args
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.wait = AsyncMock()
+        return proc
+
+    with patch("app.services.status_checker.sys.platform", "darwin"), \
+         patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+        await _ping("192.168.1.1")
+
+    assert "-c" in captured["args"]
+    assert "-W" in captured["args"]
+    w_idx = captured["args"].index("-W")
+    assert captured["args"][w_idx + 1] == "1000"
 
 
 @pytest.mark.asyncio
