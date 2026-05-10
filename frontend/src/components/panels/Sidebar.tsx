@@ -7,6 +7,12 @@ import { useAuthStore } from '@/stores/authStore'
 import { scanApi, settingsApi } from '@/api/client'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
+import {
+  type AlignmentSettings,
+  readAlignmentSettings,
+  writeAlignmentSettings,
+  subscribeAlignmentSettings,
+} from '@/utils/alignmentSettings'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -321,12 +327,21 @@ function ScanHistoryPanel() {
 function SettingsPanel() {
   const [interval, setIntervalValue] = useState(60)
   const [saving, setSaving] = useState(false)
+  const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
 
   useEffect(() => {
     settingsApi.get()
       .then((res) => setIntervalValue(res.data.interval_seconds))
       .catch(() => {/* use default */})
   }, [])
+
+  useEffect(() => subscribeAlignmentSettings(setAlignment), [])
+
+  const updateAlignment = (patch: Partial<AlignmentSettings>) => {
+    const next = { ...alignment, ...patch }
+    setAlignment(next)
+    writeAlignmentSettings(next)
+  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -369,6 +384,41 @@ function SettingsPanel() {
       >
         {saving ? 'Saving…' : 'Save'}
       </button>
+
+      <div className="pt-3 border-t border-border space-y-3">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Canvas</span>
+
+        <label className="flex items-center justify-between gap-2 cursor-pointer">
+          <span className="text-xs text-foreground">Snap to nodes</span>
+          <input
+            type="checkbox"
+            checked={alignment.enabled}
+            onChange={(e) => updateAlignment({ enabled: e.target.checked })}
+            className="cursor-pointer accent-[#00d4ff]"
+            aria-label="Toggle alignment guides"
+          />
+        </label>
+
+        <div className={alignment.enabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+          <label className="text-xs text-muted-foreground">Snap distance</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min={2}
+              max={16}
+              step={1}
+              value={alignment.threshold}
+              onChange={(e) => updateAlignment({ threshold: Number(e.target.value) })}
+              className="flex-1 cursor-pointer accent-[#00d4ff]"
+              aria-label="Alignment snap threshold"
+            />
+            <span className="font-mono text-[11px] text-foreground w-8 text-right">{alignment.threshold}px</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground leading-tight">
+            Distance at which dragged nodes snap to neighbours. Hold Alt while dragging to disable.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
