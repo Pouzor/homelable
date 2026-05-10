@@ -28,6 +28,9 @@ const BASE_NODE_MAP: Record<NodeType, React.ComponentType<AppNodeProps>> = {
   generic: Nodes.GenericNode,
   groupRect: Nodes.GenericNode,
   group: Nodes.GenericNode,
+  zigbee_coordinator: Nodes.ZigbeeCoordinatorNode,
+  zigbee_router: Nodes.ZigbeeRouterNode,
+  zigbee_enddevice: Nodes.ZigbeeEndDeviceNode,
 }
 
 export function DynamicNode(props: AppNodeProps) {
