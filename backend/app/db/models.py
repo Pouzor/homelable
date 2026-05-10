@@ -46,6 +46,7 @@ class Node(Base):
     width: Mapped[float | None] = mapped_column(Float, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)
     bottom_handles: Mapped[int] = mapped_column(Integer, default=1)
+    ieee_address: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     response_time_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -86,7 +87,7 @@ class PendingDevice(Base):
     __tablename__ = "pending_devices"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
-    ip: Mapped[str] = mapped_column(String, nullable=False)
+    ip: Mapped[str | None] = mapped_column(String, nullable=True)
     mac: Mapped[str | None] = mapped_column(String)
     hostname: Mapped[str | None] = mapped_column(String)
     os: Mapped[str | None] = mapped_column(String)
@@ -94,6 +95,31 @@ class PendingDevice(Base):
     suggested_type: Mapped[str | None] = mapped_column(String)
     status: Mapped[str] = mapped_column(String, default="pending")
     discovery_source: Mapped[str | None] = mapped_column(String)
+    ieee_address: Mapped[str | None] = mapped_column(String, index=True, nullable=True, unique=True)
+    friendly_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    device_subtype: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    vendor: Mapped[str | None] = mapped_column(String, nullable=True)
+    lqi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PendingDeviceLink(Base):
+    """Link between two Zigbee endpoints discovered during import.
+
+    Endpoints are addressed by IEEE (stable across re-imports). Either side may
+    already exist as a canvas Node (resolved via Node.ieee_address) or still be
+    a PendingDevice. On approval, the matching Edge is auto-created when both
+    endpoints exist as canvas Nodes.
+    """
+
+    __tablename__ = "pending_device_links"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    source_ieee: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    target_ieee: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    lqi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    discovery_source: Mapped[str] = mapped_column(String, nullable=False, default="zigbee")
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -102,6 +128,7 @@ class ScanRun(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     status: Mapped[str] = mapped_column(String, default="running")
+    kind: Mapped[str] = mapped_column(String, default="ip", server_default="ip")
     ranges: Mapped[list[str]] = mapped_column(JSON, default=list)
     devices_found: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
