@@ -15,6 +15,7 @@ const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
   { label: 'Hardware',       types: ['isp', 'router', 'firewall', 'switch', 'server', 'nas', 'ap', 'printer'] },
   { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker_host', 'docker_container'] },
   { label: 'IoT',            types: ['iot', 'camera', 'cpl'] },
+  { label: 'Zigbee',         types: ['zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice'] },
   { label: 'Generic',        types: ['computer', 'generic', 'groupRect'] },
 ]
 
