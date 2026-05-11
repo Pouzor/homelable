@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
-import { ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS } from '@/utils/nodeIcons'
+import { ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
+import { BrandIconPicker } from './BrandIconPicker'
 import { MIN_BOTTOM_HANDLES, MAX_BOTTOM_HANDLES, clampBottomHandles } from '@/utils/handleUtils'
 
 const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
@@ -61,6 +62,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
   const [form, setForm] = useState<Partial<NodeData>>({ ...DEFAULT_DATA, ...initial })
   const [iconSearch, setIconSearch] = useState('')
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
+  const [iconTab, setIconTab] = useState<'generic' | 'brand'>(isBrandIconKey(initial?.custom_icon) ? 'brand' : 'generic')
   const [labelError, setLabelError] = useState(false)
   const resolvedNodeColors = resolveNodeColors({ type: form.type ?? 'generic', custom_colors: form.custom_colors })
   const showServicesEnabled = form.custom_colors?.show_services === true
@@ -95,7 +97,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-md">
+      <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         </DialogHeader>
@@ -152,6 +154,10 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               >
                 <span className="flex items-center gap-2 min-w-0">
                   {(() => {
+                    if (isBrandIconKey(form.custom_icon)) {
+                      const slug = brandIconSlug(form.custom_icon!)
+                      return <><img src={brandIconUrl(slug)} alt={slug} width={13} height={13} className="shrink-0" style={{ width: 13, height: 13, objectFit: 'contain' }} /><span className="text-foreground truncate">{slug}</span></>
+                    }
                     const entry = ICON_REGISTRY.find((e) => e.key === form.custom_icon)
                     if (entry) {
                       return <>{createElement(entry.icon, { size: 13, className: 'text-[#00d4ff] shrink-0' })}<span className="text-foreground truncate">{entry.label}</span></>
@@ -167,6 +173,37 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {/* Inline icon picker - full width, shown below the type+icon row */}
             {iconPickerOpen && (
               <div className="flex flex-col gap-2 p-2.5 rounded-md bg-[#0d1117] border border-[#30363d] col-span-2">
+                <div className="flex gap-1 mb-1" role="tablist" aria-label="Icon source">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={iconTab === 'generic'}
+                    onClick={() => setIconTab('generic')}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors cursor-pointer ${
+                      iconTab === 'generic' ? 'bg-[#21262d] text-foreground border border-[#30363d]' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Generic
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={iconTab === 'brand'}
+                    onClick={() => setIconTab('brand')}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors cursor-pointer ${
+                      iconTab === 'brand' ? 'bg-[#21262d] text-foreground border border-[#30363d]' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Brand
+                  </button>
+                </div>
+                {iconTab === 'brand' ? (
+                  <BrandIconPicker
+                    value={form.custom_icon}
+                    onSelect={(key) => { set('custom_icon', key); setIconPickerOpen(false) }}
+                  />
+                ) : (
+                <>
                 <Input
                   value={iconSearch}
                   onChange={(e) => setIconSearch(e.target.value)}
@@ -212,6 +249,8 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                     )
                   })}
                 </div>
+                </>
+                )}
               </div>
             )}
 

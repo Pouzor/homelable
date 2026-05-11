@@ -11,7 +11,12 @@ import {
   // Security & Auth
   Shield, ShieldCheck, Lock, Key, Users, UserCheck, Flame,
   // Automation & IoT
-  Zap, Workflow, Bot, Home, Thermometer, Lightbulb, Radio,
+  Zap, Workflow, Bot, Home, Thermometer, Lightbulb, Radio, BotMessageSquare, Webhook,
+  // Smart Home / Sensors
+  Plug, Power, BatteryCharging, Sun, DoorOpen, KeyRound, AlarmSmoke, Siren,
+  Radar, PersonStanding, Vibrate, Droplet, Droplets, Wind, AirVent, Fan,
+  Snowflake, LampCeiling, Blinds, BellRing, Speaker, Joystick, Warehouse,
+  CircleDot, CloudSun,
   // Transfers & sync
   Download, Upload, RefreshCw,
   // Containers & Dev
@@ -97,6 +102,35 @@ export const ICON_REGISTRY: IconEntry[] = [
   { key: 'thermometer', label: 'Sensor / Temperature', category: 'Automation', icon: Thermometer },
   { key: 'lightbulb',   label: 'Smart Light / Zigbee', category: 'Automation', icon: Lightbulb },
   { key: 'radio',       label: 'MQTT / RTL-SDR',       category: 'Automation', icon: Radio },
+  { key: 'voice',       label: 'Voice Assistant',      category: 'Automation', icon: BotMessageSquare },
+  { key: 'webhook',     label: 'Webhook / IFTTT',      category: 'Automation', icon: Webhook },
+
+  // --- Smart Home / Sensors ---
+  { key: 'plug',             label: 'Smart Plug / Outlet',  category: 'Smart Home / Sensors', icon: Plug },
+  { key: 'power',            label: 'Switch / Relay',       category: 'Smart Home / Sensors', icon: Power },
+  { key: 'battery-charging', label: 'Energy Meter / EV',    category: 'Smart Home / Sensors', icon: BatteryCharging },
+  { key: 'solar',            label: 'Solar Panel',          category: 'Smart Home / Sensors', icon: Sun },
+  { key: 'door',             label: 'Door / Window Sensor', category: 'Smart Home / Sensors', icon: DoorOpen },
+  { key: 'lock-smart',       label: 'Smart Lock',           category: 'Smart Home / Sensors', icon: KeyRound },
+  { key: 'smoke',            label: 'Smoke Detector',       category: 'Smart Home / Sensors', icon: AlarmSmoke },
+  { key: 'siren',            label: 'Siren / Alarm',        category: 'Smart Home / Sensors', icon: Siren },
+  { key: 'motion',           label: 'Motion / Radar',       category: 'Smart Home / Sensors', icon: Radar },
+  { key: 'presence',         label: 'Presence Sensor',      category: 'Smart Home / Sensors', icon: PersonStanding },
+  { key: 'vibration',        label: 'Vibration Sensor',     category: 'Smart Home / Sensors', icon: Vibrate },
+  { key: 'leak',             label: 'Water Leak',           category: 'Smart Home / Sensors', icon: Droplet },
+  { key: 'humidity',         label: 'Humidity',             category: 'Smart Home / Sensors', icon: Droplets },
+  { key: 'air-quality',      label: 'Air Quality / VOC',    category: 'Smart Home / Sensors', icon: Wind },
+  { key: 'air-vent',         label: 'HVAC Vent',            category: 'Smart Home / Sensors', icon: AirVent },
+  { key: 'fan',              label: 'Fan',                  category: 'Smart Home / Sensors', icon: Fan },
+  { key: 'snowflake',        label: 'AC / Cooling',         category: 'Smart Home / Sensors', icon: Snowflake },
+  { key: 'lamp',             label: 'Smart Light',          category: 'Smart Home / Sensors', icon: LampCeiling },
+  { key: 'blinds',           label: 'Blinds / Cover',       category: 'Smart Home / Sensors', icon: Blinds },
+  { key: 'doorbell',         label: 'Doorbell',             category: 'Smart Home / Sensors', icon: BellRing },
+  { key: 'speaker',          label: 'Smart Speaker',        category: 'Smart Home / Sensors', icon: Speaker },
+  { key: 'remote',           label: 'Remote / Button',      category: 'Smart Home / Sensors', icon: Joystick },
+  { key: 'garage',           label: 'Garage Door',          category: 'Smart Home / Sensors', icon: Warehouse },
+  { key: 'valve',            label: 'Smart Valve',          category: 'Smart Home / Sensors', icon: CircleDot },
+  { key: 'weather',          label: 'Weather Station',      category: 'Smart Home / Sensors', icon: CloudSun },
 
   // --- Containers & Dev ---
   { key: 'anchor',    label: 'Portainer / Docker',        category: 'Dev & Containers', icon: Anchor },
@@ -145,11 +179,45 @@ export const NODE_TYPE_DEFAULT_ICONS: Record<NodeType, LucideIcon> = {
   text:         Type,
 }
 
-/** Resolve the display icon for a node — custom_icon takes priority over type default. */
+/** Resolve the display icon for a node — custom_icon takes priority over type default.
+ *  Legacy: returns a LucideIcon component. Brand icons must use `resolveCustomIcon`. */
 export function resolveNodeIcon(
   typeIcon: LucideIcon,
   customIconKey?: string,
 ): LucideIcon {
-  if (customIconKey && ICON_MAP[customIconKey]) return ICON_MAP[customIconKey]
+  if (customIconKey && !customIconKey.startsWith('brand:') && ICON_MAP[customIconKey]) {
+    return ICON_MAP[customIconKey]
+  }
   return typeIcon
+}
+
+export const BRAND_ICON_PREFIX = 'brand:'
+
+export function isBrandIconKey(key: string | undefined | null): boolean {
+  return !!key && key.startsWith(BRAND_ICON_PREFIX)
+}
+
+export function brandIconSlug(key: string): string {
+  return key.slice(BRAND_ICON_PREFIX.length)
+}
+
+export function brandIconUrl(slug: string): string {
+  return `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/${slug}.svg`
+}
+
+export type ResolvedIcon =
+  | { kind: 'lucide'; icon: LucideIcon }
+  | { kind: 'brand'; slug: string; url: string }
+
+/** Resolve a node's icon to either a lucide component or a brand CDN URL.
+ *  Used by renderers that support brand icons. Backwards-compatible with legacy
+ *  string keys (no prefix → lucide lookup). Returns null when key unknown. */
+export function resolveCustomIcon(customIconKey?: string): ResolvedIcon | null {
+  if (!customIconKey) return null
+  if (isBrandIconKey(customIconKey)) {
+    const slug = brandIconSlug(customIconKey)
+    return { kind: 'brand', slug, url: brandIconUrl(slug) }
+  }
+  const icon = ICON_MAP[customIconKey] as LucideIcon | undefined
+  return icon ? { kind: 'lucide', icon } : null
 }
