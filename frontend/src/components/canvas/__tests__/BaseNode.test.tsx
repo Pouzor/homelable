@@ -44,6 +44,7 @@ vi.mock('@/utils/nodeColors', () => ({
 
 vi.mock('@/utils/nodeIcons', () => ({
   resolveNodeIcon: (_typeIcon: unknown) => _typeIcon,
+  isBrandIconKey: (k: string | undefined) => !!k && k.startsWith('brand:'),
 }))
 
 vi.mock('@/utils/maskIp', () => ({
