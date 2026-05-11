@@ -3,7 +3,8 @@ import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflo
 import { Layers } from 'lucide-react';
 import type { NodeData } from '@/types';
 import { resolveNodeColors } from '@/utils/nodeColors';
-import { resolveNodeIcon } from '@/utils/nodeIcons';
+import { resolveNodeIcon, isBrandIconKey } from '@/utils/nodeIcons'
+import { NodeIcon } from '@/components/ui/NodeIcon'
 import { resolvePropertyIcon } from '@/utils/propertyIcons';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { maskIp, splitIps } from '@/utils/maskIp';
@@ -60,7 +61,9 @@ export function ContainerGroupNode(props: NodeProps<Node<NodeData>>) {
 							background: theme.colors.nodeIconBackground,
 						}}
 					>
-						{createElement(resolvedIcon, { size: 12 })}
+						{isBrandIconKey(data.custom_icon)
+							? <NodeIcon typeIcon={Layers} customIconKey={data.custom_icon} size={12} />
+							: createElement(resolvedIcon, { size: 12 })}
 					</div>
 					<div className="flex flex-col min-w-0 flex-1">
 						<span
@@ -69,8 +72,7 @@ export function ContainerGroupNode(props: NodeProps<Node<NodeData>>) {
 						>
 							{data.label}
 						</span>
-						{data.ip &&
-							splitIps(data.ip).map((ip) => (
+						{data.ip && splitIps(data.ip).map((ip) => (
 								<span
 									key={ip}
 									className="font-mono text-[9px] truncate"

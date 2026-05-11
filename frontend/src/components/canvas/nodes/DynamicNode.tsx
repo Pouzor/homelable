@@ -1,4 +1,5 @@
 import * as Nodes from './index'
+import { TextNode } from './TextNode'
 import { ContainerGroupNode } from './ContainerGroupNode'
 
 import type { Node, NodeProps } from '@xyflow/react'
@@ -28,6 +29,7 @@ const BASE_NODE_MAP: Record<NodeType, React.ComponentType<AppNodeProps>> = {
   generic: Nodes.GenericNode,
   groupRect: Nodes.GenericNode,
   group: Nodes.GenericNode,
+  text: TextNode,
   zigbee_coordinator: Nodes.ZigbeeCoordinatorNode,
   zigbee_router: Nodes.ZigbeeRouterNode,
   zigbee_enddevice: Nodes.ZigbeeEndDeviceNode,

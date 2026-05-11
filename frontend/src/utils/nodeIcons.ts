@@ -218,6 +218,10 @@ export function resolveCustomIcon(customIconKey?: string): ResolvedIcon | null {
     const slug = brandIconSlug(customIconKey)
     return { kind: 'brand', slug, url: brandIconUrl(slug) }
   }
+<<<<<<< HEAD
   const icon = ICON_MAP[customIconKey] as LucideIcon | undefined
+=======
+  const icon = ICON_MAP[customIconKey]
+>>>>>>> e30a243 (feat(icons): add brand icon picker from dashboard-icons)
   return icon ? { kind: 'lucide', icon } : null
 }
