@@ -95,7 +95,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-md">
+      <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         </DialogHeader>
