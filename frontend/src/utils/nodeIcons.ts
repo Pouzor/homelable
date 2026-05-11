@@ -179,11 +179,45 @@ export const NODE_TYPE_DEFAULT_ICONS: Record<NodeType, LucideIcon> = {
   text:         Type,
 }
 
-/** Resolve the display icon for a node — custom_icon takes priority over type default. */
+/** Resolve the display icon for a node — custom_icon takes priority over type default.
+ *  Legacy: returns a LucideIcon component. Brand icons must use `resolveCustomIcon`. */
 export function resolveNodeIcon(
   typeIcon: LucideIcon,
   customIconKey?: string,
 ): LucideIcon {
-  if (customIconKey && ICON_MAP[customIconKey]) return ICON_MAP[customIconKey]
+  if (customIconKey && !customIconKey.startsWith('brand:') && ICON_MAP[customIconKey]) {
+    return ICON_MAP[customIconKey]
+  }
   return typeIcon
+}
+
+export const BRAND_ICON_PREFIX = 'brand:'
+
+export function isBrandIconKey(key: string | undefined | null): boolean {
+  return !!key && key.startsWith(BRAND_ICON_PREFIX)
+}
+
+export function brandIconSlug(key: string): string {
+  return key.slice(BRAND_ICON_PREFIX.length)
+}
+
+export function brandIconUrl(slug: string): string {
+  return `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/${slug}.svg`
+}
+
+export type ResolvedIcon =
+  | { kind: 'lucide'; icon: LucideIcon }
+  | { kind: 'brand'; slug: string; url: string }
+
+/** Resolve a node's icon to either a lucide component or a brand CDN URL.
+ *  Used by renderers that support brand icons. Backwards-compatible with legacy
+ *  string keys (no prefix → lucide lookup). Returns null when key unknown. */
+export function resolveCustomIcon(customIconKey?: string): ResolvedIcon | null {
+  if (!customIconKey) return null
+  if (isBrandIconKey(customIconKey)) {
+    const slug = brandIconSlug(customIconKey)
+    return { kind: 'brand', slug, url: brandIconUrl(slug) }
+  }
+  const icon = ICON_MAP[customIconKey]
+  return icon ? { kind: 'lucide', icon } : null
 }
