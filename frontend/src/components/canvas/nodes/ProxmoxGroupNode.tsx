@@ -109,6 +109,24 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
                 {hideIp ? maskIp(ip) : ip}
               </span>
             ))}
+            {/* Properties */}
+            {visibleProperties.length > 0 && (
+              <div
+                className="flex flex-wrap items-center content-start gap-x-2 gap-y-1 mt-1 shrink-0 min-w-0"
+                style={{ color: theme.colors.nodeSubtextColor }}
+              >
+                {visibleProperties.map((prop) => {
+                  const Icon = resolvePropertyIcon(prop.icon)
+                  return (
+                    <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px] min-w-0 max-w-full">
+                      {Icon && <Icon size={9} className="shrink-0" />}
+                      <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
+                      <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
           {/* Status dot */}
           <div
@@ -117,25 +135,6 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
             title={data.status}
           />
         </div>
-
-        {/* Properties */}
-        {visibleProperties.length > 0 && (
-          <div
-            className="flex flex-wrap items-center content-start gap-x-2 gap-y-1 px-2.5 py-1.5 shrink-0 min-w-0"
-            style={{ color: theme.colors.nodeSubtextColor }}
-          >
-            {visibleProperties.map((prop) => {
-              const Icon = resolvePropertyIcon(prop.icon)
-              return (
-                <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px] min-w-0 max-w-full">
-                  {Icon && <Icon size={9} className="shrink-0" />}
-                  <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
-                  <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
-                </div>
-              )
-            })}
-          </div>
-        )}
 
         {/* Inner area — React Flow places children here */}
         <div className="flex-1 relative" />
