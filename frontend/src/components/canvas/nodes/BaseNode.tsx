@@ -114,14 +114,22 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
             {data.label}
           </div>
           {data.ip && splitIps(data.ip).map((ip) => (
-            <div
+            <span
               key={ip}
               className="font-mono text-[10px] truncate"
               style={{ color: theme.colors.nodeSubtextColor }}
               title={ip}
             >
-              {hideIp ? maskIp(ip) : ip}
-            </div>
+              <a
+                href={`http://${ip}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:opacity-75 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {hideIp ? maskIp(ip) : ip}
+              </a>
+            </span>
           ))}
         </div>
       </div>

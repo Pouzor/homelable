@@ -105,8 +105,17 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
                 key={ip}
                 className="font-mono text-[9px] truncate"
                 style={{ color: theme.colors.nodeSubtextColor }}
+                title={ip}
               >
-                {hideIp ? maskIp(ip) : ip}
+                <a
+                  href={`http://${ip}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:opacity-75 transition-opacity"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {hideIp ? maskIp(ip) : ip}
+                </a>
               </span>
             ))}
             {/* Properties */}
