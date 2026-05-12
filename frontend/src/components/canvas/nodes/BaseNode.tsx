@@ -153,7 +153,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
               const url = getServiceUrl(svc, serviceHost)
               const row = (
                 <div
-                  className="nodrag flex items-center justify-between gap-2 px-1.5 py-1 rounded text-[10px] min-w-0 overflow-hidden"
+                  className="nodrag flex items-center justify-between px-1.5 py-1 rounded text-[10px] min-w-0 overflow-hidden"
                   style={{
                     background: theme.colors.nodeIconBackground,
                     color: theme.colors.nodeSubtextColor,
@@ -171,7 +171,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
                     </span>
 
                     {/* RIGHT: path + port */}
-                    <div className="flex items-center gap-2 shrink-0 min-w-0">
+                    <div className="flex items-center shrink-0 min-w-0">
                       {svc.path && (
                         <span
                           className="truncate text-[#8b949e] text-right max-w-[80px]"
