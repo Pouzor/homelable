@@ -130,11 +130,11 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
       {visibleProperties && visibleProperties.length > 0 && (
         <>
           <div style={{ height: 1, background: `${colors.border}44`, margin: '0 8px' }} />
-          <div className="flex flex-col gap-1 px-2.5 py-1.5 overflow-hidden">
+          <div className="flex flex-wrap items-center content-start gap-x-2 gap-y-1 px-2.5 py-1.5 overflow-hidden min-w-0" style={{ color: theme.colors.nodeSubtextColor }}>
             {visibleProperties.map((prop) => {
               const Icon = resolvePropertyIcon(prop.icon)
               return (
-                <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px] min-w-0 overflow-hidden" style={{ color: theme.colors.nodeSubtextColor }}>
+                <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px] min-w-0 max-w-full">
                   {Icon && <Icon size={9} className="shrink-0" />}
                   <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
                   <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
@@ -174,7 +174,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
                     <div className="flex items-center shrink-0 min-w-0">
                       {svc.path && (
                         <span
-                          className="truncate text-[#8b949e] text-right max-w-[80px]"
+                          className="truncate text-[#8b949e] text-right max-w-20"
                           title={svc.path}
                         >
                           {svc.path}
