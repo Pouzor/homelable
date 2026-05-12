@@ -140,6 +140,49 @@ async def test_hide_device(client: AsyncClient, headers, pending_device):
     assert len(hidden_res.json()) == 1
 
 
+# --- Restore hidden device ---
+
+@pytest.mark.asyncio
+async def test_restore_device(client: AsyncClient, headers, pending_device):
+    # Hide first
+    await client.post(f"/api/v1/scan/pending/{pending_device.id}/hide", headers=headers)
+
+    # Restore
+    res = await client.post(f"/api/v1/scan/pending/{pending_device.id}/restore", headers=headers)
+    assert res.status_code == 200
+    assert res.json()["restored"] is True
+
+    # Now back in pending, gone from hidden
+    pending_res = await client.get("/api/v1/scan/pending", headers=headers)
+    assert len(pending_res.json()) == 1
+    hidden_res = await client.get("/api/v1/scan/hidden", headers=headers)
+    assert hidden_res.json() == []
+
+
+@pytest.mark.asyncio
+async def test_restore_device_rejects_non_hidden(client: AsyncClient, headers, pending_device):
+    res = await client.post(f"/api/v1/scan/pending/{pending_device.id}/restore", headers=headers)
+    assert res.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_bulk_restore_devices(client: AsyncClient, headers, pending_device):
+    # Hide
+    await client.post(f"/api/v1/scan/pending/{pending_device.id}/hide", headers=headers)
+
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-restore",
+        headers=headers,
+        json={"device_ids": [pending_device.id]},
+    )
+    assert res.status_code == 200
+    assert res.json()["restored"] == 1
+    assert res.json()["skipped"] == 0
+
+    pending_res = await client.get("/api/v1/scan/pending", headers=headers)
+    assert len(pending_res.json()) == 1
+
+
 # --- Ignore device ---
 
 @pytest.mark.asyncio
@@ -486,6 +529,37 @@ async def test_bulk_approve_approves_devices(client: AsyncClient, headers, two_p
 
 
 @pytest.mark.asyncio
+async def test_bulk_approve_sets_default_check_method(client: AsyncClient, headers, two_pending_devices, db_session):
+    """Approved devices with an IP must default to ping; otherwise scheduler skips them."""
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    ids = [d.id for d in two_pending_devices]
+    res = await client.post("/api/v1/scan/pending/bulk-approve", json={"device_ids": ids}, headers=headers)
+    assert res.status_code == 200
+    nodes = (await db_session.execute(select(NodeModel))).scalars().all()
+    for n in nodes:
+        if n.ip:
+            assert n.check_method == "ping", f"node {n.id} created without check_method"
+
+
+@pytest.mark.asyncio
+async def test_approve_device_sets_default_check_method(client: AsyncClient, headers, pending_device, db_session):
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    res = await client.post(
+        f"/api/v1/scan/pending/{pending_device.id}/approve",
+        json={"label": "h", "type": "generic", "ip": "192.168.1.10", "status": "unknown", "services": []},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (await db_session.execute(select(NodeModel))).scalars().first()
+    assert node is not None
+    assert node.check_method == "ping"
+
+
+@pytest.mark.asyncio
 async def test_bulk_approve_skips_already_approved(client: AsyncClient, headers, two_pending_devices):
     ids = [d.id for d in two_pending_devices]
     # Approve first device individually first
@@ -542,3 +616,201 @@ async def test_bulk_hide_requires_auth(client: AsyncClient, two_pending_devices)
     ids = [d.id for d in two_pending_devices]
     res = await client.post("/api/v1/scan/pending/bulk-hide", json={"device_ids": ids})
     assert res.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Approve auto-creates Edges from pending_device_links (Zigbee flow)
+# ---------------------------------------------------------------------------
+
+
+async def _seed_zigbee_pending_pair(db_session):
+    """Create a coordinator Node + a pending device + a link between them."""
+    from app.db.models import Node, PendingDevice, PendingDeviceLink
+
+    coord = Node(
+        label="Coordinator",
+        type="zigbee_coordinator",
+        status="unknown",
+        ieee_address="0xCOORD",
+    )
+    db_session.add(coord)
+
+    pending = PendingDevice(
+        ieee_address="0xR1",
+        friendly_name="router_1",
+        suggested_type="zigbee_router",
+        device_subtype="Router",
+        status="pending",
+        discovery_source="zigbee",
+    )
+    db_session.add(pending)
+
+    db_session.add(
+        PendingDeviceLink(
+            source_ieee="0xCOORD",
+            target_ieee="0xR1",
+            discovery_source="zigbee",
+        )
+    )
+    await db_session.commit()
+    return coord, pending
+
+
+@pytest.mark.asyncio
+async def test_approve_zigbee_creates_edge_when_other_endpoint_is_node(
+    client: AsyncClient, headers, db_session
+):
+    from sqlalchemy import select
+
+    from app.db.models import Edge
+
+    coord, pending = await _seed_zigbee_pending_pair(db_session)
+
+    res = await client.post(
+        f"/api/v1/scan/pending/{pending.id}/approve",
+        json={
+            "label": "router_1",
+            "type": "zigbee_router",
+            "ip": None,
+            "status": "unknown",
+            "services": [],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["approved"] is True
+    assert data["edges_created"] == 1
+
+    edges = (await db_session.execute(select(Edge))).scalars().all()
+    assert len(edges) == 1
+    assert edges[0].source == coord.id
+    assert edges[0].target == data["node_id"]
+    assert edges[0].source_handle == "bottom"
+    assert edges[0].target_handle == "top-t"
+    assert edges[0].type == "iot"
+
+
+@pytest.mark.asyncio
+async def test_approve_zigbee_skips_duplicate_edge(
+    client: AsyncClient, headers, db_session
+):
+    """Re-running the resolution does not create a second edge for the same pair."""
+    from sqlalchemy import select
+
+    from app.db.models import Edge, PendingDevice, PendingDeviceLink
+
+    coord, pending = await _seed_zigbee_pending_pair(db_session)
+    body = {"label": "router_1", "type": "zigbee_router", "ip": None, "status": "unknown", "services": []}
+    await client.post(f"/api/v1/scan/pending/{pending.id}/approve", json=body, headers=headers)
+
+    # Simulate a second pending row + link between same coord and a new device,
+    # but keep an existing edge in place to verify dedupe also handles
+    # the swapped-direction case.
+    new_pending = PendingDevice(
+        ieee_address="0xR1B",
+        friendly_name="r1b",
+        suggested_type="zigbee_router",
+        status="pending",
+        discovery_source="zigbee",
+    )
+    db_session.add(new_pending)
+    db_session.add(
+        PendingDeviceLink(source_ieee="0xCOORD", target_ieee="0xR1B", discovery_source="zigbee")
+    )
+    await db_session.commit()
+    res = await client.post(
+        f"/api/v1/scan/pending/{new_pending.id}/approve", json=body, headers=headers
+    )
+    assert res.json()["edges_created"] == 1  # only the new pair
+    edges = (await db_session.execute(select(Edge))).scalars().all()
+    assert len(edges) == 2  # original + new, no duplicate
+
+
+@pytest.mark.asyncio
+async def test_approve_zigbee_skips_when_other_endpoint_still_pending(
+    client: AsyncClient, headers, db_session
+):
+    """Both endpoints pending → no edge yet, link row preserved for later."""
+    from sqlalchemy import select
+
+    from app.db.models import Edge, PendingDevice, PendingDeviceLink
+
+    a = PendingDevice(
+        ieee_address="0xA",
+        friendly_name="a",
+        suggested_type="zigbee_router",
+        status="pending",
+        discovery_source="zigbee",
+    )
+    b = PendingDevice(
+        ieee_address="0xB",
+        friendly_name="b",
+        suggested_type="zigbee_enddevice",
+        status="pending",
+        discovery_source="zigbee",
+    )
+    db_session.add_all([a, b])
+    db_session.add(
+        PendingDeviceLink(source_ieee="0xA", target_ieee="0xB", discovery_source="zigbee")
+    )
+    await db_session.commit()
+
+    res = await client.post(
+        f"/api/v1/scan/pending/{a.id}/approve",
+        json={
+            "label": "a",
+            "type": "zigbee_router",
+            "ip": None,
+            "status": "unknown",
+            "services": [],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    assert res.json()["edges_created"] == 0
+
+    edges = (await db_session.execute(select(Edge))).scalars().all()
+    assert edges == []
+    links = (await db_session.execute(select(PendingDeviceLink))).scalars().all()
+    assert len(links) == 1  # preserved for later resolution
+
+
+@pytest.mark.asyncio
+async def test_approve_zigbee_resolves_link_after_second_approval(
+    client: AsyncClient, headers, db_session
+):
+    """First approval keeps link; second approval creates the edge."""
+    from sqlalchemy import select
+
+    from app.db.models import Edge, PendingDevice, PendingDeviceLink
+
+    a = PendingDevice(
+        ieee_address="0xA",
+        friendly_name="a",
+        suggested_type="zigbee_router",
+        status="pending",
+        discovery_source="zigbee",
+    )
+    b = PendingDevice(
+        ieee_address="0xB",
+        friendly_name="b",
+        suggested_type="zigbee_enddevice",
+        status="pending",
+        discovery_source="zigbee",
+    )
+    db_session.add_all([a, b])
+    db_session.add(
+        PendingDeviceLink(source_ieee="0xA", target_ieee="0xB", discovery_source="zigbee")
+    )
+    await db_session.commit()
+
+    body = {"label": "x", "type": "zigbee_router", "ip": None, "status": "unknown", "services": []}
+    await client.post(f"/api/v1/scan/pending/{a.id}/approve", json=body, headers=headers)
+    res = await client.post(f"/api/v1/scan/pending/{b.id}/approve", json=body, headers=headers)
+    assert res.json()["edges_created"] == 1
+
+    edges = (await db_session.execute(select(Edge))).scalars().all()
+    assert len(edges) == 1
+    links = (await db_session.execute(select(PendingDeviceLink))).scalars().all()
+    assert links == []  # consumed

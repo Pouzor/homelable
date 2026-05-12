@@ -27,10 +27,69 @@ describe('canvasStore', () => {
       selectedNodeId: null,
       selectedNodeIds: [],
       editingGroupRectId: null,
+      editingTextId: null,
       past: [],
       future: [],
       clipboard: [],
     })
+  })
+
+  it('setEditingTextId sets and clears editing text id', () => {
+    const { setEditingTextId } = useCanvasStore.getState()
+    setEditingTextId('t1')
+    expect(useCanvasStore.getState().editingTextId).toBe('t1')
+    setEditingTextId(null)
+    expect(useCanvasStore.getState().editingTextId).toBeNull()
+  })
+
+  it('addNode supports text type with text_content and style', () => {
+    const { addNode } = useCanvasStore.getState()
+    const textNode: Node<NodeData> = {
+      id: 't1',
+      type: 'text',
+      position: { x: 50, y: 50 },
+      data: {
+        label: '',
+        type: 'text',
+        status: 'unknown',
+        services: [],
+        text_content: 'Hello world',
+        custom_colors: {
+          text_color: '#ffffff',
+          text_size: 24,
+          font: 'mono',
+          border_style: 'dashed',
+          border_width: 2,
+          border: '#00d4ff',
+          background: '#00000000',
+        },
+      },
+      width: 200,
+      height: 60,
+    }
+    addNode(textNode)
+    const stored = useCanvasStore.getState().nodes.find((n) => n.id === 't1')
+    expect(stored?.type).toBe('text')
+    expect(stored?.data.text_content).toBe('Hello world')
+    expect(stored?.data.custom_colors?.text_size).toBe(24)
+    expect(stored?.data.custom_colors?.border_style).toBe('dashed')
+  })
+
+  it('updateNode updates text_content and custom_colors on a text node', () => {
+    const { addNode, updateNode } = useCanvasStore.getState()
+    addNode({ ...makeNode('t1', { type: 'text', text_content: 'old' }), type: 'text' })
+    updateNode('t1', { text_content: 'new', custom_colors: { text_color: '#ff0000', text_size: 32 } })
+    const stored = useCanvasStore.getState().nodes.find((n) => n.id === 't1')
+    expect(stored?.data.text_content).toBe('new')
+    expect(stored?.data.custom_colors?.text_color).toBe('#ff0000')
+    expect(stored?.data.custom_colors?.text_size).toBe(32)
+  })
+
+  it('deleteNode removes a text node', () => {
+    const { addNode, deleteNode } = useCanvasStore.getState()
+    addNode({ ...makeNode('t1', { type: 'text' }), type: 'text' })
+    deleteNode('t1')
+    expect(useCanvasStore.getState().nodes).toHaveLength(0)
   })
 
   it('starts empty', () => {
@@ -665,6 +724,36 @@ describe('canvasStore', () => {
     expect(stored?.height).toBeUndefined()
   })
 
+  it('updateNode preserves height for group type when properties change (children must not vanish)', () => {
+    const group: Node<NodeData> = {
+      id: 'g1',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      width: 360,
+      height: 240,
+      data: { label: 'Zone', type: 'group', status: 'unknown', services: [] },
+    }
+    useCanvasStore.setState({ nodes: [group], edges: [] })
+    useCanvasStore.getState().updateNode('g1', { properties: [] })
+    const stored = useCanvasStore.getState().nodes.find((n) => n.id === 'g1')
+    expect(stored?.height).toBe(240)
+    expect(stored?.width).toBe(360)
+  })
+
+  it('updateNode preserves height for groupRect when properties change', () => {
+    const rect: Node<NodeData> = {
+      id: 'r1',
+      type: 'groupRect',
+      position: { x: 0, y: 0 },
+      width: 360,
+      height: 240,
+      data: { label: 'Rect', type: 'groupRect', status: 'unknown', services: [] },
+    }
+    useCanvasStore.setState({ nodes: [rect], edges: [] })
+    useCanvasStore.getState().updateNode('r1', { properties: [] })
+    expect(useCanvasStore.getState().nodes.find((n) => n.id === 'r1')?.height).toBe(240)
+  })
+
   // ── bottom_handles edge remapping ──────────────────────────────────────────
 
   it('remaps source edges to "bottom" when bottom_handles is reduced', () => {
@@ -750,6 +839,7 @@ describe('canvasStore — custom style apply', () => {
       selectedNodeId: null,
       selectedNodeIds: [],
       editingGroupRectId: null,
+      editingTextId: null,
       past: [],
       future: [],
       clipboard: [],

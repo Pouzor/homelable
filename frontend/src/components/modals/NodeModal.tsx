@@ -8,13 +8,15 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
-import { ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS } from '@/utils/nodeIcons'
+import { ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
+import { BrandIconPicker } from './BrandIconPicker'
 import { MIN_BOTTOM_HANDLES, MAX_BOTTOM_HANDLES, clampBottomHandles } from '@/utils/handleUtils'
 
 const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
   { label: 'Hardware',       types: ['isp', 'router', 'firewall', 'switch', 'server', 'nas', 'ap', 'printer'] },
   { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker_host', 'docker_container'] },
   { label: 'IoT',            types: ['iot', 'camera', 'cpl'] },
+  { label: 'Zigbee',         types: ['zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice'] },
   { label: 'Generic',        types: ['computer', 'generic', 'groupRect'] },
 ]
 
@@ -60,7 +62,15 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
   const [form, setForm] = useState<Partial<NodeData>>({ ...DEFAULT_DATA, ...initial })
   const [iconSearch, setIconSearch] = useState('')
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
+  const [iconTab, setIconTab] = useState<'generic' | 'brand'>(isBrandIconKey(initial?.custom_icon) ? 'brand' : 'generic')
   const [labelError, setLabelError] = useState(false)
+  const resolvedNodeColors = resolveNodeColors({ type: form.type ?? 'generic', custom_colors: form.custom_colors })
+  const showServicesEnabled = form.custom_colors?.show_services === true
+  const hasAppearanceOverrides = Boolean(
+    form.custom_colors?.border
+    || form.custom_colors?.background
+    || form.custom_colors?.icon
+  )
 
   const set = (key: keyof NodeData, value: unknown) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -87,7 +97,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-md">
+      <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         </DialogHeader>
@@ -144,6 +154,10 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               >
                 <span className="flex items-center gap-2 min-w-0">
                   {(() => {
+                    if (isBrandIconKey(form.custom_icon)) {
+                      const slug = brandIconSlug(form.custom_icon!)
+                      return <><img src={brandIconUrl(slug)} alt={slug} width={13} height={13} className="shrink-0" style={{ width: 13, height: 13, objectFit: 'contain' }} /><span className="text-foreground truncate">{slug}</span></>
+                    }
                     const entry = ICON_REGISTRY.find((e) => e.key === form.custom_icon)
                     if (entry) {
                       return <>{createElement(entry.icon, { size: 13, className: 'text-[#00d4ff] shrink-0' })}<span className="text-foreground truncate">{entry.label}</span></>
@@ -159,6 +173,37 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {/* Inline icon picker - full width, shown below the type+icon row */}
             {iconPickerOpen && (
               <div className="flex flex-col gap-2 p-2.5 rounded-md bg-[#0d1117] border border-[#30363d] col-span-2">
+                <div className="flex gap-1 mb-1" role="tablist" aria-label="Icon source">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={iconTab === 'generic'}
+                    onClick={() => setIconTab('generic')}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors cursor-pointer ${
+                      iconTab === 'generic' ? 'bg-[#21262d] text-foreground border border-[#30363d]' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Generic
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={iconTab === 'brand'}
+                    onClick={() => setIconTab('brand')}
+                    className={`text-[11px] px-2 py-1 rounded transition-colors cursor-pointer ${
+                      iconTab === 'brand' ? 'bg-[#21262d] text-foreground border border-[#30363d]' : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Brand
+                  </button>
+                </div>
+                {iconTab === 'brand' ? (
+                  <BrandIconPicker
+                    value={form.custom_icon}
+                    onSelect={(key) => { set('custom_icon', key); setIconPickerOpen(false) }}
+                  />
+                ) : (
+                <>
                 <Input
                   value={iconSearch}
                   onChange={(e) => setIconSearch(e.target.value)}
@@ -204,6 +249,8 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                     )
                   })}
                 </div>
+                </>
+                )}
               </div>
             )}
 
@@ -298,21 +345,52 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               <div className="flex items-center justify-between col-span-2 py-1">
                 <div className="flex flex-col gap-0.5">
                   <Label className="text-xs text-muted-foreground">Container Mode</Label>
-                  <span className="text-[10px] text-muted-foreground/60">Allow other nodes to nest inside this node</span>
+                  <span className="text-[10px] text-muted-foreground/60">
+                    Allow other nodes to nest inside this node
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Container Mode"
+                  aria-checked={!!form.container_mode}
+                  onClick={() => set('container_mode', !form.container_mode)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors focus:outline-none ${modalStyles['modal-interactive']}`}
+                  style={{ background: form.container_mode ? '#ff6e00' : '#30363d' }}
+                >
+                  <span
+                    className="pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out"
+                    style={{
+                      transform: form.container_mode ? 'translateX(16px)' : 'translateX(0)'
+                    }}
+                  />
+                </button>
+              </div>
+            )}
+
+            {/* Service visibility */}
+            {form.type !== 'groupRect' && form.type !== 'group' && (
+              <div className="flex items-start justify-between col-span-2 py-1">
+                <div className="flex flex-col gap-0.5">
+                  <Label className="text-xs text-muted-foreground">Show Services</Label>
+                  <span className="text-[10px] text-muted-foreground/60">Display discovered services on the node card</span>
                 </div>
                 <button
                   type="button"
                   role="switch"
-                  aria-checked={!!form.container_mode}
-                  onClick={() => set('container_mode', !form.container_mode)}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors focus:outline-none ${modalStyles['modal-interactive']}`}
-                  tabIndex={0}
-                  aria-label="Toggle container mode"
-                  style={{ background: form.container_mode ? '#ff6e00' : '#30363d' }}
+                  aria-label="Show Services"
+                  aria-checked={showServicesEnabled}
+                  onClick={() => set('custom_colors', {
+                    ...form.custom_colors,
+                    show_services: !showServicesEnabled,
+                  })}
+                  className="relative inline-flex h-5 w-9 mt-1 shrink-0 cursor-pointer rounded-full transition-colors focus:outline-none"
+                  style={{ background: showServicesEnabled ? resolvedNodeColors.icon : '#30363d' }}
                 >
                   <span
-                    className="pointer-events-none absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-all"
-                    style={{ left: form.container_mode ? 'calc(100% - 18px)' : '2px' }}
+                    className="pointer-events-none absolute top-px left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out"
+                    style={{ transform: showServicesEnabled ? 'translateX(16px)' : 'translateX(0)' }}
                   />
                 </button>
               </div>
@@ -322,10 +400,20 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             <div className="flex flex-col gap-2 col-span-2">
               <div className="flex items-center justify-between">
                 <Label className="text-xs text-muted-foreground">Appearance</Label>
-                {form.custom_colors && (
+                {hasAppearanceOverrides && (
                   <button
                     type="button"
-                    onClick={() => set('custom_colors', undefined)}
+                    onClick={() => setForm((f) => {
+                      if (!f.custom_colors) return f
+                      const { border, background, icon, ...rest } = f.custom_colors
+                      void border
+                      void background
+                      void icon
+                      return {
+                        ...f,
+                        custom_colors: Object.keys(rest).length > 0 ? rest : undefined,
+                      }
+                    })}
                     className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                   >
                     <RotateCcw size={10} /> Reset to defaults
@@ -359,9 +447,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   )
                 })}
               </div>
-              {!form.custom_colors && (
-                <p className="text-[10px] text-muted-foreground/50">Using default colors for {NODE_TYPE_LABELS[form.type ?? 'generic']}. Click a swatch to customize.</p>
-              )}
+              <div className="min-h-3.5">
+                {!hasAppearanceOverrides && (
+                  <p className="text-[10px] text-muted-foreground/50">Using default colors for {NODE_TYPE_LABELS[form.type ?? 'generic']}. Click a swatch to customize.</p>
+                )}
+              </div>
             </div>
 
             {/* Bottom connection points (not for group containers) */}

@@ -487,4 +487,27 @@ describe('DetailPanel', () => {
       expect(screen.getByText('health').tagName).not.toBe('A')
     })
   })
+
+  describe('Last Seen formatting', () => {
+    it('renders a valid date when last_seen has +00:00 offset (no Z)', () => {
+      setupStore({ last_seen: '2026-05-10T17:54:38.221403+00:00' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const row = screen.getByText('Last Seen').parentElement
+      expect(row?.textContent).not.toMatch(/Invalid Date/)
+    })
+
+    it('renders a valid date when last_seen ends with Z', () => {
+      setupStore({ last_seen: '2026-05-10T17:54:38.221403Z' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const row = screen.getByText('Last Seen').parentElement
+      expect(row?.textContent).not.toMatch(/Invalid Date/)
+    })
+
+    it('treats naive ISO strings as UTC', () => {
+      setupStore({ last_seen: '2026-05-10T17:54:38' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const row = screen.getByText('Last Seen').parentElement
+      expect(row?.textContent).not.toMatch(/Invalid Date/)
+    })
+  })
 })

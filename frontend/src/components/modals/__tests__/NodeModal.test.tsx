@@ -273,12 +273,45 @@ describe('NodeModal', () => {
 
   it('toggles container_mode on click', () => {
     const { onSubmit } = renderModal({ initial: { ...BASE, type: 'proxmox', container_mode: true } })
-    fireEvent.click(screen.getByRole('switch'))
+    fireEvent.click(screen.getByRole('switch', { name: 'Container Mode' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).container_mode).toBe(false)
   })
 
-  // ── Parent container ──────────────────────────────────────────────────
+  // ── Show services toggle (modal-only) ───────────────────────────────
+
+  it('shows Show Services toggle for regular nodes', () => {
+    renderModal({ initial: BASE })
+    expect(screen.getByText('Show Services')).toBeDefined()
+    expect(screen.getByRole('switch', { name: 'Show Services' })).toBeDefined()
+  })
+
+  it('hides Show Services toggle for groupRect', () => {
+    renderModal({ initial: { ...BASE, type: 'groupRect' } })
+    expect(screen.queryByText('Show Services')).toBeNull()
+  })
+
+  it('submits custom_colors.show_services=true when toggled on', () => {
+    const { onSubmit } = renderModal({ initial: BASE })
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Services' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    const data = onSubmit.mock.calls[0][0] as Partial<NodeData>
+    expect(data.custom_colors?.show_services).toBe(true)
+  })
+
+  it('keeps default colors hint visible when Show Services is toggled on', () => {
+    renderModal({ initial: BASE })
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Services' }))
+    expect(screen.getByText(/Using default colors for/)).toBeDefined()
+  })
+
+  it('does not show Appearance reset when only Show Services is set', () => {
+    renderModal({ initial: BASE })
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Services' }))
+    expect(screen.queryByText('Reset to defaults')).toBeNull()
+  })
+
+  // ── Parent Proxmox (vm / lxc only) ───────────────────────────────────
 
   const parentContainerVisibleTypes = ['proxmox', 'vm', 'lxc', 'docker_host', 'isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer', 'iot', 'camera', 'cpl', 'computer', 'generic'] as const
   const parentContainerHiddenTypes = ['groupRect', 'group'] as const

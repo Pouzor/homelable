@@ -19,9 +19,12 @@ import { LoginPage } from '@/components/LoginPage'
 import { NodeModal } from '@/components/modals/NodeModal'
 import { EdgeModal } from '@/components/modals/EdgeModal'
 import { ScanConfigModal } from '@/components/modals/ScanConfigModal'
+import { ZigbeeImportModal } from '@/components/zigbee/ZigbeeImportModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
+import { TextModal, type TextFormData } from '@/components/modals/TextModal'
 import { ThemeModal } from '@/components/modals/ThemeModal'
 import { SearchModal } from '@/components/modals/SearchModal'
+import { PendingDevicesModal } from '@/components/modals/PendingDevicesModal'
 import { ShortcutsModal } from '@/components/modals/ShortcutsModal'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -30,13 +33,14 @@ import { canvasApi } from '@/api/client'
 import { demoNodes, demoEdges } from '@/utils/demoData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
 import type { NodeData, EdgeData, CustomStyleDef } from '@/types'
+import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STANDALONE_STORAGE_KEY = 'homelable_canvas'
 const CONTAINER_MODE_TYPES = new Set<NodeData['type']>(['proxmox', 'vm', 'lxc', 'docker_host'])
 
 export default function App() {
-  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
+  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated } = useAuthStore()
   const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
@@ -45,16 +49,26 @@ export default function App() {
 
   const [themeModalOpen, setThemeModalOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-  const [sidebarForceView, setSidebarForceView] = useState<'pending' | 'history' | undefined>(undefined)
-  const [highlightPendingId, setHighlightPendingId] = useState<string | undefined>(undefined)
+  const [sidebarForceView, setSidebarForceView] = useState<'history' | undefined>(undefined)
+  const [pendingModalOpen, setPendingModalOpen] = useState(false)
+  const [pendingModalStatus, setPendingModalStatus] = useState<'pending' | 'hidden'>('pending')
+  const [pendingHighlightId, setPendingHighlightId] = useState<string | undefined>(undefined)
+  const openPendingModal = useCallback((deviceId?: string, status: 'pending' | 'hidden' = 'pending') => {
+    setPendingHighlightId(undefined)
+    setPendingModalStatus(status)
+    setPendingModalOpen(true)
+    if (deviceId) setTimeout(() => setPendingHighlightId(deviceId), 0)
+  }, [])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [addNodeOpen, setAddNodeOpen] = useState(false)
   const [addGroupRectOpen, setAddGroupRectOpen] = useState(false)
+  const [addTextOpen, setAddTextOpen] = useState(false)
   const [editNodeId, setEditNodeId] = useState<string | null>(null)
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null)
   const [editEdgeId, setEditEdgeId] = useState<string | null>(null)
   const [scanConfigOpen, setScanConfigOpen] = useState(false)
   const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [zigbeeImportOpen, setZigbeeImportOpen] = useState(false)
 
   // Declare handleSave before the Ctrl+S effect so it is in scope
   const handleSave = useCallback(async () => {
@@ -229,6 +243,67 @@ export default function App() {
     setEditingGroupRectId(null)
   }, [editingGroupRectId, nodes, updateNode, setNodeZIndex, setEditingGroupRectId, snapshotHistory])
 
+  const handleAddText = useCallback((data: TextFormData) => {
+    snapshotHistory()
+    const id = generateUUID()
+    const newNode: Node<NodeData> = {
+      id,
+      // Text lives in `label` because the API serializer only persists top-level
+      // node fields; text_content is not in the schema and was lost on reload.
+      // TextNode and the edit modal both already fall back to label.
+      type: 'text',
+      position: { x: 250, y: 250 },
+      data: {
+        label: data.text,
+        type: 'text',
+        status: 'unknown',
+        services: [],
+        custom_colors: {
+          border: data.border_color,
+          border_style: data.border_style,
+          border_width: data.border_width,
+          background: data.background_color,
+          text_color: data.text_color,
+          text_size: data.text_size,
+          font: data.font,
+        },
+      },
+      width: 200,
+      height: 60,
+    }
+    addNode(newNode)
+  }, [addNode, snapshotHistory])
+
+  const handleUpdateText = useCallback((data: TextFormData) => {
+    if (!editingTextId) return
+    snapshotHistory()
+    const existing = nodes.find((n) => n.id === editingTextId)
+    updateNode(editingTextId, {
+      label: data.text,
+      // Clear stale text_content if present from older builds — label is the
+      // source of truth now.
+      text_content: undefined,
+      custom_colors: {
+        ...existing?.data.custom_colors,
+        border: data.border_color,
+        border_style: data.border_style,
+        border_width: data.border_width,
+        background: data.background_color,
+        text_color: data.text_color,
+        text_size: data.text_size,
+        font: data.font,
+      },
+    })
+    setEditingTextId(null)
+  }, [editingTextId, nodes, updateNode, setEditingTextId, snapshotHistory])
+
+  const handleDeleteText = useCallback(() => {
+    if (!editingTextId) return
+    snapshotHistory()
+    deleteNode(editingTextId)
+    setEditingTextId(null)
+  }, [editingTextId, deleteNode, setEditingTextId, snapshotHistory])
+
   const handleDeleteGroupRect = useCallback(() => {
     if (!editingGroupRectId) return
     snapshotHistory()
@@ -315,6 +390,54 @@ export default function App() {
     setExportModalOpen(true)
   }, [])
 
+  const handleZigbeeAddToCanvas = useCallback((zigbeeNodes: ZigbeeNode[], zigbeeEdges: ZigbeeEdge[]) => {
+    snapshotHistory()
+    // Place nodes in a grid starting at x=500, y=100
+    const COLS = 4
+    const SPACING_X = 170
+    const SPACING_Y = 100
+    zigbeeNodes.forEach((zn, i) => {
+      const id = zn.id
+      const col = i % COLS
+      const row = Math.floor(i / COLS)
+      const position = { x: 500 + col * SPACING_X, y: 100 + row * SPACING_Y }
+      const newNode: import('@xyflow/react').Node<NodeData> = {
+        id,
+        type: zn.type,
+        position,
+        data: {
+          label: zn.friendly_name,
+          type: zn.type as NodeData['type'],
+          status: 'unknown' as const,
+          services: [],
+          ...(zn.lqi != null ? { properties: [{ key: 'LQI', value: String(zn.lqi), icon: 'signal', visible: true }] } : {}),
+          ...(zn.model ? { os: zn.model } : {}),
+          ...(zn.parent_id ? { parent_id: zn.parent_id } : {}),
+        },
+      }
+      addNode(newNode)
+    })
+    // Add IoT edges between Zigbee devices: parent bottom -> child top
+    zigbeeEdges.forEach((ze) => {
+      onConnect({
+        source: ze.source,
+        sourceHandle: 'bottom',
+        target: ze.target,
+        targetHandle: 'top-t',
+        type: 'iot',
+      } as unknown as import('@xyflow/react').Connection)
+    })
+    // Auto-select only the freshly imported nodes so the user can drag the
+    // whole subtree as a group.
+    const importedIds = new Set(zigbeeNodes.map((zn) => zn.id))
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((n) => ({ ...n, selected: importedIds.has(n.id) })),
+      selectedNodeIds: Array.from(importedIds),
+      selectedNodeId: importedIds.size === 1 ? Array.from(importedIds)[0] : null,
+    }))
+    markUnsaved()
+  }, [addNode, onConnect, snapshotHistory, markUnsaved])
+
   const handleEdgeConnect = useCallback((connection: Connection) => {
     setPendingConnection(connection)
   }, [])
@@ -347,6 +470,11 @@ export default function App() {
   }, [])
 
   const handleNodeDoubleClick = useCallback((node: Node<NodeData>) => {
+    // 'group' uses inline rename (pencil button in header). Opening the
+    // generic NodeModal would clobber the group's height (via the
+    // properties-clears-height rule in updateNode) and lose its children.
+    // 'groupRect' has its own onDoubleClick that already routes to GroupRectModal.
+    if (node.data.type === 'group' || node.data.type === 'groupRect') return
     handleEditNode(node.id)
   }, [handleEditNode])
 
@@ -383,11 +511,12 @@ export default function App() {
           <Sidebar
             onAddNode={() => setAddNodeOpen(true)}
             onAddGroupRect={() => setAddGroupRectOpen(true)}
+            onAddText={() => setAddTextOpen(true)}
             onScan={() => setScanConfigOpen(true)}
+            onZigbeeImport={() => setZigbeeImportOpen(true)}
             onSave={handleSave}
-            onNodeApproved={setEditNodeId}
             forceView={sidebarForceView}
-            highlightPendingId={highlightPendingId}
+            onOpenPending={openPendingModal}
           />
           <div className="flex flex-col flex-1 min-w-0">
             <Toolbar
@@ -409,14 +538,7 @@ export default function App() {
                   onEdgeDoubleClick={handleEdgeDoubleClick}
                   onNodeDoubleClick={handleNodeDoubleClick}
                   onNodeDragStart={snapshotHistory}
-                  onOpenPending={(deviceId) => {
-                    setHighlightPendingId(undefined)
-                    setSidebarForceView(undefined)
-                    setTimeout(() => {
-                      setHighlightPendingId(deviceId)
-                      setSidebarForceView('pending')
-                    }, 0)
-                  }}
+                  onOpenPending={(deviceId) => openPendingModal(deviceId)}
                 />
               </div>
               {(selectedNodeId || selectedNodeIds.length > 1) && <DetailPanel onEdit={handleEditNode} />}
@@ -483,6 +605,18 @@ export default function App() {
           />
         )}
 
+        {!STANDALONE && (
+          <ZigbeeImportModal
+            open={zigbeeImportOpen}
+            onClose={() => setZigbeeImportOpen(false)}
+            onAddToCanvas={handleZigbeeAddToCanvas}
+            onPendingImported={() => {
+              setSidebarForceView(undefined)
+              setTimeout(() => setSidebarForceView('history'), 0)
+            }}
+          />
+        )}
+
         <GroupRectModal
           open={addGroupRectOpen}
           onClose={() => setAddGroupRectOpen(false)}
@@ -518,6 +652,37 @@ export default function App() {
           title="Edit Zone"
         />
 
+        <TextModal
+          open={addTextOpen}
+          onClose={() => setAddTextOpen(false)}
+          onSubmit={handleAddText}
+          title="Add Text"
+        />
+
+        <TextModal
+          key={editingTextId ?? 'text-edit'}
+          open={!!editingTextId}
+          onClose={() => setEditingTextId(null)}
+          onSubmit={handleUpdateText}
+          onDelete={handleDeleteText}
+          initial={(() => {
+            const n = editingTextId ? nodes.find((nd) => nd.id === editingTextId) : null
+            if (!n) return undefined
+            const rc = n.data.custom_colors ?? {}
+            return {
+              text: n.data.text_content ?? n.data.label ?? '',
+              font: rc.font ?? 'inter',
+              text_color: rc.text_color ?? '#e6edf3',
+              text_size: rc.text_size ?? 14,
+              border_color: rc.border ?? '#30363d',
+              border_style: (rc.border_style ?? 'none') as TextFormData['border_style'],
+              border_width: rc.border_width ?? 1,
+              background_color: rc.background ?? '#00000000',
+            }
+          })()}
+          title="Edit Text"
+        />
+
         {/* key forces re-mount on open so useState captures current theme as original */}
         <ThemeModal
           key={themeModalOpen ? 'theme-open' : 'theme-closed'}
@@ -528,16 +693,16 @@ export default function App() {
         <SearchModal
           open={searchOpen}
           onClose={() => setSearchOpen(false)}
-          onOpenPending={(deviceId) => {
-            setHighlightPendingId(undefined)
-            setSidebarForceView(undefined)
-            setTimeout(() => {
-              setHighlightPendingId(deviceId)
-              setSidebarForceView('pending')
-            }, 0)
-          }}
+          onOpenPending={(deviceId) => openPendingModal(deviceId)}
         />
         <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+        <PendingDevicesModal
+          open={pendingModalOpen}
+          onClose={() => setPendingModalOpen(false)}
+          highlightId={pendingHighlightId}
+          initialStatus={pendingModalStatus}
+        />
 
         <ExportModal
           open={exportModalOpen}

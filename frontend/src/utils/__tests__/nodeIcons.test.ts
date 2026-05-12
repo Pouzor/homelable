@@ -33,6 +33,22 @@ describe('ICON_REGISTRY', () => {
     expect(keys).toContain('database')  // DB services
     expect(keys).toContain('cctv')      // IP Camera / CCTV
   })
+
+  it('contains Smart Home / Sensors icons', () => {
+    const keys = ICON_REGISTRY.map((e) => e.key)
+    expect(keys).toContain('plug')
+    expect(keys).toContain('smoke')
+    expect(keys).toContain('door')
+    expect(keys).toContain('motion')
+    expect(keys).toContain('leak')
+    expect(keys).toContain('lock-smart')
+    expect(keys).toContain('battery-charging')
+  })
+
+  it('exposes the Smart Home / Sensors category', () => {
+    const categories = ICON_REGISTRY.map((e) => e.category)
+    expect(categories).toContain('Smart Home / Sensors')
+  })
 })
 
 describe('ICON_CATEGORIES', () => {
