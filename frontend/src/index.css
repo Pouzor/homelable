@@ -116,6 +116,27 @@
     background-color: var(--surface-card) !important;
 }
 
+/* Resize controls */
+.react-flow__resize-control {
+    border-radius: 30% !important;
+}
+
+.react-flow__resize-control.top.left {
+    transform: translate(2px, 2px) !important;
+}
+
+.react-flow__resize-control.top.right {
+    transform: translate(-2px, 2px) !important;
+}
+
+.react-flow__resize-control.bottom.left {
+    transform: translate(2px, -2px) !important;
+}
+
+.react-flow__resize-control.bottom.right {
+    transform: translate(-2px, -2px) !important;
+}
+
 /* Transparent wrapper for container node types */
 .react-flow__node-proxmox,
 .react-flow__node-group {

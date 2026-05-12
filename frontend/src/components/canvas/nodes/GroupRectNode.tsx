@@ -86,9 +86,8 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
         minWidth={80}
         minHeight={60}
         handleStyle={{
-          width: 8,
-          height: 8,
-          borderRadius: 2,
+          width: 12,
+          height: 12,
           background: '#00d4ff',
           border: '1px solid #0d1117',
         }}
