@@ -15,9 +15,9 @@ export function buildZigbeeProperties(input: {
   lqi?: number | null
 }): NodeProperty[] {
   const props: NodeProperty[] = []
-  if (input.ieee_address) props.push({ key: 'IEEE', value: input.ieee_address, icon: null, visible: true })
-  if (input.vendor) props.push({ key: 'Vendor', value: input.vendor, icon: null, visible: true })
-  if (input.model) props.push({ key: 'Model', value: input.model, icon: null, visible: true })
-  if (input.lqi != null) props.push({ key: 'LQI', value: String(input.lqi), icon: null, visible: true })
+  if (input.ieee_address) props.push({ key: 'IEEE', value: input.ieee_address, icon: null, visible: false })
+  if (input.vendor) props.push({ key: 'Vendor', value: input.vendor, icon: null, visible: false })
+  if (input.model) props.push({ key: 'Model', value: input.model, icon: null, visible: false })
+  if (input.lqi != null) props.push({ key: 'LQI', value: String(input.lqi), icon: null, visible: false })
   return props
 }

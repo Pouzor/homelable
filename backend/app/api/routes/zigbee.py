@@ -23,7 +23,12 @@ from app.schemas.zigbee import (
     ZigbeeTestConnectionRequest,
     ZigbeeTestConnectionResponse,
 )
-from app.services.zigbee_service import build_zigbee_properties, fetch_networkmap, test_mqtt_connection
+from app.services.zigbee_service import (
+    build_zigbee_properties,
+    fetch_networkmap,
+    merge_zigbee_properties,
+    test_mqtt_connection,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -150,7 +155,9 @@ async def _persist_pending_import(
             existing = await db.execute(select(Node).where(Node.ieee_address == ieee))
             existing_node = existing.scalar_one_or_none()
             if existing_node:
-                existing_node.properties = props
+                existing_node.properties = merge_zigbee_properties(
+                    existing_node.properties, props
+                )
                 coordinator_out = ZigbeeCoordinatorOut(
                     id=existing_node.id,
                     label=existing_node.label,
@@ -183,7 +190,9 @@ async def _persist_pending_import(
         )
         existing_node = existing_node_q.scalar_one_or_none()
         if existing_node:
-            existing_node.properties = props
+            existing_node.properties = merge_zigbee_properties(
+                existing_node.properties, props
+            )
             continue
 
         result = await db.execute(

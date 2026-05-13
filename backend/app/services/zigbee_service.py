@@ -68,17 +68,42 @@ def build_zigbee_properties(
 
     Only includes a row when the value is non-empty. Shape matches the
     frontend ``NodeProperty`` type: ``{key, value, icon, visible}``.
+
+    New props default to ``visible=False`` — users opt in to showing them on
+    the canvas card from the right panel.
     """
     props: list[dict[str, Any]] = []
     if ieee:
-        props.append({"key": "IEEE", "value": ieee, "icon": None, "visible": True})
+        props.append({"key": "IEEE", "value": ieee, "icon": None, "visible": False})
     if vendor:
-        props.append({"key": "Vendor", "value": vendor, "icon": None, "visible": True})
+        props.append({"key": "Vendor", "value": vendor, "icon": None, "visible": False})
     if model:
-        props.append({"key": "Model", "value": model, "icon": None, "visible": True})
+        props.append({"key": "Model", "value": model, "icon": None, "visible": False})
     if lqi is not None:
-        props.append({"key": "LQI", "value": str(lqi), "icon": None, "visible": True})
+        props.append({"key": "LQI", "value": str(lqi), "icon": None, "visible": False})
     return props
+
+
+def merge_zigbee_properties(
+    existing: list[dict[str, Any]] | None,
+    new_props: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge fresh zigbee props into an existing property list.
+
+    For keys already present: update ``value`` but preserve the user's
+    ``visible`` choice. New keys are appended with whatever visibility the
+    caller gave them (hidden by default per ``build_zigbee_properties``).
+    Non-zigbee custom properties are preserved untouched.
+    """
+    out = [dict(p) for p in (existing or [])]
+    by_key = {p.get("key"): p for p in out}
+    for np in new_props:
+        key = np.get("key")
+        if key in by_key:
+            by_key[key]["value"] = np.get("value")
+        else:
+            out.append(dict(np))
+    return out
 
 
 def _z2m_type_to_homelable(device_type: str) -> str:
