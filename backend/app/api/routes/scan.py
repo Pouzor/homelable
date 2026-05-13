@@ -225,18 +225,18 @@ async def approve_device(
     if device.status != "pending":
         raise HTTPException(status_code=409, detail="Device already processed")
     device.status = "approved"
+    _zigbee_types = {"zigbee_coordinator", "zigbee_router", "zigbee_enddevice"}
+    _is_zigbee = node_data.type in _zigbee_types
     node = Node(
         label=node_data.label,
         type=node_data.type,
         ip=node_data.ip,
         hostname=node_data.hostname,
-        status=node_data.status,
+        status="online" if _is_zigbee else node_data.status,
         services=node_data.services or [],
         ieee_address=device.ieee_address,
-        # Honour caller-supplied check_method, else default to ping when an IP exists
-        # so the scheduler doesn't silently skip the new node.
-        check_method=node_data.check_method or ("ping" if node_data.ip else None),
-        check_target=node_data.check_target,
+        check_method="none" if _is_zigbee else (node_data.check_method or ("ping" if node_data.ip else None)),
+        check_target=None if _is_zigbee else node_data.check_target,
     )
     db.add(node)
     await db.flush()

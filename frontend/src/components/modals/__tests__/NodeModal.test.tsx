@@ -433,4 +433,24 @@ describe('NodeModal', () => {
     const slider = screen.getByLabelText('Bottom connection points slider') as HTMLInputElement
     expect(slider.value).toBe('48')
   })
+
+  // ── Zigbee nodes ──────────────────────────────────────────────────────
+
+  const zigbeeTypes = ['zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice'] as const
+
+  it.each(zigbeeTypes)('hides Check Method for %s type', (type) => {
+    renderModal({ initial: { ...BASE, type } })
+    expect(screen.queryByText('Check Method')).toBeNull()
+  })
+
+  it.each(zigbeeTypes)('hides Check Target for %s type', (type) => {
+    renderModal({ initial: { ...BASE, type } })
+    expect(screen.queryByText('Check Target')).toBeNull()
+  })
+
+  it.each(zigbeeTypes)('submits check_method=none for %s type', (type) => {
+    const { onSubmit } = renderModal({ initial: { ...BASE, type, label: 'Zigbee Node' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).check_method).toBe('none')
+  })
 })
