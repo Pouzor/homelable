@@ -552,9 +552,6 @@ export default function App() {
           onClose={() => setAddNodeOpen(false)}
           onSubmit={handleAddNode}
           title="Add Node"
-          parentContainerNodes={nodes
-            .filter((n) => CONTAINER_MODE_TYPES.has(n.data.type) && n.data.container_mode)
-            .map((n) => ({ id: n.id, label: n.data.label, nodeType: n.data.type }))}
         />
 
         {/* key forces re-mount when editing a different node, resetting form state */}
@@ -565,9 +562,6 @@ export default function App() {
           onSubmit={handleUpdateNode}
           initial={editNode?.data}
           title="Edit Node"
-          parentContainerNodes={nodes
-            .filter((n) => n.id !== editNodeId && CONTAINER_MODE_TYPES.has(n.data.type) && n.data.container_mode)
-            .map((n) => ({ id: n.id, label: n.data.label, nodeType: n.data.type }))}
         />
 
         <EdgeModal

@@ -54,12 +54,11 @@ interface NodeModalProps {
   onSubmit: (data: Partial<NodeData>) => void
   initial?: Partial<NodeData>
   title?: string
-  parentContainerNodes?: { id: string; label: string; nodeType?: NodeType }[]
 }
 
 // NodeModal is always mounted with a key that changes on open/edit, so useState
 // initial value is enough - no need for a reset effect.
-export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node', parentContainerNodes = [] }: NodeModalProps) {
+export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node' }: NodeModalProps) {
   const merged = { ...DEFAULT_DATA, ...initial }
   if (ZIGBEE_TYPES.includes((merged.type ?? '') as NodeType)) merged.check_method = 'none'
   const [form, setForm] = useState<Partial<NodeData>>(merged)
@@ -93,10 +92,6 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
     })
     onClose()
   }
-
-  const filteredParentNodes = form.type === 'docker_container'
-    ? parentContainerNodes.filter((n) => n.nodeType === 'docker_host')
-    : parentContainerNodes
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -322,31 +317,6 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   placeholder="http://..."
                   className={`bg-[#21262d] border-[#30363d] font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
                 />
-              </div>
-            )}
-
-            {/* Parent container */}
-            {form.type !== 'groupRect' && form.type !== 'group' && filteredParentNodes.length > 0 && (
-              <div className="flex flex-col gap-1.5 col-span-2">
-                <Label className="text-xs text-muted-foreground">Parent Container</Label>
-                <Select
-                  value={form.parent_id ?? 'none'}
-                  onValueChange={(v) => set('parent_id', v === 'none' ? undefined : v)}
-                >
-                  <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Parent container selector">
-                    <SelectValue placeholder="None (standalone)">
-                      {form.parent_id
-                        ? (filteredParentNodes.find((n) => n.id === form.parent_id)?.label ?? 'None (standalone)')
-                        : 'None (standalone)'}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#21262d] border-[#30363d]">
-                    <SelectItem value="none" className="text-sm">None (standalone)</SelectItem>
-                    {filteredParentNodes.map((n) => (
-                      <SelectItem key={n.id} value={n.id} className="text-sm">{n.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             )}
 

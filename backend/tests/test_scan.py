@@ -528,6 +528,87 @@ async def test_bulk_approve_approves_devices(client: AsyncClient, headers, two_p
     assert pending_res.json() == []
 
 
+@pytest.fixture
+async def zigbee_pending_device(db_session):
+    device = PendingDevice(
+        id=str(uuid.uuid4()),
+        ip=None,
+        mac=None,
+        hostname=None,
+        friendly_name="bulb_1",
+        services=[],
+        suggested_type="zigbee_enddevice",
+        device_subtype="EndDevice",
+        ieee_address="0xABCDEF",
+        vendor="IKEA",
+        model="TRADFRI",
+        lqi=180,
+        status="pending",
+        discovery_source="zigbee",
+    )
+    db_session.add(device)
+    await db_session.commit()
+    await db_session.refresh(device)
+    return device
+
+
+@pytest.mark.asyncio
+async def test_approve_zigbee_device_populates_properties(
+    client: AsyncClient, headers, zigbee_pending_device, db_session
+):
+    """Approving a zigbee device must populate IEEE/Vendor/Model/LQI in properties."""
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    payload = {
+        "label": "bulb_1",
+        "type": "zigbee_enddevice",
+        "status": "online",
+        "services": [],
+        "check_method": "none",
+    }
+    res = await client.post(
+        f"/api/v1/scan/pending/{zigbee_pending_device.id}/approve",
+        json=payload,
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (
+        await db_session.execute(select(NodeModel).where(NodeModel.ieee_address == "0xABCDEF"))
+    ).scalar_one()
+    keys = {p["key"]: p["value"] for p in node.properties}
+    assert keys == {
+        "IEEE": "0xABCDEF",
+        "Vendor": "IKEA",
+        "Model": "TRADFRI",
+        "LQI": "180",
+    }
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_zigbee_populates_properties(
+    client: AsyncClient, headers, zigbee_pending_device, db_session
+):
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": [zigbee_pending_device.id]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (
+        await db_session.execute(select(NodeModel).where(NodeModel.ieee_address == "0xABCDEF"))
+    ).scalar_one()
+    keys = {p["key"]: p["value"] for p in node.properties}
+    assert keys["IEEE"] == "0xABCDEF"
+    assert keys["Vendor"] == "IKEA"
+    assert keys["Model"] == "TRADFRI"
+    assert keys["LQI"] == "180"
+    assert node.check_method == "none"
+
+
 @pytest.mark.asyncio
 async def test_bulk_approve_sets_default_check_method(client: AsyncClient, headers, two_pending_devices, db_session):
     """Approved devices with an IP must default to ping; otherwise scheduler skips them."""

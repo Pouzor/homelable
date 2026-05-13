@@ -58,6 +58,29 @@ def _build_tls_context(insecure: bool) -> ssl.SSLContext:
     return ctx
 
 
+def build_zigbee_properties(
+    ieee: str | None,
+    vendor: str | None,
+    model: str | None,
+    lqi: int | None,
+) -> list[dict[str, Any]]:
+    """Build a NodeProperty list for a Zigbee device (IEEE, Vendor, Model, LQI).
+
+    Only includes a row when the value is non-empty. Shape matches the
+    frontend ``NodeProperty`` type: ``{key, value, icon, visible}``.
+    """
+    props: list[dict[str, Any]] = []
+    if ieee:
+        props.append({"key": "IEEE", "value": ieee, "icon": None, "visible": True})
+    if vendor:
+        props.append({"key": "Vendor", "value": vendor, "icon": None, "visible": True})
+    if model:
+        props.append({"key": "Model", "value": model, "icon": None, "visible": True})
+    if lqi is not None:
+        props.append({"key": "LQI", "value": str(lqi), "icon": None, "visible": True})
+    return props
+
+
 def _z2m_type_to_homelable(device_type: str) -> str:
     """Map a Z2M device type string to a homelable node type."""
     mapping = {

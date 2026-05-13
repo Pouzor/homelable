@@ -23,7 +23,7 @@ from app.schemas.zigbee import (
     ZigbeeTestConnectionRequest,
     ZigbeeTestConnectionResponse,
 )
-from app.services.zigbee_service import fetch_networkmap, test_mqtt_connection
+from app.services.zigbee_service import build_zigbee_properties, fetch_networkmap, test_mqtt_connection
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -142,10 +142,15 @@ async def _persist_pending_import(
         ieee = n.get("ieee_address")
         if not ieee:
             continue
+        props = build_zigbee_properties(
+            ieee, n.get("vendor"), n.get("model"), n.get("lqi")
+        )
+
         if n.get("device_type") == "Coordinator":
             existing = await db.execute(select(Node).where(Node.ieee_address == ieee))
             existing_node = existing.scalar_one_or_none()
             if existing_node:
+                existing_node.properties = props
                 coordinator_out = ZigbeeCoordinatorOut(
                     id=existing_node.id,
                     label=existing_node.label,
@@ -161,12 +166,24 @@ async def _persist_pending_import(
                 check_method="none",
                 ieee_address=ieee,
                 services=[],
+                properties=props,
             )
             db.add(node)
             await db.flush()
             coordinator_out = ZigbeeCoordinatorOut(
                 id=node.id, label=label, ieee_address=ieee
             )
+            continue
+
+        # If the device has already been approved as a canvas Node, refresh
+        # its properties and skip creating a pending row (keeps approved
+        # devices out of pending/hidden modals on re-import).
+        existing_node_q = await db.execute(
+            select(Node).where(Node.ieee_address == ieee)
+        )
+        existing_node = existing_node_q.scalar_one_or_none()
+        if existing_node:
+            existing_node.properties = props
             continue
 
         result = await db.execute(
