@@ -157,7 +157,8 @@ async def _persist_pending_import(
             node = Node(
                 label=label,
                 type=n.get("type") or "zigbee_coordinator",
-                status="unknown",
+                status="online",
+                check_method="none",
                 ieee_address=ieee,
                 services=[],
             )
