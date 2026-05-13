@@ -19,10 +19,7 @@ export type NodeType =
   | 'generic'
   | 'groupRect'
   | 'group'
-<<<<<<< HEAD
   | 'text'
-=======
->>>>>>> 0a96a19 (updated for zigbee)
   | 'zigbee_coordinator'
   | 'zigbee_router'
   | 'zigbee_enddevice'
@@ -146,10 +143,7 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   generic: 'Generic Device',
   groupRect: 'Group Rectangle',
   group: 'Node Group',
-<<<<<<< HEAD
   text: 'Text',
-=======
->>>>>>> 0a96a19 (updated for zigbee)
   zigbee_coordinator: 'Zigbee Coordinator',
   zigbee_router: 'Zigbee Router',
   zigbee_enddevice: 'Zigbee End Device',
