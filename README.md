@@ -1,12 +1,14 @@
 # Homelable
 
-Homelable is a self-hosted infrastructure visualization solution. It provides a network scanning feature to accelerate the identification of machines and services deployed on your local infrastructure.
+Homelable is a self-hosted infrastructure visualization solution. It provides a network/zigbee scanning feature to accelerate the identification of machines, devices and services deployed on your local infrastructure.
 
-Homelable also offers a healthcheck system (WIP) through multiple methods (ping/TCP, /health API, etc.) to get a global overview of online/offline services.
+Homelable also offers a healthcheck system through multiple methods (ping/TCP, /health API, etc.) to get a global overview of online/offline services.
 
 You can also select some pre-built design styles, or personalize each device in your diagram.
 
 If you just like the design, you can only run the frontend and export your design as PNG.
+
+If you are running  <img width="35" height="35" align="middle" alt="New_Home_Assistant_logo" src="https://github.com/user-attachments/assets/3bb17686-c706-40ce-a2d3-57e02378f37c" />  Homeassistant, check the [Homelable HA version](https://github.com/Pouzor/homelable-hacs) (via HACS)
 
 
 ---
@@ -16,8 +18,9 @@ If you just like the design, you can only run the frontend and export your desig
 <p align="center">
   <img src="docs/homelable1.png" alt="Homelable canvas overview" width="100%" />
   <img src="docs/homelable2.png" alt="Homelable node detail" width="100%" />
-  <img src="docs/homelable3.png" alt="Homelable sidebar and scan" width="48%" />
   <img src="docs/homelable4.png" alt="Homelable edit pannel" width="48%" />
+  <img width="48%" alt="Homelable Zigbee Network" src="https://github.com/user-attachments/assets/06caab68-6637-4dda-ab16-7e83f63d3972" />
+
 </p>
 
 ---

@@ -22,6 +22,7 @@ const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
 
 const CHECK_METHODS: CheckMethod[] = ['none', 'ping', 'http', 'https', 'tcp', 'ssh', 'prometheus', 'health']
 const CONTAINER_MODE_TYPES: NodeType[] = ['proxmox', 'vm', 'lxc', 'docker_host']
+const ZIGBEE_TYPES: NodeType[] = ['zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice']
 
 const CHECK_METHOD_LABELS: Record<CheckMethod, string> = {
   none: 'None',
@@ -53,13 +54,14 @@ interface NodeModalProps {
   onSubmit: (data: Partial<NodeData>) => void
   initial?: Partial<NodeData>
   title?: string
-  parentContainerNodes?: { id: string; label: string; nodeType?: NodeType }[]
 }
 
 // NodeModal is always mounted with a key that changes on open/edit, so useState
 // initial value is enough - no need for a reset effect.
-export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node', parentContainerNodes = [] }: NodeModalProps) {
-  const [form, setForm] = useState<Partial<NodeData>>({ ...DEFAULT_DATA, ...initial })
+export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node' }: NodeModalProps) {
+  const merged = { ...DEFAULT_DATA, ...initial }
+  if (ZIGBEE_TYPES.includes((merged.type ?? '') as NodeType)) merged.check_method = 'none'
+  const [form, setForm] = useState<Partial<NodeData>>(merged)
   const [iconSearch, setIconSearch] = useState('')
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [iconTab, setIconTab] = useState<'generic' | 'brand'>(isBrandIconKey(initial?.custom_icon) ? 'brand' : 'generic')
@@ -91,10 +93,6 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
     onClose()
   }
 
-  const filteredParentNodes = form.type === 'docker_container'
-    ? parentContainerNodes.filter((n) => n.nodeType === 'docker_host')
-    : parentContainerNodes
-
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-md max-h-[90vh] overflow-y-auto">
@@ -107,7 +105,10 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {/* Type + Icon on the same row */}
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs text-muted-foreground">Type</Label>
-              <Select value={form.type} onValueChange={(v) => set('type', v as NodeType)}>
+              <Select value={form.type} onValueChange={(v) => {
+                const t = v as NodeType
+                setForm((f) => ({ ...f, type: t, ...(ZIGBEE_TYPES.includes(t) ? { check_method: 'none' as CheckMethod } : {}) }))
+              }}>
                 <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Node type selector">
                   <SelectValue>{NODE_TYPE_LABELS[(form.type ?? 'server') as NodeType]}</SelectValue>
                 </SelectTrigger>
@@ -289,54 +290,33 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               <span className="text-[10px] text-muted-foreground/50">comma-separated</span>
             </div>
 
-            {/* Check method */}
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Check Method</Label>
-              <Select value={form.check_method ?? 'ping'} onValueChange={(v) => set('check_method', v as CheckMethod)}>
-                <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Check method selector">
-                  <SelectValue>{CHECK_METHOD_LABELS[(form.check_method ?? 'ping') as CheckMethod]}</SelectValue>
-                </SelectTrigger>
-                <SelectContent className="bg-[#21262d] border-[#30363d]">
-                  {CHECK_METHODS.map((m) => (
-                    <SelectItem key={m} value={m} className="text-sm">{CHECK_METHOD_LABELS[m]}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Check target */}
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Check Target</Label>
-              <Input
-                value={form.check_target ?? ''}
-                onChange={(e) => set('check_target', e.target.value)}
-                placeholder="http://..."
-                className={`bg-[#21262d] border-[#30363d] font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
-              />
-            </div>
-
-            {/* Parent container */}
-            {form.type !== 'groupRect' && form.type !== 'group' && filteredParentNodes.length > 0 && (
-              <div className="flex flex-col gap-1.5 col-span-2">
-                <Label className="text-xs text-muted-foreground">Parent Container</Label>
-                <Select
-                  value={form.parent_id ?? 'none'}
-                  onValueChange={(v) => set('parent_id', v === 'none' ? undefined : v)}
-                >
-                  <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Parent container selector">
-                    <SelectValue placeholder="None (standalone)">
-                      {form.parent_id
-                        ? (filteredParentNodes.find((n) => n.id === form.parent_id)?.label ?? 'None (standalone)')
-                        : 'None (standalone)'}
-                    </SelectValue>
+            {/* Check method — hidden for zigbee nodes (always none/online) */}
+            {!ZIGBEE_TYPES.includes((form.type ?? '') as NodeType) && (
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted-foreground">Check Method</Label>
+                <Select value={form.check_method ?? 'ping'} onValueChange={(v) => set('check_method', v as CheckMethod)}>
+                  <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Check method selector">
+                    <SelectValue>{CHECK_METHOD_LABELS[(form.check_method ?? 'ping') as CheckMethod]}</SelectValue>
                   </SelectTrigger>
                   <SelectContent className="bg-[#21262d] border-[#30363d]">
-                    <SelectItem value="none" className="text-sm">None (standalone)</SelectItem>
-                    {filteredParentNodes.map((n) => (
-                      <SelectItem key={n.id} value={n.id} className="text-sm">{n.label}</SelectItem>
+                    {CHECK_METHODS.map((m) => (
+                      <SelectItem key={m} value={m} className="text-sm">{CHECK_METHOD_LABELS[m]}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {/* Check target — hidden for zigbee nodes */}
+            {!ZIGBEE_TYPES.includes((form.type ?? '') as NodeType) && (
+              <div className="flex flex-col gap-1.5">
+                <Label className="text-xs text-muted-foreground">Check Target</Label>
+                <Input
+                  value={form.check_target ?? ''}
+                  onChange={(e) => set('check_target', e.target.value)}
+                  placeholder="http://..."
+                  className={`bg-[#21262d] border-[#30363d] font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
+                />
               </div>
             )}
 
