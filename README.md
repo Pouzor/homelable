@@ -134,6 +134,60 @@ The page shows your canvas in pan/zoom-only mode — no editing, no credentials 
 
 ---
 
+## Gethomepage Widget (read-only stats)
+
+Homelable can expose a small JSON stats endpoint that [gethomepage](https://gethomepage.dev) consumes through its built-in `customapi` widget. Disabled by default.
+
+### Activation
+
+Add `HOMEPAGE_API_KEY` to your `.env`:
+
+`HOMEPAGE_API_KEY=your-secret-key`
+
+Restart the backend (`docker compose restart backend`).
+
+### Endpoint
+
+`GET /api/v1/stats/summary` — requires header `X-API-Key: your-secret-key`. Returns:
+
+```json
+{
+  "nodes": 12,
+  "online": 9,
+  "offline": 2,
+  "unknown": 1,
+  "pending_devices": 3,
+  "zigbee_devices": 5,
+  "last_scan_at": "2026-05-14T10:00:00+00:00"
+}
+```
+
+### gethomepage `services.yaml` snippet
+
+```yaml
+- Homelab:
+    - Homelable:
+        icon: mdi-lan
+        href: http://homelable.local:3000
+        widget:
+          type: customapi
+          url: http://homelable.local:8000/api/v1/stats/summary
+          method: GET
+          headers:
+            X-API-Key: your-secret-key
+          mappings:
+            - field: nodes           ; label: Nodes
+            - field: online          ; label: Online
+            - field: offline         ; label: Offline
+            - field: pending_devices ; label: Pending
+            - field: zigbee_devices  ; label: Zigbee
+            - field: last_scan_at    ; label: Last scan
+```
+
+The backend port (`8000`) must be reachable from your gethomepage container.
+
+---
+
 ## MCP Server (AI Integration) (optional)
 
 Homelable can exposes a [Model Context Protocol](https://modelcontextprotocol.io) server so any MCP-compatible AI client (Claude Code, Claude Desktop, Open WebUI…) can read your homelab topology and act on it.
