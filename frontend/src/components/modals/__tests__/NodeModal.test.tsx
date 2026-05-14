@@ -318,8 +318,37 @@ describe('NodeModal', () => {
     expect(screen.queryByText('Parent Container')).toBeNull()
   })
 
+<<<<<<< HEAD
   it('does not render Parent Container for docker_container either', () => {
     renderModal({ initial: { ...BASE, type: 'docker_container' } })
+=======
+  it.each(parentContainerVisibleTypes)('hides Parent Container for %s type when no container options are available', (type) => {
+    renderModal({ initial: { ...BASE, type } })
+    expect(screen.queryByText('Parent Container')).toBeNull()
+  })
+
+  it('docker_container shows proxmox, vm, lxc and docker_host parents', () => {
+    renderModal({
+      initial: { ...BASE, type: 'docker_container' },
+      parentContainerNodes: [
+        { id: 'h1', label: 'My Docker Host', nodeType: 'docker_host' },
+        { id: 'p1', label: 'My Proxmox', nodeType: 'proxmox' },
+        { id: 'lxc1', label: 'My LXC', nodeType: 'lxc' },
+        { id: 'vm1', label: 'My VM', nodeType: 'vm' },
+      ],
+    })
+    expect(screen.getByText('My Docker Host')).toBeDefined()
+    expect(screen.getByText('My Proxmox')).toBeDefined()
+    expect(screen.getByText('My LXC')).toBeDefined()
+    expect(screen.getByText('My VM')).toBeDefined()
+  })
+
+  it('docker_container hides Parent Container when no supported parent is available', () => {
+    renderModal({
+      initial: { ...BASE, type: 'docker_container' },
+      parentContainerNodes: [{ id: 's1', label: 'My Switch', nodeType: 'switch' }],
+    })
+>>>>>>> bd16d5f (updated test for unsupported parent container)
     expect(screen.queryByText('Parent Container')).toBeNull()
   })
 
