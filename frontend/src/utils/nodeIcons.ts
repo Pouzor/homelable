@@ -218,6 +218,9 @@ export function resolveCustomIcon(customIconKey?: string): ResolvedIcon | null {
     const slug = brandIconSlug(customIconKey)
     return { kind: 'brand', slug, url: brandIconUrl(slug) }
   }
-  const icon = ICON_MAP[customIconKey] as LucideIcon | undefined
-  return icon ? { kind: 'lucide', icon } : null
+  if (Object.prototype.hasOwnProperty.call(ICON_MAP, customIconKey)) {
+    const icon = ICON_MAP[customIconKey]
+    return { kind: 'lucide', icon }
+  }
+  return null
 }
