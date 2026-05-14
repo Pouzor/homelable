@@ -37,6 +37,95 @@ async def pending_device(db_session):
     return device
 
 
+# --- _background_scan error handling ---
+
+@pytest.fixture
+async def mem_db():
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.db.database import Base
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    yield factory
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_background_scan_marks_run_failed_on_exception(mem_db):
+    """If run_scan() raises, the ScanRun must transition running → failed and the
+    session rollback path must execute without a follow-on exception."""
+    from app.api.routes.scan import _background_scan
+
+    async with mem_db() as session:
+        run = ScanRun(status="running", ranges=["10.0.0.0/24"])
+        session.add(run)
+        await session.commit()
+        run_id = run.id
+
+    with (
+        patch("app.api.routes.scan.AsyncSessionLocal", mem_db),
+        patch(
+            "app.api.routes.scan.run_scan",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        await _background_scan(run_id, ["10.0.0.0/24"])
+
+    async with mem_db() as session:
+        refreshed = await session.get(ScanRun, run_id)
+        assert refreshed is not None
+        assert refreshed.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_background_scan_leaves_non_running_status_alone(mem_db):
+    """If the run was already stopped/cancelled before run_scan failed, _background_scan
+    must NOT overwrite that terminal status with 'failed'."""
+    from app.api.routes.scan import _background_scan
+
+    async with mem_db() as session:
+        run = ScanRun(status="cancelled", ranges=["10.0.0.0/24"])
+        session.add(run)
+        await session.commit()
+        run_id = run.id
+
+    with (
+        patch("app.api.routes.scan.AsyncSessionLocal", mem_db),
+        patch(
+            "app.api.routes.scan.run_scan",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        await _background_scan(run_id, ["10.0.0.0/24"])
+
+    async with mem_db() as session:
+        refreshed = await session.get(ScanRun, run_id)
+        assert refreshed is not None
+        assert refreshed.status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_background_scan_success_path_invokes_run_scan(mem_db):
+    from app.api.routes.scan import _background_scan
+
+    async with mem_db() as session:
+        run = ScanRun(status="running", ranges=["10.0.0.0/24"])
+        session.add(run)
+        await session.commit()
+        run_id = run.id
+
+    with (
+        patch("app.api.routes.scan.AsyncSessionLocal", mem_db),
+        patch("app.api.routes.scan.run_scan", new_callable=AsyncMock) as mock_run_scan,
+    ):
+        await _background_scan(run_id, ["10.0.0.0/24"])
+        mock_run_scan.assert_awaited_once()
+
+
 # --- Trigger scan ---
 
 @pytest.mark.asyncio
