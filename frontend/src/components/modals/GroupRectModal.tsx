@@ -235,9 +235,8 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                       max={100}
                       value={alpha}
                       onChange={(e) => set(key, rgbaToHex8(hex6, Number(e.target.value)))}
-                      className={`w-full h-1 cursor-pointer mt-2 ${styles['slider-thumb']} ${styles['slider-accent']}`}
+                      className={`w-full cursor-pointer mt-2 ${styles['slider-thumb']} ${styles['slider-accent']}`}
                       title={`Opacity: ${alpha}%`}
-                      style={{ accentColor: '#00d4ff' }}
                     />
                     <span className="text-[9px] text-muted-foreground/60">{label} {alpha}%</span>
                   </div>
