@@ -456,9 +456,9 @@ export default function App() {
         updateNode(pendingConnection.source, { parent_id: pendingConnection.target })
       } else if (CONTAINER_MODE_TYPES.has(srcType) && (tgtType === 'lxc' || tgtType === 'vm')) {
         updateNode(pendingConnection.target, { parent_id: pendingConnection.source })
-      } else if (srcType === 'docker_container' && tgtType === 'docker_host') {
+      } else if (srcType === 'docker_container' && CONTAINER_MODE_TYPES.has(tgtType)) {
         updateNode(pendingConnection.source, { parent_id: pendingConnection.target })
-      } else if (tgtType === 'docker_container' && srcType === 'docker_host') {
+      } else if (tgtType === 'docker_container' && CONTAINER_MODE_TYPES.has(srcType)) {
         updateNode(pendingConnection.target, { parent_id: pendingConnection.source })
       }
     }

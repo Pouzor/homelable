@@ -93,6 +93,13 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
     onClose()
   }
 
+<<<<<<< HEAD
+=======
+  const filteredParentNodes = form.type === 'docker_container'
+    ? parentContainerNodes.filter((n) => n.nodeType && CONTAINER_MODE_TYPES.includes(n.nodeType))
+    : parentContainerNodes
+
+>>>>>>> 64124cf (added lxc, vm, proxmox to docker container parents)
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-md max-h-[90vh] overflow-y-auto">
