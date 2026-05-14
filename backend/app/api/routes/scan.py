@@ -15,6 +15,9 @@ from app.db.models import Edge, Node, PendingDevice, PendingDeviceLink, ScanRun
 from app.schemas.nodes import NodeCreate
 from app.schemas.scan import PendingDeviceResponse, ScanRunResponse
 from app.services.scanner import request_cancel, run_scan
+from app.services.zigbee_service import build_zigbee_properties
+
+_ZIGBEE_TYPES = {"zigbee_coordinator", "zigbee_router", "zigbee_enddevice"}
 
 
 class BulkActionRequest(BaseModel):
@@ -125,17 +128,22 @@ async def bulk_approve_devices(
     created_nodes: list[Node] = []
     for device in devices:
         device.status = "approved"
+        node_type = device.suggested_type or "generic"
+        is_zigbee = node_type in _ZIGBEE_TYPES
         node = Node(
             label=device.hostname or device.friendly_name or device.ip or "device",
-            type=device.suggested_type or "generic",
+            type=node_type,
             ip=device.ip,
             hostname=device.hostname,
-            status="unknown",
+            status="online" if is_zigbee else "unknown",
             services=device.services or [],
             ieee_address=device.ieee_address,
+            properties=build_zigbee_properties(
+                device.ieee_address, device.vendor, device.model, device.lqi
+            ) if is_zigbee else [],
             # Default to ping so the status checker actually polls the new node.
             # Without this the scheduler skips it (check_method NULL → no check).
-            check_method="ping" if device.ip else None,
+            check_method="none" if is_zigbee else ("ping" if device.ip else None),
         )
         db.add(node)
         created_nodes.append(node)
@@ -225,8 +233,7 @@ async def approve_device(
     if device.status != "pending":
         raise HTTPException(status_code=409, detail="Device already processed")
     device.status = "approved"
-    _zigbee_types = {"zigbee_coordinator", "zigbee_router", "zigbee_enddevice"}
-    _is_zigbee = node_data.type in _zigbee_types
+    _is_zigbee = node_data.type in _ZIGBEE_TYPES
     node = Node(
         label=node_data.label,
         type=node_data.type,
@@ -235,6 +242,9 @@ async def approve_device(
         status="online" if _is_zigbee else node_data.status,
         services=node_data.services or [],
         ieee_address=device.ieee_address,
+        properties=build_zigbee_properties(
+            device.ieee_address, device.vendor, device.model, device.lqi
+        ) if _is_zigbee else (node_data.properties or []),
         check_method="none" if _is_zigbee else (node_data.check_method or ("ping" if node_data.ip else None)),
         check_target=None if _is_zigbee else node_data.check_target,
     )

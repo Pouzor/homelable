@@ -311,47 +311,15 @@ describe('NodeModal', () => {
     expect(screen.queryByText('Reset to defaults')).toBeNull()
   })
 
-  // ── Parent Proxmox (vm / lxc only) ───────────────────────────────────
+  // ── Parent Container selector removed ────────────────────────────────
 
-  const parentContainerVisibleTypes = ['proxmox', 'vm', 'lxc', 'docker_host', 'isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer', 'iot', 'camera', 'cpl', 'computer', 'generic'] as const
-  const parentContainerHiddenTypes = ['groupRect', 'group'] as const
-
-  it.each(parentContainerVisibleTypes)('shows Parent Container for %s type when options are provided', (type) => {
-    renderModal({
-      initial: { ...BASE, type },
-      parentContainerNodes: [{ id: 'c1', label: 'Container 01' }],
-    })
-    expect(screen.getByText('Parent Container')).toBeDefined()
-    expect(screen.getByText('Container 01')).toBeDefined()
-  })
-
-  it.each(parentContainerHiddenTypes)('hides Parent Container for %s type even when options are provided', (type) => {
-    renderModal({ initial: { ...BASE, type }, parentContainerNodes: [{ id: 'c1', label: 'Container 01' }] })
+  it('does not render the Parent Container selector', () => {
+    renderModal({ initial: BASE })
     expect(screen.queryByText('Parent Container')).toBeNull()
   })
 
-  it.each(parentContainerVisibleTypes)('hides Parent Container for %s type when no container options are available', (type) => {
-    renderModal({ initial: { ...BASE, type } })
-    expect(screen.queryByText('Parent Container')).toBeNull()
-  })
-
-  it('docker_container shows only docker_host parents', () => {
-    renderModal({
-      initial: { ...BASE, type: 'docker_container' },
-      parentContainerNodes: [
-        { id: 'h1', label: 'My Docker Host', nodeType: 'docker_host' },
-        { id: 'p1', label: 'My Proxmox', nodeType: 'proxmox' },
-      ],
-    })
-    expect(screen.getByText('My Docker Host')).toBeDefined()
-    expect(screen.queryByText('My Proxmox')).toBeNull()
-  })
-
-  it('docker_container hides Parent Container when no docker_host is available', () => {
-    renderModal({
-      initial: { ...BASE, type: 'docker_container' },
-      parentContainerNodes: [{ id: 'p1', label: 'My Proxmox', nodeType: 'proxmox' }],
-    })
+  it('does not render Parent Container for docker_container either', () => {
+    renderModal({ initial: { ...BASE, type: 'docker_container' } })
     expect(screen.queryByText('Parent Container')).toBeNull()
   })
 

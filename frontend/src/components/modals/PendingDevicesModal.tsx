@@ -9,6 +9,7 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { toast } from 'sonner'
 import { PendingDeviceModal, type PendingDevice } from '@/components/modals/PendingDeviceModal'
 import type { NodeType, ServiceInfo } from '@/types'
+import { buildZigbeeProperties, isZigbeeType } from '@/utils/zigbeeProperties'
 
 interface PendingDevicesModalProps {
   open: boolean
@@ -252,13 +253,17 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   const handleApprove = async (device: PendingDevice) => {
     try {
       const fallbackLabel = deviceLabel(device)
+      const type = (device.suggested_type ?? 'generic') as NodeType
+      const zigbee = isZigbeeType(type)
+      const properties = zigbee ? buildZigbeeProperties(device) : []
       const nodeData = {
         label: fallbackLabel,
-        type: (device.suggested_type ?? 'generic') as NodeType,
+        type,
         ip: device.ip ?? undefined,
         hostname: device.hostname ?? undefined,
-        status: 'unknown',
+        status: zigbee ? 'online' : 'unknown',
         services: (device.services ?? []) as ServiceInfo[],
+        properties,
       }
       const res = await scanApi.approve(device.id, nodeData)
       const nodeId = res.data.node_id
@@ -266,7 +271,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
         id: nodeId,
         type: nodeData.type,
         position: { x: 400, y: 300 },
-        data: { ...nodeData, status: 'unknown' as const },
+        data: { ...nodeData, status: zigbee ? ('online' as const) : ('unknown' as const) },
       })
       injectAutoEdges(res.data.edges)
       const extra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
@@ -310,17 +315,20 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       approvedDevices.forEach((d, i) => {
         const nodeId = deviceToNode[d.id]
         if (!nodeId) return
+        const type = (d.suggested_type ?? 'generic') as NodeType
+        const zigbee = isZigbeeType(type)
         addNode({
           id: nodeId,
-          type: (d.suggested_type ?? 'generic') as NodeType,
+          type,
           position: { x: 400 + (i % 4) * 160, y: 300 + Math.floor(i / 4) * 100 },
           data: {
             label: deviceLabel(d),
-            type: (d.suggested_type ?? 'generic') as NodeType,
+            type,
             ip: d.ip ?? undefined,
             hostname: d.hostname ?? undefined,
-            status: 'unknown' as const,
+            status: zigbee ? ('online' as const) : ('unknown' as const),
             services: (d.services ?? []) as ServiceInfo[],
+            properties: zigbee ? buildZigbeeProperties(d) : [],
           },
         })
       })

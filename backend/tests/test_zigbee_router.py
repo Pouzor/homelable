@@ -389,6 +389,150 @@ async def test_persist_pending_import_replaces_links(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_persist_pending_import_sets_coordinator_properties(db_session) -> None:
+    """Coordinator Node is created with IEEE/Vendor/Model/LQI in properties."""
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import Node
+
+    nodes_with_meta = [dict(n) for n in _PENDING_NODES]
+    nodes_with_meta[0]["vendor"] = "TI"
+    nodes_with_meta[0]["model"] = "CC2652"
+
+    await _persist_pending_import(db_session, nodes_with_meta, _PENDING_EDGES)
+
+    coord = (
+        await db_session.execute(select(Node).where(Node.ieee_address == "0xCOORD"))
+    ).scalar_one()
+    keys = {p["key"]: p["value"] for p in coord.properties}
+    assert keys == {"IEEE": "0xCOORD", "Vendor": "TI", "Model": "CC2652"}
+    # New zigbee props default to hidden — user opts in from the right panel.
+    assert all(p["visible"] is False for p in coord.properties)
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_skips_pending_for_approved_node(
+    db_session,
+) -> None:
+    """A device already approved as a canvas Node must not reappear in pending.
+
+    Its properties must still be refreshed with the latest Vendor/Model/LQI.
+    """
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import Node, PendingDevice
+
+    # Simulate: router was approved earlier → exists as a canvas Node.
+    approved = Node(
+        label="router_1",
+        type="zigbee_router",
+        status="online",
+        check_method="none",
+        ieee_address="0xR1",
+        services=[],
+        properties=[],
+    )
+    db_session.add(approved)
+    await db_session.commit()
+
+    bumped = [dict(n) for n in _PENDING_NODES]
+    bumped[1]["lqi"] = 250  # new LQI from re-import
+    await _persist_pending_import(db_session, bumped, _PENDING_EDGES)
+
+    # No PendingDevice row was created for the approved router.
+    pendings = (
+        await db_session.execute(
+            select(PendingDevice).where(PendingDevice.ieee_address == "0xR1")
+        )
+    ).scalars().all()
+    assert pendings == []
+
+    # Node properties got refreshed.
+    refreshed = (
+        await db_session.execute(select(Node).where(Node.ieee_address == "0xR1"))
+    ).scalar_one()
+    keys = {p["key"]: p["value"] for p in refreshed.properties}
+    assert keys == {"IEEE": "0xR1", "Vendor": "TI", "Model": "CC2530", "LQI": "250"}
+    # Brand-new props on an existing Node start hidden.
+    assert all(p["visible"] is False for p in refreshed.properties)
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_preserves_user_visibility(db_session) -> None:
+    """If user has already made props visible, re-import must not flip them back."""
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import Node
+
+    approved = Node(
+        label="router_1",
+        type="zigbee_router",
+        status="online",
+        check_method="none",
+        ieee_address="0xR1",
+        services=[],
+        properties=[
+            {"key": "IEEE", "value": "0xR1", "icon": None, "visible": True},
+            {"key": "Vendor", "value": "TI", "icon": None, "visible": True},
+            {"key": "Custom", "value": "kept", "icon": None, "visible": True},
+        ],
+    )
+    db_session.add(approved)
+    await db_session.commit()
+
+    bumped = [dict(n) for n in _PENDING_NODES]
+    bumped[1]["lqi"] = 99
+    bumped[1]["model"] = "CC2530"
+    await _persist_pending_import(db_session, bumped, _PENDING_EDGES)
+
+    refreshed = (
+        await db_session.execute(select(Node).where(Node.ieee_address == "0xR1"))
+    ).scalar_one()
+    by_key = {p["key"]: p for p in refreshed.properties}
+    # Existing keys keep their visibility (True).
+    assert by_key["IEEE"]["visible"] is True
+    assert by_key["Vendor"]["visible"] is True
+    # New key arrives hidden.
+    assert by_key["Model"]["visible"] is False
+    assert by_key["LQI"]["visible"] is False
+    assert by_key["LQI"]["value"] == "99"
+    # Non-zigbee user-added prop is preserved untouched.
+    assert by_key["Custom"]["value"] == "kept"
+    assert by_key["Custom"]["visible"] is True
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_refreshes_existing_coordinator_properties(
+    db_session,
+) -> None:
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import Node
+
+    await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+
+    bumped = [dict(n) for n in _PENDING_NODES]
+    bumped[0]["vendor"] = "TI"
+    bumped[0]["model"] = "CC2652"
+    await _persist_pending_import(db_session, bumped, _PENDING_EDGES)
+
+    coord = (
+        await db_session.execute(select(Node).where(Node.ieee_address == "0xCOORD"))
+    ).scalar_one()
+    keys = {p["key"]: p["value"] for p in coord.properties}
+    assert keys["Vendor"] == "TI"
+    assert keys["Model"] == "CC2652"
+    # Newly added keys on re-import default to hidden.
+    by_key = {p["key"]: p for p in coord.properties}
+    assert by_key["Vendor"]["visible"] is False
+    assert by_key["Model"]["visible"] is False
+
+
+@pytest.mark.asyncio
 async def test_import_pending_requires_auth(client: AsyncClient) -> None:
     res = await client.post(
         "/api/v1/zigbee/import-pending",

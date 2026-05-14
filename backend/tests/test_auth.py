@@ -68,3 +68,71 @@ async def test_login_with_malformed_hash_returns_401_not_500(client: AsyncClient
         assert res.status_code == 401
     finally:
         settings.auth_password_hash = original
+
+
+# --- JWT-level cases ---
+
+async def test_expired_token_rejected(client: AsyncClient):
+    """A JWT whose `exp` is in the past must be refused."""
+    from datetime import datetime, timedelta, timezone
+
+    from jose import jwt
+
+    from app.core.config import settings
+    payload = {
+        "sub": "admin",
+        "exp": datetime.now(timezone.utc) - timedelta(minutes=1),
+    }
+    token = jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+    res = await client.get("/api/v1/nodes", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 401
+
+
+async def test_malformed_token_rejected(client: AsyncClient):
+    res = await client.get("/api/v1/nodes", headers={"Authorization": "Bearer not-a-jwt"})
+    assert res.status_code == 401
+
+
+async def test_token_signed_with_wrong_secret_rejected(client: AsyncClient):
+    """A token signed with a different key must not be accepted."""
+    from datetime import datetime, timedelta, timezone
+
+    from jose import jwt
+
+    from app.core.config import settings
+    payload = {
+        "sub": "admin",
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+    }
+    forged = jwt.encode(payload, "different-secret", algorithm=settings.algorithm)
+    res = await client.get("/api/v1/nodes", headers={"Authorization": f"Bearer {forged}"})
+    assert res.status_code == 401
+
+
+async def test_missing_authorization_header_rejected(client: AsyncClient):
+    res = await client.get("/api/v1/nodes")
+    assert res.status_code == 401
+
+
+async def test_empty_password_does_not_pass_when_hash_empty(client: AsyncClient):
+    """No credentials configured server-side must not authenticate an empty password."""
+    from app.core.config import settings
+    original_hash = settings.auth_password_hash
+    settings.auth_password_hash = ""
+    try:
+        res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": ""})
+        assert res.status_code == 401
+    finally:
+        settings.auth_password_hash = original_hash
+
+
+# --- Password helper ---
+
+def test_verify_password_handles_empty_inputs():
+    """verify_password must be safe against empty plain / empty hash without raising."""
+    from app.core.security import hash_password, verify_password
+    h = hash_password("hunter2")
+    assert verify_password("hunter2", h) is True
+    assert verify_password("", h) is False
+    assert verify_password("hunter2", "") is False
+    assert verify_password("", "") is False
