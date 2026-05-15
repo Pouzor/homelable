@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { NODE_TYPE_LABELS, STATUS_COLORS, type ServiceInfo, type NodeData, type NodeProperty } from '@/types'
 import { getServiceUrl } from '@/utils/serviceUrl'
-import { primaryIp } from '@/utils/maskIp'
+import { splitIps } from '@/utils/maskIp'
 import { PROPERTY_ICONS, PROPERTY_ICON_NAMES, resolvePropertyIcon } from '@/utils/propertyIcons'
 import type { Node } from '@xyflow/react'
 
@@ -85,14 +85,8 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
   const { data } = node
   const services = data.services ?? []
   const statusColor = STATUS_COLORS[data.status]
-  const host = data.ip ? primaryIp(data.ip) : data.hostname
-  const ipAddresses = data.ip
-    ? data.ip
-        .split(/[\n,;]+/)
-        .map((ip) => primaryIp(ip.trim()))
-        .filter(Boolean)
-        .filter((ip, index, all) => all.indexOf(ip) === index)
-    : []
+  const ipAddresses = data.ip ? splitIps(data.ip) : []
+  const host = ipAddresses[0] ?? data.hostname
 
   const handleDelete = () => {
     if (confirm(`Delete "${data.label}"?`)) {

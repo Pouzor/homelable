@@ -55,6 +55,27 @@ describe('splitIps', () => {
     expect(splitIps('')).toEqual([])
     expect(splitIps('   ')).toEqual([])
   })
+
+  it('splits on semicolons', () => {
+    expect(splitIps('10.0.0.1; 10.0.0.2')).toEqual(['10.0.0.1', '10.0.0.2'])
+  })
+
+  it('splits on newlines', () => {
+    expect(splitIps('10.0.0.1\n10.0.0.2')).toEqual(['10.0.0.1', '10.0.0.2'])
+  })
+
+  it('splits on mixed delimiters', () => {
+    expect(splitIps('10.0.0.1,10.0.0.2; 10.0.0.3\n10.0.0.4')).toEqual([
+      '10.0.0.1',
+      '10.0.0.2',
+      '10.0.0.3',
+      '10.0.0.4',
+    ])
+  })
+
+  it('deduplicates repeated IPs', () => {
+    expect(splitIps('10.0.0.1, 10.0.0.1; 10.0.0.2')).toEqual(['10.0.0.1', '10.0.0.2'])
+  })
 })
 
 describe('primaryIp', () => {
