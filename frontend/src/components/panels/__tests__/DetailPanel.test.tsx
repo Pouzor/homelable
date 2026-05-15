@@ -442,7 +442,23 @@ describe('DetailPanel', () => {
     it('displays full comma-separated IP string as link text', () => {
       setupStore({ ip: '192.168.1.10, 192.168.1.11' })
       render(<DetailPanel onEdit={vi.fn()} />)
-      expect(screen.getByText(/192\.168\.1\.10, 192\.168\.1\.11/)).toBeDefined()
+      expect(screen.getByRole('link', { name: /192\.168\.1\.10/ })).toBeDefined()
+      expect(screen.getByRole('link', { name: /192\.168\.1\.11/ })).toBeDefined()
+      expect(screen.queryByText(',')).toBeNull()
+    })
+
+    it('renders separate links for semicolon-separated IPs', () => {
+      setupStore({ ip: '192.168.1.10; 192.168.1.11' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByRole('link', { name: /192\.168\.1\.10/ }).getAttribute('href')).toBe('http://192.168.1.10')
+      expect(screen.getByRole('link', { name: /192\.168\.1\.11/ }).getAttribute('href')).toBe('http://192.168.1.11')
+    })
+
+    it('renders separate links for newline-separated IPs', () => {
+      setupStore({ ip: '192.168.1.10\n192.168.1.11' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByRole('link', { name: /192\.168\.1\.10/ }).getAttribute('href')).toBe('http://192.168.1.10')
+      expect(screen.getByRole('link', { name: /192\.168\.1\.11/ }).getAttribute('href')).toBe('http://192.168.1.11')
     })
   })
 
