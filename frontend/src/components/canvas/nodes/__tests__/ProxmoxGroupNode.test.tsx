@@ -102,6 +102,18 @@ describe('ProxmoxGroupNode', () => {
     expect(container.querySelector('.rounded-xl.border-2')).not.toBeNull()
   })
 
+  it('container mode renders bottom_handles snap points', () => {
+    const { container } = renderNode({ bottom_handles: 4 })
+    const sourceHandles = container.querySelectorAll('.react-flow__handle-bottom.source')
+    expect(sourceHandles.length).toBe(4)
+  })
+
+  it('container mode default has single bottom handle', () => {
+    const { container } = renderNode({})
+    const sourceHandles = container.querySelectorAll('.react-flow__handle-bottom.source')
+    expect(sourceHandles.length).toBe(1)
+  })
+
   it('renders cluster handles in both modes', () => {
     const { container: groupC } = renderNode({})
     expect(groupC.querySelectorAll('[title="Same cluster"]').length).toBeGreaterThanOrEqual(2)
