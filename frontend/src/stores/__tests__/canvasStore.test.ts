@@ -497,6 +497,31 @@ describe('canvasStore', () => {
     expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
   })
 
+  it('reconnectEdge swaps source/target and normalizes handles', () => {
+    useCanvasStore.setState((s) => ({
+      edges: [...s.edges, { ...makeEdge('e1', 'n1', 'n2'), sourceHandle: 'bottom', targetHandle: 'top' }],
+    }))
+    useCanvasStore.getState().markSaved()
+    useCanvasStore.getState().reconnectEdge('e1', {
+      source: 'n1',
+      target: 'n3',
+      sourceHandle: 'bottom-2-t',
+      targetHandle: 'top-t',
+    })
+    const edge = useCanvasStore.getState().edges.find((e) => e.id === 'e1')
+    expect(edge?.target).toBe('n3')
+    expect(edge?.source).toBe('n1')
+    expect(edge?.sourceHandle).toBe('bottom-2')
+    expect(edge?.targetHandle).toBe('top')
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  it('reconnectEdge snapshots history for undo', () => {
+    useCanvasStore.setState((s) => ({ edges: [...s.edges, makeEdge('e1', 'n1', 'n2')], past: [] }))
+    useCanvasStore.getState().reconnectEdge('e1', { source: 'n1', target: 'n3', sourceHandle: null, targetHandle: null })
+    expect(useCanvasStore.getState().past.length).toBe(1)
+  })
+
   it('deleteEdge removes the edge and marks unsaved', () => {
     useCanvasStore.setState((s) => ({ edges: [...s.edges, makeEdge('e1', 'n1', 'n2'), makeEdge('e2', 'n2', 'n3')] }))
     useCanvasStore.getState().markSaved()

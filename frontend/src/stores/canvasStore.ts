@@ -44,6 +44,7 @@ interface CanvasState {
   updateNode: (id: string, data: Partial<NodeData>) => void
   deleteNode: (id: string) => void
   updateEdge: (id: string, data: Partial<EdgeData>) => void
+  reconnectEdge: (id: string, connection: Connection) => void
   deleteEdge: (id: string) => void
   setProxmoxContainerMode: (proxmoxId: string, enabled: boolean) => void
   setNodeZIndex: (id: string, zIndex: number) => void
@@ -289,6 +290,24 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       edges: state.edges.map((e) =>
         e.id === id ? { ...e, type: data.type ?? e.type, data: { ...e.data, ...data } as EdgeData } : e
       ),
+      hasUnsavedChanges: true,
+    })),
+
+  reconnectEdge: (id, connection) =>
+    set((state) => ({
+      edges: state.edges.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              source: connection.source ?? e.source,
+              target: connection.target ?? e.target,
+              sourceHandle: normalizeHandle(connection.sourceHandle),
+              targetHandle: normalizeHandle(connection.targetHandle),
+            }
+          : e
+      ),
+      past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
+      future: [],
       hasUnsavedChanges: true,
     })),
 

@@ -11,6 +11,13 @@
   to   { stroke-dashoffset: 0; }
 }
 
+/* Disable React Flow's built-in edgeupdater entirely — HomelableEdge renders
+   its own interactive endpoint dots in EdgeLabelRenderer (above the node
+   layer) so the node Handle DOM cannot steal the reconnection drag. */
+.react-flow__edgeupdater {
+  display: none;
+}
+
 /* Homelable dark theme — always dark */
 :root {
     --background: #0d1117;
