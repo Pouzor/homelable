@@ -112,6 +112,28 @@ async def test_liveview_returns_saved_canvas(client: AsyncClient, auth_headers):
     assert nodes[0]["label"] == "Live Node"
 
 
+# ── custom_style + theme propagation ─────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_liveview_returns_custom_style_and_theme(client: AsyncClient, auth_headers):
+    """custom_style and viewport.theme_id from a saved canvas surface in liveview."""
+    settings.liveview_key = "test-key"
+    headers = await auth_headers()
+    payload = {
+        "nodes": [],
+        "edges": [],
+        "viewport": {"x": 0, "y": 0, "zoom": 1, "theme_id": "matrix"},
+        "custom_style": {"fontFamily": "Inter", "nodeRadius": 12},
+    }
+    await client.post("/api/v1/canvas/save", json=payload, headers=headers)
+
+    res = await client.get("/api/v1/liveview?key=test-key")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["viewport"].get("theme_id") == "matrix"
+    assert body["custom_style"] == {"fontFamily": "Inter", "nodeRadius": 12}
+
+
 # ── Re-disable after enabling ─────────────────────────────────────────────────
 
 @pytest.mark.asyncio

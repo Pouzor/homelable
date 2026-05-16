@@ -34,8 +34,10 @@ async def liveview_canvas(
     edges = (await db.execute(select(Edge))).scalars().all()
     state = await db.get(CanvasState, 1)
     viewport: dict[str, Any] = state.viewport if state else {"x": 0, "y": 0, "zoom": 1}
+    custom_style: dict[str, Any] | None = state.custom_style if state else None
     return CanvasStateResponse(
         nodes=[NodeResponse.model_validate(n) for n in nodes],
         edges=[EdgeResponse.model_validate(e) for e in edges],
         viewport=viewport,
+        custom_style=custom_style,
     )
