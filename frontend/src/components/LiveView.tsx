@@ -92,7 +92,7 @@ function LiveViewCanvas() {
         const detail: string = err.response.data?.detail ?? ''
         setViewState(detail === 'Live view is disabled' ? 'disabled' : 'invalid-key')
       })
-  }, [loadCanvas])
+  }, [loadCanvas, setTheme, setCustomStyle])
 
   useEffect(() => {
     if (!fitViewPending || nodes.length === 0) return
