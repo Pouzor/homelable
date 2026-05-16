@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { useThemeStore } from '@/stores/themeStore'
 
 // ── Mock heavy dependencies ────────────────────────────────────────────────
 
@@ -122,6 +123,55 @@ describe('LiveView (non-standalone)', () => {
     })
     const { nodes } = useCanvasStore.getState()
     expect(nodes.find((n) => n.id === 'n1')).toBeDefined()
+  })
+
+  // ── Nested children (docker_container inside docker_host) ────────────────
+
+  it('nests docker_container under docker_host parent (container_mode=true)', async () => {
+    setSearch('?key=valid')
+    const nestedPayload = {
+      data: {
+        nodes: [
+          {
+            id: 'host', type: 'docker', label: 'Docker Host', status: 'online',
+            services: [], pos_x: 0, pos_y: 0, container_mode: true,
+            created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-01T00:00:00Z',
+          },
+          {
+            id: 'ctr', type: 'docker_container', label: 'nginx', status: 'online',
+            services: [], pos_x: 20, pos_y: 30, parent_id: 'host',
+            created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-01T00:00:00Z',
+          },
+        ],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    }
+    vi.mocked(liveviewApi.load).mockResolvedValue(nestedPayload as never)
+    render(<LiveView />)
+    await waitFor(() => expect(screen.getByTestId('react-flow')).toBeDefined())
+    const ctr = useCanvasStore.getState().nodes.find((n) => n.id === 'ctr')
+    expect(ctr?.parentId).toBe('host')
+    expect(ctr?.extent).toBe('parent')
+  })
+
+  // ── Theme + custom_style applied from payload ────────────────────────────
+
+  it('applies viewport.theme_id and custom_style from the payload', async () => {
+    setSearch('?key=valid')
+    const styledPayload = {
+      data: {
+        nodes: [],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1, theme_id: 'matrix' },
+        custom_style: { fontFamily: 'Inter', nodeRadius: 12 },
+      },
+    }
+    vi.mocked(liveviewApi.load).mockResolvedValue(styledPayload as never)
+    render(<LiveView />)
+    await waitFor(() => expect(screen.getByTestId('react-flow')).toBeDefined())
+    expect(useThemeStore.getState().activeTheme).toBe('matrix')
+    expect(useThemeStore.getState().customStyle).toEqual({ fontFamily: 'Inter', nodeRadius: 12 })
   })
 
   // ── No editing props passed ───────────────────────────────────────────────
