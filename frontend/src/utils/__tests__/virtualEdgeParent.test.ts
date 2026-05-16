@@ -42,7 +42,23 @@ describe('resolveVirtualEdgeParent', () => {
     expect(res).toEqual({ childId: 'dc1', parentId: 'lxc1' })
   })
 
-  it('returns null when docker_container links to non-host/lxc target', () => {
+  it('nests docker_container under vm', () => {
+    const res = resolveVirtualEdgeParent(
+      { id: 'dc1', type: 'docker_container' },
+      { id: 'vm1', type: 'vm' },
+    )
+    expect(res).toEqual({ childId: 'dc1', parentId: 'vm1' })
+  })
+
+  it('nests docker_container under proxmox (reverse direction)', () => {
+    const res = resolveVirtualEdgeParent(
+      { id: 'px1', type: 'proxmox' },
+      { id: 'dc1', type: 'docker_container' },
+    )
+    expect(res).toEqual({ childId: 'dc1', parentId: 'px1' })
+  })
+
+  it('returns null when docker_container links to unsupported parent type', () => {
     const res = resolveVirtualEdgeParent(
       { id: 'dc1', type: 'docker_container' },
       { id: 'srv1', type: 'server' },

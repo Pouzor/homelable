@@ -3,6 +3,7 @@ import type { NodeData } from '@/types'
 export type NodeType = NodeData['type']
 
 const CONTAINER_MODE_TYPES = new Set<NodeType>(['proxmox', 'vm', 'lxc', 'docker_host'])
+const DOCKER_CONTAINER_PARENT_TYPES = new Set<NodeType>(['docker_host', 'lxc', 'vm', 'proxmox'])
 
 export interface VirtualEdgeEndpoint {
   id: string
@@ -27,10 +28,10 @@ export function resolveVirtualEdgeParent(
   if (CONTAINER_MODE_TYPES.has(srcType) && (tgtType === 'lxc' || tgtType === 'vm')) {
     return { childId: tgtId, parentId: srcId }
   }
-  if (srcType === 'docker_container' && (tgtType === 'docker_host' || tgtType === 'lxc')) {
+  if (srcType === 'docker_container' && DOCKER_CONTAINER_PARENT_TYPES.has(tgtType)) {
     return { childId: srcId, parentId: tgtId }
   }
-  if (tgtType === 'docker_container' && (srcType === 'docker_host' || srcType === 'lxc')) {
+  if (tgtType === 'docker_container' && DOCKER_CONTAINER_PARENT_TYPES.has(srcType)) {
     return { childId: tgtId, parentId: srcId }
   }
   return null
