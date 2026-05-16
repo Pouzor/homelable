@@ -311,16 +311,46 @@ describe('NodeModal', () => {
     expect(screen.queryByText('Reset to defaults')).toBeNull()
   })
 
-  // ── Parent Container selector removed ────────────────────────────────
+  // ── Parent Container selector ─────────────────────────────────────────
 
-  it('does not render the Parent Container selector', () => {
-    renderModal({ initial: BASE })
+  it('does not render Parent Container for non-child types', () => {
+    renderModal({
+      initial: BASE,
+      parentCandidates: [{ id: 'p1', label: 'Proxmox', type: 'proxmox' }],
+    })
     expect(screen.queryByText('Parent Container')).toBeNull()
   })
 
-  it('does not render Parent Container for docker_container either', () => {
-    renderModal({ initial: { ...BASE, type: 'docker_container' } })
+  it('does not render Parent Container when no valid candidates exist', () => {
+    renderModal({
+      initial: { ...BASE, type: 'docker_container' },
+      parentCandidates: [],
+    })
     expect(screen.queryByText('Parent Container')).toBeNull()
+  })
+
+  it('renders Parent Container for docker_container when docker_host candidate exists', () => {
+    renderModal({
+      initial: { ...BASE, type: 'docker_container' },
+      parentCandidates: [{ id: 'dh1', label: 'Docker Host', type: 'docker_host' }],
+    })
+    expect(screen.getByText('Parent Container')).toBeDefined()
+  })
+
+  it('renders Parent Container for docker_container when only an LXC candidate exists', () => {
+    renderModal({
+      initial: { ...BASE, type: 'docker_container' },
+      parentCandidates: [{ id: 'lxc1', label: 'My LXC', type: 'lxc' }],
+    })
+    expect(screen.getByText('Parent Container')).toBeDefined()
+  })
+
+  it('renders Parent Container for lxc when proxmox candidate exists', () => {
+    renderModal({
+      initial: { ...BASE, type: 'lxc' },
+      parentCandidates: [{ id: 'px1', label: 'PVE', type: 'proxmox' }],
+    })
+    expect(screen.getByText('Parent Container')).toBeDefined()
   })
 
   // ── Appearance ────────────────────────────────────────────────────────

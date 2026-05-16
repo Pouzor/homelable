@@ -550,6 +550,7 @@ export default function App() {
           onClose={() => setAddNodeOpen(false)}
           onSubmit={handleAddNode}
           title="Add Node"
+          parentCandidates={nodes.map((n) => ({ id: n.id, label: n.data.label ?? n.id, type: n.data.type }))}
         />
 
         {/* key forces re-mount when editing a different node, resetting form state */}
@@ -560,6 +561,25 @@ export default function App() {
           onSubmit={handleUpdateNode}
           initial={editNode?.data}
           title="Edit Node"
+          parentCandidates={(() => {
+            const descendants = new Set<string>()
+            if (editNodeId) {
+              const queue = [editNodeId]
+              while (queue.length) {
+                const id = queue.shift()!
+                for (const n of nodes) {
+                  if (n.data.parent_id === id && !descendants.has(n.id)) {
+                    descendants.add(n.id)
+                    queue.push(n.id)
+                  }
+                }
+              }
+            }
+            return nodes
+              .filter((n) => !descendants.has(n.id))
+              .map((n) => ({ id: n.id, label: n.data.label ?? n.id, type: n.data.type }))
+          })()}
+          currentNodeId={editNodeId ?? undefined}
         />
 
         <EdgeModal

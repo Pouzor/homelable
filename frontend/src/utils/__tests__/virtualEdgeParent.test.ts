@@ -1,5 +1,26 @@
 import { describe, it, expect } from 'vitest'
-import { resolveVirtualEdgeParent } from '../virtualEdgeParent'
+import { resolveVirtualEdgeParent, getValidParentTypes } from '../virtualEdgeParent'
+
+describe('getValidParentTypes', () => {
+  it('returns container-mode types for lxc', () => {
+    expect(getValidParentTypes('lxc')).toEqual(['proxmox', 'vm', 'lxc', 'docker_host'])
+  })
+
+  it('returns container-mode types for vm', () => {
+    expect(getValidParentTypes('vm')).toEqual(['proxmox', 'vm', 'lxc', 'docker_host'])
+  })
+
+  it('returns docker_host/lxc/vm/proxmox for docker_container', () => {
+    expect(getValidParentTypes('docker_container')).toEqual(['docker_host', 'lxc', 'vm', 'proxmox'])
+  })
+
+  it('returns empty list for types that cannot have a parent', () => {
+    expect(getValidParentTypes('server')).toEqual([])
+    expect(getValidParentTypes('router')).toEqual([])
+    expect(getValidParentTypes('proxmox')).toEqual([])
+    expect(getValidParentTypes('docker_host')).toEqual([])
+  })
+})
 
 describe('resolveVirtualEdgeParent', () => {
   it('nests lxc under proxmox (container-mode parent)', () => {
