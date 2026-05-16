@@ -15,6 +15,16 @@ export interface ParentAssignment {
   parentId: string
 }
 
+export function getValidParentTypes(childType: NodeType): NodeType[] {
+  if (childType === 'lxc' || childType === 'vm') {
+    return ['proxmox', 'vm', 'lxc', 'docker_host']
+  }
+  if (childType === 'docker_container') {
+    return ['docker_host', 'lxc', 'vm', 'proxmox']
+  }
+  return []
+}
+
 export function resolveVirtualEdgeParent(
   source: VirtualEdgeEndpoint,
   target: VirtualEdgeEndpoint,
