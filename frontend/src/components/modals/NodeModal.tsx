@@ -95,8 +95,17 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
     setLabelError(false)
     const selectedType = (form.type ?? 'generic') as NodeType
     const canUseContainerMode = CONTAINER_MODE_TYPES.includes(selectedType)
+    const validParentTypes = getValidParentTypes(selectedType)
+    let safeParentId = form.parent_id
+    if (validParentTypes.length === 0) {
+      safeParentId = undefined
+    } else if (safeParentId) {
+      const parent = parentCandidates.find((n) => n.id === safeParentId)
+      if (!parent || !validParentTypes.includes(parent.type)) safeParentId = undefined
+    }
     onSubmit({
       ...form,
+      parent_id: safeParentId,
       container_mode: canUseContainerMode ? !!form.container_mode : false,
     })
     onClose()
@@ -116,7 +125,12 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               <Label className="text-xs text-muted-foreground">Type</Label>
               <Select value={form.type} onValueChange={(v) => {
                 const t = v as NodeType
-                setForm((f) => ({ ...f, type: t, ...(ZIGBEE_TYPES.includes(t) ? { check_method: 'none' as CheckMethod } : {}) }))
+                setForm((f) => {
+                  const next: Partial<NodeData> = { ...f, type: t }
+                  if (ZIGBEE_TYPES.includes(t)) next.check_method = 'none' as CheckMethod
+                  if (getValidParentTypes(t).length === 0) next.parent_id = undefined
+                  return next
+                })
               }}>
                 <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Node type selector">
                   <SelectValue>{NODE_TYPE_LABELS[(form.type ?? 'server') as NodeType]}</SelectValue>
