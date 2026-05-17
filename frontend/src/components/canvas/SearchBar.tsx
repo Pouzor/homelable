@@ -57,8 +57,10 @@ export function SearchBar({ onOpenPending }: SearchBarProps) {
 
   const pendingResults = q
     ? pendingDevices.filter((d) =>
-        d.ip.toLowerCase().includes(q) ||
+        d.ip?.toLowerCase().includes(q) ||
         d.hostname?.toLowerCase().includes(q) ||
+        d.friendly_name?.toLowerCase().includes(q) ||
+        d.ieee_address?.toLowerCase().includes(q) ||
         d.services.some((s) =>
           s.service_name?.toLowerCase().includes(q) ||
           s.category?.toLowerCase().includes(q)
@@ -196,10 +198,10 @@ export function SearchBar({ onOpenPending }: SearchBarProps) {
                 >
                   <span style={{ fontSize: 10, color: '#e3b341', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 }}>pending</span>
                   <span style={{ fontSize: 12, fontWeight: 600, color: '#e6edf3', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {d.hostname ?? d.ip}
+                    {d.friendly_name ?? d.hostname ?? d.ip ?? d.ieee_address ?? 'device'}
                   </span>
                   <span style={{ fontSize: 11, color: '#8b949e', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 }}>
-                    {serviceName ?? d.ip}
+                    {serviceName ?? d.ip ?? d.ieee_address ?? ''}
                   </span>
                 </button>
               )

@@ -9,7 +9,7 @@ pydantic-settings==2.5.2
 python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
-python-multipart==0.0.26
+python-multipart==0.0.27
 apscheduler==3.10.4
 python-nmap==0.7.1
 pyyaml==6.0.2
@@ -17,6 +17,7 @@ types-PyYAML==6.0.12.20240917
 websockets==13.1
 httpx==0.27.2
 zeroconf==0.131.0
+aiomqtt==2.3.0
 
 # Dev
 ruff==0.6.9

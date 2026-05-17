@@ -19,9 +19,11 @@ import { LoginPage } from '@/components/LoginPage'
 import { NodeModal } from '@/components/modals/NodeModal'
 import { EdgeModal } from '@/components/modals/EdgeModal'
 import { ScanConfigModal } from '@/components/modals/ScanConfigModal'
+import { ZigbeeImportModal } from '@/components/zigbee/ZigbeeImportModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
 import { ThemeModal } from '@/components/modals/ThemeModal'
 import { SearchModal } from '@/components/modals/SearchModal'
+import { PendingDevicesModal } from '@/components/modals/PendingDevicesModal'
 import { ShortcutsModal } from '@/components/modals/ShortcutsModal'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -30,6 +32,7 @@ import { canvasApi } from '@/api/client'
 import { demoNodes, demoEdges } from '@/utils/demoData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
 import type { NodeData, EdgeData, CustomStyleDef } from '@/types'
+import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STANDALONE_STORAGE_KEY = 'homelable_canvas'
@@ -45,8 +48,16 @@ export default function App() {
 
   const [themeModalOpen, setThemeModalOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-  const [sidebarForceView, setSidebarForceView] = useState<'pending' | 'history' | undefined>(undefined)
-  const [highlightPendingId, setHighlightPendingId] = useState<string | undefined>(undefined)
+  const [sidebarForceView, setSidebarForceView] = useState<'history' | undefined>(undefined)
+  const [pendingModalOpen, setPendingModalOpen] = useState(false)
+  const [pendingModalStatus, setPendingModalStatus] = useState<'pending' | 'hidden'>('pending')
+  const [pendingHighlightId, setPendingHighlightId] = useState<string | undefined>(undefined)
+  const openPendingModal = useCallback((deviceId?: string, status: 'pending' | 'hidden' = 'pending') => {
+    setPendingHighlightId(undefined)
+    setPendingModalStatus(status)
+    setPendingModalOpen(true)
+    if (deviceId) setTimeout(() => setPendingHighlightId(deviceId), 0)
+  }, [])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [addNodeOpen, setAddNodeOpen] = useState(false)
   const [addGroupRectOpen, setAddGroupRectOpen] = useState(false)
@@ -55,6 +66,7 @@ export default function App() {
   const [editEdgeId, setEditEdgeId] = useState<string | null>(null)
   const [scanConfigOpen, setScanConfigOpen] = useState(false)
   const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [zigbeeImportOpen, setZigbeeImportOpen] = useState(false)
 
   // Declare handleSave before the Ctrl+S effect so it is in scope
   const handleSave = useCallback(async () => {
@@ -315,6 +327,54 @@ export default function App() {
     setExportModalOpen(true)
   }, [])
 
+  const handleZigbeeAddToCanvas = useCallback((zigbeeNodes: ZigbeeNode[], zigbeeEdges: ZigbeeEdge[]) => {
+    snapshotHistory()
+    // Place nodes in a grid starting at x=500, y=100
+    const COLS = 4
+    const SPACING_X = 170
+    const SPACING_Y = 100
+    zigbeeNodes.forEach((zn, i) => {
+      const id = zn.id
+      const col = i % COLS
+      const row = Math.floor(i / COLS)
+      const position = { x: 500 + col * SPACING_X, y: 100 + row * SPACING_Y }
+      const newNode: import('@xyflow/react').Node<NodeData> = {
+        id,
+        type: zn.type,
+        position,
+        data: {
+          label: zn.friendly_name,
+          type: zn.type as NodeData['type'],
+          status: 'unknown' as const,
+          services: [],
+          ...(zn.lqi != null ? { properties: [{ key: 'LQI', value: String(zn.lqi), icon: 'signal', visible: true }] } : {}),
+          ...(zn.model ? { os: zn.model } : {}),
+          ...(zn.parent_id ? { parent_id: zn.parent_id } : {}),
+        },
+      }
+      addNode(newNode)
+    })
+    // Add IoT edges between Zigbee devices: parent bottom -> child top
+    zigbeeEdges.forEach((ze) => {
+      onConnect({
+        source: ze.source,
+        sourceHandle: 'bottom',
+        target: ze.target,
+        targetHandle: 'top-t',
+        type: 'iot',
+      } as unknown as import('@xyflow/react').Connection)
+    })
+    // Auto-select only the freshly imported nodes so the user can drag the
+    // whole subtree as a group.
+    const importedIds = new Set(zigbeeNodes.map((zn) => zn.id))
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((n) => ({ ...n, selected: importedIds.has(n.id) })),
+      selectedNodeIds: Array.from(importedIds),
+      selectedNodeId: importedIds.size === 1 ? Array.from(importedIds)[0] : null,
+    }))
+    markUnsaved()
+  }, [addNode, onConnect, snapshotHistory, markUnsaved])
+
   const handleEdgeConnect = useCallback((connection: Connection) => {
     setPendingConnection(connection)
   }, [])
@@ -384,10 +444,10 @@ export default function App() {
             onAddNode={() => setAddNodeOpen(true)}
             onAddGroupRect={() => setAddGroupRectOpen(true)}
             onScan={() => setScanConfigOpen(true)}
+            onZigbeeImport={() => setZigbeeImportOpen(true)}
             onSave={handleSave}
-            onNodeApproved={setEditNodeId}
             forceView={sidebarForceView}
-            highlightPendingId={highlightPendingId}
+            onOpenPending={openPendingModal}
           />
           <div className="flex flex-col flex-1 min-w-0">
             <Toolbar
@@ -409,14 +469,7 @@ export default function App() {
                   onEdgeDoubleClick={handleEdgeDoubleClick}
                   onNodeDoubleClick={handleNodeDoubleClick}
                   onNodeDragStart={snapshotHistory}
-                  onOpenPending={(deviceId) => {
-                    setHighlightPendingId(undefined)
-                    setSidebarForceView(undefined)
-                    setTimeout(() => {
-                      setHighlightPendingId(deviceId)
-                      setSidebarForceView('pending')
-                    }, 0)
-                  }}
+                  onOpenPending={(deviceId) => openPendingModal(deviceId)}
                 />
               </div>
               {(selectedNodeId || selectedNodeIds.length > 1) && <DetailPanel onEdit={handleEditNode} />}
@@ -483,6 +536,18 @@ export default function App() {
           />
         )}
 
+        {!STANDALONE && (
+          <ZigbeeImportModal
+            open={zigbeeImportOpen}
+            onClose={() => setZigbeeImportOpen(false)}
+            onAddToCanvas={handleZigbeeAddToCanvas}
+            onPendingImported={() => {
+              setSidebarForceView(undefined)
+              setTimeout(() => setSidebarForceView('history'), 0)
+            }}
+          />
+        )}
+
         <GroupRectModal
           open={addGroupRectOpen}
           onClose={() => setAddGroupRectOpen(false)}
@@ -528,16 +593,16 @@ export default function App() {
         <SearchModal
           open={searchOpen}
           onClose={() => setSearchOpen(false)}
-          onOpenPending={(deviceId) => {
-            setHighlightPendingId(undefined)
-            setSidebarForceView(undefined)
-            setTimeout(() => {
-              setHighlightPendingId(deviceId)
-              setSidebarForceView('pending')
-            }, 0)
-          }}
+          onOpenPending={(deviceId) => openPendingModal(deviceId)}
         />
         <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+        <PendingDevicesModal
+          open={pendingModalOpen}
+          onClose={() => setPendingModalOpen(false)}
+          highlightId={pendingHighlightId}
+          initialStatus={pendingModalStatus}
+        />
 
         <ExportModal
           open={exportModalOpen}

@@ -74,6 +74,38 @@ Homelable continuously monitors your nodes and displays their live status (onlin
 
 ---
 
+## Zigbee2MQTT Import
+
+Homelable can connect directly to your MQTT broker and import your Zigbee network topology from **Zigbee2MQTT**, placing each device on the canvas as a typed node.
+
+### Prerequisites
+
+- A running **MQTT broker** (e.g. Mosquitto) accessible from the Homelable host
+- **Zigbee2MQTT** connected to the broker with at least one device paired
+
+### Usage
+
+1. Click **Zigbee Import** in the left sidebar (below "Scan Network")
+2. Enter your broker host, port (default `1883`), optional credentials, and base topic (default `zigbee2mqtt`)
+3. Click **Test Connection** to verify reachability, then **Fetch Devices**
+4. Select the devices you want from the grouped list (Coordinator / Router / End Device)
+5. Click **Add N to Canvas** — devices are placed in a grid with IoT edges
+
+### Node Types
+
+| Type | Z2M Device | Icon |
+|------|-----------|------|
+| `zigbee_coordinator` | Coordinator | Network hub |
+| `zigbee_router` | Router (mains-powered) | Radio |
+| `zigbee_enddevice` | End Device (battery) | Antenna |
+
+Hierarchy is set automatically: coordinator → routers → end devices (`parent_id`).
+LQI (Link Quality Indicator) is stored as a node property.
+
+> **Full documentation:** [docs/zigbee-import.md](./docs/zigbee-import.md)
+
+---
+
 ## Live View (read-only public canvas)
 
 Live View lets you share a read-only snapshot of your canvas with anyone on your network — no login required. It is disabled by default.

@@ -1,4 +1,4 @@
-import { IspNode, RouterNode, FirewallNode, SwitchNode, ServerNode, VmNode, LxcNode, NasNode, IotNode, ApNode, CameraNode, PrinterNode, ComputerNode, CplNode, DockerHostNode, DockerContainerNode, GenericNode } from './index'
+import { IspNode, RouterNode, FirewallNode, SwitchNode, ServerNode, VmNode, LxcNode, NasNode, IotNode, ApNode, CameraNode, PrinterNode, ComputerNode, CplNode, DockerHostNode, DockerContainerNode, GenericNode, ZigbeeCoordinatorNode, ZigbeeRouterNode, ZigbeeEndDeviceNode } from './index'
 import { ProxmoxGroupNode } from './ProxmoxGroupNode'
 import { GroupRectNode } from './GroupRectNode'
 import { GroupNode } from './GroupNode'
@@ -24,4 +24,7 @@ export const nodeTypes = {
   generic: GenericNode,
   groupRect: GroupRectNode,
   group: GroupNode,
+  zigbee_coordinator: ZigbeeCoordinatorNode,
+  zigbee_router: ZigbeeRouterNode,
+  zigbee_enddevice: ZigbeeEndDeviceNode,
 }
