@@ -48,7 +48,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
 
   return (
     <div
-      className="relative flex flex-col rounded-lg border transition-all duration-200 overflow-hidden"
+      className="relative flex flex-col rounded-lg border transition-all duration-200"
       style={{
         background: colors.background,
         borderColor: colors.border,
@@ -72,7 +72,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
         minWidth={140}
         minHeight={50}
         lineStyle={{ borderColor: 'transparent' }}
-        handleStyle={{ borderColor: colors.border, background: colors.border, width: 16, height: 16 }}
+        handleStyle={{ borderColor: colors.border, background: colors.border, width: 12, height: 12 }}
       />
       <Handle
         type="source"

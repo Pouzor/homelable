@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflow/react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import type { NodeData, TextPosition } from '@/types'
+import { resolveNodeColors } from '@/utils/nodeColors'
+import { useThemeStore } from '@/stores/themeStore'
 
 const FONT_FAMILIES: Record<string, string> = {
   inter: 'Inter, sans-serif',
@@ -50,6 +52,10 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
   const textPos = (rc.text_position ?? 'top-left') as TextPosition
   const posStyle = POSITION_STYLES[textPos]
 
+  const activeTheme = useThemeStore((s) => s.activeTheme)
+  const colors = resolveNodeColors(data, activeTheme)
+  const glow = colors.border
+
   const outsideJustify = textPos.includes('right') ? 'flex-end'
     : (textPos.includes('center') || textPos === 'center') ? 'center'
     : 'flex-start'
@@ -70,8 +76,8 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
   }
 
   const handleStyle: React.CSSProperties = {
-    width: 10,
-    height: 10,
+    width: 12,
+    height: 12,
     background: borderColor,
     border: '2px solid #0d1117',
     borderRadius: '50%',
@@ -85,14 +91,8 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
         isVisible={selected}
         minWidth={80}
         minHeight={60}
-        handleStyle={{
-          width: 8,
-          height: 8,
-          borderRadius: 2,
-          background: '#00d4ff',
-          border: '1px solid #0d1117',
-        }}
         lineStyle={{ borderColor: 'transparent' }}
+        handleStyle={{ borderColor: glow, backgroundColor: colors.border, width: 12, height: 12 }}
       />
 
       {HANDLE_SIDES.map(({ id: hid, position }) => (

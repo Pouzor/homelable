@@ -50,7 +50,7 @@ export function GroupNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
         minWidth={120}
         minHeight={80}
         lineStyle={{ stroke: '#00d4ff', strokeWidth: 1 }}
-        handleStyle={{ fill: '#00d4ff', stroke: '#0d1117', width: 8, height: 8, borderRadius: 2 }}
+        handleStyle={{ fill: '#00d4ff', stroke: '#0d1117', width: 12, height: 12 }}
       />
 
       {/* 4 snap-point handles — one per side. Source + invisible target overlay for each. */}
