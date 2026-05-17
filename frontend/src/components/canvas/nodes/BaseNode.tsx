@@ -90,7 +90,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
       />
 
       {/* Main row */}
-      <div className="flex flex-row items-center gap-2.5 px-2.5 py-2 min-w-0 overflow-hidden">
+      <div className="flex flex-row items-start gap-2.5 px-2.5 py-2 min-w-0 overflow-hidden">
         {/* Icon */}
         <div
           className="flex items-center justify-center w-7 h-7 rounded-md shrink-0"
@@ -114,37 +114,45 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
             {data.label}
           </div>
           {data.ip && splitIps(data.ip).map((ip) => (
-            <div
+            <span
               key={ip}
               className="font-mono text-[10px] truncate"
               style={{ color: theme.colors.nodeSubtextColor }}
               title={ip}
             >
-              {hideIp ? maskIp(ip) : ip}
-            </div>
+              <a
+                href={`http://${ip}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:opacity-75 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {hideIp ? maskIp(ip) : ip}
+              </a>
+            </span>
           ))}
+          {/* Properties in header */}
+          {visibleProperties && visibleProperties.length > 0 && (
+            <div
+              className="flex flex-wrap items-center content-start gap-x-2 gap-y-1 mt-1 min-w-0"
+              style={{ color: theme.colors.nodeSubtextColor }}
+            >
+              {visibleProperties.map((prop) => {
+                const Icon = resolvePropertyIcon(prop.icon)
+                return (
+                  <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px] min-w-0 max-w-full">
+                    {Icon && <Icon size={9} className="shrink-0" />}
+                    <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
+                    <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Properties section (new system) */}
-      {visibleProperties && visibleProperties.length > 0 && (
-        <>
-          <div style={{ height: 1, background: `${colors.border}44`, margin: '0 8px' }} />
-          <div className="flex flex-col gap-1 px-2.5 py-1.5 overflow-hidden">
-            {visibleProperties.map((prop) => {
-              const Icon = resolvePropertyIcon(prop.icon)
-              return (
-                <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px] min-w-0 overflow-hidden" style={{ color: theme.colors.nodeSubtextColor }}>
-                  {Icon && <Icon size={9} className="shrink-0" />}
-                  <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
-                  <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
-                </div>
-              )
-            })}
-          </div>
-        </>
-      )}
-
+      {/* Services section */}
       {showServices && services.length > 0 && (
         <>
           <div style={{ height: 1, background: `${colors.border}44`, margin: '0 8px' }} />
@@ -153,7 +161,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
               const url = getServiceUrl(svc, serviceHost)
               const row = (
                 <div
-                  className="nodrag flex items-center justify-between gap-2 px-1.5 py-1 rounded text-[10px] min-w-0 overflow-hidden"
+                  className="nodrag flex items-center justify-between px-1.5 py-1 rounded text-[10px] min-w-0 overflow-hidden"
                   style={{
                     background: theme.colors.nodeIconBackground,
                     color: theme.colors.nodeSubtextColor,
@@ -171,10 +179,10 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
                     </span>
 
                     {/* RIGHT: path + port */}
-                    <div className="flex items-center gap-2 shrink-0 min-w-0">
+                    <div className="flex items-center shrink-0 min-w-0">
                       {svc.path && (
                         <span
-                          className="truncate text-[#8b949e] text-right max-w-[80px]"
+                          className="truncate text-[#8b949e] text-right max-w-20"
                           title={svc.path}
                         >
                           {svc.path}
