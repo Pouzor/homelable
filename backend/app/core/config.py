@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # Leave unset (or empty) to keep the feature disabled (default).
     liveview_key: str | None = None
 
+    # Homepage widget — optional read-only stats endpoint for gethomepage.
+    # Set to a random secret to enable /api/v1/stats/summary (X-API-Key header).
+    # Leave empty to keep the feature disabled (default).
+    homepage_api_key: str = ""
+
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"
 

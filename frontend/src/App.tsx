@@ -4,6 +4,7 @@ import { type Node } from '@xyflow/react'
 import { applyDagreLayout } from '@/utils/layout'
 import { serializeNode, serializeEdge, deserializeApiNode, deserializeApiEdge, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { generateUUID } from '@/utils/uuid'
+import { resolveVirtualEdgeParent } from '@/utils/virtualEdgeParent'
 import { generateMarkdownTable } from '@/utils/exportMarkdown'
 import { ExportModal } from '@/components/modals/ExportModal'
 import { exportCanvasToYaml, downloadYaml } from '@/utils/exportYaml'
@@ -21,6 +22,7 @@ import { EdgeModal } from '@/components/modals/EdgeModal'
 import { ScanConfigModal } from '@/components/modals/ScanConfigModal'
 import { ZigbeeImportModal } from '@/components/zigbee/ZigbeeImportModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
+import { TextModal, type TextFormData } from '@/components/modals/TextModal'
 import { ThemeModal } from '@/components/modals/ThemeModal'
 import { SearchModal } from '@/components/modals/SearchModal'
 import { PendingDevicesModal } from '@/components/modals/PendingDevicesModal'
@@ -36,10 +38,9 @@ import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STANDALONE_STORAGE_KEY = 'homelable_canvas'
-const CONTAINER_MODE_TYPES = new Set<NodeData['type']>(['proxmox', 'vm', 'lxc', 'docker_host'])
 
 export default function App() {
-  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
+  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated } = useAuthStore()
   const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
@@ -61,6 +62,7 @@ export default function App() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [addNodeOpen, setAddNodeOpen] = useState(false)
   const [addGroupRectOpen, setAddGroupRectOpen] = useState(false)
+  const [addTextOpen, setAddTextOpen] = useState(false)
   const [editNodeId, setEditNodeId] = useState<string | null>(null)
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null)
   const [editEdgeId, setEditEdgeId] = useState<string | null>(null)
@@ -241,6 +243,67 @@ export default function App() {
     setEditingGroupRectId(null)
   }, [editingGroupRectId, nodes, updateNode, setNodeZIndex, setEditingGroupRectId, snapshotHistory])
 
+  const handleAddText = useCallback((data: TextFormData) => {
+    snapshotHistory()
+    const id = generateUUID()
+    const newNode: Node<NodeData> = {
+      id,
+      // Text lives in `label` because the API serializer only persists top-level
+      // node fields; text_content is not in the schema and was lost on reload.
+      // TextNode and the edit modal both already fall back to label.
+      type: 'text',
+      position: { x: 250, y: 250 },
+      data: {
+        label: data.text,
+        type: 'text',
+        status: 'unknown',
+        services: [],
+        custom_colors: {
+          border: data.border_color,
+          border_style: data.border_style,
+          border_width: data.border_width,
+          background: data.background_color,
+          text_color: data.text_color,
+          text_size: data.text_size,
+          font: data.font,
+        },
+      },
+      width: 200,
+      height: 60,
+    }
+    addNode(newNode)
+  }, [addNode, snapshotHistory])
+
+  const handleUpdateText = useCallback((data: TextFormData) => {
+    if (!editingTextId) return
+    snapshotHistory()
+    const existing = nodes.find((n) => n.id === editingTextId)
+    updateNode(editingTextId, {
+      label: data.text,
+      // Clear stale text_content if present from older builds — label is the
+      // source of truth now.
+      text_content: undefined,
+      custom_colors: {
+        ...existing?.data.custom_colors,
+        border: data.border_color,
+        border_style: data.border_style,
+        border_width: data.border_width,
+        background: data.background_color,
+        text_color: data.text_color,
+        text_size: data.text_size,
+        font: data.font,
+      },
+    })
+    setEditingTextId(null)
+  }, [editingTextId, nodes, updateNode, setEditingTextId, snapshotHistory])
+
+  const handleDeleteText = useCallback(() => {
+    if (!editingTextId) return
+    snapshotHistory()
+    deleteNode(editingTextId)
+    setEditingTextId(null)
+  }, [editingTextId, deleteNode, setEditingTextId, snapshotHistory])
+
   const handleDeleteGroupRect = useCallback(() => {
     if (!editingGroupRectId) return
     snapshotHistory()
@@ -387,16 +450,14 @@ export default function App() {
     if (edgeData.type === 'virtual') {
       const src = nodes.find((n) => n.id === pendingConnection.source)
       const tgt = nodes.find((n) => n.id === pendingConnection.target)
-      const srcType = src?.data.type as NodeData['type']
-      const tgtType = tgt?.data.type as NodeData['type']
-      if ((srcType === 'lxc' || srcType === 'vm') && CONTAINER_MODE_TYPES.has(tgtType)) {
-        updateNode(pendingConnection.source, { parent_id: pendingConnection.target })
-      } else if (CONTAINER_MODE_TYPES.has(srcType) && (tgtType === 'lxc' || tgtType === 'vm')) {
-        updateNode(pendingConnection.target, { parent_id: pendingConnection.source })
-      } else if (srcType === 'docker_container' && tgtType === 'docker_host') {
-        updateNode(pendingConnection.source, { parent_id: pendingConnection.target })
-      } else if (tgtType === 'docker_container' && srcType === 'docker_host') {
-        updateNode(pendingConnection.target, { parent_id: pendingConnection.source })
+      if (src && tgt) {
+        const assignment = resolveVirtualEdgeParent(
+          { id: src.id, type: src.data.type as NodeData['type'] },
+          { id: tgt.id, type: tgt.data.type as NodeData['type'] },
+        )
+        if (assignment) {
+          updateNode(assignment.childId, { parent_id: assignment.parentId })
+        }
       }
     }
     setPendingConnection(null)
@@ -407,6 +468,11 @@ export default function App() {
   }, [])
 
   const handleNodeDoubleClick = useCallback((node: Node<NodeData>) => {
+    // 'group' uses inline rename (pencil button in header). Opening the
+    // generic NodeModal would clobber the group's height (via the
+    // properties-clears-height rule in updateNode) and lose its children.
+    // 'groupRect' has its own onDoubleClick that already routes to GroupRectModal.
+    if (node.data.type === 'group' || node.data.type === 'groupRect') return
     handleEditNode(node.id)
   }, [handleEditNode])
 
@@ -443,6 +509,7 @@ export default function App() {
           <Sidebar
             onAddNode={() => setAddNodeOpen(true)}
             onAddGroupRect={() => setAddGroupRectOpen(true)}
+            onAddText={() => setAddTextOpen(true)}
             onScan={() => setScanConfigOpen(true)}
             onZigbeeImport={() => setZigbeeImportOpen(true)}
             onSave={handleSave}
@@ -483,9 +550,7 @@ export default function App() {
           onClose={() => setAddNodeOpen(false)}
           onSubmit={handleAddNode}
           title="Add Node"
-          parentContainerNodes={nodes
-            .filter((n) => CONTAINER_MODE_TYPES.has(n.data.type) && n.data.container_mode)
-            .map((n) => ({ id: n.id, label: n.data.label, nodeType: n.data.type }))}
+          parentCandidates={nodes.map((n) => ({ id: n.id, label: n.data.label ?? n.id, type: n.data.type }))}
         />
 
         {/* key forces re-mount when editing a different node, resetting form state */}
@@ -496,9 +561,25 @@ export default function App() {
           onSubmit={handleUpdateNode}
           initial={editNode?.data}
           title="Edit Node"
-          parentContainerNodes={nodes
-            .filter((n) => n.id !== editNodeId && CONTAINER_MODE_TYPES.has(n.data.type) && n.data.container_mode)
-            .map((n) => ({ id: n.id, label: n.data.label, nodeType: n.data.type }))}
+          parentCandidates={(() => {
+            const descendants = new Set<string>()
+            if (editNodeId) {
+              const queue = [editNodeId]
+              while (queue.length) {
+                const id = queue.shift()!
+                for (const n of nodes) {
+                  if (n.data.parent_id === id && !descendants.has(n.id)) {
+                    descendants.add(n.id)
+                    queue.push(n.id)
+                  }
+                }
+              }
+            }
+            return nodes
+              .filter((n) => !descendants.has(n.id))
+              .map((n) => ({ id: n.id, label: n.data.label ?? n.id, type: n.data.type }))
+          })()}
+          currentNodeId={editNodeId ?? undefined}
         />
 
         <EdgeModal
@@ -581,6 +662,37 @@ export default function App() {
             }
           })()}
           title="Edit Zone"
+        />
+
+        <TextModal
+          open={addTextOpen}
+          onClose={() => setAddTextOpen(false)}
+          onSubmit={handleAddText}
+          title="Add Text"
+        />
+
+        <TextModal
+          key={editingTextId ?? 'text-edit'}
+          open={!!editingTextId}
+          onClose={() => setEditingTextId(null)}
+          onSubmit={handleUpdateText}
+          onDelete={handleDeleteText}
+          initial={(() => {
+            const n = editingTextId ? nodes.find((nd) => nd.id === editingTextId) : null
+            if (!n) return undefined
+            const rc = n.data.custom_colors ?? {}
+            return {
+              text: n.data.text_content ?? n.data.label ?? '',
+              font: rc.font ?? 'inter',
+              text_color: rc.text_color ?? '#e6edf3',
+              text_size: rc.text_size ?? 14,
+              border_color: rc.border ?? '#30363d',
+              border_style: (rc.border_style ?? 'none') as TextFormData['border_style'],
+              border_width: rc.border_width ?? 1,
+              background_color: rc.background ?? '#00000000',
+            }
+          })()}
+          title="Edit Text"
         />
 
         {/* key forces re-mount on open so useState captures current theme as original */}

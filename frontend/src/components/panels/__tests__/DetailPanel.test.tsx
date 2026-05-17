@@ -442,7 +442,23 @@ describe('DetailPanel', () => {
     it('displays full comma-separated IP string as link text', () => {
       setupStore({ ip: '192.168.1.10, 192.168.1.11' })
       render(<DetailPanel onEdit={vi.fn()} />)
-      expect(screen.getByText(/192\.168\.1\.10, 192\.168\.1\.11/)).toBeDefined()
+      expect(screen.getByRole('link', { name: /192\.168\.1\.10/ })).toBeDefined()
+      expect(screen.getByRole('link', { name: /192\.168\.1\.11/ })).toBeDefined()
+      expect(screen.queryByText(',')).toBeNull()
+    })
+
+    it('renders separate links for semicolon-separated IPs', () => {
+      setupStore({ ip: '192.168.1.10; 192.168.1.11' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByRole('link', { name: /192\.168\.1\.10/ }).getAttribute('href')).toBe('http://192.168.1.10')
+      expect(screen.getByRole('link', { name: /192\.168\.1\.11/ }).getAttribute('href')).toBe('http://192.168.1.11')
+    })
+
+    it('renders separate links for newline-separated IPs', () => {
+      setupStore({ ip: '192.168.1.10\n192.168.1.11' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByRole('link', { name: /192\.168\.1\.10/ }).getAttribute('href')).toBe('http://192.168.1.10')
+      expect(screen.getByRole('link', { name: /192\.168\.1\.11/ }).getAttribute('href')).toBe('http://192.168.1.11')
     })
   })
 
@@ -485,6 +501,29 @@ describe('DetailPanel', () => {
       setupStore({ ip: undefined, services: [{ protocol: 'tcp', service_name: 'health', path: '' }] })
       render(<DetailPanel onEdit={vi.fn()} />)
       expect(screen.getByText('health').tagName).not.toBe('A')
+    })
+  })
+
+  describe('Last Seen formatting', () => {
+    it('renders a valid date when last_seen has +00:00 offset (no Z)', () => {
+      setupStore({ last_seen: '2026-05-10T17:54:38.221403+00:00' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const row = screen.getByText('Last Seen').parentElement
+      expect(row?.textContent).not.toMatch(/Invalid Date/)
+    })
+
+    it('renders a valid date when last_seen ends with Z', () => {
+      setupStore({ last_seen: '2026-05-10T17:54:38.221403Z' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const row = screen.getByText('Last Seen').parentElement
+      expect(row?.textContent).not.toMatch(/Invalid Date/)
+    })
+
+    it('treats naive ISO strings as UTC', () => {
+      setupStore({ last_seen: '2026-05-10T17:54:38' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const row = screen.getByText('Last Seen').parentElement
+      expect(row?.textContent).not.toMatch(/Invalid Date/)
     })
   })
 })

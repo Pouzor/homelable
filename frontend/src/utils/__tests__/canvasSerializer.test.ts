@@ -412,3 +412,24 @@ describe('round-trip: serialize → deserialize', () => {
     expect(restored.height).toBe(300)
   })
 })
+
+// ── text nodes survive save+reload (regression for #lost text node) ──────────
+describe('serializeNode — text node roundtrip', () => {
+  const emptyMap = new Map<string, boolean>()
+
+  it('persists text content through label so it survives reload', () => {
+    const node = makeRfNode({
+      type: 'text',
+      data: {
+        label: 'Hello world',
+        type: 'text',
+        status: 'unknown',
+        services: [],
+      },
+    })
+    const serialized = serializeNode(node) as ApiNode
+    expect(serialized.label).toBe('Hello world')
+    const restored = deserializeApiNode(serialized, emptyMap)
+    expect(restored.data.label).toBe('Hello world')
+  })
+})

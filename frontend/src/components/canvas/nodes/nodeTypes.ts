@@ -2,6 +2,7 @@ import { IspNode, RouterNode, FirewallNode, SwitchNode, ServerNode, VmNode, LxcN
 import { ProxmoxGroupNode } from './ProxmoxGroupNode'
 import { GroupRectNode } from './GroupRectNode'
 import { GroupNode } from './GroupNode'
+import { TextNode } from './TextNode'
 
 export const nodeTypes = {
   isp: IspNode,
@@ -24,6 +25,7 @@ export const nodeTypes = {
   generic: GenericNode,
   groupRect: GroupRectNode,
   group: GroupNode,
+  text: TextNode,
   zigbee_coordinator: ZigbeeCoordinatorNode,
   zigbee_router: ZigbeeRouterNode,
   zigbee_enddevice: ZigbeeEndDeviceNode,

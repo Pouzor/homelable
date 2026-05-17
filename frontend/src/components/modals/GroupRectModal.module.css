@@ -1,0 +1,41 @@
+/* Slider container: strip native chrome so custom track/thumb align cleanly */
+.slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 13px; /* match thumb height so vertical centering is the input's box center */
+}
+.slider-thumb:focus {
+  outline: none;
+}
+
+/* Track */
+.slider-accent::-webkit-slider-runnable-track {
+  height: 4px;
+  background: #00d4ff;
+  border-radius: 2px;
+}
+.slider-accent::-moz-range-track {
+  height: 4px;
+  background: #00d4ff;
+  border-radius: 2px;
+}
+
+/* Thumb — must offset on webkit so it centers on the 4px track */
+.slider-thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #00d4ff;
+  border: 2px solid #21262d;
+  margin-top: -4.5px; /* (13 - 4) / 2 */
+}
+.slider-thumb::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #00d4ff;
+  border: 2px solid #21262d;
+}

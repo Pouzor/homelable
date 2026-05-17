@@ -1,18 +1,22 @@
-import { createElement } from 'react'
-import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflow/react'
+import { createElement, useEffect } from 'react'
+import { Handle, Position, NodeResizer, useUpdateNodeInternals, type NodeProps, type Node } from '@xyflow/react'
 import { Layers } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
-import { resolveNodeIcon } from '@/utils/nodeIcons'
+import { resolveNodeIcon, isBrandIconKey } from '@/utils/nodeIcons'
+import { NodeIcon } from '@/components/ui/NodeIcon'
 import { resolvePropertyIcon } from '@/utils/propertyIcons'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { maskIp, splitIps } from '@/utils/maskIp'
 import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
+import { bottomHandleId, bottomHandlePositions } from '@/utils/handleUtils'
 import { BaseNode } from './BaseNode'
 
 export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
-  const { data, selected } = props
+  const { id, data, selected } = props
+  const updateNodeInternals = useUpdateNodeInternals()
+  useEffect(() => { updateNodeInternals(id) }, [data.bottom_handles, id, updateNodeInternals])
 
   const activeTheme = useThemeStore((s) => s.activeTheme)
   const hideIp = useCanvasStore((s) => s.hideIp)
@@ -87,7 +91,9 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
               background: theme.colors.nodeIconBackground,
             }}
           >
-            {createElement(resolvedIcon, { size: 12 })}
+            {isBrandIconKey(data.custom_icon)
+              ? <NodeIcon typeIcon={Layers} customIconKey={data.custom_icon} size={12} />
+              : createElement(resolvedIcon, { size: 12 })}
           </div>
           <div className="flex flex-col min-w-0 flex-1">
             <span
@@ -146,13 +152,26 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
         style={{ background: theme.colors.handleBackground, borderColor: theme.colors.handleBorder }}
       />
       <Handle type="target" position={Position.Top} id="top-t" style={{ opacity: 0, width: 12, height: 12 }} />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        id="bottom"
-        style={{ background: theme.colors.handleBackground, borderColor: theme.colors.handleBorder }}
-      />
-      <Handle type="target" position={Position.Bottom} id="bottom-t" style={{ opacity: 0, width: 12, height: 12 }} />
+      {bottomHandlePositions(data.bottom_handles ?? 1).map((leftPct, idx) => {
+        const sourceId = bottomHandleId(idx)
+        const targetId = `${sourceId}-t`
+        return (
+          <span key={sourceId}>
+            <Handle
+              type="source"
+              position={Position.Bottom}
+              id={sourceId}
+              style={{ left: `${leftPct}%`, background: theme.colors.handleBackground, borderColor: theme.colors.handleBorder }}
+            />
+            <Handle
+              type="target"
+              position={Position.Bottom}
+              id={targetId}
+              style={{ left: `${leftPct}%`, opacity: 0, width: 12, height: 12 }}
+            />
+          </span>
+        )
+      })}
 
       {/* Cluster handles */}
       <Handle

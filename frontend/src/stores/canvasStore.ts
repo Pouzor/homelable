@@ -44,11 +44,14 @@ interface CanvasState {
   updateNode: (id: string, data: Partial<NodeData>) => void
   deleteNode: (id: string) => void
   updateEdge: (id: string, data: Partial<EdgeData>) => void
+  reconnectEdge: (id: string, connection: Connection) => void
   deleteEdge: (id: string) => void
   setProxmoxContainerMode: (proxmoxId: string, enabled: boolean) => void
   setNodeZIndex: (id: string, zIndex: number) => void
   editingGroupRectId: string | null
   setEditingGroupRectId: (id: string | null) => void
+  editingTextId: string | null
+  setEditingTextId: (id: string | null) => void
   createGroup: (nodeIds: string[], name: string) => void
   ungroup: (groupId: string) => void
   markSaved: () => void
@@ -71,6 +74,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   selectedNodeId: null,
   selectedNodeIds: [],
   editingGroupRectId: null,
+  editingTextId: null,
   hideIp: false,
   scanEventTs: 0,
   fitViewPending: false,
@@ -206,7 +210,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         if (n.id !== id) return n
         const updated: Node<NodeData> = { ...n, data: { ...n.data, ...data } }
         // When properties change, clear stored height so the node auto-sizes to fit new content
-        if ('properties' in data && n.data.type !== 'proxmox' && n.data.type !== 'groupRect') {
+        if ('properties' in data && n.data.type !== 'proxmox' && n.data.type !== 'groupRect' && n.data.type !== 'group') {
           updated.height = undefined
         }
         if ('parent_id' in data) {
@@ -289,6 +293,24 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       hasUnsavedChanges: true,
     })),
 
+  reconnectEdge: (id, connection) =>
+    set((state) => ({
+      edges: state.edges.map((e) =>
+        e.id === id
+          ? {
+              ...e,
+              source: connection.source ?? e.source,
+              target: connection.target ?? e.target,
+              sourceHandle: normalizeHandle(connection.sourceHandle),
+              targetHandle: normalizeHandle(connection.targetHandle),
+            }
+          : e
+      ),
+      past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
+      future: [],
+      hasUnsavedChanges: true,
+    })),
+
   deleteEdge: (id) =>
     set((state) => ({
       edges: state.edges.filter((e) => e.id !== id),
@@ -349,6 +371,8 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     })),
 
   setEditingGroupRectId: (id) => set({ editingGroupRectId: id }),
+
+  setEditingTextId: (id) => set({ editingTextId: id }),
 
   createGroup: (nodeIds, name) =>
     set((state) => {

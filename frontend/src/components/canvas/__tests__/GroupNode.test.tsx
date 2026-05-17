@@ -11,6 +11,8 @@ vi.mock('@xyflow/react', () => ({
   NodeResizer: ({ isVisible }: { isVisible: boolean }) => (
     <div data-testid="node-resizer" data-visible={isVisible} />
   ),
+  Handle: () => null,
+  Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
   useReactFlow: () => ({}),
 }))
 

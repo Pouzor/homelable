@@ -62,6 +62,48 @@ export const demoNodes: Node<NodeData>[] = [
     position: { x: 460, y: 500 },
     data: { label: 'Zigbee Hub', type: 'iot', ip: '192.168.2.1', status: 'pending', check_method: 'tcp', services: [] },
   },
+  {
+    id: 'demo-text-1',
+    type: 'text',
+    position: { x: 660, y: 20 },
+    data: {
+      label: 'Demo banner',
+      type: 'text',
+      status: 'unknown',
+      services: [],
+      text_content: 'This is demo canvas, start with fresh scan',
+      custom_colors: {
+        text_color: '#e6edf3',
+        text_size: 14,
+        font: 'inter',
+        border: '#00d4ff',
+        border_style: 'dashed',
+        border_width: 1,
+        background: '#00d4ff14',
+      },
+    },
+  },
+  {
+    id: 'demo-text-2',
+    type: 'text',
+    position: { x: -240, y: 540 },
+    data: {
+      label: 'Demo hint',
+      type: 'text',
+      status: 'unknown',
+      services: [],
+      text_content: 'You can remove all nodes',
+      custom_colors: {
+        text_color: '#8b949e',
+        text_size: 12,
+        font: 'inter',
+        border: '#30363d',
+        border_style: 'dotted',
+        border_width: 1,
+        background: '#00000000',
+      },
+    },
+  },
 ]
 
 export const demoEdges: Edge<EdgeData>[] = [

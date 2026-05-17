@@ -24,6 +24,11 @@ async def check_node(check_method: str, target: str | None, ip: str | None) -> d
     host = target or raw_ip
     if not host:
         return {"status": "unknown", "response_time_ms": None}
+    # Reject hostnames that look like CLI flags — defends ping/tcp invocations
+    # against arg-injection if a malicious admin sets target like "-O".
+    if host.startswith("-"):
+        logger.warning("Rejecting check target that starts with '-': %r", host)
+        return {"status": "unknown", "response_time_ms": None}
 
     start = time.monotonic()
     try:
@@ -60,8 +65,14 @@ async def check_node(check_method: str, target: str | None, ip: str | None) -> d
 
 
 async def _ping(host: str) -> bool:
+    # ping(8) -W flag units differ by OS:
+    #   Linux:   seconds        (-W 1   = 1s)
+    #   macOS:   milliseconds   (-W 1   = 1ms — fails for any RTT >1ms)
+    #   Windows: -w in ms       (-w 1000 = 1s)
     if sys.platform == "win32":
         args = ["ping", "-n", "1", "-w", "1000", host]
+    elif sys.platform == "darwin":
+        args = ["ping", "-c", "1", "-W", "1000", host]
     else:
         args = ["ping", "-c", "1", "-W", "1", host]
     proc = await asyncio.create_subprocess_exec(

@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -179,9 +179,113 @@ function segmentMidpoints(
   })
 }
 
+// ── Endpoint dot (interactive reconnection handle pinned to handle) ──────────
+
+interface EndpointDotProps {
+  edgeId: string
+  role: 'source' | 'target'
+  x: number
+  y: number
+  position?: string
+  color: string
+  source: string
+  target: string
+  sourceHandle: string | null | undefined
+  targetHandle: string | null | undefined
+  onDrag: (pos: { x: number; y: number } | null) => void
+}
+
+/**
+ * Interactive endpoint marker rendered above the node layer (via
+ * EdgeLabelRenderer). On pointerup it inspects the element under the cursor
+ * for a React Flow handle (`[data-handleid]`) and calls `reconnectEdge` with
+ * the new endpoint. Drop on empty space leaves the edge unchanged.
+ *
+ * Handles are nudged 3px inward (toward the node) because React Flow's edge
+ * endpoint coords sit at the outer edge of the handle box, not its center.
+ */
+function EndpointDot({ edgeId, role, x, y, position, color, source, target, sourceHandle, targetHandle, onDrag }: EndpointDotProps) {
+  const reconnectEdge = useCanvasStore((s) => s.reconnectEdge)
+  const { screenToFlowPosition } = useReactFlow()
+
+  const offset = 3
+  let dx = 0, dy = 0
+  if (position === 'bottom') dy = -offset
+  else if (position === 'top') dy = offset
+  else if (position === 'left') dx = offset
+  else if (position === 'right') dx = -offset
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }, [])
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (e.buttons !== 1) return
+    onDrag(screenToFlowPosition({ x: e.clientX, y: e.clientY }))
+  }, [onDrag, screenToFlowPosition])
+
+  const onPointerUp = useCallback((e: React.PointerEvent) => {
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    // Find the topmost handle under cursor, skipping the dragged dot itself.
+    const stack = document.elementsFromPoint(e.clientX, e.clientY)
+    let handleEl: HTMLElement | null = null
+    for (const node of stack) {
+      const h = (node as HTMLElement).closest?.('[data-handleid]') as HTMLElement | null
+      if (h) { handleEl = h; break }
+    }
+    onDrag(null)
+    if (!handleEl) return  // dropped on empty space → keep edge unchanged
+    const newHandleId = handleEl.getAttribute('data-handleid')
+    const newNodeId = handleEl.getAttribute('data-nodeid')
+    if (!newHandleId || !newNodeId) return
+    if (role === 'source') {
+      reconnectEdge(edgeId, { source: newNodeId, target, sourceHandle: newHandleId, targetHandle: targetHandle ?? null })
+    } else {
+      reconnectEdge(edgeId, { source, target: newNodeId, sourceHandle: sourceHandle ?? null, targetHandle: newHandleId })
+    }
+  }, [edgeId, role, source, target, sourceHandle, targetHandle, reconnectEdge, onDrag])
+
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      style={{
+        position: 'absolute',
+        transform: `translate(-50%, -50%) translate(${x + dx}px, ${y + dy}px)`,
+        width: 15,
+        height: 15,
+        borderRadius: '50%',
+        background: color,
+        border: '2px solid #0d1117',
+        cursor: 'grab',
+        pointerEvents: 'all',
+        zIndex: 1000,
+        touchAction: 'none',
+      }}
+      title="Drag to reconnect"
+    />
+  )
+}
+
 // ── Main edge component ──────────────────────────────────────────────────────
 
-export function HomelableEdge({ id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: EdgeProps<Edge<EdgeData>>) {
+export function HomelableEdge({ id, source, target, sourceHandleId, targetHandleId, sourceX: rawSourceX, sourceY: rawSourceY, targetX: rawTargetX, targetY: rawTargetY, sourcePosition, targetPosition, data, selected }: EdgeProps<Edge<EdgeData>>) {
+  const [drag, setDrag] = useState<{ role: 'source' | 'target'; x: number; y: number } | null>(null)
+
+  const sourceX = drag?.role === 'source' ? drag.x : rawSourceX
+  const sourceY = drag?.role === 'source' ? drag.y : rawSourceY
+  const targetX = drag?.role === 'target' ? drag.x : rawTargetX
+  const targetY = drag?.role === 'target' ? drag.y : rawTargetY
+
+  const onSourceDrag = useCallback((pos: { x: number; y: number } | null) => {
+    setDrag(pos ? { role: 'source', x: pos.x, y: pos.y } : null)
+  }, [])
+  const onTargetDrag = useCallback((pos: { x: number; y: number } | null) => {
+    setDrag(pos ? { role: 'target', x: pos.x, y: pos.y } : null)
+  }, [])
+
   const activeTheme = useThemeStore((s) => s.activeTheme)
   const theme = THEMES[activeTheme]
   const sourceType = useStore((s) => s.nodeLookup.get(source)?.type)
@@ -309,6 +413,38 @@ export function HomelableEdge({ id, source, target, sourceX, sourceY, targetX, t
           >
             {data.label as string}
           </div>
+        )}
+
+        {/* Endpoint dots — visual indicators for reconnection targets */}
+        {selected && (
+          <>
+            <EndpointDot
+              edgeId={id}
+              role="source"
+              x={sourceX}
+              y={sourceY}
+              position={sourcePosition}
+              color={strokeColor}
+              source={source}
+              target={target}
+              sourceHandle={sourceHandleId}
+              targetHandle={targetHandleId}
+              onDrag={onSourceDrag}
+            />
+            <EndpointDot
+              edgeId={id}
+              role="target"
+              x={targetX}
+              y={targetY}
+              position={targetPosition}
+              color={strokeColor}
+              source={source}
+              target={target}
+              sourceHandle={sourceHandleId}
+              targetHandle={targetHandleId}
+              onDrag={onTargetDrag}
+            />
+          </>
         )}
 
         {/* Existing waypoint drag handles */}
