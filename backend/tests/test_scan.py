@@ -37,6 +37,95 @@ async def pending_device(db_session):
     return device
 
 
+# --- _background_scan error handling ---
+
+@pytest.fixture
+async def mem_db():
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.db.database import Base
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    yield factory
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_background_scan_marks_run_failed_on_exception(mem_db):
+    """If run_scan() raises, the ScanRun must transition running → failed and the
+    session rollback path must execute without a follow-on exception."""
+    from app.api.routes.scan import _background_scan
+
+    async with mem_db() as session:
+        run = ScanRun(status="running", ranges=["10.0.0.0/24"])
+        session.add(run)
+        await session.commit()
+        run_id = run.id
+
+    with (
+        patch("app.api.routes.scan.AsyncSessionLocal", mem_db),
+        patch(
+            "app.api.routes.scan.run_scan",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        await _background_scan(run_id, ["10.0.0.0/24"])
+
+    async with mem_db() as session:
+        refreshed = await session.get(ScanRun, run_id)
+        assert refreshed is not None
+        assert refreshed.status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_background_scan_leaves_non_running_status_alone(mem_db):
+    """If the run was already stopped/cancelled before run_scan failed, _background_scan
+    must NOT overwrite that terminal status with 'failed'."""
+    from app.api.routes.scan import _background_scan
+
+    async with mem_db() as session:
+        run = ScanRun(status="cancelled", ranges=["10.0.0.0/24"])
+        session.add(run)
+        await session.commit()
+        run_id = run.id
+
+    with (
+        patch("app.api.routes.scan.AsyncSessionLocal", mem_db),
+        patch(
+            "app.api.routes.scan.run_scan",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        await _background_scan(run_id, ["10.0.0.0/24"])
+
+    async with mem_db() as session:
+        refreshed = await session.get(ScanRun, run_id)
+        assert refreshed is not None
+        assert refreshed.status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_background_scan_success_path_invokes_run_scan(mem_db):
+    from app.api.routes.scan import _background_scan
+
+    async with mem_db() as session:
+        run = ScanRun(status="running", ranges=["10.0.0.0/24"])
+        session.add(run)
+        await session.commit()
+        run_id = run.id
+
+    with (
+        patch("app.api.routes.scan.AsyncSessionLocal", mem_db),
+        patch("app.api.routes.scan.run_scan", new_callable=AsyncMock) as mock_run_scan,
+    ):
+        await _background_scan(run_id, ["10.0.0.0/24"])
+        mock_run_scan.assert_awaited_once()
+
+
 # --- Trigger scan ---
 
 @pytest.mark.asyncio
@@ -526,6 +615,87 @@ async def test_bulk_approve_approves_devices(client: AsyncClient, headers, two_p
     # Pending list should now be empty
     pending_res = await client.get("/api/v1/scan/pending", headers=headers)
     assert pending_res.json() == []
+
+
+@pytest.fixture
+async def zigbee_pending_device(db_session):
+    device = PendingDevice(
+        id=str(uuid.uuid4()),
+        ip=None,
+        mac=None,
+        hostname=None,
+        friendly_name="bulb_1",
+        services=[],
+        suggested_type="zigbee_enddevice",
+        device_subtype="EndDevice",
+        ieee_address="0xABCDEF",
+        vendor="IKEA",
+        model="TRADFRI",
+        lqi=180,
+        status="pending",
+        discovery_source="zigbee",
+    )
+    db_session.add(device)
+    await db_session.commit()
+    await db_session.refresh(device)
+    return device
+
+
+@pytest.mark.asyncio
+async def test_approve_zigbee_device_populates_properties(
+    client: AsyncClient, headers, zigbee_pending_device, db_session
+):
+    """Approving a zigbee device must populate IEEE/Vendor/Model/LQI in properties."""
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    payload = {
+        "label": "bulb_1",
+        "type": "zigbee_enddevice",
+        "status": "online",
+        "services": [],
+        "check_method": "none",
+    }
+    res = await client.post(
+        f"/api/v1/scan/pending/{zigbee_pending_device.id}/approve",
+        json=payload,
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (
+        await db_session.execute(select(NodeModel).where(NodeModel.ieee_address == "0xABCDEF"))
+    ).scalar_one()
+    keys = {p["key"]: p["value"] for p in node.properties}
+    assert keys == {
+        "IEEE": "0xABCDEF",
+        "Vendor": "IKEA",
+        "Model": "TRADFRI",
+        "LQI": "180",
+    }
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_zigbee_populates_properties(
+    client: AsyncClient, headers, zigbee_pending_device, db_session
+):
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": [zigbee_pending_device.id]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (
+        await db_session.execute(select(NodeModel).where(NodeModel.ieee_address == "0xABCDEF"))
+    ).scalar_one()
+    keys = {p["key"]: p["value"] for p in node.properties}
+    assert keys["IEEE"] == "0xABCDEF"
+    assert keys["Vendor"] == "IKEA"
+    assert keys["Model"] == "TRADFRI"
+    assert keys["LQI"] == "180"
+    assert node.check_method == "none"
 
 
 @pytest.mark.asyncio

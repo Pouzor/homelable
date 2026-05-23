@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { NODE_TYPE_LABELS, STATUS_COLORS, type ServiceInfo, type NodeData, type NodeProperty } from '@/types'
 import { getServiceUrl } from '@/utils/serviceUrl'
-import { primaryIp } from '@/utils/maskIp'
+import { splitIps } from '@/utils/maskIp'
 import { PROPERTY_ICONS, PROPERTY_ICON_NAMES, resolvePropertyIcon } from '@/utils/propertyIcons'
 import type { Node } from '@xyflow/react'
 
@@ -85,7 +85,8 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
   const { data } = node
   const services = data.services ?? []
   const statusColor = STATUS_COLORS[data.status]
-  const host = data.ip ?? data.hostname
+  const ipAddresses = data.ip ? splitIps(data.ip) : []
+  const host = ipAddresses[0] ?? data.hostname
 
   const handleDelete = () => {
     if (confirm(`Delete "${data.label}"?`)) {
@@ -223,12 +224,25 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
             </a>
           </div>
         )}
-        {data.ip && (
-          <div className="flex justify-between gap-2 items-baseline">
-            <span className="text-muted-foreground text-xs shrink-0">IP Address</span>
-            <a href={`http://${primaryIp(data.ip)}`} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[#00d4ff] hover:underline truncate flex items-center gap-1" title={data.ip}>
-              {data.ip}<ExternalLink size={10} className="shrink-0" />
-            </a>
+        {ipAddresses.length > 0 && (
+          <div className="flex justify-between gap-2 items-start">
+            <span className="text-muted-foreground text-xs shrink-0">{ipAddresses.length > 1 ? 'IP Addresses' : 'IP Address'}</span>
+            <div className="flex flex-wrap justify-end items-center gap-x-2 gap-y-1 max-w-[65%]">
+              {ipAddresses.map((ip, index) => (
+                <span key={`${ip}-${index}`} className="inline-flex items-center shrink-0 whitespace-nowrap">
+                  <a
+                    href={`http://${ip}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-mono text-[#00d4ff] hover:underline inline-flex items-center gap-1"
+                    title={ip}
+                  >
+                    {ip}
+                    <ExternalLink size={10} className="shrink-0" />
+                  </a>
+                </span>
+              ))}
+            </div>
           </div>
         )}
         {data.mac && <DetailRow label="MAC" value={data.mac} mono />}

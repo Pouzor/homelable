@@ -29,7 +29,7 @@ import { nodeTypes } from '@/components/canvas/nodes/nodeTypes'
 import { edgeTypes } from '@/components/canvas/edges/edgeTypes'
 import { deserializeApiNode, deserializeApiEdge, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { liveviewApi } from '@/api/client'
-import type { NodeData } from '@/types'
+import type { NodeData, CustomStyleDef } from '@/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STORAGE_KEY = 'homelable_canvas'
@@ -40,6 +40,8 @@ function LiveViewCanvas() {
   const { nodes, edges, loadCanvas, fitViewPending, clearFitViewPending } = useCanvasStore()
   const { fitView } = useReactFlow()
   const activeTheme = useThemeStore((s) => s.activeTheme)
+  const setTheme = useThemeStore((s) => s.setTheme)
+  const setCustomStyle = useThemeStore((s) => s.setCustomStyle)
   const theme = THEMES[activeTheme]
   // Derive initial view state synchronously (avoids calling setState inside an effect):
   // - standalone → always ready (localStorage, no key required)
@@ -73,9 +75,12 @@ function LiveViewCanvas() {
         const { nodes: apiNodes, edges: apiEdges } = res.data
         const proxmoxMap = new Map<string, boolean>(
           (apiNodes as ApiNode[])
-            .filter((n: ApiNode) => n.type === 'proxmox' || n.type === 'group')
-            .map((n: ApiNode) => [n.id, n.type === 'group' ? true : n.container_mode !== false])
+            .filter((n: ApiNode) => n.type === 'group' || n.container_mode === true)
+            .map((n: ApiNode) => [n.id, true])
         )
+        const savedTheme = res.data.viewport?.theme_id
+        if (savedTheme) setTheme(savedTheme)
+        if (res.data.custom_style) setCustomStyle(res.data.custom_style as CustomStyleDef)
         loadCanvas(
           (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxMap)),
           (apiEdges as ApiEdge[]).map(deserializeApiEdge),
@@ -87,7 +92,7 @@ function LiveViewCanvas() {
         const detail: string = err.response.data?.detail ?? ''
         setViewState(detail === 'Live view is disabled' ? 'disabled' : 'invalid-key')
       })
-  }, [loadCanvas])
+  }, [loadCanvas, setTheme, setCustomStyle])
 
   useEffect(() => {
     if (!fitViewPending || nodes.length === 0) return

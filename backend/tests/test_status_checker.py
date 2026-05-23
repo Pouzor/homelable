@@ -216,6 +216,31 @@ async def test_ping_uses_windows_args_on_win32():
     assert "-c" not in captured["args"]
 
 
+# --- check_node target validation ---
+
+@pytest.mark.asyncio
+async def test_check_node_rejects_flag_like_target():
+    """A target starting with '-' must never reach subprocess invocation."""
+    from app.services.status_checker import check_node
+
+    with patch("asyncio.create_subprocess_exec") as mock_exec:
+        result = await check_node("ping", "-O", None)
+
+    mock_exec.assert_not_called()
+    assert result["status"] == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_check_node_rejects_flag_like_ip():
+    from app.services.status_checker import check_node
+
+    with patch("asyncio.create_subprocess_exec") as mock_exec:
+        result = await check_node("ping", None, "-O")
+
+    mock_exec.assert_not_called()
+    assert result["status"] == "unknown"
+
+
 # --- _tcp_connect ---
 
 @pytest.mark.asyncio

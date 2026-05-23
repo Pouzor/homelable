@@ -25,16 +25,17 @@ function maskSingle(ip: string): string {
  */
 export function maskIp(ip: string): string {
   if (!ip) return ip
-  return ip.split(',').map(maskSingle).join(', ')
+  return splitIps(ip).map(maskSingle).join(', ')
 }
 
 /**
- * Split a comma-separated IP string into an array of trimmed values.
- * Empty string returns [].
+ * Split an IP string into trimmed values. Accepts comma, semicolon, or newline
+ * delimiters (or any combination). Duplicates removed, empty entries dropped.
  */
 export function splitIps(ip: string): string[] {
   if (!ip?.trim()) return []
-  return ip.split(',').map((s) => s.trim()).filter(Boolean)
+  const parts = ip.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean)
+  return parts.filter((v, i) => parts.indexOf(v) === i)
 }
 
 /**

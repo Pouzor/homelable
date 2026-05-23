@@ -5,15 +5,13 @@ os.environ.setdefault("SECRET_KEY", "test-only-secret-key-not-for-production")
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.security import hash_password
 from app.db.database import Base, get_db
 from app.main import app
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
-
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -21,7 +19,7 @@ def test_credentials():
     """Configure test auth credentials directly on settings."""
     from app.core.config import settings
     settings.auth_username = "admin"
-    settings.auth_password_hash = _pwd_ctx.hash("admin")
+    settings.auth_password_hash = hash_password("admin")
 
 
 @pytest.fixture

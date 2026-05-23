@@ -37,6 +37,16 @@ describe('GroupRectModal', () => {
     expect(submitted.z_order).toBe(1)
   })
 
+  it('exposes aria-labels on grid buttons and select triggers', () => {
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} />)
+    expect(screen.getByLabelText('Font selector')).toBeDefined()
+    expect(screen.getByLabelText('Z-order selector')).toBeDefined()
+    expect(screen.getByLabelText('Text position ↘')).toBeDefined()
+    expect(screen.getByLabelText('Label position Inside')).toBeDefined()
+    expect(screen.getByLabelText('Border style Solid')).toBeDefined()
+    expect(screen.getByLabelText('Border width 1px')).toBeDefined()
+  })
+
   it('calls onClose when Cancel is clicked', () => {
     const onClose = vi.fn()
     render(<GroupRectModal open onClose={onClose} onSubmit={vi.fn()} />)
@@ -306,5 +316,26 @@ describe('GroupRectModal', () => {
     render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} />)
     // Background default is 5% opacity
     expect(screen.getByText(/Background 5%/)).toBeInTheDocument()
+  })
+})
+
+describe('GroupRectModal font label rendering', () => {
+  it('renders the human font label in the Select trigger (default inter)', () => {
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} />)
+    const trigger = screen.getByLabelText('Font selector')
+    expect(trigger.textContent).toContain('Inter (sans-serif)')
+  })
+
+  it('falls back to raw value when font is unknown', () => {
+    render(
+      <GroupRectModal
+        open
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+        initial={{ font: 'comic-sans-9000' }}
+      />
+    )
+    const trigger = screen.getByLabelText('Font selector')
+    expect(trigger.textContent).toContain('comic-sans-9000')
   })
 })
