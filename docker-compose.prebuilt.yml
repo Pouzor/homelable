@@ -24,6 +24,20 @@ services:
     networks:
       - homelable
 
+  mcp:
+    image: ghcr.io/pouzor/homelable-mcp:latest
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      BACKEND_URL: "http://backend:8000"
+    depends_on:
+      - backend
+    networks:
+      - homelable
+
 volumes:
   backend_data:
 
