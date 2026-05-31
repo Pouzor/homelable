@@ -223,7 +223,13 @@ async def _persist_pending_import(
             pending.vendor = n.get("vendor") or pending.vendor
             if n.get("lqi") is not None:
                 pending.lqi = n.get("lqi")
-            if pending.status == "hidden":
+            if pending.status == "approved":
+                # The device was approved earlier but its canvas Node no longer
+                # exists (no Node matched the IEEE above) — it was deleted. Revive
+                # the row to "pending" so it reappears in the Pending list on
+                # re-import instead of being silently swallowed. (Issue #167)
+                pending.status = "pending"
+            elif pending.status == "hidden":
                 # Re-imported a hidden device → leave it hidden, just refresh fields.
                 pass
             pending_updated += 1
