@@ -13,6 +13,7 @@ const mockApprove = vi.fn()
 const mockHide = vi.fn()
 const mockPending = vi.fn()
 const mockHidden = vi.fn()
+const mockAddNode = vi.fn()
 
 vi.mock('@/api/client', () => ({
   scanApi: {
@@ -69,7 +70,7 @@ const DEVICE_ZIGBEE = {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(useCanvasStore).mockReturnValue({
-    addNode: vi.fn(),
+    addNode: mockAddNode,
     scanEventTs: 0,
   } as unknown as ReturnType<typeof useCanvasStore>)
   // setState is used by injectAutoEdges
@@ -172,6 +173,34 @@ describe('PendingDevicesModal', () => {
     fireEvent.click(screen.getByTestId('pending-card-dev-b'))
     fireEvent.click(screen.getByRole('button', { name: /Approve \(2\)/ }))
     await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-a', 'dev-b']))
+  })
+
+  it('bulk approve carries the scanned MAC onto the canvas node (#168)', async () => {
+    render(<PendingDevicesModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
+    fireEvent.click(screen.getByTestId('pending-card-dev-a'))
+    fireEvent.click(screen.getByTestId('pending-card-dev-b'))
+    fireEvent.click(screen.getByRole('button', { name: /Approve \(2\)/ }))
+    await waitFor(() => expect(mockAddNode).toHaveBeenCalledTimes(2))
+
+    // dev-a is an IP device with a MAC → node carries mac + a MAC property row.
+    const ipNode = mockAddNode.mock.calls
+      .map((c) => c[0])
+      .find((n) => n.id === 'n1')
+    expect(ipNode.data.mac).toBe('aa:bb:cc:dd:ee:01')
+    expect(ipNode.data.properties).toContainEqual({
+      key: 'MAC',
+      value: 'aa:bb:cc:dd:ee:01',
+      icon: null,
+      visible: false,
+    })
+
+    // dev-b is zigbee with no MAC → no MAC property row.
+    const zbNode = mockAddNode.mock.calls
+      .map((c) => c[0])
+      .find((n) => n.id === 'n2')
+    expect(zbNode.data.properties.some((p: { key: string }) => p.key === 'MAC')).toBe(false)
   })
 
   it('bulk hide calls API with selected ids', async () => {

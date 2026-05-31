@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { PendingDeviceModal, type PendingDevice } from '@/components/modals/PendingDeviceModal'
 import type { NodeType, ServiceInfo } from '@/types'
 import { buildZigbeeProperties, isZigbeeType } from '@/utils/zigbeeProperties'
+import { buildMacProperty } from '@/utils/macProperty'
 
 interface PendingDevicesModalProps {
   open: boolean
@@ -255,11 +256,12 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       const fallbackLabel = deviceLabel(device)
       const type = (device.suggested_type ?? 'generic') as NodeType
       const zigbee = isZigbeeType(type)
-      const properties = zigbee ? buildZigbeeProperties(device) : []
+      const properties = zigbee ? buildZigbeeProperties(device) : buildMacProperty(device.mac)
       const nodeData = {
         label: fallbackLabel,
         type,
         ip: device.ip ?? undefined,
+        mac: device.mac ?? undefined,
         hostname: device.hostname ?? undefined,
         status: zigbee ? 'online' : 'unknown',
         services: (device.services ?? []) as ServiceInfo[],
@@ -325,10 +327,11 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
             label: deviceLabel(d),
             type,
             ip: d.ip ?? undefined,
+            mac: d.mac ?? undefined,
             hostname: d.hostname ?? undefined,
             status: zigbee ? ('online' as const) : ('unknown' as const),
             services: (d.services ?? []) as ServiceInfo[],
-            properties: zigbee ? buildZigbeeProperties(d) : [],
+            properties: zigbee ? buildZigbeeProperties(d) : buildMacProperty(d.mac),
           },
         })
       })

@@ -698,6 +698,144 @@ async def test_bulk_approve_zigbee_populates_properties(
     assert node.check_method == "none"
 
 
+# --- MAC address propagation on approve (issue #168) ---
+
+def test_build_mac_property_returns_hidden_row():
+    from app.api.routes.scan import build_mac_property
+
+    assert build_mac_property("aa:bb:cc:dd:ee:ff") == [
+        {"key": "MAC", "value": "aa:bb:cc:dd:ee:ff", "icon": None, "visible": False}
+    ]
+
+
+def test_build_mac_property_empty_when_no_mac():
+    from app.api.routes.scan import build_mac_property
+
+    assert build_mac_property(None) == []
+    assert build_mac_property("") == []
+
+
+def test_merge_mac_property_appends_when_absent():
+    from app.api.routes.scan import merge_mac_property
+
+    existing = [{"key": "Custom", "value": "x", "icon": None, "visible": True}]
+    merged = merge_mac_property(existing, "aa:bb:cc:dd:ee:ff")
+    assert {"key": "MAC", "value": "aa:bb:cc:dd:ee:ff", "icon": None, "visible": False} in merged
+    # Existing prop preserved untouched.
+    assert existing[0] in merged
+
+
+def test_merge_mac_property_idempotent_and_preserves_visibility():
+    from app.api.routes.scan import merge_mac_property
+
+    existing = [{"key": "MAC", "value": "aa:bb:cc:dd:ee:ff", "icon": None, "visible": True}]
+    merged = merge_mac_property(existing, "aa:bb:cc:dd:ee:ff")
+    # No duplicate MAC row; user's visible=True choice kept.
+    macs = [p for p in merged if p["key"] == "MAC"]
+    assert len(macs) == 1
+    assert macs[0]["visible"] is True
+
+
+def test_merge_mac_property_noop_without_mac():
+    from app.api.routes.scan import merge_mac_property
+
+    existing = [{"key": "Custom", "value": "x", "icon": None, "visible": True}]
+    assert merge_mac_property(existing, None) == existing
+
+
+@pytest.mark.asyncio
+async def test_approve_device_copies_mac_to_node_and_properties(
+    client: AsyncClient, headers, pending_device, db_session
+):
+    """Approving a scanned device must carry its MAC onto the node + properties."""
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    # Payload intentionally omits mac — it must come from the pending device.
+    res = await client.post(
+        f"/api/v1/scan/pending/{pending_device.id}/approve",
+        json={"label": "My Server", "type": "server", "ip": "192.168.1.100", "status": "unknown", "services": []},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (
+        await db_session.execute(select(NodeModel).where(NodeModel.ip == "192.168.1.100"))
+    ).scalar_one()
+    assert node.mac == "aa:bb:cc:dd:ee:ff"
+    mac_props = [p for p in node.properties if p["key"] == "MAC"]
+    assert mac_props == [
+        {"key": "MAC", "value": "aa:bb:cc:dd:ee:ff", "icon": None, "visible": False}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_approve_device_does_not_duplicate_mac_property(
+    client: AsyncClient, headers, pending_device, db_session
+):
+    """If the approve payload already carries a MAC prop, don't add a second one."""
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    res = await client.post(
+        f"/api/v1/scan/pending/{pending_device.id}/approve",
+        json={
+            "label": "My Server",
+            "type": "server",
+            "ip": "192.168.1.100",
+            "status": "unknown",
+            "services": [],
+            "properties": [
+                {"key": "MAC", "value": "aa:bb:cc:dd:ee:ff", "icon": None, "visible": True}
+            ],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (
+        await db_session.execute(select(NodeModel).where(NodeModel.ip == "192.168.1.100"))
+    ).scalar_one()
+    mac_props = [p for p in node.properties if p["key"] == "MAC"]
+    assert len(mac_props) == 1
+    # User's visibility choice is preserved.
+    assert mac_props[0]["visible"] is True
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_copies_mac_to_node_and_properties(
+    client: AsyncClient, headers, db_session
+):
+    """Bulk approve must also propagate the scanned MAC to node + properties."""
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    device = PendingDevice(
+        id=str(uuid.uuid4()),
+        ip="192.168.1.55",
+        mac="11:22:33:44:55:66",
+        hostname="host-mac",
+        services=[],
+        suggested_type="generic",
+        status="pending",
+    )
+    db_session.add(device)
+    await db_session.commit()
+
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": [device.id]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (
+        await db_session.execute(select(NodeModel).where(NodeModel.ip == "192.168.1.55"))
+    ).scalar_one()
+    assert node.mac == "11:22:33:44:55:66"
+    mac_props = [p for p in node.properties if p["key"] == "MAC"]
+    assert mac_props == [
+        {"key": "MAC", "value": "11:22:33:44:55:66", "icon": None, "visible": False}
+    ]
+
+
 @pytest.mark.asyncio
 async def test_bulk_approve_sets_default_check_method(client: AsyncClient, headers, two_pending_devices, db_session):
     """Approved devices with an IP must default to ping; otherwise scheduler skips them."""
