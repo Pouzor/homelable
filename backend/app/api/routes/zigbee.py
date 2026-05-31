@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.database import AsyncSessionLocal, get_db
-from app.db.models import Node, PendingDevice, PendingDeviceLink, ScanRun
+from app.db.models import Design, Node, PendingDevice, PendingDeviceLink, ScanRun
 from app.schemas.scan import ScanRunResponse
 from app.schemas.zigbee import (
     ZigbeeCoordinatorOut,
@@ -138,6 +138,10 @@ async def _persist_pending_import(
     Coordinator auto-approves to a canvas Node. Other devices upsert by IEEE.
     All zigbee-source links are wiped and re-inserted from the new map.
     """
+    # Determine target design (use first design as fallback)
+    first_design = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
+    default_design_id = first_design.id if first_design else None
+
     coordinator_out: ZigbeeCoordinatorOut | None = None
     coordinator_existed = False
     pending_created = 0
@@ -174,6 +178,7 @@ async def _persist_pending_import(
                 ieee_address=ieee,
                 services=[],
                 properties=props,
+                design_id=default_design_id,
             )
             db.add(node)
             await db.flush()

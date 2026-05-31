@@ -34,7 +34,7 @@ class NodeBase(BaseModel):
 
 
 class NodeCreate(NodeBase):
-    pass
+    design_id: str | None = None
 
 
 class NodeUpdate(BaseModel):
@@ -68,6 +68,8 @@ class NodeUpdate(BaseModel):
 
 class NodeResponse(NodeBase):
     id: str
+    design_id: str | None = None
+    ieee_address: str | None = None
     last_seen: datetime | None = None
     response_time_ms: int | None = None
     created_at: datetime
