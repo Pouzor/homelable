@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, LogOut, Network, Type } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, LogOut, Network, Type, Zap, PlusCircle } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
-import { scanApi, settingsApi } from '@/api/client'
+import { canvasApi, designsApi, scanApi, settingsApi } from '@/api/client'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
 import {
@@ -50,6 +51,9 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
   const [activeView, setActiveView] = useState<SidebarView>(forceView ?? 'canvas')
   const [prevForceView, setPrevForceView] = useState(forceView)
   const logout = useAuthStore((s) => s.logout)
+  const { designs, activeDesignId, setActiveDesign } = useDesignStore()
+  const [creating, setCreating] = useState(false)
+  const [designSwitcherOpen, setDesignSwitcherOpen] = useState(false)
 
   // forceView acts as a one-shot trigger from parent; user clicks afterwards still control view.
   if (forceView !== prevForceView) {
@@ -87,6 +91,66 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
       <div className="flex items-center px-3 py-4 border-b border-border overflow-hidden">
         <Logo size={28} showText={!collapsed} />
       </div>
+
+      {/* Design Switcher */}
+      {!collapsed && designs.length > 0 && (
+        <div className="px-2 pt-2 pb-1 border-b border-border relative">
+          <button
+            onClick={() => setDesignSwitcherOpen((o) => !o)}
+            className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium bg-[#21262d] border border-border hover:border-[#30363d] transition-colors cursor-pointer"
+          >
+            {activeDesignId ? (() => {
+              const active = designs.find((d) => d.id === activeDesignId)
+              const Icon = active?.design_type === 'electrical' ? Zap : LayoutDashboard
+              return <><Icon size={14} className="shrink-0 text-[#00d4ff]" /><span className="truncate text-foreground">{active?.name ?? 'Select Design'}</span></>
+            })() : <span className="text-muted-foreground">Select Design</span>}
+          </button>
+          {designSwitcherOpen && (
+            <>
+              {/* Overlay to close */}
+              <div className="fixed inset-0 z-40" onClick={() => setDesignSwitcherOpen(false)} />
+              <div className="absolute left-2 right-2 top-full mt-1 z-50 bg-[#21262d] border border-border rounded-md shadow-xl overflow-hidden">
+                {designs.map((d) => {
+                  const Icon = d.design_type === 'electrical' ? Zap : LayoutDashboard
+                  return (
+                    <button
+                      key={d.id}
+                      onClick={() => { setActiveDesign(d.id); setDesignSwitcherOpen(false) }}
+                      className={`flex items-center gap-2 w-full px-3 py-2 text-xs transition-colors cursor-pointer ${
+                        d.id === activeDesignId
+                          ? 'bg-[#00d4ff]/10 text-[#00d4ff]'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-[#30363d]'
+                      }`}
+                    >
+                      <Icon size={14} className="shrink-0" />
+                      <span className="truncate">{d.name}</span>
+                    </button>
+                  )
+                })}
+                <div className="border-t border-border" />
+                <button
+                  disabled={creating}
+                  onClick={async () => {
+                    setCreating(true)
+                    try {
+                      const name = `Electrical ${designs.filter((d) => d.design_type === 'electrical').length + 1}`
+                      const res = await designsApi.create({ name, design_type: 'electrical' })
+                      useDesignStore.getState().setDesigns([...useDesignStore.getState().designs, res.data])
+                      setActiveDesign(res.data.id)
+                      setDesignSwitcherOpen(false)
+                    } catch { toast.error('Failed to create design') }
+                    finally { setCreating(false) }
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#00d4ff] hover:bg-[#00d4ff]/10 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <PlusCircle size={14} />
+                  <span>New Electrical Design</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Views */}
       <nav className="flex flex-col gap-0.5 p-2">

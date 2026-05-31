@@ -1,5 +1,7 @@
+import json as _json
 import logging
 import shutil
+import uuid as _uuid_mod
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from pathlib import Path
@@ -168,12 +170,91 @@ async def init_db() -> None:
         except OperationalError as exc:
             logger.warning("pending_devices ip-nullable rebuild failed: %s", exc)
         # --- end Zigbee schema migrations -------------------------------------
+        # --- Electrical designs schema migrations -----------------------------
+        # Create designs table (idempotent)
+        await _try_migrate(
+            conn,
+            "CREATE TABLE IF NOT EXISTS designs ("
+            "id VARCHAR PRIMARY KEY,"
+            "name VARCHAR NOT NULL,"
+            "design_type VARCHAR NOT NULL DEFAULT 'network',"
+            "created_at DATETIME,"
+            "updated_at DATETIME"
+            ")",
+            label="designs.table",
+        )
+        # Seed default Network Topology design if designs table is empty
+        _default_design_id = str(_uuid_mod.uuid4())
+        row = await conn.exec_driver_sql("SELECT COUNT(*) FROM designs")
+        count = (await row.fetchone())[0]
+        if count == 0:
+            await conn.exec_driver_sql(
+                "INSERT INTO designs (id, name, design_type, created_at, updated_at) "
+                "VALUES (?, 'Network Topology', 'network', datetime('now'), datetime('now'))",
+                (_default_design_id,),
+            )
+        else:
+            row2 = await conn.exec_driver_sql("SELECT id FROM designs WHERE design_type = 'network' LIMIT 1")
+            default = await row2.fetchone()
+            _default_design_id = default[0] if default else _default_design_id
+
+        # Add design_id to nodes
+        await _try_migrate(
+            conn, "ALTER TABLE nodes ADD COLUMN design_id VARCHAR REFERENCES designs(id)",
+            label="nodes.design_id",
+        )
+        # Assign existing nodes to default design
+        await conn.exec_driver_sql(
+            "UPDATE nodes SET design_id = ? WHERE design_id IS NULL", (_default_design_id,),
+        )
+
+        # Add design_id to edges
+        await _try_migrate(
+            conn, "ALTER TABLE edges ADD COLUMN design_id VARCHAR REFERENCES designs(id)",
+            label="edges.design_id",
+        )
+        # Assign existing edges to default design
+        await conn.exec_driver_sql(
+            "UPDATE edges SET design_id = ? WHERE design_id IS NULL", (_default_design_id,),
+        )
+
+        # Migrate canvas_state from id=1 to design_id PK (SQLite rebuild)
+        try:
+            info = await conn.exec_driver_sql("PRAGMA table_info(canvas_state)")
+            cols = info.fetchall()
+            has_design_id = any(c[1] == "design_id" for c in cols)
+            if not has_design_id:
+                logger.info("Migrating canvas_state: switching to design_id primary key")
+                await conn.exec_driver_sql("PRAGMA foreign_keys = OFF")
+                await conn.exec_driver_sql(
+                    "CREATE TABLE canvas_state_new ("
+                    "design_id VARCHAR PRIMARY KEY REFERENCES designs(id) ON DELETE CASCADE,"
+                    "viewport JSON,"
+                    "custom_style JSON,"
+                    "saved_at DATETIME"
+                    ")"
+                )
+                # Copy existing row(s), mapping id=1 to default design_id
+                old_rows = await conn.exec_driver_sql("SELECT id, viewport, custom_style, saved_at FROM canvas_state")
+                for old in old_rows.fetchall():
+                    cs_id, viewport, custom_style, saved_at = old
+                    target_design = _default_design_id
+                    await conn.exec_driver_sql(
+                        "INSERT INTO canvas_state_new (design_id, viewport, custom_style, saved_at) "
+                        "VALUES (?, ?, ?, ?)",
+                        (target_design, viewport, custom_style, saved_at),
+                    )
+                await conn.exec_driver_sql("DROP TABLE canvas_state")
+                await conn.exec_driver_sql("ALTER TABLE canvas_state_new RENAME TO canvas_state")
+                await conn.exec_driver_sql("PRAGMA foreign_keys = ON")
+        except OperationalError as exc:
+            logger.warning("canvas_state migration failed: %s", exc)
+        # --- end Electrical designs schema migrations --------------------------
+
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE edges ADD COLUMN waypoints JSON")
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN properties JSON")
-        with suppress(OperationalError):
-            await conn.exec_driver_sql("ALTER TABLE canvas_state ADD COLUMN custom_style JSON")
         # Migrate hardware columns → properties JSON (idempotent: only runs on nodes where properties IS NULL)
         with suppress(OperationalError):
             rows = await conn.exec_driver_sql(
@@ -192,7 +273,6 @@ async def init_db() -> None:
                     props.append({"key": "RAM", "value": f"{ram_gb} GB", "icon": "MemoryStick", "visible": visible})
                 if disk_gb is not None:
                     props.append({"key": "Disk", "value": f"{disk_gb} GB", "icon": "HardDrive", "visible": visible})
-                import json as _json
                 await conn.exec_driver_sql(
                     "UPDATE nodes SET properties = ? WHERE id = ?",
                     (_json.dumps(props), node_id),
