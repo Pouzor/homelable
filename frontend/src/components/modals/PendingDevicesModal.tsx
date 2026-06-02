@@ -373,7 +373,13 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       if (e.key === '/') { e.preventDefault(); searchRef.current?.focus() }
       else if (e.key.toLowerCase() === 's') { e.preventDefault(); if (selectMode) exitSelectMode(); else enterSelectMode() }
       else if (e.key.toLowerCase() === 'a' && selectMode) { e.preventDefault(); selectAllVisible() }
-      else if (e.key === 'Enter' && selectMode && selectedIds.size > 0) { e.preventDefault(); handleBulkApprove() }
+      else if (e.key === 'Enter' && selectMode && selectedIds.size > 0) {
+        // Enter confirms the bulk action for the current view: approving
+        // hidden devices would be wrong — they restore.
+        e.preventDefault()
+        if (statusFilter === 'hidden') handleBulkRestore()
+        else handleBulkApprove()
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
