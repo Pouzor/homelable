@@ -378,14 +378,14 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
           strokeWidth={((style.strokeWidth as number ?? 2) + 1.5) * 2}
           strokeDasharray="20 10000"
           strokeLinecap="round"
-          style={{ pointerEvents: 'none' }}
-        >
-          {isBidirectional ? (
-            <animate attributeName="stroke-dashoffset" values="-10000;0;-10000" keyTimes="0;0.5;1" dur="20s" repeatCount="indefinite" />
-          ) : (
-            <animate attributeName="stroke-dashoffset" from="-10000" to="0" dur="10s" repeatCount="indefinite" />
-          )}
-        </path>
+          style={{
+            pointerEvents: 'none',
+            // CSS (not SMIL) so it pauses when the tab is hidden — see index.css.
+            // Bidirectional yo-yos via `alternate` (10s each way = 20s round trip,
+            // matching the old SMIL keyTimes); unidirectional loops in one direction.
+            animation: `homelable-snake 10s linear infinite${isBidirectional ? ' alternate' : ''}`,
+          }}
+        />
       )}
       {animMode === 'flow' && (
         <path
@@ -396,10 +396,11 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
           strokeDasharray="6 12"
           strokeLinecap="round"
           strokeOpacity={0.85}
-          style={{ pointerEvents: 'none' }}
-        >
-          <animate attributeName="stroke-dashoffset" from="0" to="18" dur="1.2s" repeatCount="indefinite" />
-        </path>
+          style={{
+            pointerEvents: 'none',
+            animation: 'homelable-flow 1.2s linear infinite',
+          }}
+        />
       )}
 
       <EdgeLabelRenderer>
