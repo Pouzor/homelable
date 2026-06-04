@@ -2,6 +2,7 @@ import { type NodeProps, type Node } from '@xyflow/react'
 import {
   Globe, Router, Network, Server, Layers, Box, Container,
   HardDrive, Cpu, Wifi, Circle, Cctv, Printer, Monitor, Laptop, Smartphone, PlugZap, Anchor, Package, Flame, Radio, Antenna,
+  Grid3x3, Battery, Fuel, Sun, Repeat2, Split, ToggleLeft, Lightbulb, Gauge, Combine, Cable, Zap,
 } from 'lucide-react'
 import { BaseNode } from './BaseNode'
 import type { NodeData } from '@/types'
@@ -32,3 +33,19 @@ export const GenericNode  = (props: N) => <BaseNode {...props} icon={Circle} />
 export const ZigbeeCoordinatorNode = (props: N) => <BaseNode {...props} icon={Network} />
 export const ZigbeeRouterNode      = (props: N) => <BaseNode {...props} icon={Radio} />
 export const ZigbeeEndDeviceNode   = (props: N) => <BaseNode {...props} icon={Antenna} />
+
+// Electrical node types
+export const GridNode          = (props: N) => <BaseNode {...props} icon={Grid3x3} />
+export const UpsNode           = (props: N) => <BaseNode {...props} icon={Battery} />
+export const BatteryNode        = (props: N) => <BaseNode {...props} icon={Battery} />
+export const GeneratorNode     = (props: N) => <BaseNode {...props} icon={Fuel} />
+export const SolarPanelNode    = (props: N) => <BaseNode {...props} icon={Sun} />
+export const InverterNode      = (props: N) => <BaseNode {...props} icon={Repeat2} />
+export const CircuitBreakerNode = (props: N) => <BaseNode {...props} icon={Split} />
+export const ContactorNode     = (props: N) => <BaseNode {...props} icon={ToggleLeft} />
+export const ElectricalSwitchNode = (props: N) => <BaseNode {...props} icon={ToggleLeft} />
+export const SocketNode        = (props: N) => <BaseNode {...props} icon={Cable} />
+export const LightNode         = (props: N) => <BaseNode {...props} icon={Lightbulb} />
+export const MeterNode         = (props: N) => <BaseNode {...props} icon={Gauge} />
+export const TransformerNode   = (props: N) => <BaseNode {...props} icon={Combine} />
+export const LoadNode          = (props: N) => <BaseNode {...props} icon={Zap} />

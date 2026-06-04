@@ -1,4 +1,12 @@
-import { IspNode, RouterNode, FirewallNode, SwitchNode, ServerNode, VmNode, LxcNode, NasNode, IotNode, ApNode, CameraNode, PrinterNode, ComputerNode, LaptopNode, MobileNode, CplNode, DockerHostNode, DockerContainerNode, GenericNode, ZigbeeCoordinatorNode, ZigbeeRouterNode, ZigbeeEndDeviceNode } from './index'
+import {
+  IspNode, RouterNode, FirewallNode, SwitchNode, ServerNode, VmNode, LxcNode,
+  NasNode, IotNode, ApNode, CameraNode, PrinterNode, ComputerNode, LaptopNode,
+  MobileNode, CplNode, DockerHostNode, DockerContainerNode, GenericNode,
+  ZigbeeCoordinatorNode, ZigbeeRouterNode, ZigbeeEndDeviceNode,
+  GridNode, UpsNode, BatteryNode, GeneratorNode, SolarPanelNode, InverterNode,
+  CircuitBreakerNode, ContactorNode, ElectricalSwitchNode, SocketNode,
+  LightNode, MeterNode, TransformerNode, LoadNode,
+} from './index'
 import { ProxmoxGroupNode } from './ProxmoxGroupNode'
 import { GroupRectNode } from './GroupRectNode'
 import { GroupNode } from './GroupNode'
@@ -31,4 +39,18 @@ export const nodeTypes = {
   zigbee_coordinator: ZigbeeCoordinatorNode,
   zigbee_router: ZigbeeRouterNode,
   zigbee_enddevice: ZigbeeEndDeviceNode,
+  grid: GridNode,
+  ups: UpsNode,
+  battery: BatteryNode,
+  generator: GeneratorNode,
+  solar_panel: SolarPanelNode,
+  inverter: InverterNode,
+  circuit_breaker: CircuitBreakerNode,
+  contactor: ContactorNode,
+  electrical_switch: ElectricalSwitchNode,
+  socket: SocketNode,
+  light: LightNode,
+  meter: MeterNode,
+  transformer: TransformerNode,
+  load: LoadNode,
 }

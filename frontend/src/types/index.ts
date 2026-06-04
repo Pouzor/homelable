@@ -1,3 +1,15 @@
+export type DesignType = 'network' | 'electrical'
+
+export interface Design {
+  id: string
+  name: string
+  design_type: DesignType
+  /** Lucide icon key (see utils/designIcons). User-chosen; may be null on legacy rows. */
+  icon?: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type NodeType =
   | 'isp'
   | 'router'
@@ -25,6 +37,20 @@ export type NodeType =
   | 'zigbee_coordinator'
   | 'zigbee_router'
   | 'zigbee_enddevice'
+  | 'grid'
+  | 'ups'
+  | 'battery'
+  | 'generator'
+  | 'solar_panel'
+  | 'inverter'
+  | 'circuit_breaker'
+  | 'contactor'
+  | 'electrical_switch'
+  | 'socket'
+  | 'light'
+  | 'meter'
+  | 'transformer'
+  | 'load'
 
 export type TextPosition =
   | 'top-left'
@@ -37,7 +63,7 @@ export type TextPosition =
   | 'bottom-center'
   | 'bottom-right'
 
-export type EdgeType = 'ethernet' | 'wifi' | 'iot' | 'vlan' | 'virtual' | 'cluster' | 'fibre'
+export type EdgeType = 'ethernet' | 'wifi' | 'iot' | 'vlan' | 'virtual' | 'cluster' | 'fibre' | 'electrical'
 
 export type NodeStatus = 'online' | 'offline' | 'pending' | 'unknown'
 
@@ -159,6 +185,20 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   zigbee_coordinator: 'Zigbee Coordinator',
   zigbee_router: 'Zigbee Router',
   zigbee_enddevice: 'Zigbee End Device',
+  grid: 'Grid Connection',
+  ups: 'UPS',
+  battery: 'Battery',
+  generator: 'Generator',
+  solar_panel: 'Solar Panel',
+  inverter: 'Inverter',
+  circuit_breaker: 'Circuit Breaker',
+  contactor: 'Contactor',
+  electrical_switch: 'Switch',
+  socket: 'Socket / Outlet',
+  light: 'Light Fixture',
+  meter: 'Energy Meter',
+  transformer: 'Transformer',
+  load: 'Electrical Load',
 }
 
 export const STATUS_COLORS: Record<NodeStatus, string> = {
@@ -176,6 +216,7 @@ export const EDGE_TYPE_LABELS: Record<EdgeType, string> = {
   virtual: 'Virtual',
   cluster: 'Cluster',
   fibre: 'Fibre',
+  electrical: 'Electrical Wire',
 }
 
 export interface NodeTypeStyle {

@@ -158,6 +158,8 @@ function LiveViewCanvas() {
         elementsSelectable={false}
         panOnDrag
         zoomOnScroll
+        minZoom={0.25}
+        maxZoom={2.5}
         colorMode={theme.colors.reactFlowColorMode}
         connectionMode={ConnectionMode.Loose}
         onNodeClick={onNodeClick}

@@ -19,6 +19,7 @@ const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
   { label: 'IoT',            types: ['iot', 'camera', 'cpl'] },
   { label: 'Zigbee',         types: ['zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice'] },
   { label: 'Personal',       types: ['computer', 'laptop', 'mobile'] },
+  { label: 'Electrical',     types: ['grid', 'ups', 'battery', 'generator', 'solar_panel', 'inverter', 'circuit_breaker', 'contactor', 'electrical_switch', 'socket', 'light', 'meter', 'transformer', 'load'] },
   { label: 'Generic',        types: ['generic', 'groupRect'] },
 ]
 

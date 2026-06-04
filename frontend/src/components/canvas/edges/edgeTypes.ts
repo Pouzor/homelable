@@ -8,4 +8,5 @@ export const edgeTypes = {
   virtual: HomelableEdge,
   cluster: HomelableEdge,
   fibre: HomelableEdge,
+  electrical: HomelableEdge,
 }

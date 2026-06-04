@@ -16,12 +16,24 @@ def _uuid() -> str:
     return str(uuid.uuid4())
 
 
+class Design(Base):
+    __tablename__ = "designs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    design_type: Mapped[str] = mapped_column(String, nullable=False, default="network")
+    icon: Mapped[str | None] = mapped_column(String, nullable=True, default="dashboard")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class Node(Base):
     __tablename__ = "nodes"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     type: Mapped[str] = mapped_column(String, nullable=False)
     label: Mapped[str] = mapped_column(String, nullable=False)
+    design_id: Mapped[str | None] = mapped_column(String, ForeignKey("designs.id", ondelete="SET NULL"), nullable=True)
     hostname: Mapped[str | None] = mapped_column(String)
     ip: Mapped[str | None] = mapped_column(String)
     mac: Mapped[str | None] = mapped_column(String)
@@ -61,6 +73,7 @@ class Edge(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     source: Mapped[str] = mapped_column(String, ForeignKey("nodes.id", ondelete="CASCADE"))
     target: Mapped[str] = mapped_column(String, ForeignKey("nodes.id", ondelete="CASCADE"))
+    design_id: Mapped[str | None] = mapped_column(String, ForeignKey("designs.id", ondelete="SET NULL"), nullable=True)
     type: Mapped[str] = mapped_column(String, default="ethernet")
     label: Mapped[str | None] = mapped_column(String)
     vlan_id: Mapped[int | None] = mapped_column(Integer)
@@ -77,7 +90,7 @@ class Edge(Base):
 class CanvasState(Base):
     __tablename__ = "canvas_state"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    design_id: Mapped[str] = mapped_column(String, ForeignKey("designs.id", ondelete="CASCADE"), primary_key=True)
     viewport: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     custom_style: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

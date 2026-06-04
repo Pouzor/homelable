@@ -324,6 +324,7 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
     virtual:  { stroke: edgeColors.virtual,  strokeWidth: 1,   strokeDasharray: '4 4' },
     cluster:  { stroke: edgeColors.cluster,  strokeWidth: 2.5, strokeDasharray: '8 3' },
     fibre:    { stroke: edgeColors.fibre,    strokeWidth: 2.5, filter: `drop-shadow(0 0 3px ${edgeColors.fibre}aa)` },
+    electrical: { stroke: edgeColors.electrical, strokeWidth: 2 },
   }
 
   const customColor = data?.custom_color as string | undefined

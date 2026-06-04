@@ -127,7 +127,7 @@ describe('api/client', () => {
 
   it('canvasApi.load GETs /canvas', () => {
     mod.canvasApi.load()
-    expect(api.get).toHaveBeenCalledWith('/canvas')
+    expect(api.get).toHaveBeenCalledWith('/canvas', expect.objectContaining({}))
   })
 
   it('canvasApi.save POSTs to /canvas/save with payload', () => {

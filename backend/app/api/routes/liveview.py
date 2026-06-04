@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.database import get_db
-from app.db.models import CanvasState, Edge, Node
+from app.db.models import CanvasState, Design, Edge, Node
 from app.schemas.canvas import CanvasStateResponse
 from app.schemas.edges import EdgeResponse
 from app.schemas.nodes import NodeResponse
@@ -18,6 +18,7 @@ router = APIRouter()
 @router.get("", response_model=CanvasStateResponse)
 async def liveview_canvas(
     key: str | None = Query(default=None),
+    design_id: str | None = Query(default=None, description="Design to show; uses first if omitted"),
     db: AsyncSession = Depends(get_db),
 ) -> CanvasStateResponse:
     """Read-only public canvas endpoint.
@@ -30,9 +31,15 @@ async def liveview_canvas(
     if not key or not hmac.compare_digest(key, settings.liveview_key):
         raise HTTPException(status_code=403, detail="Invalid live view key")
 
-    nodes = (await db.execute(select(Node))).scalars().all()
-    edges = (await db.execute(select(Edge))).scalars().all()
-    state = await db.get(CanvasState, 1)
+    if design_id is None:
+        first = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
+        design_id = first.id if first else None
+    if design_id is None:
+        return CanvasStateResponse(nodes=[], edges=[], viewport={"x": 0, "y": 0, "zoom": 1}, custom_style=None)
+
+    nodes = (await db.execute(select(Node).where(Node.design_id == design_id))).scalars().all()
+    edges = (await db.execute(select(Edge).where(Edge.design_id == design_id))).scalars().all()
+    state = await db.get(CanvasState, design_id)
     viewport: dict[str, Any] = state.viewport if state else {"x": 0, "y": 0, "zoom": 1}
     custom_style: dict[str, Any] | None = state.custom_style if state else None
     return CanvasStateResponse(

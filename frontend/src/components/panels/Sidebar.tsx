@@ -1,10 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, LogOut, Network, Type } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, LogOut, Network, Type, PlusCircle, Pencil, Trash2 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
-import { scanApi, settingsApi } from '@/api/client'
+import { designsApi, scanApi, settingsApi } from '@/api/client'
+import { resolveDesignIcon, DEFAULT_DESIGN_ICON } from '@/utils/designIcons'
+import { DesignModal, type DesignFormData } from '@/components/modals/DesignModal'
+import type { Design } from '@/types'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
 import {
@@ -50,6 +54,37 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
   const [activeView, setActiveView] = useState<SidebarView>(forceView ?? 'canvas')
   const [prevForceView, setPrevForceView] = useState(forceView)
   const logout = useAuthStore((s) => s.logout)
+  const { designs, activeDesignId, setActiveDesign, addDesign, updateDesign, removeDesign } = useDesignStore()
+  const [designSwitcherOpen, setDesignSwitcherOpen] = useState(false)
+  const [designModal, setDesignModal] = useState<{ mode: 'create' | 'edit'; design?: Design } | null>(null)
+
+  const handleDesignSubmit = useCallback(async (data: DesignFormData) => {
+    if (!designModal) return
+    try {
+      if (designModal.mode === 'create') {
+        const res = await designsApi.create({ name: data.name, icon: data.icon })
+        addDesign(res.data)
+      } else if (designModal.design) {
+        const res = await designsApi.update(designModal.design.id, { name: data.name, icon: data.icon })
+        updateDesign(res.data.id, { name: res.data.name, icon: res.data.icon })
+      }
+      setDesignModal(null)
+    } catch {
+      toast.error(designModal.mode === 'create' ? 'Failed to create canvas' : 'Failed to update canvas')
+    }
+  }, [designModal, addDesign, updateDesign])
+
+  const handleDesignDelete = useCallback(async (d: Design) => {
+    if (designs.length <= 1) { toast.error('Cannot delete the only canvas'); return }
+    if (!window.confirm(`Delete canvas "${d.name}"? Its nodes and links will be removed.`)) return
+    try {
+      await designsApi.delete(d.id)
+      removeDesign(d.id)
+      toast.success('Canvas deleted')
+    } catch {
+      toast.error('Failed to delete canvas')
+    }
+  }, [designs.length, removeDesign])
 
   // forceView acts as a one-shot trigger from parent; user clicks afterwards still control view.
   if (forceView !== prevForceView) {
@@ -87,6 +122,75 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
       <div className="flex items-center px-3 py-4 border-b border-border overflow-hidden">
         <Logo size={28} showText={!collapsed} />
       </div>
+
+      {/* Design Switcher */}
+      {!collapsed && designs.length > 0 && (
+        <div className="px-2 pt-2 pb-1 border-b border-border relative">
+          <button
+            onClick={() => setDesignSwitcherOpen((o) => !o)}
+            className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium bg-[#21262d] border border-border hover:border-[#30363d] transition-colors cursor-pointer"
+          >
+            {activeDesignId ? (() => {
+              const active = designs.find((d) => d.id === activeDesignId)
+              const Icon = resolveDesignIcon(active?.icon)
+              return <><Icon size={14} className="shrink-0 text-[#00d4ff]" /><span className="truncate text-foreground">{active?.name ?? 'Select Canvas'}</span></>
+            })() : <span className="text-muted-foreground">Select Canvas</span>}
+          </button>
+          {designSwitcherOpen && (
+            <>
+              {/* Overlay to close */}
+              <div className="fixed inset-0 z-40" onClick={() => setDesignSwitcherOpen(false)} />
+              <div className="absolute left-2 right-2 top-full mt-1 z-50 bg-[#21262d] border border-border rounded-md shadow-xl overflow-hidden">
+                {designs.map((d) => {
+                  const Icon = resolveDesignIcon(d.icon)
+                  const isActive = d.id === activeDesignId
+                  return (
+                    <div
+                      key={d.id}
+                      className={`group flex items-center transition-colors ${
+                        isActive ? 'bg-[#00d4ff]/10 text-[#00d4ff]' : 'text-muted-foreground hover:bg-[#30363d]'
+                      }`}
+                    >
+                      <button
+                        onClick={() => { setActiveDesign(d.id); setDesignSwitcherOpen(false) }}
+                        className="flex items-center gap-2 flex-1 min-w-0 px-3 py-2 text-xs cursor-pointer hover:text-foreground"
+                      >
+                        <Icon size={14} className="shrink-0" />
+                        <span className="truncate">{d.name}</span>
+                      </button>
+                      <button
+                        aria-label={`Edit ${d.name}`}
+                        title="Edit canvas"
+                        onClick={() => { setDesignModal({ mode: 'edit', design: d }); setDesignSwitcherOpen(false) }}
+                        className="shrink-0 p-1.5 text-muted-foreground hover:text-foreground cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        aria-label={`Delete ${d.name}`}
+                        title="Delete canvas"
+                        disabled={designs.length <= 1}
+                        onClick={() => handleDesignDelete(d)}
+                        className="shrink-0 p-1.5 pr-2 text-muted-foreground hover:text-[#f85149] cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  )
+                })}
+                <div className="border-t border-border" />
+                <button
+                  onClick={() => { setDesignModal({ mode: 'create' }); setDesignSwitcherOpen(false) }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-xs text-[#00d4ff] hover:bg-[#00d4ff]/10 transition-colors cursor-pointer"
+                >
+                  <PlusCircle size={14} />
+                  <span>New Canvas</span>
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Views */}
       <nav className="flex flex-col gap-0.5 p-2">
@@ -190,6 +294,18 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
       </div>
 
       {!collapsed && <VersionBadge />}
+
+      <DesignModal
+        key={designModal?.mode === 'edit' ? designModal.design?.id : 'create'}
+        open={!!designModal}
+        onClose={() => setDesignModal(null)}
+        onSubmit={handleDesignSubmit}
+        initial={designModal?.mode === 'edit' && designModal.design
+          ? { name: designModal.design.name, icon: designModal.design.icon ?? DEFAULT_DESIGN_ICON }
+          : undefined}
+        title={designModal?.mode === 'edit' ? 'Edit Canvas' : 'New Canvas'}
+        submitLabel={designModal?.mode === 'edit' ? 'Save' : 'Create'}
+      />
     </aside>
   )
 }

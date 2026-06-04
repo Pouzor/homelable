@@ -3,7 +3,7 @@ import {
   Globe, Router, Server, Layers, Box, Container, HardDrive, Cpu, Wifi, Circle, Network,
   Search, RefreshCw, X, CheckCircle2, EyeOff, Trash2, Loader2,
 } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { scanApi } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { toast } from 'sonner'
@@ -373,12 +373,20 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       if (e.key === '/') { e.preventDefault(); searchRef.current?.focus() }
       else if (e.key.toLowerCase() === 's') { e.preventDefault(); if (selectMode) exitSelectMode(); else enterSelectMode() }
       else if (e.key.toLowerCase() === 'a' && selectMode) { e.preventDefault(); selectAllVisible() }
-      else if (e.key === 'Enter' && selectMode && selectedIds.size > 0) { e.preventDefault(); handleBulkApprove() }
+      else if (e.key === 'Enter' && selectMode && selectedIds.size > 0) {
+        // Enter confirms the bulk action for the current view: approving
+        // hidden devices would be wrong — they restore.
+        e.preventDefault()
+        if (statusFilter === 'hidden') handleBulkRestore()
+        else handleBulkApprove()
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
+    // statusFilter is included so Enter dispatches the correct bulk action
+    // (approve vs restore) even if the device list doesn't change on switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, selectMode, selectedIds, filtered])
+  }, [open, selectMode, selectedIds, filtered, statusFilter])
 
   return (
     <>
@@ -408,9 +416,19 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
                     <Trash2 size={14} />
                   </button>
                 )}
-                <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors" title="Close">
+                {/* Route the close X through Base UI's DialogClose (same path as
+                    outside-click) instead of a raw onClick — the latter's synthetic
+                    click was being dropped on Firefox/Windows. */}
+                <DialogClose
+                  render={
+                    <button
+                      className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors"
+                      aria-label="Close"
+                    />
+                  }
+                >
                   <X size={14} />
-                </button>
+                </DialogClose>
               </div>
             </div>
           </DialogHeader>

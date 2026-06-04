@@ -26,7 +26,7 @@ class EdgeBase(BaseModel):
 
 
 class EdgeCreate(EdgeBase):
-    pass
+    design_id: str | None = None
 
 
 class EdgeUpdate(BaseModel):

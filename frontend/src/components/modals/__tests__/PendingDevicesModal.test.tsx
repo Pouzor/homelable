@@ -99,6 +99,14 @@ describe('PendingDevicesModal', () => {
     expect(screen.getByText('living-room-bulb')).toBeInTheDocument()
   })
 
+  it('closes via the X button (routes through DialogClose, not a raw onClick)', async () => {
+    const onClose = vi.fn()
+    render(<PendingDevicesModal open onClose={onClose} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('shows source chip ZIGBEE for zigbee device', async () => {
     render(<PendingDevicesModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
@@ -241,5 +249,26 @@ describe('PendingDevicesModal', () => {
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     fireEvent.click(screen.getByRole('button', { name: /Restore \(1\)/ }))
     await waitFor(() => expect(mockBulkRestore).toHaveBeenCalledWith(['dev-a']))
+  })
+
+  it('Enter confirms approve in pending select mode', async () => {
+    render(<PendingDevicesModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
+    fireEvent.click(screen.getByTestId('pending-card-dev-a'))
+    fireEvent.keyDown(window, { key: 'Enter' })
+    await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-a']))
+    expect(mockBulkRestore).not.toHaveBeenCalled()
+  })
+
+  it('Enter restores (not approves) in hidden select mode', async () => {
+    mockHidden.mockResolvedValue({ data: [{ ...DEVICE_IP, status: 'hidden' }] })
+    render(<PendingDevicesModal {...baseProps} initialStatus="hidden" />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
+    fireEvent.click(screen.getByTestId('pending-card-dev-a'))
+    fireEvent.keyDown(window, { key: 'Enter' })
+    await waitFor(() => expect(mockBulkRestore).toHaveBeenCalledWith(['dev-a']))
+    expect(mockBulkApprove).not.toHaveBeenCalled()
   })
 })

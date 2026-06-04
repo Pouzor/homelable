@@ -63,6 +63,7 @@ class CanvasSaveRequest(BaseModel):
     edges: list[EdgeSave] = []
     viewport: dict[str, Any] = {}
     custom_style: dict[str, Any] | None = None
+    design_id: str | None = None
 
 
 class CanvasStateResponse(BaseModel):
