@@ -42,7 +42,7 @@ const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const STANDALONE_STORAGE_KEY = 'homelable_canvas'
 
 export default function App() {
-  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, copySelectedNodes, pasteNodes } = useCanvasStore()
+  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated } = useAuthStore()
   const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
@@ -213,12 +213,8 @@ export default function App() {
   // Keep refs for store actions so keydown handler is always up-to-date without re-registering
   const undoRef = useRef(undo)
   const redoRef = useRef(redo)
-  const copyRef = useRef(copySelectedNodes)
-  const pasteRef = useRef(pasteNodes)
   useEffect(() => { undoRef.current = undo }, [undo])
   useEffect(() => { redoRef.current = redo }, [redo])
-  useEffect(() => { copyRef.current = copySelectedNodes }, [copySelectedNodes])
-  useEffect(() => { pasteRef.current = pasteNodes }, [pasteNodes])
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -232,8 +228,8 @@ export default function App() {
       if (ctrl && e.key === 'z') { e.preventDefault(); undoRef.current(); return }
       if (ctrl && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); redoRef.current(); return }
       if (ctrl && e.key === 'k') { e.preventDefault(); setSearchOpen(true); return }
-      if (ctrl && e.key === 'c' && !isInput) { copyRef.current(); return }
-      if (ctrl && e.key === 'v' && !isInput) { pasteRef.current(); return }
+      // Copy/paste (Ctrl/Cmd+C/V) handled in CanvasContainer so paste can place
+      // nodes under the cursor / viewport center.
       if (e.key === '?' && !isInput) { setShortcutsOpen(true); return }
     }
     window.addEventListener('keydown', handler)

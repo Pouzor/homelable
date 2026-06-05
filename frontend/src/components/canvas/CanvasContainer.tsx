@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -40,8 +40,34 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     onNodesChange, onEdgesChange,
     setSelectedNode, snapshotHistory,
     fitViewPending, clearFitViewPending,
+    copySelectedNodes, pasteNodes,
   } = useCanvasStore()
-  const { fitView } = useReactFlow()
+  const { fitView, screenToFlowPosition } = useReactFlow()
+
+  // Track the last cursor position over the canvas so paste lands under it.
+  const cursorRef = useRef<{ x: number; y: number } | null>(null)
+  const onMouseMove = useCallback((e: React.MouseEvent) => {
+    cursorRef.current = { x: e.clientX, y: e.clientY }
+  }, [])
+
+  // Copy / paste shortcuts. Registered here (inside ReactFlowProvider) so paste
+  // can project the cursor / viewport center into flow coordinates.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const el = e.target as HTMLElement
+      const isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
+      if (isInput) return
+      if (e.key === 'c') {
+        copySelectedNodes()
+      } else if (e.key === 'v') {
+        const screen = cursorRef.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+        pasteNodes(screenToFlowPosition(screen))
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [copySelectedNodes, pasteNodes, screenToFlowPosition])
 
   // Fit view after canvas loads (fitViewPending is set by loadCanvas)
   useEffect(() => {
@@ -100,7 +126,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
   const { guides, onNodeDrag, onNodeDragStop } = useAlignmentGuides()
 
   return (
-    <div className="w-full h-full" style={{ background: theme.colors.canvasBackground }}>
+    <div className="w-full h-full" style={{ background: theme.colors.canvasBackground }} onMouseMove={onMouseMove}>
       <ReactFlow
         nodes={visibleNodes}
         edges={visibleEdges}

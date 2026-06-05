@@ -15,6 +15,10 @@ import { normalizeHandle, removedBottomHandleIds } from '@/utils/handleUtils'
 import { applyOpacity } from '@/utils/colorUtils'
 
 type HistoryEntry = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
+type Clipboard = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
+
+/** Resolve a node's effective parent id from either the RF field or domain data. */
+const parentIdOf = (n: Node<NodeData>): string | undefined => n.parentId ?? n.data.parent_id ?? undefined
 
 interface CanvasState {
   nodes: Node<NodeData>[]
@@ -31,10 +35,12 @@ interface CanvasState {
   undo: () => void
   redo: () => void
 
-  // Clipboard
-  clipboard: Node<NodeData>[]
+  // Clipboard — survives design switches so nodes can be pasted into another design
+  clipboard: Clipboard
   copySelectedNodes: () => void
-  pasteNodes: () => void
+  /** Paste clipboard into the current canvas. `center` (flow coords) lands the
+   *  pasted bounding-box center under the cursor / viewport center. */
+  pasteNodes: (center?: { x: number; y: number }) => void
 
   onNodesChange: (changes: NodeChange<Node<NodeData>>[]) => void
   onEdgesChange: (changes: EdgeChange<Edge<EdgeData>>[]) => void
@@ -82,7 +88,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
 
   past: [],
   future: [],
-  clipboard: [],
+  clipboard: { nodes: [], edges: [] },
 
   snapshotHistory: () =>
     set((state) => ({
@@ -117,24 +123,100 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     }),
 
   copySelectedNodes: () =>
-    set((state) => ({
-      clipboard: state.nodes.filter((n) => n.selected),
-    })),
-
-  pasteNodes: () =>
     set((state) => {
-      if (state.clipboard.length === 0) return state
-      const newNodes = state.clipboard.map((n) => ({
-        ...n,
+      // Start from explicitly selected nodes, then pull in all descendants so a
+      // copied group / container brings its children along.
+      const ids = new Set(state.nodes.filter((n) => n.selected).map((n) => n.id))
+      if (ids.size === 0) return { clipboard: { nodes: [], edges: [] } }
+      let grew = true
+      while (grew) {
+        grew = false
+        for (const n of state.nodes) {
+          const pid = parentIdOf(n)
+          if (pid && ids.has(pid) && !ids.has(n.id)) {
+            ids.add(n.id)
+            grew = true
+          }
+        }
+      }
+      const nodes = state.nodes.filter((n) => ids.has(n.id))
+      // Keep only edges whose both endpoints are inside the copied set.
+      const edges = state.edges.filter((e) => ids.has(e.source) && ids.has(e.target))
+      return { clipboard: { nodes, edges } }
+    }),
+
+  pasteNodes: (center) =>
+    set((state) => {
+      const clip = state.clipboard
+      if (clip.nodes.length === 0) return state
+
+      // Fresh ids for every copied node; edges/parent links are remapped through it.
+      const idMap = new Map<string, string>()
+      clip.nodes.forEach((n) => idMap.set(n.id, generateUUID()))
+
+      // A "root" is a copied node whose parent was not also copied — these carry
+      // absolute positions and receive the paste offset; children move with them.
+      const isRoot = (n: Node<NodeData>) => {
+        const pid = parentIdOf(n)
+        return !pid || !idMap.has(pid)
+      }
+      const roots = clip.nodes.filter(isRoot)
+
+      // Default cascade offset; when a target center is given, shift the root
+      // bounding-box center onto it instead.
+      let offsetX = 50
+      let offsetY = 50
+      if (center && roots.length > 0) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        for (const n of roots) {
+          const w = n.width ?? n.measured?.width ?? 200
+          const h = n.height ?? n.measured?.height ?? 80
+          minX = Math.min(minX, n.position.x)
+          minY = Math.min(minY, n.position.y)
+          maxX = Math.max(maxX, n.position.x + w)
+          maxY = Math.max(maxY, n.position.y + h)
+        }
+        offsetX = center.x - (minX + maxX) / 2
+        offsetY = center.y - (minY + maxY) / 2
+      }
+
+      const pasted = clip.nodes.map((n) => {
+        const root = isRoot(n)
+        const newParentId = root ? undefined : idMap.get(parentIdOf(n)!)
+        return {
+          ...n,
+          id: idMap.get(n.id)!,
+          position: root
+            ? { x: n.position.x + offsetX, y: n.position.y + offsetY }
+            : { ...n.position },
+          selected: true,
+          parentId: newParentId,
+          extent: newParentId ? ('parent' as const) : undefined,
+          data: { ...n.data, parent_id: newParentId },
+        }
+      })
+
+      const pastedEdges = clip.edges.map((e) => ({
+        ...e,
         id: generateUUID(),
-        position: { x: n.position.x + 50, y: n.position.y + 50 },
+        source: idMap.get(e.source)!,
+        target: idMap.get(e.target)!,
         selected: false,
-        parentId: undefined,
-        extent: undefined,
-        data: { ...n.data, parent_id: undefined },
       }))
+
+      // React Flow requires parents before children within the appended block.
+      const parents = pasted.filter((n) => !n.parentId)
+      const children = pasted.filter((n) => !!n.parentId)
+      const pastedNodes = [...parents, ...children]
+
+      // Deselect everything already on the canvas so only the paste is selected.
+      const existing = state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n))
+
       return {
-        nodes: [...state.nodes, ...newNodes],
+        nodes: [...existing, ...pastedNodes],
+        edges: [...state.edges, ...pastedEdges],
+        selectedNodeId: null,
+        selectedNodeIds: pastedNodes.map((n) => n.id),
         past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
         future: [],
         hasUnsavedChanges: true,
@@ -503,7 +585,9 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     // React Flow requires parents before children in the array
     const parents = nodes.filter((n) => !n.parentId)
     const children = nodes.filter((n) => !!n.parentId)
-    set({ nodes: [...parents, ...children], edges, hasUnsavedChanges: false, selectedNodeId: null, past: [], future: [], clipboard: [], fitViewPending: true })
+    // NOTE: clipboard is intentionally preserved here so nodes copied in one
+    // design can be pasted after switching to another design.
+    set({ nodes: [...parents, ...children], edges, hasUnsavedChanges: false, selectedNodeId: null, past: [], future: [], fitViewPending: true })
   },
 
   clearFitViewPending: () => set({ fitViewPending: false }),
