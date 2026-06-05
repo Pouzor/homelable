@@ -95,7 +95,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
           background: hasUnsavedChanges ? '#00d4ff' : undefined,
           color: hasUnsavedChanges ? '#0d1117' : undefined,
         }}
-        onClick={onSave}
+        onClick={() => onSave()}
       >
         {hasUnsavedChanges && (
           <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#e3b341] border border-[#161b22]" />

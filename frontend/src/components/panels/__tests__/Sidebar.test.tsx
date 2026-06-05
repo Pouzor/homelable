@@ -188,6 +188,15 @@ describe('Sidebar', () => {
     expect(defaultProps.onSave).toHaveBeenCalledOnce()
   })
 
+  // Regression (#186): the click handler must not forward the MouseEvent as an
+  // argument — handleSave treats its first arg as a designIdOverride, so leaking
+  // the event corrupts design_id and the save silently fails.
+  it('calls onSave with no arguments (does not leak the click event)', () => {
+    render(<Sidebar {...defaultProps} />)
+    fireEvent.click(screen.getByText('Save Canvas'))
+    expect(defaultProps.onSave).toHaveBeenCalledWith()
+  })
+
   it('calls onOpenSettings when Settings is clicked', () => {
     render(<Sidebar {...defaultProps} />)
     fireEvent.click(screen.getByText('Settings'))
