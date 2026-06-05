@@ -20,6 +20,7 @@ import { LoginPage } from '@/components/LoginPage'
 import { NodeModal } from '@/components/modals/NodeModal'
 import { EdgeModal } from '@/components/modals/EdgeModal'
 import { ScanConfigModal } from '@/components/modals/ScanConfigModal'
+import { SettingsModal } from '@/components/modals/SettingsModal'
 import { ZigbeeImportModal } from '@/components/zigbee/ZigbeeImportModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
 import { TextModal, type TextFormData } from '@/components/modals/TextModal'
@@ -69,6 +70,7 @@ export default function App() {
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null)
   const [editEdgeId, setEditEdgeId] = useState<string | null>(null)
   const [scanConfigOpen, setScanConfigOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [zigbeeImportOpen, setZigbeeImportOpen] = useState(false)
 
@@ -608,6 +610,7 @@ export default function App() {
             onScan={() => setScanConfigOpen(true)}
             onZigbeeImport={() => setZigbeeImportOpen(true)}
             onSave={handleSave}
+            onOpenSettings={() => setSettingsOpen(true)}
             forceView={sidebarForceView}
             onOpenPending={openPendingModal}
           />
@@ -804,6 +807,10 @@ export default function App() {
           onOpenPending={(deviceId) => openPendingModal(deviceId)}
         />
         <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+        {!STANDALONE && (
+          <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        )}
 
         <PendingDevicesModal
           open={pendingModalOpen}

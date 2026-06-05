@@ -73,6 +73,7 @@ const defaultProps = {
   onScan: vi.fn(),
   onZigbeeImport: vi.fn(),
   onSave: vi.fn(),
+  onOpenSettings: vi.fn(),
   onOpenPending: vi.fn(),
 }
 
@@ -257,14 +258,10 @@ describe('Sidebar', () => {
     await waitFor(() => expect(screen.queryByText('No scans yet')).not.toBeInTheDocument())
   })
 
-  it('toggles Settings panel on Settings click', async () => {
+  it('calls onOpenSettings when Settings is clicked', () => {
     render(<Sidebar {...defaultProps} />)
-    fireEvent.click(screen.getByText('Settings'))
-    await waitFor(() =>
-      expect(screen.getByText('Status check interval (s)')).toBeInTheDocument(),
-    )
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-    expect(screen.queryByText('Status check interval (s)')).not.toBeInTheDocument()
+    expect(defaultProps.onOpenSettings).toHaveBeenCalledOnce()
   })
 
   // ── Logout ─────────────────────────────────────────────────────────────────

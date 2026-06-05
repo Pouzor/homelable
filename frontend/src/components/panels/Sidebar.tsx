@@ -5,22 +5,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
-import { designsApi, scanApi, settingsApi } from '@/api/client'
+import { designsApi, scanApi } from '@/api/client'
 import { resolveDesignIcon, DEFAULT_DESIGN_ICON } from '@/utils/designIcons'
 import { DesignModal, type DesignFormData } from '@/components/modals/DesignModal'
 import type { Design } from '@/types'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
-import {
-  type AlignmentSettings,
-  readAlignmentSettings,
-  writeAlignmentSettings,
-  subscribeAlignmentSettings,
-} from '@/utils/alignmentSettings'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
-type SidebarView = 'canvas' | 'history' | 'settings'
+type SidebarView = 'canvas' | 'history'
 
 const PENDING_TRIGGERS: { kind: 'pending' | 'hidden'; icon: typeof ScanLine; label: string }[] = [
   { kind: 'pending', icon: ScanLine, label: 'Pending Devices' },
@@ -45,11 +39,12 @@ interface SidebarProps {
   onScan: () => void
   onZigbeeImport: () => void
   onSave: () => void
+  onOpenSettings: () => void
   forceView?: SidebarView
   onOpenPending: (deviceId?: string, status?: 'pending' | 'hidden') => void
 }
 
-export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onSave, forceView, onOpenPending }: SidebarProps) {
+export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onSave, onOpenSettings, forceView, onOpenPending }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [activeView, setActiveView] = useState<SidebarView>(forceView ?? 'canvas')
   const [prevForceView, setPrevForceView] = useState(forceView)
@@ -225,7 +220,6 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
       {!collapsed && activeView !== 'canvas' && (
         <div className="flex-1 min-h-0 overflow-y-auto border-t border-border">
           {activeView === 'history' && <ScanHistoryPanel />}
-          {activeView === 'settings' && <SettingsPanel />}
         </div>
       )}
 
@@ -279,8 +273,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
             icon={Settings}
             label="Settings"
             collapsed={collapsed}
-            active={activeView === 'settings'}
-            onClick={() => setActiveView((v) => v === 'settings' ? 'canvas' : 'settings')}
+            onClick={onOpenSettings}
           />
         )}
         {!STANDALONE && (
@@ -436,105 +429,6 @@ function ScanHistoryPanel() {
           )}
         </div>
       ))}
-    </div>
-  )
-}
-
-function SettingsPanel() {
-  const [interval, setIntervalValue] = useState(60)
-  const [saving, setSaving] = useState(false)
-  const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
-
-  useEffect(() => {
-    settingsApi.get()
-      .then((res) => setIntervalValue(res.data.interval_seconds))
-      .catch(() => {/* use default */})
-  }, [])
-
-  useEffect(() => subscribeAlignmentSettings(setAlignment), [])
-
-  const updateAlignment = (patch: Partial<AlignmentSettings>) => {
-    const next = { ...alignment, ...patch }
-    setAlignment(next)
-    writeAlignmentSettings(next)
-  }
-
-  const handleSave = async () => {
-    setSaving(true)
-    try {
-      await settingsApi.save({ interval_seconds: interval })
-      toast.success('Settings saved')
-    } catch {
-      toast.error('Failed to save settings')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="p-3 space-y-4">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Settings</span>
-
-      <div className="space-y-1.5">
-        <label className="text-xs text-muted-foreground">Status check interval (s)</label>
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            min={10}
-            max={3600}
-            value={interval}
-            onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setIntervalValue(v) }}
-            className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
-          />
-          <span className="text-xs text-muted-foreground">seconds</span>
-        </div>
-        <p className="text-[10px] text-muted-foreground leading-tight">
-          How often node health is polled (ping, HTTP, SSH…)
-        </p>
-      </div>
-
-      <button
-        onClick={handleSave}
-        disabled={saving}
-        className="w-full py-1.5 rounded-md text-xs font-medium bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/30 hover:bg-[#00d4ff]/20 transition-colors disabled:opacity-50"
-      >
-        {saving ? 'Saving…' : 'Save'}
-      </button>
-
-      <div className="pt-3 border-t border-border space-y-3">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Canvas</span>
-
-        <label className="flex items-center justify-between gap-2 cursor-pointer">
-          <span className="text-xs text-foreground">Snap to nodes</span>
-          <input
-            type="checkbox"
-            checked={alignment.enabled}
-            onChange={(e) => updateAlignment({ enabled: e.target.checked })}
-            className="cursor-pointer accent-[#00d4ff]"
-            aria-label="Toggle alignment guides"
-          />
-        </label>
-
-        <div className={alignment.enabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
-          <label className="text-xs text-muted-foreground">Snap distance</label>
-          <div className="flex items-center gap-2">
-            <input
-              type="range"
-              min={2}
-              max={16}
-              step={1}
-              value={alignment.threshold}
-              onChange={(e) => updateAlignment({ threshold: Number(e.target.value) })}
-              className="flex-1 cursor-pointer accent-[#00d4ff]"
-              aria-label="Alignment snap threshold"
-            />
-            <span className="font-mono text-[11px] text-foreground w-8 text-right">{alignment.threshold}px</span>
-          </div>
-          <p className="text-[10px] text-muted-foreground leading-tight">
-            Distance at which dragged nodes snap to neighbours. Hold Alt while dragging to disable.
-          </p>
-        </div>
-      </div>
     </div>
   )
 }
