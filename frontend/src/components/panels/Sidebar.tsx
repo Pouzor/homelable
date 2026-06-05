@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, RefreshCw, Loader2, Square, Eye, Settings, StopCircle, LogOut, Network, Type, PlusCircle, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, RefreshCw, Loader2, Square, Settings, StopCircle, LogOut, Network, Type, PlusCircle, Pencil, Trash2 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -90,7 +90,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
     }
   }
 
-  const { nodes, hasUnsavedChanges, hideIp, toggleHideIp } = useCanvasStore()
+  const { nodes, hasUnsavedChanges } = useCanvasStore()
 
   const networkNodes = nodes.filter((n) => n.data.type !== 'groupRect' && n.data.type !== 'text')
   const onlineCount = networkNodes.filter((n) => n.data.status === 'online').length
@@ -254,13 +254,6 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
         {!STANDALONE && <SidebarItem icon={ScanLine} label="Scan Network" collapsed={collapsed} onClick={handleScan} />}
         {!STANDALONE && <SidebarItem icon={Network} label="Zigbee Import" collapsed={collapsed} onClick={onZigbeeImport} />}
         <SidebarItem
-          icon={hideIp ? EyeOff : Eye}
-          label={hideIp ? 'Show IPs' : 'Hide IPs'}
-          collapsed={collapsed}
-          onClick={toggleHideIp}
-          active={hideIp}
-        />
-        <SidebarItem
           icon={Save}
           label="Save Canvas"
           collapsed={collapsed}
@@ -268,14 +261,12 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
           badge={hasUnsavedChanges}
           accent
         />
-        {!STANDALONE && (
-          <SidebarItem
-            icon={Settings}
-            label="Settings"
-            collapsed={collapsed}
-            onClick={onOpenSettings}
-          />
-        )}
+        <SidebarItem
+          icon={Settings}
+          label="Settings"
+          collapsed={collapsed}
+          onClick={onOpenSettings}
+        />
         {!STANDALONE && (
           <SidebarItem
             icon={LogOut}

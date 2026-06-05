@@ -13,6 +13,7 @@ import type { NodeData, EdgeData, NodeType, EdgeType, NodeTypeStyle, EdgeTypeSty
 import { generateUUID } from '@/utils/uuid'
 import { normalizeHandle, removedBottomHandleIds } from '@/utils/handleUtils'
 import { applyOpacity } from '@/utils/colorUtils'
+import { readHideIp, writeHideIp } from '@/utils/ipDisplay'
 
 type HistoryEntry = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
 type Clipboard = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
@@ -69,6 +70,7 @@ interface CanvasState {
   notifyScanDeviceFound: () => void
   hideIp: boolean
   toggleHideIp: () => void
+  setHideIp: (value: boolean) => void
   applyTypeNodeStyle: (nodeType: NodeType, style: NodeTypeStyle) => void
   applyTypeEdgeStyle: (edgeType: EdgeType, style: EdgeTypeStyle) => void
   applyAllCustomStyles: (def: CustomStyleDef) => void
@@ -82,7 +84,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   selectedNodeIds: [],
   editingGroupRectId: null,
   editingTextId: null,
-  hideIp: false,
+  hideIp: readHideIp(),
   scanEventTs: 0,
   fitViewPending: false,
 
@@ -579,7 +581,16 @@ export const useCanvasStore = create<CanvasState>((set) => ({
 
   notifyScanDeviceFound: () => set({ scanEventTs: Date.now() }),
 
-  toggleHideIp: () => set((s) => ({ hideIp: !s.hideIp })),
+  toggleHideIp: () => set((s) => {
+    const hideIp = !s.hideIp
+    writeHideIp(hideIp)
+    return { hideIp }
+  }),
+
+  setHideIp: (value) => {
+    writeHideIp(value)
+    set({ hideIp: value })
+  },
 
   loadCanvas: (nodes, edges) => {
     // React Flow requires parents before children in the array

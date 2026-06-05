@@ -800,6 +800,26 @@ describe('canvasStore', () => {
     expect(useCanvasStore.getState().nodes).toHaveLength(1)
   })
 
+  // --- Hide IP preference (persisted to localStorage) ---
+
+  it('toggleHideIp flips the flag and persists it', () => {
+    localStorage.removeItem('homelable.hideIp')
+    useCanvasStore.setState({ hideIp: false })
+    useCanvasStore.getState().toggleHideIp()
+    expect(useCanvasStore.getState().hideIp).toBe(true)
+    expect(localStorage.getItem('homelable.hideIp')).toBe('true')
+    useCanvasStore.getState().toggleHideIp()
+    expect(useCanvasStore.getState().hideIp).toBe(false)
+    expect(localStorage.getItem('homelable.hideIp')).toBe('false')
+  })
+
+  it('setHideIp sets the flag and persists it', () => {
+    localStorage.removeItem('homelable.hideIp')
+    useCanvasStore.getState().setHideIp(true)
+    expect(useCanvasStore.getState().hideIp).toBe(true)
+    expect(localStorage.getItem('homelable.hideIp')).toBe('true')
+  })
+
   // --- Node resizing (width / height) ---
 
   it('addNode preserves explicit width and height', () => {

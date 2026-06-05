@@ -12,6 +12,7 @@ vi.mock('@/api/client', () => ({
 
 import { settingsApi } from '@/api/client'
 import { toast } from 'sonner'
+import { useCanvasStore } from '@/stores/canvasStore'
 
 describe('SettingsModal', () => {
   beforeEach(() => {
@@ -62,6 +63,17 @@ describe('SettingsModal', () => {
       expect(toast.error).toHaveBeenCalledWith('Failed to save settings')
     })
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('reflects and persists the hide-IP preference', async () => {
+    useCanvasStore.setState({ hideIp: false })
+    localStorage.removeItem('homelable.hideIp')
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const checkbox = screen.getByLabelText('Toggle IP address masking') as HTMLInputElement
+    expect(checkbox.checked).toBe(false)
+    fireEvent.click(checkbox)
+    expect(useCanvasStore.getState().hideIp).toBe(true)
+    expect(localStorage.getItem('homelable.hideIp')).toBe('true')
   })
 
   it('calls onClose on Cancel', async () => {

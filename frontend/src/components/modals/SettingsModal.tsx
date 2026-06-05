@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { settingsApi } from '@/api/client'
+import { useCanvasStore } from '@/stores/canvasStore'
 import { toast } from 'sonner'
 import {
   type AlignmentSettings,
@@ -9,6 +10,8 @@ import {
   writeAlignmentSettings,
   subscribeAlignmentSettings,
 } from '@/utils/alignmentSettings'
+
+const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 interface SettingsModalProps {
   open: boolean
@@ -19,9 +22,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [interval, setIntervalValue] = useState(60)
   const [saving, setSaving] = useState(false)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
+  const hideIp = useCanvasStore((s) => s.hideIp)
+  const setHideIp = useCanvasStore((s) => s.setHideIp)
 
   useEffect(() => {
-    if (!open) return
+    if (!open || STANDALONE) return
     settingsApi.get()
       .then((res) => setIntervalValue(res.data.interval_seconds))
       .catch(() => {/* use default */})
@@ -36,6 +41,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   }
 
   const handleSave = async () => {
+    // Canvas prefs (alignment, hide-IP) persist on change; only the backend
+    // status-check interval needs an API round-trip.
+    if (STANDALONE) {
+      onClose()
+      return
+    }
     setSaving(true)
     try {
       await settingsApi.save({ interval_seconds: interval })
@@ -57,6 +68,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
         <div className="space-y-5 py-2">
           {/* Status checker */}
+          {!STANDALONE && (
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">Status check interval (s)</label>
             <div className="flex items-center gap-2">
@@ -74,6 +86,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               How often node health is polled (ping, HTTP, SSH…)
             </p>
           </div>
+          )}
 
           {/* Canvas */}
           <div className="pt-3 border-t border-border space-y-3">
@@ -87,6 +100,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 onChange={(e) => updateAlignment({ enabled: e.target.checked })}
                 className="cursor-pointer accent-[#00d4ff]"
                 aria-label="Toggle alignment guides"
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-2 cursor-pointer">
+              <span className="text-xs text-foreground">Hide IP addresses</span>
+              <input
+                type="checkbox"
+                checked={hideIp}
+                onChange={(e) => setHideIp(e.target.checked)}
+                className="cursor-pointer accent-[#00d4ff]"
+                aria-label="Toggle IP address masking"
               />
             </label>
 

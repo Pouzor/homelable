@@ -46,15 +46,12 @@ const makeNode = (id: string, status: NodeData['status'], type: NodeData['type']
   data: { label: id, type, status, services: [] },
 })
 
-const mockToggleHideIp = vi.fn()
 const mockLogout = vi.fn()
 
 function mockStore(overrides: Partial<ReturnType<typeof useCanvasStore>> = {}) {
   vi.mocked(useCanvasStore).mockReturnValue({
     nodes: [],
     hasUnsavedChanges: false,
-    hideIp: false,
-    toggleHideIp: mockToggleHideIp,
     addNode: vi.fn(),
     scanEventTs: 0,
     ...overrides,
@@ -191,16 +188,10 @@ describe('Sidebar', () => {
     expect(defaultProps.onSave).toHaveBeenCalledOnce()
   })
 
-  it('calls toggleHideIp when Hide IPs is clicked', () => {
+  it('calls onOpenSettings when Settings is clicked', () => {
     render(<Sidebar {...defaultProps} />)
-    fireEvent.click(screen.getByText('Hide IPs'))
-    expect(mockToggleHideIp).toHaveBeenCalledOnce()
-  })
-
-  it('shows Show IPs label when hideIp is true', () => {
-    mockStore({ hideIp: true })
-    render(<Sidebar {...defaultProps} />)
-    expect(screen.getByText('Show IPs')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Settings'))
+    expect(defaultProps.onOpenSettings).toHaveBeenCalledOnce()
   })
 
   // ── Unsaved changes badge ──────────────────────────────────────────────────
