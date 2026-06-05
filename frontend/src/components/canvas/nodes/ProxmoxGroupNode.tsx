@@ -65,7 +65,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
 
       {/* Group border */}
       <div
-        className="w-full h-full rounded-lg border-2 flex flex-col overflow-hidden"
+        className="w-full h-full rounded-xl border-2 flex flex-col overflow-hidden"
         style={{
           borderColor: selected ? glow : `${glow}88`,
           background: isOnline ? `${colors.background}cc` : `${colors.background}aa`,
