@@ -252,24 +252,25 @@ describe('GroupDetailPanel', () => {
     expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe('Critical DMZ hosts')
   })
 
-  it('commits the description on blur', () => {
+  it('commits the description to the store on each change (so Ctrl+S captures it)', () => {
+    const updateNode = vi.fn()
+    const group = makeGroupNode()
+    setupStore({ nodes: [group], selectedNodeId: 'g1', selectedNodeIds: ['g1'], updateNode })
+    renderPanel()
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'New notes' } })
+    expect(updateNode).toHaveBeenCalledWith('g1', { notes: 'New notes' })
+  })
+
+  it('snapshots history once at the start of an edit, not on every keystroke', () => {
     const updateNode = vi.fn()
     const snapshotHistory = vi.fn()
     const group = makeGroupNode()
     setupStore({ nodes: [group], selectedNodeId: 'g1', selectedNodeIds: ['g1'], updateNode, snapshotHistory })
     renderPanel()
     const textarea = screen.getByLabelText('Description')
-    fireEvent.change(textarea, { target: { value: 'New notes' } })
-    fireEvent.blur(textarea)
-    expect(updateNode).toHaveBeenCalledWith('g1', { notes: 'New notes' })
-  })
-
-  it('does not commit the description on blur when unchanged', () => {
-    const updateNode = vi.fn()
-    const group = makeGroupNode()
-    setupStore({ nodes: [group], selectedNodeId: 'g1', selectedNodeIds: ['g1'], updateNode })
-    renderPanel()
-    fireEvent.blur(screen.getByLabelText('Description'))
-    expect(updateNode).not.toHaveBeenCalled()
+    fireEvent.change(textarea, { target: { value: 'a' } })
+    fireEvent.change(textarea, { target: { value: 'ab' } })
+    fireEvent.change(textarea, { target: { value: 'abc' } })
+    expect(snapshotHistory).toHaveBeenCalledTimes(1)
   })
 })

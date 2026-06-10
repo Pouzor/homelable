@@ -1,4 +1,4 @@
-import { createElement, useState } from 'react'
+import { createElement, useRef, useState } from 'react'
 import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -66,10 +66,8 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         nodes={nodes}
         onUngroup={() => { ungroup(node.id) }}
         onRemoveChild={(id) => { snapshotHistory(); removeFromGroup(node.id, id) }}
-        onChangeDescription={(value) => {
-          snapshotHistory()
-          updateNode(node.id, { notes: value })
-        }}
+        onChangeDescription={(value) => updateNode(node.id, { notes: value })}
+        onSnapshotBeforeEdit={snapshotHistory}
         onToggleBorder={() => {
           snapshotHistory()
           updateNode(node.id, {
@@ -433,22 +431,28 @@ interface GroupDetailPanelProps {
   onUngroup: () => void
   onRemoveChild: (id: string) => void
   onChangeDescription: (value: string) => void
+  onSnapshotBeforeEdit: () => void
   onToggleBorder: () => void
   onClose: () => void
   onSelectChild: (id: string) => void
 }
 
-function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescription, onToggleBorder, onClose, onSelectChild }: GroupDetailPanelProps) {
+function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescription, onSnapshotBeforeEdit, onToggleBorder, onClose, onSelectChild }: GroupDetailPanelProps) {
   const children = nodes.filter((n) => n.parentId === node.id)
   const onlineCount = children.filter((n) => n.data.status === 'online').length
   const offlineCount = children.filter((n) => n.data.status === 'offline').length
   const showBorder = node.data.custom_colors?.show_border !== false
 
   // Description reuses data.notes, which already round-trips to the backend.
-  // Uncontrolled textarea (keyed by node id) so we only snapshot history on blur,
-  // not on every keystroke. `key` resets the field when switching groups.
-  const commitDescription = (value: string) => {
-    if (value === (node.data.notes ?? '')) return
+  // Controlled + committed on every keystroke so ANY save path (incl. Ctrl+S,
+  // which never blurs the field) captures it. History is snapshotted once at the
+  // start of an edit session so the whole edit is a single undo step.
+  const snappedRef = useRef(false)
+  const handleDescriptionChange = (value: string) => {
+    if (!snappedRef.current) {
+      onSnapshotBeforeEdit()
+      snappedRef.current = true
+    }
     onChangeDescription(value)
   }
 
@@ -484,9 +488,9 @@ function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescr
         </label>
         <textarea
           id="group-description"
-          key={node.id}
-          defaultValue={node.data.notes ?? ''}
-          onBlur={(e) => commitDescription(e.target.value)}
+          value={node.data.notes ?? ''}
+          onFocus={() => { snappedRef.current = false }}
+          onChange={(e) => handleDescriptionChange(e.target.value)}
           placeholder="Add a description for this group…"
           rows={3}
           className="mt-1.5 w-full resize-y rounded-md bg-[#21262d] border border-[#30363d] px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#00d4ff]/50"
