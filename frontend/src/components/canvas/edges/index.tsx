@@ -406,7 +406,7 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
       <EdgeLabelRenderer>
         {data?.label && (
           <div
-            className="absolute pointer-events-none font-mono text-[10px] px-1.5 py-0.5 rounded"
+            className="absolute pointer-events-none font-mono text-[10px] px-1.5 py-0.5 rounded whitespace-pre-line text-center"
             style={{
               transform: `translate(-50%, -50%) translate(${labelPosition.x}px, ${labelPosition.y}px)`,
               background: theme.colors.edgeLabelBackground,
