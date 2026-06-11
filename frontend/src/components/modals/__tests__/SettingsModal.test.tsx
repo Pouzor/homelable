@@ -80,7 +80,9 @@ describe('SettingsModal', () => {
     vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: true, service_check_interval: 600 } } as never)
     render(<SettingsModal open onClose={vi.fn()} />)
     const toggle = await screen.findByLabelText('Toggle per-service status checks') as HTMLInputElement
-    expect(toggle.checked).toBe(true)
+    // The toggle label renders immediately; its checked state only flips once
+    // settingsApi.get() resolves, so wait for that before asserting.
+    await waitFor(() => expect(toggle.checked).toBe(true))
     expect(await screen.findByDisplayValue('600')).toBeDefined()
 
     fireEvent.click(toggle) // disable
