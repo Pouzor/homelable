@@ -252,3 +252,14 @@ export interface CustomStyleDef {
   nodes: Partial<Record<NodeType, NodeTypeStyle>>
   edges: Partial<Record<EdgeType, EdgeTypeStyle>>
 }
+
+export interface FloorMapConfig {
+  imageData: string
+  posX: number
+  posY: number
+  width: number
+  height: number
+  opacity: number
+  locked: boolean
+  enabled: boolean
+}

@@ -1,4 +1,4 @@
-import { createElement, useRef, useState } from 'react'
+import { createElement, useEffect, useRef, useState } from 'react'
 import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +9,8 @@ import { getServiceUrl } from '@/utils/serviceUrl'
 import { splitIps } from '@/utils/maskIp'
 import { PROPERTY_ICONS, PROPERTY_ICON_NAMES, resolvePropertyIcon } from '@/utils/propertyIcons'
 import { formatTimestamp } from '@/utils/timeFormat'
+import { findZigbeePath } from '@/utils/zigbeePathfinding'
+import { isZigbeeType } from '@/utils/zigbeeProperties'
 import type { Node } from '@xyflow/react'
 
 interface DetailPanelProps {
@@ -22,7 +24,7 @@ type PropForm = { key: string; value: string; icon: string | null; visible: bool
 const EMPTY_PROP: PropForm = { key: '', value: '', icon: null, visible: true }
 
 export function DetailPanel({ onEdit }: DetailPanelProps) {
-  const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup, removeFromGroup, setNodeSize } = useCanvasStore()
+  const { nodes, edges, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup, removeFromGroup, setNodeSize, setHighlightedPath } = useCanvasStore()
   const serviceStatuses = useCanvasStore((s) => s.serviceStatuses)
 
   const [addingForNode, setAddingForNode] = useState<string | null>(null)
@@ -40,6 +42,25 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
 
   // Multi-select panel
   const multiSelected = (selectedNodeIds ?? []).filter((id) => nodes.some((n) => n.id === id))
+
+  // Zigbee path highlighting: when a zigbee node is selected, compute
+  // the optimal route to the coordinator and highlight those edges.
+  useEffect(() => {
+    const targetNode = nodes.find((n) => n.id === selectedNodeId)
+    if (!targetNode || !isZigbeeType(targetNode.data.type)) {
+      setHighlightedPath([])
+      return
+    }
+
+    const coordinator = nodes.find((n) => n.data.type === 'zigbee_coordinator')
+    if (!coordinator) {
+      setHighlightedPath([])
+      return
+    }
+
+    const path = findZigbeePath(targetNode.id, coordinator.id, nodes, edges)
+    setHighlightedPath(path)
+  }, [selectedNodeId, nodes, edges, setHighlightedPath])
 
   if (multiSelected.length > 1) {
     return (
