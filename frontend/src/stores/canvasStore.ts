@@ -61,6 +61,7 @@ interface CanvasState {
   deleteEdge: (id: string) => void
   setProxmoxContainerMode: (proxmoxId: string, enabled: boolean) => void
   setNodeZIndex: (id: string, zIndex: number) => void
+  setNodeSize: (id: string, size: { width?: number; height?: number }) => void
   editingGroupRectId: string | null
   setEditingGroupRectId: (id: string | null) => void
   editingTextId: string | null
@@ -288,7 +289,9 @@ export const useCanvasStore = create<CanvasState>((set) => ({
               y: Math.max(10, node.position.y - parent.position.y),
             },
           }
-        : node
+        // Not nesting: strip any parentId/extent a caller may have set so a
+        // non-container parent can't trap the node in its bounding box.
+        : { ...node, parentId: undefined, extent: undefined }
       // Parents must come before children in the array (React Flow requirement)
       const withoutNew = state.nodes.filter((n) => n.id !== node.id)
       if (enriched.parentId) {
@@ -463,6 +466,22 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   setNodeZIndex: (id, zIndex) =>
     set((state) => ({
       nodes: state.nodes.map((n) => n.id === id ? { ...n, zIndex } : n),
+      hasUnsavedChanges: true,
+    })),
+
+  // Manual width/height entry. Lets the user type an exact size instead of
+  // dragging the resize handle (which lands on fractional content-fit pixels).
+  // A clamp matches the NodeResizer minimums so the box can't collapse.
+  setNodeSize: (id, size) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        if (n.id !== id) return n
+        return {
+          ...n,
+          ...(size.width != null ? { width: Math.max(140, size.width) } : {}),
+          ...(size.height != null ? { height: Math.max(50, size.height) } : {}),
+        }
+      }),
       hasUnsavedChanges: true,
     })),
 

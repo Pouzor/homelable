@@ -245,9 +245,16 @@ export default function App() {
     const id = generateUUID()
     const isContainerNode = data.container_mode === true
     const parentNode = data.parent_id ? nodes.find((n) => n.id === data.parent_id) : null
-    // Children position is relative to parent; place near top-left with padding
-    const position = parentNode
-      ? { x: 20, y: 50 }
+    // Only nest when the parent is an actual container. For a non-container
+    // parent the LXC/VM stays a free node (linked by a virtual edge) — setting
+    // extent:'parent' on a non-container would trap it inside the parent's tiny
+    // bounding box with no way to drag it out (issue #205 follow-up).
+    const nestInParent = !!parentNode?.data.container_mode
+    // Seed an ABSOLUTE position near the container's top-left; addNode converts
+    // it to container-relative. addNode is the single authority for parentId /
+    // extent, so we don't set them here.
+    const position = nestInParent && parentNode
+      ? { x: parentNode.position.x + 20, y: parentNode.position.y + 50 }
       : { x: 300, y: 300 }
 
     const newNode: Node<NodeData> = {
@@ -255,7 +262,6 @@ export default function App() {
       type: data.type ?? 'generic',
       position,
       data: { status: 'unknown', services: [], ...data } as NodeData,
-      ...(data.parent_id ? { parentId: data.parent_id, extent: 'parent' as const } : {}),
       ...(isContainerNode ? { width: 300, height: 200 } : {}),
     }
     addNode(newNode)

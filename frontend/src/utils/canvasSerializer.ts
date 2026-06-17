@@ -75,8 +75,8 @@ export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
       pos_y: n.position.y,
       custom_colors: {
         ...n.data.custom_colors,
-        width: n.measured?.width ?? n.width ?? 360,
-        height: n.measured?.height ?? n.height ?? 240,
+        width: n.width ?? n.measured?.width ?? 360,
+        height: n.height ?? n.measured?.height ?? 240,
         // Stash collapse state inside custom_colors so the API/YAML blob does
         // not need a new column. Hoisted back to `data.collapsed` on load.
         collapsed: n.data.collapsed ?? false,
@@ -112,8 +112,11 @@ export function serializeNode(n: Node<NodeData>): Record<string, unknown> {
     disk_gb: n.data.disk_gb ?? null,
     show_hardware: n.data.show_hardware ?? false,
     properties: n.data.properties ?? [],
-    width: n.measured?.width ?? n.width ?? null,
-    height: n.measured?.height ?? n.height ?? null,
+    // Prefer the explicit (resized) dimension over the DOM-measured one so a
+    // manual resize persists its exact target instead of drifting to the
+    // fractional content-fit value.
+    width: n.width ?? n.measured?.width ?? null,
+    height: n.height ?? n.measured?.height ?? null,
     bottom_handles: clampBottomHandles(n.data.bottom_handles ?? 1),
     show_port_numbers: n.data.show_port_numbers ?? false,
     pos_x: n.position.x,
@@ -179,11 +182,17 @@ export function deserializeApiNode(
       collapsed: Boolean(n.custom_colors?.collapsed),
     } as unknown as NodeData,
     ...(n.parent_id && parentIsContainer ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
+    // Container hosts (Proxmox/VM/LXC/docker in container_mode) get a default
+    // box if none was saved. Every other node — including LEAF vm/lxc/docker
+    // nodes nested inside a container — restores its own saved width/height.
+    // Gating on container_mode (not type) is what keeps a resized nested node
+    // from snapping back to content-fit on reload.
     ...(['proxmox', 'vm', 'lxc', 'docker_host'].includes(normalizedType) && n.container_mode !== false
       ? { width: n.width ?? 300, height: n.height ?? 200 }
-      : {}),
-    ...(n.width && !['proxmox', 'vm', 'lxc', 'docker_host'].includes(normalizedType) ? { width: n.width } : {}),
-    ...(n.height && !['proxmox', 'vm', 'lxc', 'docker_host'].includes(normalizedType) ? { height: n.height } : {}),
+      : {
+          ...(n.width ? { width: n.width } : {}),
+          ...(n.height ? { height: n.height } : {}),
+        }),
   }
 }
 

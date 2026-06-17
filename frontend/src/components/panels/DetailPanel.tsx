@@ -21,7 +21,7 @@ type PropForm = { key: string; value: string; icon: string | null; visible: bool
 const EMPTY_PROP: PropForm = { key: '', value: '', icon: null, visible: true }
 
 export function DetailPanel({ onEdit }: DetailPanelProps) {
-  const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup, removeFromGroup } = useCanvasStore()
+  const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup, removeFromGroup, setNodeSize } = useCanvasStore()
   const serviceStatuses = useCanvasStore((s) => s.serviceStatuses)
 
   const [addingForNode, setAddingForNode] = useState<string | null>(null)
@@ -255,6 +255,13 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         {data.last_seen && <DetailRow label="Last Seen" value={new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(data.last_seen) ? data.last_seen : data.last_seen + 'Z').toLocaleString()} />}
       </div>
 
+      {/* Size section — manual width/height entry for pixel-exact sizing */}
+      <SizeFields
+        key={node.id}
+        node={node}
+        onCommit={(size) => { snapshotHistory(); setNodeSize(node.id, size) }}
+      />
+
       {/* Properties section */}
       <div className="px-4 py-3 border-t border-border">
         <div className="flex items-center justify-between mb-2">
@@ -342,6 +349,79 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         </Button>
       </div>
     </aside>
+  )
+}
+
+// --- Size fields (manual width/height entry) ---
+
+const round = (v: number | undefined): string => (v != null ? String(Math.round(v)) : '')
+
+function SizeFields({ node, onCommit }: { node: Node<NodeData>; onCommit: (size: { width?: number; height?: number }) => void }) {
+  // Live size from the explicit dimension, falling back to the DOM-measured
+  // size so the field shows the node's current footprint even before resize.
+  const liveWidth = round(node.width ?? node.measured?.width)
+  const liveHeight = round(node.height ?? node.measured?.height)
+  const [width, setWidth] = useState(liveWidth)
+  const [height, setHeight] = useState(liveHeight)
+
+  // Resync the fields when the node is resized by dragging its corner handle
+  // (which mutates node.width/height in the store). Adjusting state during
+  // render — the React-blessed alternative to an effect — keeps it in step
+  // without cascading renders. The field the user is actively editing is left
+  // alone so we don't clobber their keystrokes mid-type.
+  const [editing, setEditing] = useState<'width' | 'height' | null>(null)
+  const [prev, setPrev] = useState({ w: liveWidth, h: liveHeight })
+  if (prev.w !== liveWidth || prev.h !== liveHeight) {
+    setPrev({ w: liveWidth, h: liveHeight })
+    if (editing !== 'width') setWidth(liveWidth)
+    if (editing !== 'height') setHeight(liveHeight)
+  }
+
+  const commit = (raw: string, axis: 'width' | 'height') => {
+    const n = Number(raw)
+    if (!raw.trim() || Number.isNaN(n) || n <= 0) {
+      // Reset the field to the live value on invalid input — no mutation.
+      if (axis === 'width') setWidth(round(node.width ?? node.measured?.width))
+      else setHeight(round(node.height ?? node.measured?.height))
+      return
+    }
+    onCommit({ [axis]: n })
+  }
+
+  return (
+    <div className="px-4 py-3 border-t border-border">
+      <span className="text-xs text-muted-foreground">Size</span>
+      <div className="mt-2 flex items-center gap-2">
+        <label className="flex flex-1 items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground/70 w-3">W</span>
+          <Input
+            type="number"
+            min={140}
+            aria-label="Width"
+            value={width}
+            onFocus={() => setEditing('width')}
+            onChange={(e) => setWidth(e.target.value)}
+            onBlur={() => { setEditing(null); commit(width, 'width') }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+            className="h-7 text-xs font-mono"
+          />
+        </label>
+        <label className="flex flex-1 items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground/70 w-3">H</span>
+          <Input
+            type="number"
+            min={50}
+            aria-label="Height"
+            value={height}
+            onFocus={() => setEditing('height')}
+            onChange={(e) => setHeight(e.target.value)}
+            onBlur={() => { setEditing(null); commit(height, 'height') }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+            className="h-7 text-xs font-mono"
+          />
+        </label>
+      </div>
+    </div>
   )
 }
 

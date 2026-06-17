@@ -102,6 +102,20 @@ describe('serializeNode — regular node', () => {
     expect(result.height).toBeNull()
   })
 
+  it('prefers explicit width/height over the measured (content-fit) value', () => {
+    const node: Node<NodeData> = { ...makeRfNode({ width: 200, height: 100 }), measured: { width: 187, height: 73 } }
+    const result = serializeNode(node)
+    expect(result.width).toBe(200)
+    expect(result.height).toBe(100)
+  })
+
+  it('falls back to measured when no explicit dimension is set', () => {
+    const node: Node<NodeData> = { ...makeRfNode(), measured: { width: 187, height: 73 } }
+    const result = serializeNode(node)
+    expect(result.width).toBe(187)
+    expect(result.height).toBe(73)
+  })
+
   it('serializes hardware fields', () => {
     const node = makeRfNode({
       data: {
@@ -162,13 +176,14 @@ describe('serializeNode — groupRect', () => {
     expect((result.custom_colors as Record<string, unknown>).height).toBe(250)
   })
 
-  it('falls back to measured dimensions over explicit width/height', () => {
+  it('prefers explicit width/height over measured, falling back to measured per-axis', () => {
     const node: Node<NodeData> = {
       ...makeRfNode({ type: 'groupRect', data: { label: 'Z', type: 'groupRect', status: 'unknown', services: [] }, width: 400 }),
       measured: { width: 420, height: 260 },
     }
     const result = serializeNode(node)
-    expect((result.custom_colors as Record<string, unknown>).width).toBe(420)
+    // Explicit width wins; height has no explicit value so it uses measured.
+    expect((result.custom_colors as Record<string, unknown>).width).toBe(400)
     expect((result.custom_colors as Record<string, unknown>).height).toBe(260)
   })
 
@@ -323,6 +338,21 @@ describe('deserializeApiNode — regular node', () => {
     expect(result.width).toBeUndefined()
     expect(result.height).toBeUndefined()
   })
+
+  // Regression: issue #205 — a leaf vm/lxc nested in a container would lose its
+  // saved size on reload because the restore branch excluded those types.
+  it.each(['vm', 'lxc', 'docker_host'] as const)(
+    'restores saved width/height for a leaf %s node (container_mode false)',
+    (type) => {
+      const map = new Map([['px1', true]])
+      const result = deserializeApiNode(
+        makeApiNode({ type, container_mode: false, parent_id: 'px1', width: 240, height: 90 }),
+        map,
+      )
+      expect(result.width).toBe(240)
+      expect(result.height).toBe(90)
+    },
+  )
 })
 
 // ── deserializeApiNode — groupRect ────────────────────────────────────────────

@@ -150,6 +150,23 @@ describe('canvasStore', () => {
     expect(nested?.extent).toBe('parent')
   })
 
+  it('addNode strips parentId/extent when the parent is not a container', () => {
+    // Regression: a stray extent:'parent' on a non-container parent traps the
+    // node in the parent's tiny box with no way to drag it out (issue #205).
+    const parent = { ...makeNode('p1', { container_mode: false }), position: { x: 100, y: 100 } }
+    useCanvasStore.getState().addNode(parent)
+    const trapped: Node<NodeData> = {
+      ...makeNode('c1', { parent_id: 'p1' }),
+      position: { x: 150, y: 180 },
+      parentId: 'p1',
+      extent: 'parent',
+    }
+    useCanvasStore.getState().addNode(trapped)
+    const child = useCanvasStore.getState().nodes.find((n) => n.id === 'c1')
+    expect(child?.parentId).toBeUndefined()
+    expect(child?.extent).toBeUndefined()
+  })
+
   it('docker_container nests under docker_host with container_mode on', () => {
     const host = { ...makeNode('dh1', { type: 'docker_host', container_mode: true }), position: { x: 100, y: 100 } }
     const container = { ...makeNode('dc1', { type: 'docker_container' }), position: { x: 160, y: 180 } }
@@ -1262,5 +1279,30 @@ describe('canvasStore — custom style apply', () => {
     expect(ns.data.custom_colors?.border).toBeUndefined()
     expect(e.data?.custom_color).toBe('#aabbcc')
     expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  it('setNodeSize sets explicit width/height and marks unsaved', () => {
+    useCanvasStore.setState({ nodes: [makeNode('n1')], hasUnsavedChanges: false })
+    useCanvasStore.getState().setNodeSize('n1', { width: 220, height: 130 })
+    const n = useCanvasStore.getState().nodes.find((x) => x.id === 'n1')!
+    expect(n.width).toBe(220)
+    expect(n.height).toBe(130)
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  it('setNodeSize clamps below the minimum box', () => {
+    useCanvasStore.setState({ nodes: [makeNode('n1')] })
+    useCanvasStore.getState().setNodeSize('n1', { width: 10, height: 10 })
+    const n = useCanvasStore.getState().nodes.find((x) => x.id === 'n1')!
+    expect(n.width).toBe(140)
+    expect(n.height).toBe(50)
+  })
+
+  it('setNodeSize updates only the provided axis', () => {
+    useCanvasStore.setState({ nodes: [{ ...makeNode('n1'), width: 200, height: 100 }] })
+    useCanvasStore.getState().setNodeSize('n1', { width: 300 })
+    const n = useCanvasStore.getState().nodes.find((x) => x.id === 'n1')!
+    expect(n.width).toBe(300)
+    expect(n.height).toBe(100)
   })
 })
