@@ -1,0 +1,221 @@
+[
+  {
+    "vendor": "Proxmox / QEMU / KVM",
+    "type": "vm",
+    "prefixes": ["52:54:00", "bc:24:11"]
+  },
+  {
+    "vendor": "VMware",
+    "type": "vm",
+    "prefixes": ["00:50:56", "00:0c:29", "00:05:69", "00:1c:14"]
+  },
+  {
+    "vendor": "VirtualBox",
+    "type": "vm",
+    "prefixes": ["08:00:27"]
+  },
+  {
+    "vendor": "Microsoft Hyper-V",
+    "type": "vm",
+    "prefixes": ["00:15:5d"]
+  },
+  {
+    "vendor": "Xen",
+    "type": "vm",
+    "prefixes": ["00:16:3e"]
+  },
+
+  {
+    "vendor": "MikroTik",
+    "type": "router",
+    "prefixes": [
+      "00:0c:42",
+      "08:55:31",
+      "18:fd:74",
+      "2c:c8:1b",
+      "48:8f:5a",
+      "4c:5e:0c",
+      "64:d1:54",
+      "6c:3b:6b",
+      "74:4d:28",
+      "b8:69:f4",
+      "c4:ad:34",
+      "cc:2d:e0",
+      "d4:ca:6d",
+      "dc:2c:6e",
+      "e4:8d:8c"
+    ]
+  },
+  {
+    "vendor": "Ubiquiti",
+    "type": "ap",
+    "prefixes": [
+      "00:15:6d",
+      "00:27:22",
+      "04:18:d6",
+      "24:5a:4c",
+      "24:a4:3c",
+      "44:d9:e7",
+      "68:72:51",
+      "68:d7:9a",
+      "74:83:c2",
+      "78:8a:20",
+      "78:45:58",
+      "80:2a:a8",
+      "94:2a:6f",
+      "9c:05:d6",
+      "b4:fb:e4",
+      "dc:9f:db",
+      "e0:63:da",
+      "f0:9f:c2",
+      "fc:ec:da"
+    ]
+  },
+  {
+    "vendor": "Ruckus Wireless",
+    "type": "ap",
+    "prefixes": ["00:13:92", "4c:b1:cd", "8c:7a:15", "f0:b0:52", "c0:8a:de"]
+  },
+  {
+    "vendor": "Aruba Networks (HPE)",
+    "type": "ap",
+    "prefixes": ["00:0b:86", "6c:f3:7f", "94:b4:0f", "9c:1c:12", "ac:a3:1e"]
+  },
+
+  {
+    "vendor": "Cisco Systems",
+    "type": "switch",
+    "prefixes": [
+      "00:00:0c",
+      "00:1b:0d",
+      "00:1c:f6",
+      "00:1e:13",
+      "00:23:04",
+      "00:24:13",
+      "00:25:45",
+      "00:50:0b",
+      "b0:00:b4",
+      "b8:38:61",
+      "f8:c0:01"
+    ]
+  },
+  {
+    "vendor": "Juniper Networks",
+    "type": "switch",
+    "prefixes": ["00:14:f6", "2c:6b:f5", "b0:c6:9a", "f0:1c:2d"]
+  },
+  {
+    "vendor": "Zyxel",
+    "type": "switch",
+    "prefixes": ["00:13:49", "60:31:97", "ec:43:f6"]
+  },
+
+  {
+    "vendor": "Netgear",
+    "type": "router",
+    "prefixes": ["00:09:5b", "28:c6:8e", "c0:ff:d4", "2c:30:33", "a0:40:a0"]
+  },
+  {
+    "vendor": "TP-Link",
+    "type": "router",
+    "prefixes": ["14:eb:b6", "60:e3:27", "b0:4e:26", "c4:e9:0a", "ec:08:6b"]
+  },
+
+  {
+    "vendor": "Synology",
+    "type": "nas",
+    "prefixes": ["00:11:32", "00:f4:6f", "90:09:d0"]
+  },
+  {
+    "vendor": "QNAP Systems",
+    "type": "nas",
+    "prefixes": ["00:08:9b", "00:0e:23", "00:13:42", "04:f0:21", "24:5e:be"]
+  },
+  {
+    "vendor": "Asustor",
+    "type": "nas",
+    "prefixes": ["e8:9c:25"]
+  },
+
+  {
+    "vendor": "Hikvision",
+    "type": "camera",
+    "prefixes": ["28:57:be", "44:19:b6", "b4:a3:82", "bc:ad:28", "c0:51:7e", "c0:56:e3", "c4:2f:90"]
+  },
+  {
+    "vendor": "Dahua / Amcrest",
+    "type": "camera",
+    "prefixes": ["3c:ef:8c", "4c:11:bf", "90:02:a9", "bc:32:5f", "e0:50:8b"]
+  },
+  {
+    "vendor": "Reolink",
+    "type": "camera",
+    "prefixes": ["ec:71:db"]
+  },
+  {
+    "vendor": "Axis Communications",
+    "type": "camera",
+    "prefixes": ["00:40:8c", "ac:cc:8e"]
+  },
+
+  {
+    "vendor": "Raspberry Pi Foundation",
+    "type": "server",
+    "prefixes": ["28:cd:c1", "2c:cf:67", "b8:27:eb", "d8:3a:dd", "dc:a6:32", "e4:5f:01"]
+  },
+  {
+    "vendor": "Dell",
+    "type": "server",
+    "prefixes": ["00:14:22", "90:b1:1c", "b0:83:fe", "b8:ca:3a", "f8:b1:56"]
+  },
+  {
+    "vendor": "Supermicro",
+    "type": "server",
+    "prefixes": ["00:25:90", "0c:c4:7a", "ac:1f:6b"]
+  },
+
+  {
+    "vendor": "Shelly",
+    "type": "iot",
+    "prefixes": ["30:c6:f7", "34:94:54", "84:f3:eb", "ec:fa:bc"]
+  },
+  {
+    "vendor": "Espressif (ESP8266 / ESP32)",
+    "type": "iot",
+    "prefixes": [
+      "24:62:ab",
+      "30:ae:a4",
+      "3c:71:bf",
+      "8c:aa:b5",
+      "a0:20:a6",
+      "ac:67:b2",
+      "b4:e6:2d",
+      "cc:50:e3"
+    ]
+  },
+  {
+    "vendor": "Sonoff / ITEAD",
+    "type": "iot",
+    "prefixes": ["dc:4f:22", "e8:db:84"]
+  },
+  {
+    "vendor": "TP-Link Tapo / Kasa",
+    "type": "iot",
+    "prefixes": ["10:27:f5", "1c:3b:f3", "50:c7:bf", "b0:a7:b9"]
+  },
+  {
+    "vendor": "Philips Hue",
+    "type": "iot",
+    "prefixes": ["00:17:88", "ec:b5:fa"]
+  },
+  {
+    "vendor": "IKEA Tradfri",
+    "type": "iot",
+    "prefixes": ["00:21:2e", "34:13:e8"]
+  },
+  {
+    "vendor": "Tuya / Smart Life",
+    "type": "iot",
+    "prefixes": ["68:57:2d", "d8:f1:5b"]
+  }
+]

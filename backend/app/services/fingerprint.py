@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 _SIGNATURES: list[dict[str, Any]] | None = None
+_OUI_MAP: dict[str, str] | None = None
 _LOCK = threading.Lock()
 
 
@@ -24,6 +25,29 @@ def _load() -> list[dict[str, Any]]:
                         "This file should be bundled with the application."
                     ) from err
     return _SIGNATURES
+
+
+def _load_oui() -> dict[str, str]:
+    """Load OUI database and flatten to {prefix: node_type}."""
+    global _OUI_MAP
+    if _OUI_MAP is None:
+        with _LOCK:
+            if _OUI_MAP is None:
+                path = Path(__file__).parent.parent / "data" / "oui_database.json"
+                try:
+                    with open(path) as f:
+                        entries = json.load(f)
+                except FileNotFoundError as err:
+                    raise FileNotFoundError(
+                        f"oui_database.json not found at {path}. "
+                        "This file should be bundled with the application."
+                    ) from err
+                _OUI_MAP = {
+                    prefix.lower(): entry["type"]
+                    for entry in entries
+                    for prefix in entry["prefixes"]
+                }
+    return _OUI_MAP
 
 
 def match_port(port: int, protocol: str, banner: str | None = None) -> dict[str, Any] | None:
@@ -65,55 +89,12 @@ def fingerprint_ports(open_ports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return results
 
 
-# Known OUI prefixes — lowercase, colon-separated, first 3 octets
-_MAC_OUI_TYPES: dict[str, str] = {
-    # Hypervisors / VMs
-    "52:54:00": "vm",    # QEMU/KVM (Proxmox VMs)
-    "bc:24:11": "vm",    # Proxmox official OUI (VMs and LXC, 7.3+)
-    "00:50:56": "vm",    # VMware
-    "00:0c:29": "vm",    # VMware Workstation / Fusion
-    "08:00:27": "vm",    # VirtualBox
-    "00:15:5d": "vm",    # Hyper-V
-    # Shelly
-    "34:94:54": "iot",
-    "84:f3:eb": "iot",
-    "ec:fa:bc": "iot",
-    "30:c6:f7": "iot",
-    # Espressif (ESP8266 / ESP32 — used by Sonoff, many DIY IoT)
-    "a0:20:a6": "iot",
-    "24:62:ab": "iot",
-    "30:ae:a4": "iot",
-    "cc:50:e3": "iot",
-    "ac:67:b2": "iot",
-    "b4:e6:2d": "iot",
-    "3c:71:bf": "iot",
-    "8c:aa:b5": "iot",
-    # Sonoff / ITEAD
-    "dc:4f:22": "iot",
-    "e8:db:84": "iot",
-    # Tapo / TP-Link smart home
-    "b0:a7:b9": "iot",
-    "50:c7:bf": "iot",
-    "1c:3b:f3": "iot",
-    "10:27:f5": "iot",
-    # Philips Hue
-    "00:17:88": "iot",
-    "ec:b5:fa": "iot",
-    # IKEA Tradfri
-    "34:13:e8": "iot",
-    "00:21:2e": "iot",
-    # Tuya / Smart Life (widely used chip in many brands)
-    "d8:f1:5b": "iot",
-    "68:57:2d": "iot",
-}
-
-
 def suggest_type_from_mac(mac: str | None) -> str | None:
     """Return a suggested node type from MAC OUI, or None if unknown."""
     if not mac:
         return None
     prefix = mac.lower()[:8]
-    return _MAC_OUI_TYPES.get(prefix)
+    return _load_oui().get(prefix)
 
 
 _PORT_TYPE_HINTS: dict[int, str] = {
