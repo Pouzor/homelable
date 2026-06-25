@@ -98,7 +98,7 @@ describe('Sidebar', () => {
   it('shows all view nav items', () => {
     render(<Sidebar {...defaultProps} />)
     expect(screen.getByText('Canvas')).toBeInTheDocument()
-    expect(screen.getByText('Pending Devices')).toBeInTheDocument()
+    expect(screen.getByText('Device Inventory')).toBeInTheDocument()
     expect(screen.getByText('Hidden Devices')).toBeInTheDocument()
     expect(screen.getByText('Scan History')).toBeInTheDocument()
   })
@@ -233,9 +233,9 @@ describe('Sidebar', () => {
 
   // ── Pending / Hidden open modal ────────────────────────────────────────────
 
-  it('calls onOpenPending with pending status when Pending Devices is clicked', () => {
+  it('calls onOpenPending with pending status when Device Inventory is clicked', () => {
     render(<Sidebar {...defaultProps} />)
-    fireEvent.click(screen.getByText('Pending Devices'))
+    fireEvent.click(screen.getByText('Device Inventory'))
     expect(defaultProps.onOpenPending).toHaveBeenCalledWith(undefined, 'pending')
   })
 
