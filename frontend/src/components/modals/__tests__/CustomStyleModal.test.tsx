@@ -37,6 +37,16 @@ describe('CustomStyleModal', () => {
     expect(screen.getByText(/edge type from the list/i)).toBeDefined()
   })
 
+  it('groups node types under category headers (incl. Zigbee and Z-Wave)', () => {
+    render(<CustomStyleModal open onClose={vi.fn()} />)
+    expect(screen.getByText('Hardware')).toBeDefined()
+    expect(screen.getByText('Zigbee')).toBeDefined()
+    expect(screen.getByText('Z-Wave')).toBeDefined()
+    // A Z-Wave node type is selectable from its category.
+    fireEvent.click(screen.getByRole('button', { name: /Z-Wave Controller/ }))
+    expect(screen.getByText(/Apply to existing Z-Wave Controller/)).toBeDefined()
+  })
+
   it('selecting a node type opens the node editor', () => {
     render(<CustomStyleModal open onClose={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Router' }))
