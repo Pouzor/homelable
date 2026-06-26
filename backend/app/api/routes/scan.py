@@ -16,8 +16,28 @@ from app.schemas.nodes import NodeCreate
 from app.schemas.scan import PendingDeviceResponse, ScanRunResponse
 from app.services.scanner import DeepScanOptions, _valid_port_range, request_cancel, run_scan
 from app.services.zigbee_service import build_zigbee_properties
+from app.services.zwave_service import build_zwave_properties
 
 _ZIGBEE_TYPES = {"zigbee_coordinator", "zigbee_router", "zigbee_enddevice"}
+_ZWAVE_TYPES = {"zwave_coordinator", "zwave_router", "zwave_enddevice"}
+
+
+def _is_wireless(node_type: str | None) -> bool:
+    """Zigbee + Z-Wave mesh devices share online status / no ICMP check."""
+    return node_type in _ZIGBEE_TYPES or node_type in _ZWAVE_TYPES
+
+
+def _wireless_properties(
+    node_type: str | None,
+    ieee: str | None,
+    vendor: str | None,
+    model: str | None,
+    lqi: int | None,
+) -> list[dict[str, Any]]:
+    """Build the right property rows for a mesh device (Z-Wave has no LQI)."""
+    if node_type in _ZWAVE_TYPES:
+        return build_zwave_properties(ieee, vendor, model)
+    return build_zigbee_properties(ieee, vendor, model, lqi)
 
 
 def build_mac_property(mac: str | None) -> list[dict[str, Any]]:
@@ -50,6 +70,10 @@ def merge_mac_property(
 
 class BulkActionRequest(BaseModel):
     device_ids: list[str]
+    # Target design for approved nodes. Falls back to the first design when
+    # omitted (keeps older clients working), but the UI should send the active
+    # design so approved devices land on the canvas the user is looking at.
+    design_id: str | None = None
 
 
 def _check_port_ranges(v: list[str]) -> list[str]:
@@ -248,9 +272,11 @@ async def bulk_approve_devices(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ) -> dict[str, Any]:
-    # Determine target design (use first design as fallback)
-    first_design = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
-    default_design_id = first_design.id if first_design else None
+    # Target the design the user is on; fall back to the first design.
+    default_design_id = payload.design_id
+    if default_design_id is None:
+        first_design = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
+        default_design_id = first_design.id if first_design else None
 
     result = await db.execute(
         select(PendingDevice).where(
@@ -263,22 +289,22 @@ async def bulk_approve_devices(
     for device in devices:
         device.status = "approved"
         node_type = device.suggested_type or "generic"
-        is_zigbee = node_type in _ZIGBEE_TYPES
+        is_wireless = _is_wireless(node_type)
         node = Node(
             label=device.hostname or device.friendly_name or device.ip or "device",
             type=node_type,
             ip=device.ip,
             mac=device.mac,
             hostname=device.hostname,
-            status="online" if is_zigbee else "unknown",
+            status="online" if is_wireless else "unknown",
             services=device.services or [],
             ieee_address=device.ieee_address,
-            properties=build_zigbee_properties(
-                device.ieee_address, device.vendor, device.model, device.lqi
-            ) if is_zigbee else build_mac_property(device.mac),
+            properties=_wireless_properties(
+                node_type, device.ieee_address, device.vendor, device.model, device.lqi
+            ) if is_wireless else build_mac_property(device.mac),
             # Default to ping so the status checker actually polls the new node.
             # Without this the scheduler skips it (check_method NULL → no check).
-            check_method="none" if is_zigbee else ("ping" if device.ip else None),
+            check_method="none" if is_wireless else ("ping" if device.ip else None),
             design_id=default_design_id,
         )
         db.add(node)
@@ -375,7 +401,7 @@ async def approve_device(
     if device.status != "pending":
         raise HTTPException(status_code=409, detail="Device already processed")
     device.status = "approved"
-    _is_zigbee = node_data.type in _ZIGBEE_TYPES
+    wireless = _is_wireless(node_data.type)
     # Prefer the MAC discovered during the scan (stored on the pending device);
     # fall back to whatever the approve payload carried.
     _mac = device.mac or node_data.mac
@@ -385,14 +411,14 @@ async def approve_device(
         ip=node_data.ip,
         mac=_mac,
         hostname=node_data.hostname,
-        status="online" if _is_zigbee else node_data.status,
+        status="online" if wireless else node_data.status,
         services=node_data.services or [],
         ieee_address=device.ieee_address,
-        properties=build_zigbee_properties(
-            device.ieee_address, device.vendor, device.model, device.lqi
-        ) if _is_zigbee else merge_mac_property(node_data.properties, _mac),
-        check_method="none" if _is_zigbee else (node_data.check_method or ("ping" if node_data.ip else None)),
-        check_target=None if _is_zigbee else node_data.check_target,
+        properties=_wireless_properties(
+            node_data.type, device.ieee_address, device.vendor, device.model, device.lqi
+        ) if wireless else merge_mac_property(node_data.properties, _mac),
+        check_method="none" if wireless else (node_data.check_method or ("ping" if node_data.ip else None)),
+        check_target=None if wireless else node_data.check_target,
         design_id=node_design_id,
     )
     db.add(node)

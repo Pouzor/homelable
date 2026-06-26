@@ -6,6 +6,7 @@ import {
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { scanApi } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { useDesignStore } from '@/stores/designStore'
 import { toast } from 'sonner'
 import { PendingDeviceModal, type PendingDevice } from '@/components/modals/PendingDeviceModal'
 import type { NodeType, ServiceInfo } from '@/types'
@@ -127,6 +128,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   // Optionally restrict to devices that have at least one detected service.
   const [withServicesOnly, setWithServicesOnly] = useState(false)
   const { addNode, scanEventTs } = useCanvasStore()
+  const activeDesignId = useDesignStore((s) => s.activeDesignId)
   const highlightRef = useRef<HTMLButtonElement>(null)
 
   const load = useCallback(async () => {
@@ -283,6 +285,8 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
         status: wireless ? 'online' : 'unknown',
         services: (device.services ?? []) as ServiceInfo[],
         properties,
+        // Approve onto the design the user is viewing, not the first design.
+        design_id: activeDesignId ?? undefined,
       }
       const res = await scanApi.approve(device.id, nodeData)
       const nodeId = res.data.node_id
@@ -327,7 +331,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     const ids = [...selectedIds]
     if (ids.length === 0) return
     try {
-      const res = await scanApi.bulkApprove(ids)
+      const res = await scanApi.bulkApprove(ids, activeDesignId)
       const deviceToNode: Record<string, string> = {}
       res.data.device_ids.forEach((did, i) => { deviceToNode[did] = res.data.node_ids[i] })
       const approvedDevices = devices.filter((d) => ids.includes(d.id))

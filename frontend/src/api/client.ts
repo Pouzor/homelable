@@ -81,7 +81,7 @@ export const scanApi = {
     }>(`/scan/pending/${id}/approve`, nodeData),
   hide: (id: string) => api.post(`/scan/pending/${id}/hide`),
   ignore: (id: string) => api.post(`/scan/pending/${id}/ignore`),
-  bulkApprove: (ids: string[]) =>
+  bulkApprove: (ids: string[], designId?: string | null) =>
     api.post<{
       approved: number
       node_ids: string[]
@@ -89,7 +89,7 @@ export const scanApi = {
       edges_created: number
       edges: { id: string; source: string; target: string }[]
       skipped: number
-    }>('/scan/pending/bulk-approve', { device_ids: ids }),
+    }>('/scan/pending/bulk-approve', { device_ids: ids, design_id: designId ?? undefined }),
   bulkHide: (ids: string[]) => api.post<{ hidden: number; skipped: number }>('/scan/pending/bulk-hide', { device_ids: ids }),
   restore: (id: string) => api.post<{ restored: boolean; device_id: string }>(`/scan/pending/${id}/restore`),
   bulkRestore: (ids: string[]) => api.post<{ restored: number; skipped: number }>('/scan/pending/bulk-restore', { device_ids: ids }),

@@ -213,7 +213,7 @@ describe('PendingDevicesModal', () => {
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     fireEvent.click(screen.getByTestId('pending-card-dev-b'))
     fireEvent.click(screen.getByRole('button', { name: /Approve \(2\)/ }))
-    await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-a', 'dev-b']))
+    await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-a', 'dev-b'], null))
   })
 
   it('bulk approve carries the scanned MAC onto the canvas node (#168)', async () => {
@@ -290,7 +290,7 @@ describe('PendingDevicesModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     fireEvent.keyDown(window, { key: 'Enter' })
-    await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-a']))
+    await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-a'], null))
     expect(mockBulkRestore).not.toHaveBeenCalled()
   })
 

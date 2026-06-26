@@ -1357,3 +1357,76 @@ async def test_update_scan_config_persists_deep_scan(client: AsyncClient, header
         )
     assert res.status_code == 200
     assert saved == {"http_ranges": ["9000-9100"], "probe": True}
+
+
+# --- Z-Wave approve: active design targeting + wireless props (regression) ---
+
+@pytest.mark.asyncio
+async def test_bulk_approve_targets_requested_design(client, headers, db_session):
+    """bulk-approve must place nodes on the design_id sent by the UI, not the
+    first design — otherwise approved devices land on the wrong canvas."""
+    first = await _add_design(db_session, "Default")  # first design (fallback)
+    active = await _add_design(db_session, "zwave")    # the design the user is on
+    dev = PendingDevice(
+        id=str(uuid.uuid4()),
+        ieee_address="zwave-H-2",
+        friendly_name="Living Room Plug",
+        suggested_type="zwave_router",
+        device_subtype="Router",
+        vendor="Aeotec",
+        model="ZW096",
+        status="pending",
+        discovery_source="zwave",
+    )
+    db_session.add(dev)
+    await db_session.commit()
+
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": [dev.id], "design_id": active},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    assert res.json()["approved"] == 1
+
+    node = (
+        await db_session.execute(select(Node).where(Node.ieee_address == "zwave-H-2"))
+    ).scalar_one()
+    assert node.design_id == active
+    assert node.design_id != first
+    # Z-Wave device → online + Z-Wave property rows, no ICMP check.
+    assert node.status == "online"
+    assert node.check_method == "none"
+    assert {p["key"] for p in node.properties} == {"Z-Wave ID", "Vendor", "Model"}
+
+
+@pytest.mark.asyncio
+async def test_single_approve_zwave_sets_wireless_fields(client, headers, db_session):
+    active = await _add_design(db_session, "zwave")
+    dev = PendingDevice(
+        id=str(uuid.uuid4()),
+        ieee_address="zwave-H-9",
+        friendly_name="Door Sensor",
+        suggested_type="zwave_enddevice",
+        vendor="Aeotec",
+        model="ZW120",
+        status="pending",
+        discovery_source="zwave",
+    )
+    db_session.add(dev)
+    await db_session.commit()
+
+    res = await client.post(
+        f"/api/v1/scan/pending/{dev.id}/approve",
+        json={"label": "Door Sensor", "type": "zwave_enddevice", "design_id": active},
+        headers=headers,
+    )
+    assert res.status_code == 200
+
+    node = (
+        await db_session.execute(select(Node).where(Node.ieee_address == "zwave-H-9"))
+    ).scalar_one()
+    assert node.design_id == active
+    assert node.status == "online"
+    assert node.check_method == "none"
+    assert any(p["key"] == "Z-Wave ID" for p in node.properties)
