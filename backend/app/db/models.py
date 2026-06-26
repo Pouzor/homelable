@@ -117,6 +117,10 @@ class PendingDevice(Base):
     lqi: Mapped[int | None] = mapped_column(Integer, nullable=True)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
+    # Transient (not persisted): populated per-request by the scan routes to report
+    # how many canvases this device already appears on. Not a mapped column.
+    canvas_count: int = 0
+
 
 class PendingDeviceLink(Base):
     """Link between two Zigbee endpoints discovered during import.

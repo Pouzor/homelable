@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Globe, Router, Server, Layers, Box, Container, HardDrive, Cpu, Wifi, Circle, Network,
-  Search, RefreshCw, X, CheckCircle2, EyeOff, Trash2, Loader2,
+  Search, RefreshCw, X, CheckCircle2, EyeOff, Trash2, Loader2, ServerCog,
 } from 'lucide-react'
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { scanApi } from '@/api/client'
@@ -119,6 +119,10 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatus)
+  // Inventory shows on-canvas devices by default; toggle off to hide them.
+  const [showOnCanvas, setShowOnCanvas] = useState(true)
+  // Optionally restrict to devices that have at least one detected service.
+  const [withServicesOnly, setWithServicesOnly] = useState(false)
   const { addNode, scanEventTs } = useCanvasStore()
   const highlightRef = useRef<HTMLButtonElement>(null)
 
@@ -159,6 +163,9 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     return devices.filter((d) => {
       if (sourceFilter !== 'all' && inferSource(d) !== sourceFilter) return false
       if (typeFilter !== 'all' && d.suggested_type !== typeFilter) return false
+      // Inventory-only: optionally hide devices already placed on a canvas.
+      if (statusFilter === 'pending' && !showOnCanvas && (d.canvas_count ?? 0) > 0) return false
+      if (withServicesOnly && (d.services?.length ?? 0) === 0) return false
       if (q) {
         const hay = [
           d.friendly_name, d.hostname, d.ip, d.mac, d.ieee_address, d.vendor, d.model,
@@ -168,7 +175,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       }
       return true
     })
-  }, [devices, search, sourceFilter, typeFilter])
+  }, [devices, search, sourceFilter, typeFilter, statusFilter, showOnCanvas, withServicesOnly])
 
   useEffect(() => {
     if (!highlightId || loading || !open) return
@@ -241,9 +248,11 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
         if (failed > 0) toast.error(`Removed ${removedIds.size}, ${failed} failed`)
         else toast.success(`Removed ${removedIds.size} device${removedIds.size !== 1 ? 's' : ''}`)
       } else {
+        // Clears only pending rows server-side; approved/on-canvas devices stay,
+        // so reload rather than blanking the whole inventory.
         await scanApi.clearPending()
-        setDevices([])
         setSelectedIds(new Set())
+        await load()
         toast.success('Pending devices cleared')
       }
     } catch {
@@ -398,7 +407,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
           <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
             <div className="flex items-center justify-between gap-3">
               <DialogTitle className="text-base font-semibold flex items-center gap-2">
-                {statusFilter === 'pending' ? 'Pending Devices' : 'Hidden Devices'}
+                {statusFilter === 'pending' ? 'Device Inventory' : 'Hidden Devices'}
                 <span className="text-muted-foreground font-normal text-xs">
                   ({filtered.length}{filtered.length !== devices.length && ` of ${devices.length}`})
                 </span>
@@ -479,7 +488,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
                 onClick={() => setStatusFilter('pending')}
                 className={`px-2.5 py-1.5 transition-colors ${statusFilter === 'pending' ? 'bg-[#00d4ff]/20 text-[#00d4ff]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
               >
-                Pending
+                Inventory
               </button>
               <button
                 onClick={() => setStatusFilter('hidden')}
@@ -488,6 +497,26 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
                 Hidden
               </button>
             </div>
+            {statusFilter === 'pending' && (
+              <button
+                onClick={() => setShowOnCanvas((v) => !v)}
+                className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${showOnCanvas ? 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground' : 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50'}`}
+                title="Show or hide devices already on a canvas"
+                aria-pressed={!showOnCanvas}
+              >
+                <Layers size={12} />
+                {showOnCanvas ? 'Hide on-canvas' : 'Show on-canvas'}
+              </button>
+            )}
+            <button
+              onClick={() => setWithServicesOnly((v) => !v)}
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${withServicesOnly ? 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
+              title="Only show devices with at least one detected service"
+              aria-pressed={withServicesOnly}
+            >
+              <ServerCog size={12} />
+              With services
+            </button>
             <button
               onClick={() => selectMode ? exitSelectMode() : enterSelectMode()}
               className={`text-xs px-2.5 py-1.5 rounded border transition-colors ${selectMode ? 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
@@ -624,11 +653,23 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
       {selectMode && selected && (
         <CheckCircle2
           size={18}
-          className="absolute top-2 right-2 text-[#00d4ff] fill-[#0d1117]"
+          className="absolute top-2 right-2 text-[#00d4ff] fill-[#0d1117] z-10"
         />
       )}
       {!selectMode && device.status === 'hidden' && (
         <EyeOff size={14} className="absolute top-2 right-2 text-muted-foreground" />
+      )}
+      {/* Canvas-presence corner: how many canvases this device already sits on.
+          Hidden while a select-mode checkmark occupies the same corner. */}
+      {device.status !== 'hidden' && (device.canvas_count ?? 0) > 0 && !(selectMode && selected) && (
+        <div
+          className="absolute top-0 right-0 flex items-center gap-1 rounded-bl-lg rounded-tr-lg bg-[#00d4ff] text-[#0d1117] text-xs font-bold px-2 py-1 shadow-md"
+          title={`On ${device.canvas_count} canvas${device.canvas_count !== 1 ? 'es' : ''}`}
+          aria-label={`On ${device.canvas_count} canvas${device.canvas_count !== 1 ? 'es' : ''}`}
+        >
+          <Layers size={12} strokeWidth={2.5} />
+          {device.canvas_count}
+        </div>
       )}
 
       {/* Header */}

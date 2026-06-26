@@ -27,6 +27,8 @@ export interface PendingDevice {
   vendor?: string | null
   lqi?: number | null
   discovered_at: string
+  // How many canvases (designs) this device already appears on. Computed server-side.
+  canvas_count?: number
 }
 
 interface PendingDeviceModalProps {

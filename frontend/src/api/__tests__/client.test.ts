@@ -170,7 +170,7 @@ describe('api/client', () => {
 
   it('scanApi endpoints route correctly', () => {
     mod.scanApi.trigger()
-    expect(api.post).toHaveBeenCalledWith('/scan/trigger')
+    expect(api.post).toHaveBeenCalledWith('/scan/trigger', {})
     mod.scanApi.pending()
     expect(api.get).toHaveBeenCalledWith('/scan/pending')
     mod.scanApi.hidden()

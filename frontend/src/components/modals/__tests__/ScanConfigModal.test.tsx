@@ -82,7 +82,12 @@ describe('ScanConfigModal', () => {
     await screen.findByDisplayValue('192.168.1.0/24')
     fireEvent.click(screen.getByRole('button', { name: 'Scan Now' }))
     await waitFor(() => {
-      expect(scanApi.saveConfig).toHaveBeenCalledWith({ ranges: ['192.168.1.0/24'] })
+      expect(scanApi.saveConfig).toHaveBeenCalledWith({
+        ranges: ['192.168.1.0/24'],
+        http_ranges: [],
+        http_probe_enabled: false,
+        verify_tls: false,
+      })
       expect(scanApi.trigger).toHaveBeenCalledOnce()
       expect(onScanNow).toHaveBeenCalledOnce()
       expect(onClose).toHaveBeenCalledOnce()
@@ -106,6 +111,61 @@ describe('ScanConfigModal', () => {
       expect(scanApi.saveConfig).toHaveBeenCalledWith(
         expect.objectContaining({ ranges: ['10.0.0.0/8'] })
       )
+    })
+  })
+
+  // --- Deep scan ---
+
+  it('reveals deep-scan fields when the section is toggled', async () => {
+    render(<ScanConfigModal open onClose={vi.fn()} onScanNow={vi.fn()} />)
+    await screen.findByDisplayValue('192.168.1.0/24')
+    expect(screen.queryByText('Enable HTTP probe')).toBeNull()
+    fireEvent.click(screen.getByText('Deep Scan'))
+    expect(screen.getByText('Enable HTTP probe')).toBeDefined()
+  })
+
+  it('passes deep-scan overrides to trigger() as a per-scan override', async () => {
+    render(<ScanConfigModal open onClose={vi.fn()} onScanNow={vi.fn()} />)
+    await screen.findByDisplayValue('192.168.1.0/24')
+    fireEvent.click(screen.getByText('Deep Scan'))
+    fireEvent.change(screen.getByPlaceholderText('8000-8100, 9000-9100'), {
+      target: { value: '8000-8100, 9000' },
+    })
+    fireEvent.click(screen.getByLabelText('Enable HTTP probe'))
+    fireEvent.click(screen.getByRole('button', { name: 'Scan Now' }))
+    await waitFor(() => {
+      expect(scanApi.trigger).toHaveBeenCalledWith({
+        http_ranges: ['8000-8100', '9000'],
+        http_probe_enabled: true,
+        verify_tls: false,
+      })
+    })
+  })
+
+  it('auto-opens deep-scan section when a default probe is enabled', async () => {
+    vi.mocked(scanApi.getConfig).mockResolvedValue({
+      data: { ranges: ['192.168.1.0/24'], http_ranges: ['7000-7100'], http_probe_enabled: true, verify_tls: false },
+    } as never)
+    render(<ScanConfigModal open onClose={vi.fn()} onScanNow={vi.fn()} />)
+    await screen.findByDisplayValue('192.168.1.0/24')
+    expect(screen.getByText('Enable HTTP probe')).toBeDefined()
+    expect(screen.getByDisplayValue('7000-7100')).toBeDefined()
+  })
+
+  it('saving keeps deep-scan defaults untouched (modal only overrides per-scan)', async () => {
+    vi.mocked(scanApi.getConfig).mockResolvedValue({
+      data: { ranges: ['192.168.1.0/24'], http_ranges: ['7000-7100'], http_probe_enabled: true, verify_tls: true },
+    } as never)
+    render(<ScanConfigModal open onClose={vi.fn()} onScanNow={vi.fn()} />)
+    await screen.findByDisplayValue('192.168.1.0/24')
+    fireEvent.click(screen.getByRole('button', { name: 'Scan Now' }))
+    await waitFor(() => {
+      expect(scanApi.saveConfig).toHaveBeenCalledWith({
+        ranges: ['192.168.1.0/24'],
+        http_ranges: ['7000-7100'],
+        http_probe_enabled: true,
+        verify_tls: true,
+      })
     })
   })
 })

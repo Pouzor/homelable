@@ -58,8 +58,16 @@ export const liveviewApi = {
   getConfig: () => api.get<{ enabled: boolean; key: string | null }>('/liveview/config'),
 }
 
+export interface DeepScanConfig {
+  http_ranges: string[]
+  http_probe_enabled: boolean
+  verify_tls: boolean
+}
+
+export type ScanConfigData = { ranges: string[] } & DeepScanConfig
+
 export const scanApi = {
-  trigger: () => api.post('/scan/trigger'),
+  trigger: (deepScan?: Partial<DeepScanConfig>) => api.post('/scan/trigger', deepScan ?? {}),
   pending: () => api.get('/scan/pending'),
   hidden: () => api.get('/scan/hidden'),
   runs: () => api.get('/scan/runs'),
@@ -86,8 +94,8 @@ export const scanApi = {
   restore: (id: string) => api.post<{ restored: boolean; device_id: string }>(`/scan/pending/${id}/restore`),
   bulkRestore: (ids: string[]) => api.post<{ restored: number; skipped: number }>('/scan/pending/bulk-restore', { device_ids: ids }),
   stop: (runId: string) => api.post(`/scan/${runId}/stop`),
-  getConfig: () => api.get<{ ranges: string[] }>('/scan/config'),
-  saveConfig: (data: { ranges: string[] }) => api.post('/scan/config', data),
+  getConfig: () => api.get<ScanConfigData>('/scan/config'),
+  saveConfig: (data: ScanConfigData) => api.post('/scan/config', data),
 }
 
 export interface AppSettings {

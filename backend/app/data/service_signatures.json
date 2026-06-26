@@ -142,5 +142,69 @@
   {"port": 1194,  "protocol": "udp", "banner_regex": null,                              "service_name": "OpenVPN",                 "icon": "shield",      "category": "vpn",           "suggested_node_type": "router"},
   {"port": 500,   "protocol": "udp", "banner_regex": null,                              "service_name": "IPsec IKE",               "icon": "shield",      "category": "vpn",           "suggested_node_type": "router"},
   {"port": 53,    "protocol": "udp", "banner_regex": null,                              "service_name": "DNS",                     "icon": "search",      "category": "network",       "suggested_node_type": "router"},
-  {"port": 67,    "protocol": "udp", "banner_regex": null,                              "service_name": "DHCP",                    "icon": "wifi",        "category": "network",       "suggested_node_type": "router"}
+  {"port": 67,    "protocol": "udp", "banner_regex": null,                              "service_name": "DHCP",                    "icon": "wifi",        "category": "network",       "suggested_node_type": "router"},
+
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Jellyfin",                 "service_name": "Jellyfin",            "icon": "film",        "category": "media",      "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Plex",                     "service_name": "Plex",                "icon": "play-circle", "category": "media",      "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Emby",                     "service_name": "Emby",                "icon": "film",        "category": "media",      "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Overseerr",                "service_name": "Overseerr",           "icon": "tv",          "category": "media",      "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Jellyseerr",               "service_name": "Jellyseerr",          "icon": "tv",          "category": "media",      "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Tautulli",                 "service_name": "Tautulli",            "icon": "bar-chart",   "category": "media",      "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Navidrome",                "service_name": "Navidrome",           "icon": "music",       "category": "media",      "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "[Aa]udiobookshelf",        "service_name": "Audiobookshelf",      "icon": "book-open",   "category": "media",      "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Immich",                   "service_name": "Immich",              "icon": "camera",      "category": "media",      "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "PhotoPrism",               "service_name": "PhotoPrism",          "icon": "camera",      "category": "media",      "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Calibre[- ]Web",           "service_name": "Calibre-Web",         "icon": "book",        "category": "media",      "suggested_node_type": "server"},
+
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Sonarr",                   "service_name": "Sonarr",              "icon": "tv",          "category": "download",   "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Radarr",                   "service_name": "Radarr",              "icon": "film",        "category": "download",   "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Lidarr",                   "service_name": "Lidarr",              "icon": "music",       "category": "download",   "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Readarr",                  "service_name": "Readarr",             "icon": "book",        "category": "download",   "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Prowlarr",                 "service_name": "Prowlarr",            "icon": "search",      "category": "download",   "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Bazarr",                   "service_name": "Bazarr",              "icon": "subtitles",   "category": "download",   "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "qBittorrent",              "service_name": "qBittorrent",         "icon": "download",    "category": "download",   "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "SABnzbd",                  "service_name": "SABnzbd",             "icon": "download",    "category": "download",   "suggested_node_type": "server"},
+
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Homarr",                   "service_name": "Homarr",              "icon": "home",        "category": "web",        "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Heimdall",                 "service_name": "Heimdall",            "icon": "home",        "category": "web",        "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Dashy",                    "service_name": "Dashy",               "icon": "home",        "category": "web",        "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Organizr",                 "service_name": "Organizr",            "icon": "home",        "category": "web",        "suggested_node_type": "server"},
+
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Portainer",                "service_name": "Portainer",           "icon": "box",         "category": "containers", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Dockge",                   "service_name": "Dockge",              "icon": "box",         "category": "containers", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Yacht",                    "service_name": "Yacht",               "icon": "box",         "category": "containers", "suggested_node_type": "server"},
+
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Home Assistant",           "service_name": "Home Assistant",      "icon": "home",        "category": "automation", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Node-RED",                 "service_name": "Node-RED",            "icon": "share-2",     "category": "automation", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Zigbee2MQTT",              "service_name": "Zigbee2MQTT",         "icon": "radio",       "category": "automation", "suggested_node_type": "iot"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "ESPHome",                  "service_name": "ESPHome",             "icon": "cpu",         "category": "automation", "suggested_node_type": "iot"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "openHAB",                  "service_name": "openHAB",             "icon": "home",        "category": "automation", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Domoticz",                 "service_name": "Domoticz",            "icon": "home",        "category": "automation", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Homebridge",               "service_name": "Homebridge",          "icon": "home",        "category": "automation", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Jeedom",                   "service_name": "Jeedom",              "icon": "home",        "category": "automation", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Scrypted",                 "service_name": "Scrypted",            "icon": "video",       "category": "automation", "suggested_node_type": "server"},
+
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Grafana",                  "service_name": "Grafana",             "icon": "bar-chart-2", "category": "monitoring", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Uptime Kuma",              "service_name": "Uptime Kuma",         "icon": "activity",    "category": "monitoring", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Netdata",                  "service_name": "Netdata",             "icon": "activity",    "category": "monitoring", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Glances",                  "service_name": "Glances",             "icon": "activity",    "category": "monitoring", "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Dozzle",                   "service_name": "Dozzle",              "icon": "terminal",    "category": "monitoring", "suggested_node_type": "server"},
+
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "AdGuard Home",             "service_name": "AdGuard Home",        "icon": "shield",      "category": "network",    "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Pi-hole",                  "service_name": "Pi-hole",             "icon": "shield",      "category": "network",    "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Nginx Proxy Manager",      "service_name": "Nginx Proxy Manager", "icon": "share-2",     "category": "network",    "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Traefik",                  "service_name": "Traefik",             "icon": "share-2",     "category": "network",    "suggested_node_type": "server"},
+
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Vaultwarden|Bitwarden",    "service_name": "Vaultwarden",         "icon": "lock",        "category": "auth",       "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Authelia",                 "service_name": "Authelia",            "icon": "lock",        "category": "auth",       "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "[Aa]uthentik",             "service_name": "Authentik",           "icon": "lock",        "category": "auth",       "suggested_node_type": "server"},
+
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Nextcloud",                "service_name": "Nextcloud",           "icon": "hard-drive",  "category": "storage",    "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Paperless",                "service_name": "Paperless-ngx",       "icon": "book",        "category": "storage",    "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Syncthing",                "service_name": "Syncthing",           "icon": "refresh-cw",  "category": "storage",    "suggested_node_type": "server"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Gitea",                    "service_name": "Gitea",               "icon": "git-branch",  "category": "dev",        "suggested_node_type": "server"},
+
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "openmediavault",           "service_name": "OpenMediaVault",      "icon": "hard-drive",  "category": "nas",        "suggested_node_type": "nas"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Unraid",                   "service_name": "Unraid",              "icon": "hard-drive",  "category": "nas",        "suggested_node_type": "nas"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Cockpit",                  "service_name": "Cockpit",             "icon": "monitor",     "category": "nas",        "suggested_node_type": "server"}
 ]

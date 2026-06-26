@@ -7,14 +7,16 @@ import re
 import socket
 import subprocess
 import threading
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Node, PendingDevice, ScanRun
+from app.db.models import PendingDevice, ScanRun
 from app.services.fingerprint import fingerprint_ports, suggest_node_type
+from app.services.http_probe import probe_open_ports
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,37 @@ _EXTRA_PORTS = (
     "9091,9092,9093,9100,9117,9200,9300,9411,9443,9696,10051,"
     "16686,34567,37777,51413,64738"
 )
+
+# nmap -p accepts "N" or "N-M"; user ranges are validated against this.
+_PORT_RANGE_RE = re.compile(r"^\d{1,5}(-\d{1,5})?$")
+
+
+@dataclass
+class DeepScanOptions:
+    """Per-scan deep-scan settings (None/empty → standard scan, today's behaviour)."""
+
+    http_ranges: list[str] = field(default_factory=list)
+    http_probe_enabled: bool = False
+    verify_tls: bool = False
+
+
+def _valid_port_range(spec: str) -> bool:
+    if not _PORT_RANGE_RE.match(spec):
+        return False
+    parts = [int(p) for p in spec.split("-")]
+    if any(p < 1 or p > 65535 for p in parts):
+        return False
+    return len(parts) == 1 or parts[0] <= parts[1]
+
+
+def _build_port_spec(http_ranges: list[str] | None) -> str:
+    """Combine the default port list with validated user ranges for nmap -p."""
+    if not http_ranges:
+        return _EXTRA_PORTS
+    extra = [r.strip() for r in http_ranges if _valid_port_range(r.strip())]
+    if not extra:
+        return _EXTRA_PORTS
+    return _EXTRA_PORTS + "," + ",".join(extra)
 
 _MDNS_SERVICE_TYPES = [
     "_http._tcp.local.",
@@ -195,7 +228,7 @@ async def _ping_sweep(target: str) -> dict[str, dict[str, Any]]:
     return alive
 
 
-def _nmap_scan_single(host_dict: dict[str, Any]) -> dict[str, Any]:
+def _nmap_scan_single(host_dict: dict[str, Any], port_spec: str = _EXTRA_PORTS) -> dict[str, Any]:
     """
     Phase 2 — single-IP port scan with service detection.
     Runs in a thread (blocking). Returns the host dict enriched with open_ports.
@@ -210,11 +243,11 @@ def _nmap_scan_single(host_dict: dict[str, Any]) -> dict[str, Any]:
     is_root = os.geteuid() == 0
     if is_root:
         # SYN scan + version detection (fastest, most accurate)
-        scan_args = f"-sS -sV --open -T4 -Pn --host-timeout 60s -p {_EXTRA_PORTS}"
+        scan_args = f"-sS -sV --open -T4 -Pn --host-timeout 60s -p {port_spec}"
     else:
         # TCP connect scan (-sT) — no raw sockets needed, works without root.
         # nmap auto-selects -sT without root but being explicit avoids edge cases.
-        scan_args = f"-sT -sV --open -T4 -Pn --host-timeout 60s -p {_EXTRA_PORTS}"
+        scan_args = f"-sT -sV --open -T4 -Pn --host-timeout 60s -p {port_spec}"
 
     logger.debug("[Phase 2] %s args: %s", ip, scan_args)
     nm = nmap.PortScanner()
@@ -252,7 +285,9 @@ def _nmap_scan_single(host_dict: dict[str, Any]) -> dict[str, Any]:
     return host_dict
 
 
-async def _nmap_port_scan(alive: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+async def _nmap_port_scan(
+    alive: dict[str, dict[str, Any]], port_spec: str = _EXTRA_PORTS
+) -> list[dict[str, Any]]:
     """
     Phase 2: Per-IP service detection with bounded concurrency.
     Each host is scanned independently in a thread — no inter-host timeout interference.
@@ -266,7 +301,7 @@ async def _nmap_port_scan(alive: dict[str, dict[str, Any]]) -> list[dict[str, An
 
     async def _scan_with_sem(host_dict: dict[str, Any]) -> dict[str, Any]:
         async with semaphore:
-            return await asyncio.to_thread(_nmap_scan_single, host_dict)
+            return await asyncio.to_thread(_nmap_scan_single, host_dict, port_spec)
 
     raw = await asyncio.gather(*[_scan_with_sem(h) for h in alive.values()], return_exceptions=True)
     results = []
@@ -279,7 +314,7 @@ async def _nmap_port_scan(alive: dict[str, dict[str, Any]]) -> list[dict[str, An
     return results
 
 
-async def _nmap_scan(target: str) -> list[dict[str, Any]]:
+async def _nmap_scan(target: str, port_spec: str = _EXTRA_PORTS) -> list[dict[str, Any]]:
     """
     Two-phase scan for a CIDR range.
     Phase 1: Concurrent ping sweep to find alive hosts (fast, no false positives).
@@ -296,7 +331,7 @@ async def _nmap_scan(target: str) -> list[dict[str, Any]]:
     except Exception as exc:
         logger.error("Phase 1 ping sweep failed: %s", exc)
         raise RuntimeError(str(exc)) from exc
-    return await _nmap_port_scan(alive)
+    return await _nmap_port_scan(alive, port_spec)
 
 
 async def _mdns_discover(timeout: float = 4.0) -> list[dict[str, Any]]:
@@ -375,9 +410,49 @@ def _mock_scan(target: str) -> list[dict[str, Any]]:
     ]
 
 
-async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
+async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
+    """Collapse duplicate non-hidden inventory rows that share an IP into one.
+
+    Keeps an ``approved`` row when present (it carries canvas-link semantics),
+    otherwise the oldest row, and deletes the rest. Returns the number deleted.
+    """
+    rows = (await db.execute(
+        select(PendingDevice)
+        .where(PendingDevice.status != "hidden", PendingDevice.ip.isnot(None))
+        .order_by(PendingDevice.discovered_at)
+    )).scalars().all()
+
+    by_ip: dict[str, list[PendingDevice]] = {}
+    for row in rows:
+        if row.ip is None:  # guarded by the query, but keeps the type checker happy
+            continue
+        by_ip.setdefault(row.ip, []).append(row)
+
+    deleted = 0
+    for group in by_ip.values():
+        if len(group) < 2:
+            continue
+        keep = next((r for r in group if r.status == "approved"), group[0])
+        for dup in group:
+            if dup is not keep:
+                await db.delete(dup)
+                deleted += 1
+    if deleted:
+        await db.commit()
+    return deleted
+
+
+async def run_scan(
+    ranges: list[str],
+    db: AsyncSession,
+    run_id: str,
+    deep_scan: DeepScanOptions | None = None,
+) -> None:
     """Execute scan for given CIDR ranges and populate pending_devices."""
     from app.api.routes.status import broadcast_scan_update
+
+    deep_scan = deep_scan or DeepScanOptions()
+    port_spec = _build_port_spec(deep_scan.http_ranges)
 
     devices_found = 0
     mdns_task: asyncio.Task[list[dict[str, Any]]] | None = None
@@ -389,25 +464,18 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
             except ValueError:
                 raise ValueError(f"Invalid CIDR range: {r!r}") from None
 
-        # Pre-fetch canvas IPs and hidden IPs once — avoids N+1 queries per host
-        canvas_ips_result = await db.execute(select(Node.ip).where(Node.ip.isnot(None)))
-        canvas_ips: set[str] = {row[0] for row in canvas_ips_result.fetchall()}
-
+        # Pre-fetch hidden IPs once — avoids N+1 queries per host.
+        # Devices already on a canvas are intentionally NOT suppressed: they stay
+        # in the inventory and are badged "In N canvas" via per-request correlation.
         hidden_ips_result = await db.execute(
             select(PendingDevice.ip).where(PendingDevice.status == "hidden")
         )
         hidden_ips: set[str] = {row[0] for row in hidden_ips_result.fetchall()}
 
-        # Clean up stale pending devices whose IPs are already in the canvas
-        if canvas_ips:
-            from sqlalchemy import delete as sa_delete
-            await db.execute(
-                sa_delete(PendingDevice).where(
-                    PendingDevice.status == "pending",
-                    PendingDevice.ip.in_(canvas_ips),
-                )
-            )
-            await db.commit()
+        # Collapse any pre-existing duplicate inventory rows (same IP, non-hidden)
+        # left over from older scans, so the device shows up exactly once even if
+        # it isn't re-discovered this run (e.g. now offline).
+        await _dedupe_pending_by_ip(db)
 
         # Start mDNS discovery in the background while nmap scans run
         mdns_task = asyncio.create_task(_mdns_discover())
@@ -419,30 +487,48 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
             nonlocal devices_found
             ip = host["ip"]
 
-            # Skip canvas nodes and user-hidden devices (sets pre-fetched before loop)
-            if ip in canvas_ips:
-                logger.debug("Skipping %s — already in canvas", ip)
-                return
+            # Skip only user-hidden devices. On-canvas devices are kept so they
+            # surface in the inventory with a canvas-presence badge.
             if ip in hidden_ips:
                 logger.debug("Skipping %s — hidden by user", ip)
                 return
 
-            services = fingerprint_ports(host["open_ports"])
-            suggested_type = suggest_node_type(host["open_ports"], host.get("mac"))
-
-            existing_result = await db.execute(
-                select(PendingDevice).where(
-                    PendingDevice.ip == ip,
-                    PendingDevice.status == "pending",
+            open_ports = host["open_ports"]
+            # Deep-scan HTTP probe: enrich open ports with title/header signals so
+            # fingerprint can confirm services on custom ports. No-op when disabled
+            # or when the host has no open ports (e.g. mDNS-only discovery).
+            if deep_scan.http_probe_enabled and open_ports:
+                open_ports = await probe_open_ports(
+                    ip, open_ports, verify_tls=deep_scan.verify_tls
                 )
-            )
-            existing = existing_result.scalar_one_or_none()
-            if existing:
-                existing.mac = host.get("mac") or existing.mac
-                existing.hostname = host.get("hostname") or existing.hostname
-                existing.os = host.get("os") or existing.os
-                existing.services = services
-                existing.suggested_type = suggested_type
+
+            services = fingerprint_ports(open_ports)
+            suggested_type = suggest_node_type(open_ports, host.get("mac"))
+
+            # One inventory row per device (by IP). Match across pending AND
+            # approved so a re-scan of an already-approved device refreshes its
+            # row instead of spawning a fresh "pending" duplicate. Hidden rows
+            # are already skipped above.
+            existing_rows = (await db.execute(
+                select(PendingDevice)
+                .where(PendingDevice.ip == ip, PendingDevice.status != "hidden")
+                .order_by(PendingDevice.discovered_at)
+            )).scalars().all()
+
+            if existing_rows:
+                # Prefer an approved row (it owns the canvas link semantics),
+                # otherwise the oldest. Collapse any leftover duplicates created
+                # by earlier scans.
+                keep = next((r for r in existing_rows if r.status == "approved"), existing_rows[0])
+                for dup in existing_rows:
+                    if dup is not keep:
+                        await db.delete(dup)
+                keep.mac = host.get("mac") or keep.mac
+                keep.hostname = host.get("hostname") or keep.hostname
+                keep.os = host.get("os") or keep.os
+                keep.services = services
+                keep.suggested_type = suggested_type
+                # status preserved — an approved device stays approved.
             else:
                 db.add(PendingDevice(
                     ip=ip,
@@ -463,7 +549,7 @@ async def run_scan(ranges: list[str], db: AsyncSession, run_id: str) -> None:
         for cidr in ranges:
             if _is_cancelled(run_id):
                 break
-            hosts = await _nmap_scan(cidr)
+            hosts = await _nmap_scan(cidr, port_spec)
             for host in hosts:
                 if _is_cancelled(run_id):
                     break

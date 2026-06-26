@@ -21,6 +21,9 @@ class PendingDeviceResponse(BaseModel):
     vendor: str | None = None
     lqi: int | None = None
     discovered_at: datetime
+    # Number of distinct canvases (designs) this device already appears on,
+    # correlated by ip / ieee_address against existing nodes. Computed per-request.
+    canvas_count: int = 0
 
     model_config = {"from_attributes": True}
 

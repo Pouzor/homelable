@@ -5,6 +5,7 @@ import pytest
 from app.services.fingerprint import (
     fingerprint_ports,
     match_port,
+    match_service,
     suggest_node_type,
     suggest_type_from_mac,
 )
@@ -249,3 +250,86 @@ def test_suggest_node_type_ubiquiti_mac_with_bgp_upgrades_to_router():
         mac="24:a4:3c:11:22:33",
     )
     assert result == "router"
+
+
+# ── match_service: HTTP probe + port-agnostic ──────────────────────────────────
+
+HTTP_SIGNATURES = [
+    # Generic web fallback on 8096 (port-only guess)
+    {"port": 8096, "protocol": "tcp", "banner_regex": None, "http_regex": None,
+     "service_name": "HTTP", "icon": "🌐", "category": "web", "suggested_node_type": "server"},
+    # Same port, but confirmed by HTML title → should win when probe confirms
+    {"port": 8096, "protocol": "tcp", "banner_regex": None, "http_regex": "Jellyfin",
+     "service_name": "Jellyfin", "icon": "🎬", "category": "media", "suggested_node_type": "server"},
+    # Port-agnostic: matches on HTTP content regardless of port
+    {"port": None, "protocol": "tcp", "banner_regex": None, "http_regex": "Portainer",
+     "service_name": "Portainer", "icon": "🐳", "category": "container", "suggested_node_type": "server"},
+    # Banner-based entry, no http
+    {"port": 9090, "protocol": "tcp", "banner_regex": "prometheus", "http_regex": None,
+     "service_name": "Prometheus", "icon": "🔥", "category": "monitoring", "suggested_node_type": "server"},
+]
+
+
+@pytest.fixture
+def http_signatures():
+    with patch("app.services.fingerprint._load", return_value=HTTP_SIGNATURES):
+        yield
+
+
+def test_http_regex_confirmed_beats_port_only(http_signatures):
+    # Probe ran and title matches → Jellyfin (tier 1) beats generic HTTP (tier 4)
+    sig = match_service(8096, "tcp", banner=None,
+                        http_signals={"title": "Jellyfin", "headers": {}})
+    assert sig["service_name"] == "Jellyfin"
+
+
+def test_http_regex_matches_on_header(http_signatures):
+    sig = match_service(8096, "tcp", banner=None,
+                        http_signals={"title": None, "headers": {"Server": "Jellyfin"}})
+    assert sig["service_name"] == "Jellyfin"
+
+
+def test_http_regex_miss_falls_back_to_port_only(http_signatures):
+    # Probe ran but nothing matched the http_regex → generic port-only entry wins
+    sig = match_service(8096, "tcp", banner=None,
+                        http_signals={"title": "Some Other App", "headers": {}})
+    assert sig["service_name"] == "HTTP"
+
+
+def test_probe_disabled_ignores_http_regex(http_signatures):
+    # http_signals=None (deep scan off) → http_regex entry degrades to port-only,
+    # generic entry (listed first) wins — identical to pre-probe behaviour.
+    sig = match_service(8096, "tcp", banner=None, http_signals=None)
+    assert sig["service_name"] == "HTTP"
+
+
+def test_port_agnostic_match_on_custom_port(http_signatures):
+    # Portainer found on a non-standard port, recognised purely by HTTP content
+    sig = match_service(54321, "tcp", banner=None,
+                        http_signals={"title": "Portainer", "headers": {}})
+    assert sig["service_name"] == "Portainer"
+
+
+def test_port_agnostic_requires_probe(http_signatures):
+    # Same custom port, probe off → no signal → no match
+    assert match_service(54321, "tcp", banner=None, http_signals=None) is None
+
+
+def test_banner_match_still_works_with_probe(http_signatures):
+    sig = match_service(9090, "tcp", banner="prometheus 2.x",
+                        http_signals={"title": "x", "headers": {}})
+    assert sig["service_name"] == "Prometheus"
+
+
+def test_match_port_alias_has_no_http(http_signatures):
+    # match_port() is the probe-less alias → http_regex entry degrades to port-only
+    sig = match_port(8096, "tcp")
+    assert sig["service_name"] == "HTTP"
+
+
+def test_fingerprint_ports_uses_http_signals(http_signatures):
+    results = fingerprint_ports([
+        {"port": 8096, "protocol": "tcp", "banner": None,
+         "http_signals": {"title": "Jellyfin", "headers": {}}},
+    ])
+    assert results[0]["service_name"] == "Jellyfin"

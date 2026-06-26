@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # Scanner
     scanner_ranges: list[str] = ["192.168.1.0/24"]
 
+    # Deep scan — persisted defaults (overridable per-scan from the scan dialog).
+    # http_ranges: extra nmap port ranges, opt-in, no default. Probe + TLS off by default.
+    scanner_http_ranges: list[str] = []
+    scanner_http_probe_enabled: bool = False
+    scanner_http_verify_tls: bool = False
+
     # Status checker
     status_checker_interval: int = 60
 
@@ -85,6 +91,12 @@ class Settings(BaseSettings):
                 self.service_check_enabled = bool(data["service_check_enabled"])
             if "service_check_interval" in data:
                 self.service_check_interval = int(data["service_check_interval"])
+            if "scanner_http_ranges" in data:
+                self.scanner_http_ranges = list(data["scanner_http_ranges"])
+            if "scanner_http_probe_enabled" in data:
+                self.scanner_http_probe_enabled = bool(data["scanner_http_probe_enabled"])
+            if "scanner_http_verify_tls" in data:
+                self.scanner_http_verify_tls = bool(data["scanner_http_verify_tls"])
         except Exception:
             pass
 
@@ -96,6 +108,9 @@ class Settings(BaseSettings):
             "status_checker_interval": self.status_checker_interval,
             "service_check_enabled": self.service_check_enabled,
             "service_check_interval": self.service_check_interval,
+            "scanner_http_ranges": self.scanner_http_ranges,
+            "scanner_http_probe_enabled": self.scanner_http_probe_enabled,
+            "scanner_http_verify_tls": self.scanner_http_verify_tls,
         }))
 
 

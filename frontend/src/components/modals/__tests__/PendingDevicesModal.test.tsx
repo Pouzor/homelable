@@ -271,4 +271,64 @@ describe('PendingDevicesModal', () => {
     await waitFor(() => expect(mockBulkRestore).toHaveBeenCalledWith(['dev-a']))
     expect(mockBulkApprove).not.toHaveBeenCalled()
   })
+
+  // --- Device Inventory: rename, canvas badge, on-canvas filter ---
+
+  it('titles the pending view "Device Inventory"', async () => {
+    render(<PendingDevicesModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    expect(screen.getByText('Device Inventory')).toBeInTheDocument()
+  })
+
+  it('shows "Hidden Devices" title in hidden mode', async () => {
+    mockHidden.mockResolvedValue({ data: [{ ...DEVICE_IP, status: 'hidden' }] })
+    render(<PendingDevicesModal {...baseProps} initialStatus="hidden" />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    expect(screen.getByText('Hidden Devices')).toBeInTheDocument()
+  })
+
+  it('renders a corner canvas-count when canvas_count > 0', async () => {
+    mockPending.mockResolvedValue({ data: [{ ...DEVICE_IP, canvas_count: 2 }] })
+    render(<PendingDevicesModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    const corner = screen.getByLabelText('On 2 canvases')
+    expect(corner).toHaveTextContent('2')
+  })
+
+  it('uses singular "canvas" for a single canvas', async () => {
+    mockPending.mockResolvedValue({ data: [{ ...DEVICE_IP, canvas_count: 1 }] })
+    render(<PendingDevicesModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    expect(screen.getByLabelText('On 1 canvas')).toHaveTextContent('1')
+  })
+
+  it('does not render the canvas-count corner when canvas_count is 0', async () => {
+    mockPending.mockResolvedValue({ data: [{ ...DEVICE_IP, canvas_count: 0 }] })
+    render(<PendingDevicesModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    expect(screen.queryByLabelText(/On \d+ canvas/)).not.toBeInTheDocument()
+  })
+
+  it('filters to devices with detected services when "With services" is on', async () => {
+    // dev-a has an http service; dev-b (zigbee) has none.
+    render(<PendingDevicesModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-b')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /With services/ }))
+    expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument()
+    expect(screen.queryByTestId('pending-card-dev-b')).not.toBeInTheDocument()
+  })
+
+  it('shows on-canvas devices by default and hides them when toggled off', async () => {
+    mockPending.mockResolvedValue({
+      data: [DEVICE_IP, { ...DEVICE_ZIGBEE, canvas_count: 1 }],
+    })
+    render(<PendingDevicesModal {...baseProps} />)
+    // Default: both visible (on-canvas shown).
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-b')).toBeInTheDocument())
+    expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument()
+    // Toggle off → the on-canvas device (dev-b) disappears.
+    fireEvent.click(screen.getByRole('button', { name: /Hide on-canvas/ }))
+    expect(screen.queryByTestId('pending-card-dev-b')).not.toBeInTheDocument()
+    expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument()
+  })
 })

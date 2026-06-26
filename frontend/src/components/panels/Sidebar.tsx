@@ -15,7 +15,7 @@ import { useLatestRelease } from '@/hooks/useLatestRelease'
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 const PENDING_TRIGGERS: { kind: 'pending' | 'hidden'; icon: typeof ScanLine; label: string }[] = [
-  { kind: 'pending', icon: ScanLine, label: 'Pending Devices' },
+  { kind: 'pending', icon: ScanLine, label: 'Device Inventory' },
   { kind: 'hidden', icon: EyeOff, label: 'Hidden Devices' },
 ]
 
