@@ -1,4 +1,4 @@
-import { Fragment, useState, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import {
   Globe, Router, Network, Server, Layers, Box, Container, HardDrive,
@@ -160,7 +160,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
               min={0}
               step={10}
               value={style.width}
-              onChange={(e) => set('width', parseInt(e.target.value) || 0)}
+              onChange={(e) => set('width', parseInt(e.target.value, 10) || 0)}
               className="w-20 h-7 text-xs bg-[#0d1117] border border-[#30363d] rounded px-2 text-[#e6edf3]"
             />
           </div>
@@ -171,7 +171,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
               min={0}
               step={10}
               value={style.height}
-              onChange={(e) => set('height', parseInt(e.target.value) || 0)}
+              onChange={(e) => set('height', parseInt(e.target.value, 10) || 0)}
               className="w-20 h-7 text-xs bg-[#0d1117] border border-[#30363d] rounded px-2 text-[#e6edf3]"
             />
           </div>
@@ -285,14 +285,22 @@ export function CustomStyleModal({ open, onClose }: CustomStyleModalProps) {
     edges: { ...customStyle.edges },
   }))
 
-  const handleOpen = (isOpen: boolean) => {
-    if (isOpen) {
-      // Reset draft to current saved customStyle on open
+  // Reset the draft to the saved customStyle whenever the modal is (re)opened.
+  // The parent keeps this component mounted and only toggles `open`, so Radix's
+  // onOpenChange never fires for a parent-driven open — we key off the prop edge
+  // instead. Without this, abandoned edits (Cancel) would leak into the next open.
+  useEffect(() => {
+    if (open) {
       setDraft({ nodes: { ...customStyle.nodes }, edges: { ...customStyle.edges } })
       setSelection(null)
-    } else {
-      onClose()
     }
+    // Intentional snapshot-on-open: we don't want live customStyle changes to
+    // clobber an in-progress edit, only a fresh open should reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const handleOpen = (isOpen: boolean) => {
+    if (!isOpen) onClose()
   }
 
   const getNodeStyle = (t: NodeType): NodeTypeStyle =>
