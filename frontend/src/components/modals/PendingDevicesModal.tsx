@@ -563,7 +563,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
               </p>
             )}
             {!loading && filtered.length > 0 && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                 {filtered.map((d) => (
                   <DeviceCard
                     key={d.id}
@@ -691,7 +691,7 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
       ref={cardRef}
       onClick={onClick}
       data-testid={`pending-card-${device.id}`}
-      className={`relative text-left rounded-lg border p-3 transition-all duration-150 ${borderClass}`}
+      className={`relative text-left rounded-lg border p-2.5 transition-all duration-150 ${borderClass}`}
     >
       {selectMode && selected && (
         <CheckCircle2
