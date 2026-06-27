@@ -4,6 +4,8 @@ import { ChevronDown } from 'lucide-react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { getZoneSpatialChildren } from '@/utils/collapseFilter'
 import type { NodeData, TextPosition } from '@/types'
+import { resolveNodeColors } from '@/utils/nodeColors'
+import { useThemeStore } from '@/stores/themeStore'
 
 const FONT_FAMILIES: Record<string, string> = {
   inter: 'Inter, sans-serif',
@@ -54,13 +56,15 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
   const fontFamily = FONT_FAMILIES[rc.font ?? 'inter'] ?? FONT_FAMILIES.inter
   const textPos = (rc.text_position ?? 'top-left') as TextPosition
   const posStyle = POSITION_STYLES[textPos]
-
   // Count children for collapse badge — groupRect zones don't parent their
   // contents via React Flow parentId, so we hit-test by spatial containment.
   const selfNode = (nodes ?? []).find((n) => n.id === id)
   const childrenCount = selfNode
     ? getZoneSpatialChildren(selfNode, nodes ?? []).length
     : 0
+  const activeTheme = useThemeStore((s) => s.activeTheme)
+  const colors = resolveNodeColors(data, activeTheme)
+  const glow = colors.border
 
   const outsideJustify = textPos.includes('right') ? 'flex-end'
     : (textPos.includes('center') || textPos === 'center') ? 'center'
@@ -82,8 +86,8 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
   }
 
   const handleStyle: React.CSSProperties = {
-    width: 10,
-    height: 10,
+    width: 12,
+    height: 12,
     background: borderColor,
     border: '2px solid #0d1117',
     borderRadius: '50%',
@@ -97,14 +101,8 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
         isVisible={selected}
         minWidth={80}
         minHeight={60}
-        handleStyle={{
-          width: 8,
-          height: 8,
-          borderRadius: 2,
-          background: '#00d4ff',
-          border: '1px solid #0d1117',
-        }}
         lineStyle={{ borderColor: 'transparent' }}
+        handleStyle={{ borderColor: glow, backgroundColor: colors.border, width: 12, height: 12 }}
       />
 
       {HANDLE_SIDES.map(({ id: hid, position }) => (

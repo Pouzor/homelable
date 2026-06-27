@@ -59,8 +59,8 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
         minWidth={220}
         minHeight={160}
         isVisible={selected}
-        lineStyle={{ borderColor: glow, opacity: 0.6 }}
-        handleStyle={{ borderColor: glow, backgroundColor: theme.colors.nodeCardBackground, width: 6, height: 6 }}
+        lineStyle={{ borderColor: 'transparent' }}
+        handleStyle={{ borderColor: glow, backgroundColor: colors.border, width: 12, height: 12 }}
       />
 
       {/* Group border */}
@@ -85,7 +85,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
           }}
         >
           <div
-            className="flex items-center justify-center w-5 h-5 rounded-md shrink-0"
+            className="flex items-center justify-center w-7 h-7 rounded-md shrink-0"
             style={{
               color: isOnline ? colors.icon : theme.colors.nodeSubtextColor,
               background: theme.colors.nodeIconBackground,
@@ -93,23 +93,24 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
           >
             {isBrandIconKey(data.custom_icon)
               ? <NodeIcon typeIcon={Layers} customIconKey={data.custom_icon} size={12} />
-              : createElement(resolvedIcon, { size: 12 })}
+              : createElement(resolvedIcon, { size: 15 })}
           </div>
-          <div className="flex flex-col min-w-0 flex-1">
-            <span
-              className="text-[11px] font-semibold leading-tight truncate"
+          <div className="flex flex-col min-w-0">
+            <div
+              className="text-xs font-semibold leading-tight truncate"
               style={{ color: isOnline ? glow : theme.colors.nodeLabelColor }}
+              title={data.label}
             >
               {data.label}
-            </span>
+            </div>
             {data.ip && splitIps(data.ip).map((ip) => (
-              <span
+              <div
                 key={ip}
                 className="font-mono text-[9px] truncate"
                 style={{ color: theme.colors.nodeSubtextColor }}
               >
                 {hideIp ? maskIp(ip) : ip}
-              </span>
+              </div>
             ))}
           </div>
           {/* Status dot */}
