@@ -105,6 +105,28 @@ async def test_legacy_canvas_migrates_into_default_design(legacy_engine):
         await engine.dispose()
 
 
+async def test_legacy_nodes_gain_last_scan_column(legacy_engine):
+    """A legacy nodes table (no last_scan) gains the column after init_db."""
+    db_path, engine = legacy_engine
+    await _build_legacy_schema(engine)
+
+    await database.init_db()
+
+    check = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    try:
+        async with check.begin() as conn:
+            cols = (await conn.exec_driver_sql("PRAGMA table_info(nodes)")).fetchall()
+            assert "last_scan" in {c[1] for c in cols}
+            # Existing rows backfill to NULL (never scanned yet).
+            last_scan = (await conn.exec_driver_sql(
+                "SELECT last_scan FROM nodes WHERE id='n1'"
+            )).fetchone()
+            assert last_scan[0] is None
+    finally:
+        await check.dispose()
+        await engine.dispose()
+
+
 async def test_migration_is_idempotent(legacy_engine):
     """Running init_db twice must not duplicate the design or drop any data."""
     db_path, engine = legacy_engine

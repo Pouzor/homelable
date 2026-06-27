@@ -61,6 +61,7 @@ class Node(Base):
     bottom_handles: Mapped[int] = mapped_column(Integer, default=1)
     ieee_address: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_scan: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     response_time_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)

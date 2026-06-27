@@ -11,10 +11,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import PendingDevice, ScanRun
+from app.db.models import Node, PendingDevice, ScanRun
 from app.services.fingerprint import fingerprint_ports, suggest_node_type
 from app.services.http_probe import probe_open_ports
 
@@ -541,6 +541,20 @@ async def run_scan(
                     discovery_source=discovery_source,
                 ))
                 devices_found += 1
+
+            # Stamp last_scan on any canvas node that matches this device by IP
+            # (or MAC, when known) so the inventory shows when the scanner last
+            # observed it. Matches across designs.
+            host_mac = host.get("mac")
+            node_match = [Node.ip == ip]
+            if host_mac:
+                node_match.append(Node.mac == host_mac)
+            matching_nodes = (await db.execute(
+                select(Node).where(or_(*node_match))
+            )).scalars().all()
+            scanned_at = datetime.now(timezone.utc)
+            for node in matching_nodes:
+                node.last_scan = scanned_at
 
             await db.commit()
             await broadcast_scan_update(run_id=run_id, devices_found=devices_found)

@@ -405,6 +405,84 @@ async def test_run_scan_adds_nmap_devices_as_pending(mem_db):
 
 
 @pytest.mark.asyncio
+async def test_run_scan_stamps_last_scan_on_matching_node_by_ip(mem_db):
+    """A scan that sees a device matching a canvas node (by IP) stamps last_scan."""
+    from app.services.scanner import run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        session.add(Node(id="n1", type="server", label="NAS", ip="192.168.1.5"))
+        await session.commit()
+
+    nmap_hosts = [{"ip": "192.168.1.5", "hostname": "nas.lan", "mac": None, "os": None, "open_ports": []}]
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", return_value=nmap_hosts), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(["192.168.1.0/24"], session, run_id)
+
+    async with mem_db() as session:
+        node = await session.get(Node, "n1")
+
+    assert node is not None
+    assert node.last_scan is not None
+
+
+@pytest.mark.asyncio
+async def test_run_scan_stamps_last_scan_on_matching_node_by_mac(mem_db):
+    """A node with no IP but a matching MAC still gets last_scan stamped."""
+    from app.services.scanner import run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        session.add(Node(id="n2", type="iot", label="Sensor", mac="AA:BB:CC:DD:EE:FF"))
+        await session.commit()
+
+    nmap_hosts = [{"ip": "192.168.1.9", "hostname": None, "mac": "AA:BB:CC:DD:EE:FF", "os": None, "open_ports": []}]
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", return_value=nmap_hosts), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(["192.168.1.0/24"], session, run_id)
+
+    async with mem_db() as session:
+        node = await session.get(Node, "n2")
+
+    assert node is not None
+    assert node.last_scan is not None
+
+
+@pytest.mark.asyncio
+async def test_run_scan_leaves_last_scan_untouched_on_unmatched_node(mem_db):
+    """A node whose IP/MAC is not seen by the scan keeps last_scan = None."""
+    from app.services.scanner import run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        session.add(Node(id="n3", type="server", label="Other", ip="10.0.0.99"))
+        await session.commit()
+
+    nmap_hosts = [{"ip": "192.168.1.5", "hostname": None, "mac": None, "os": None, "open_ports": []}]
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", return_value=nmap_hosts), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(["192.168.1.0/24"], session, run_id)
+
+    async with mem_db() as session:
+        node = await session.get(Node, "n3")
+
+    assert node is not None
+    assert node.last_scan is None
+
+
+@pytest.mark.asyncio
 async def test_run_scan_mdns_only_device_added(mem_db):
     """Devices found only by mDNS (not nmap) should appear in pending_devices."""
     from app.services.scanner import run_scan

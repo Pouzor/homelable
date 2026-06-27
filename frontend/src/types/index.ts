@@ -102,6 +102,9 @@ export interface NodeData extends Record<string, unknown> {
   check_target?: string
   services: ServiceInfo[]
   last_seen?: string
+  last_scan?: string
+  created_at?: string
+  updated_at?: string
   response_time_ms?: number
   notes?: string
   cpu_count?: number

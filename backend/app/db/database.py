@@ -293,6 +293,9 @@ async def init_db() -> None:
                     "UPDATE nodes SET properties = ? WHERE id = ?",
                     (_json.dumps(props), node_id),
                 )
+        # Inventory timestamp: last time a scan observed this node (idempotent)
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN last_scan DATETIME")
         # Migrate animated column from boolean (0/1) to string ('none'/'snake')
         with suppress(OperationalError):
             await conn.exec_driver_sql("UPDATE edges SET animated = 'snake' WHERE animated = '1' OR animated = 1")

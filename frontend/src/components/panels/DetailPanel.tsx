@@ -14,6 +14,13 @@ interface DetailPanelProps {
   onEdit: (id: string) => void
 }
 
+// Backend timestamps may arrive without a timezone suffix (naive UTC). Append
+// 'Z' when absent so the browser parses them as UTC rather than local time.
+function formatTimestamp(value: string): string {
+  const iso = /[Zz]|[+-]\d{2}:?\d{2}$/.test(value) ? value : value + 'Z'
+  return new Date(iso).toLocaleString()
+}
+
 type SvcForm = { port: string; protocol: 'tcp' | 'udp'; service_name: string; path: string }
 const EMPTY_FORM: SvcForm = { port: '', protocol: 'tcp', service_name: '', path: '' }
 
@@ -252,7 +259,10 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         {data.mac && <DetailRow label="MAC" value={data.mac} mono />}
         {data.os && <DetailRow label="OS" value={data.os} />}
         {data.check_method && <DetailRow label="Check" value={data.check_method} mono />}
-        {data.last_seen && <DetailRow label="Last Seen" value={new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(data.last_seen) ? data.last_seen : data.last_seen + 'Z').toLocaleString()} />}
+        {data.last_seen && <DetailRow label="Last Seen" value={formatTimestamp(data.last_seen)} />}
+        {data.last_scan && <DetailRow label="Last Scan" value={formatTimestamp(data.last_scan)} />}
+        {data.created_at && <DetailRow label="Created" value={formatTimestamp(data.created_at)} />}
+        {data.updated_at && <DetailRow label="Last Modified" value={formatTimestamp(data.updated_at)} />}
       </div>
 
       {/* Size section — manual width/height entry for pixel-exact sizing */}

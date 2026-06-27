@@ -212,6 +212,37 @@ describe('DetailPanel', () => {
     })
   })
 
+  describe('Inventory timestamps', () => {
+    it('renders Created, Last Scan and Last Modified rows when present', () => {
+      setupStore({
+        created_at: '2026-01-02T10:00:00Z',
+        last_scan: '2026-06-01T08:30:00Z',
+        updated_at: '2026-06-20T12:00:00Z',
+        last_seen: '2026-06-25T09:15:00Z',
+      })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText('Created')).toBeInTheDocument()
+      expect(screen.getByText('Last Scan')).toBeInTheDocument()
+      expect(screen.getByText('Last Modified')).toBeInTheDocument()
+      expect(screen.getByText('Last Seen')).toBeInTheDocument()
+    })
+
+    it('omits rows whose timestamps are absent', () => {
+      setupStore({ created_at: '2026-01-02T10:00:00Z' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText('Created')).toBeInTheDocument()
+      expect(screen.queryByText('Last Scan')).not.toBeInTheDocument()
+      expect(screen.queryByText('Last Modified')).not.toBeInTheDocument()
+    })
+
+    it('parses naive (suffix-less) UTC timestamps without throwing', () => {
+      setupStore({ created_at: '2026-01-02 10:00:00' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      // Renders a locale string for the date (year is locale-independent).
+      expect(screen.getByText(/2026/)).toBeInTheDocument()
+    })
+  })
+
   describe('Panel actions', () => {
     it('calls setSelectedNode(null) when close button is clicked', () => {
       const setSelectedNode = vi.fn()

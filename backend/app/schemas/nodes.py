@@ -73,6 +73,7 @@ class NodeResponse(NodeBase):
     design_id: str | None = None
     ieee_address: str | None = None
     last_seen: datetime | None = None
+    last_scan: datetime | None = None
     response_time_ms: int | None = None
     created_at: datetime
     updated_at: datetime

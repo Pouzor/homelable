@@ -51,6 +51,18 @@ async def test_save_canvas_creates_nodes_and_edges(client: AsyncClient, headers:
     assert canvas["viewport"] == {"x": 1, "y": 2, "zoom": 1.5}
 
 
+async def test_load_canvas_exposes_inventory_timestamps(client: AsyncClient, headers: dict):
+    n1 = node_payload(label="Router", type="router")
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    node = (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"][0]
+    # created_at / updated_at always set; last_seen / last_scan null until observed.
+    assert node["created_at"] is not None
+    assert node["updated_at"] is not None
+    assert "last_seen" in node
+    assert node["last_scan"] is None
+
+
 async def test_save_canvas_updates_existing_node(client: AsyncClient, headers: dict):
     n1 = node_payload(label="Old Label")
     await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
