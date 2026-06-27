@@ -102,6 +102,54 @@ describe('applyDagreLayout', () => {
     expect(frigate.position.y).toBeGreaterThan(proxmox.position.y)
   })
 
+  it('orders children left-to-right by the parent bottom-port, not node order', () => {
+    // Nodes inserted in REVERSE port order — Dagre would otherwise lay them out
+    // c,b,a (it orders siblings by node-insertion order). The port pass must
+    // flip them back to a,b,c to match the host's ports 1,2,3.
+    const nodes = [
+      makeNode('host', 'router'),
+      makeNode('c', 'generic'),
+      makeNode('b', 'generic'),
+      makeNode('a', 'generic'),
+    ]
+    const edges = [
+      makeEdge('host', 'a', 'bottom'),
+      makeEdge('host', 'b', 'bottom-2'),
+      makeEdge('host', 'c', 'bottom-3'),
+    ]
+
+    const result = applyDagreLayout(nodes, edges)
+    const x = (id: string) => result.find((n) => n.id === id)!.position.x
+
+    expect(x('a')).toBeLessThan(x('b'))
+    expect(x('b')).toBeLessThan(x('c'))
+  })
+
+  it('shifts a reordered child subtree along with the child', () => {
+    // b plugs into port 1 (left of a on port 2). b/a each have a leaf child;
+    // the leaves must follow their parent's new horizontal position.
+    const nodes = [
+      makeNode('host', 'router'),
+      makeNode('a', 'generic'),
+      makeNode('b', 'generic'),
+      makeNode('a2', 'generic'),
+      makeNode('b2', 'generic'),
+    ]
+    const edges = [
+      makeEdge('host', 'a', 'bottom-2'),
+      makeEdge('host', 'b', 'bottom'),
+      makeEdge('a', 'a2', 'bottom'),
+      makeEdge('b', 'b2', 'bottom'),
+    ]
+
+    const result = applyDagreLayout(nodes, edges)
+    const x = (id: string) => result.find((n) => n.id === id)!.position.x
+
+    // b (port 1) sits left of a (port 2), and each leaf follows its parent.
+    expect(x('b')).toBeLessThan(x('a'))
+    expect(x('b2')).toBeLessThan(x('a2'))
+  })
+
   it('places two switch nodes connected to each other at the same Y', () => {
     const nodes = [
       makeNode('router', 'router'),
