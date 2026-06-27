@@ -308,15 +308,38 @@ async def bulk_approve_devices(
         first_design = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
         default_design_id = first_design.id if first_design else None
 
+    # Accept every selected device that isn't user-hidden. We intentionally do NOT
+    # filter on status == "pending": a device's status is global, but canvas
+    # membership is per-design. A device approved onto another canvas (or whose
+    # node was later deleted) must still be placeable on THIS design. Duplicates
+    # are guarded per-design below, not by the global status flag.
     result = await db.execute(
         select(PendingDevice).where(
             PendingDevice.id.in_(payload.device_ids),
-            PendingDevice.status == "pending",
+            PendingDevice.status != "hidden",
         )
     )
     devices = result.scalars().all()
+
+    # What already sits on the target canvas, so we skip devices already placed
+    # here (by ip or ieee_address) instead of creating duplicate nodes.
+    existing = (
+        await db.execute(
+            select(Node.ip, Node.ieee_address).where(Node.design_id == default_design_id)
+        )
+    ).all()
+    placed_ips = {ip for ip, _ in existing if ip}
+    placed_ieee = {ieee for _, ieee in existing if ieee}
+
     created_nodes: list[Node] = []
+    approved_devices: list[PendingDevice] = []
     for device in devices:
+        already_here = (
+            (device.ip is not None and device.ip in placed_ips)
+            or (device.ieee_address is not None and device.ieee_address in placed_ieee)
+        )
+        if already_here:
+            continue
         device.status = "approved"
         node_type = device.suggested_type or "generic"
         is_wireless = _is_wireless(node_type)
@@ -339,12 +362,20 @@ async def bulk_approve_devices(
         )
         db.add(node)
         created_nodes.append(node)
+        approved_devices.append(device)
+        # Track within this batch so a duplicate selection (same ip/ieee) is not
+        # placed twice on the same canvas.
+        if device.ip:
+            placed_ips.add(device.ip)
+        if device.ieee_address:
+            placed_ieee.add(device.ieee_address)
     await db.flush()  # populates node.id from Python-side default before reading
+    # node_ids and approved_device_ids stay index-aligned for the client's mapping.
     node_ids = [n.id for n in created_nodes]
-    approved_device_ids = [d.id for d in devices]
+    approved_device_ids = [d.id for d in approved_devices]
 
     all_edges: list[dict[str, str]] = []
-    for device in devices:
+    for device in approved_devices:
         all_edges.extend(await _resolve_pending_links_for_ieee(db, device.ieee_address))
 
     await db.commit()

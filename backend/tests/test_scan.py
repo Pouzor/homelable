@@ -792,6 +792,75 @@ async def test_bulk_approve_approves_devices(client: AsyncClient, headers, two_p
     assert all(d["status"] == "approved" for d in inventory)
 
 
+@pytest.mark.asyncio
+async def test_bulk_approve_places_already_approved_device_on_another_design(
+    client: AsyncClient, headers, db_session, two_pending_devices
+):
+    """Regression: a device already approved (status='approved', e.g. placed on
+    another canvas) must still get a node on the design being approved onto.
+
+    Previously bulk-approve filtered status=='pending', so selecting an
+    already-approved device created no node — the user saw fewer nodes than
+    they selected."""
+    ids = [d.id for d in two_pending_devices]
+    design_a = await _add_design(db_session, "Canvas A")
+    design_b = await _add_design(db_session, "Canvas B")
+
+    # Approve both onto design A.
+    res_a = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": ids, "design_id": design_a},
+        headers=headers,
+    )
+    assert res_a.json()["approved"] == 2
+
+    # Re-approve the same (now status='approved') devices onto design B.
+    res_b = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": ids, "design_id": design_b},
+        headers=headers,
+    )
+    data_b = res_b.json()
+    assert data_b["approved"] == 2, "already-approved devices must place onto the new canvas"
+    assert data_b["skipped"] == 0
+
+    # Two nodes now exist on each design.
+    from app.db.models import Node as NodeModel
+    nodes_b = (
+        await db_session.execute(select(NodeModel).where(NodeModel.design_id == design_b))
+    ).scalars().all()
+    assert len(nodes_b) == 2
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_skips_device_already_on_target_design(
+    client: AsyncClient, headers, db_session, two_pending_devices
+):
+    """A device already on the target canvas (same ip) is not placed twice."""
+    ids = [d.id for d in two_pending_devices]
+    design = await _add_design(db_session, "Canvas")
+    # First device already sits on the canvas (matched by ip).
+    db_session.add(_node(design, ip="192.168.1.10"))
+    await db_session.commit()
+
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": ids, "design_id": design},
+        headers=headers,
+    )
+    data = res.json()
+    assert data["approved"] == 1   # only the second device (192.168.1.11)
+    assert data["skipped"] == 1
+
+    from app.db.models import Node as NodeModel
+    nodes = (
+        await db_session.execute(select(NodeModel).where(NodeModel.design_id == design))
+    ).scalars().all()
+    # The pre-existing node plus the one newly approved — no duplicate for .10.
+    assert len(nodes) == 2
+    assert sorted(n.ip for n in nodes) == ["192.168.1.10", "192.168.1.11"]
+
+
 @pytest.fixture
 async def zigbee_pending_device(db_session):
     device = PendingDevice(
