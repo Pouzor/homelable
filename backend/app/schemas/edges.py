@@ -51,6 +51,7 @@ class EdgeUpdate(BaseModel):
 
 class EdgeResponse(EdgeBase):
     id: str
+    design_id: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

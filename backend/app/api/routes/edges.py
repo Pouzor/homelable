@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.database import get_db
-from app.db.models import Edge
+from app.db.models import Design, Edge
 from app.schemas.edges import EdgeCreate, EdgeResponse, EdgeUpdate
 
 router = APIRouter()
@@ -18,7 +18,14 @@ async def list_edges(db: AsyncSession = Depends(get_db), _: str = Depends(get_cu
 
 @router.post("", response_model=EdgeResponse, status_code=status.HTTP_201_CREATED)
 async def create_edge(body: EdgeCreate, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> Edge:
-    edge = Edge(**body.model_dump())
+    data = body.model_dump()
+    # Same reconciliation as nodes: clients omitting design_id (MCP write tools)
+    # would create design_id=null edges that never render until a restart.
+    # Fall back to the first design so the edge attaches to a canvas.
+    if data.get("design_id") is None:
+        first_design = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
+        data["design_id"] = first_design.id if first_design else None
+    edge = Edge(**data)
     db.add(edge)
     await db.commit()
     await db.refresh(edge)

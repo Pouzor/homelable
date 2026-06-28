@@ -97,6 +97,37 @@ async def test_create_edge_requires_auth(client: AsyncClient, two_nodes):
     assert res.status_code == 401
 
 
+async def test_create_edge_without_design_id_falls_back_to_first_design(client: AsyncClient, headers: dict, two_nodes):
+    # Regression for #225: MCP create_edge sent no design_id, so edges were
+    # persisted with design_id=null and never rendered until a restart.
+    src, tgt = two_nodes
+    design = await client.post("/api/v1/designs", json={"name": "Primary"}, headers=headers)
+    design_id = design.json()["id"]
+
+    res = await client.post(
+        "/api/v1/edges",
+        json={"source": src, "target": tgt, "type": "ethernet"},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    assert res.json()["design_id"] == design_id
+
+
+async def test_create_edge_respects_explicit_design_id(client: AsyncClient, headers: dict, two_nodes):
+    src, tgt = two_nodes
+    await client.post("/api/v1/designs", json={"name": "First"}, headers=headers)
+    second = await client.post("/api/v1/designs", json={"name": "Second"}, headers=headers)
+    second_id = second.json()["id"]
+
+    res = await client.post(
+        "/api/v1/edges",
+        json={"source": src, "target": tgt, "type": "ethernet", "design_id": second_id},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    assert res.json()["design_id"] == second_id
+
+
 async def test_create_cluster_edge_with_handles(client: AsyncClient, headers: dict, two_nodes):
     src, tgt = two_nodes
     res = await client.post(

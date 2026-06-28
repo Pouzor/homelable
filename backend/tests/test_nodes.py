@@ -67,6 +67,50 @@ async def test_update_node_not_found(client: AsyncClient, headers: dict):
     assert res.status_code == 404
 
 
+async def test_create_node_without_design_id_falls_back_to_first_design(client: AsyncClient, headers: dict):
+    # Regression for #225: MCP create_node sent no design_id, so nodes were
+    # persisted with design_id=null and never rendered on the canvas until a
+    # container restart reconciled them. They must attach to a design on create.
+    design = await client.post("/api/v1/designs", json={"name": "Primary"}, headers=headers)
+    design_id = design.json()["id"]
+
+    res = await client.post(
+        "/api/v1/nodes",
+        json={"type": "generic", "label": "mcp-node", "ip": "192.168.18.99"},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    assert res.json()["design_id"] == design_id
+
+
+async def test_create_node_respects_explicit_design_id(client: AsyncClient, headers: dict):
+    # When a design_id is supplied it must win over the first-design fallback.
+    first = await client.post("/api/v1/designs", json={"name": "First"}, headers=headers)
+    second = await client.post("/api/v1/designs", json={"name": "Second"}, headers=headers)
+    second_id = second.json()["id"]
+    assert first.json()["id"] != second_id
+
+    res = await client.post(
+        "/api/v1/nodes",
+        json={"type": "generic", "label": "n", "design_id": second_id},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    assert res.json()["design_id"] == second_id
+
+
+async def test_create_node_without_any_design_stays_null(client: AsyncClient, headers: dict):
+    # No designs exist yet: fallback can't invent one, so design_id stays null
+    # rather than erroring.
+    res = await client.post(
+        "/api/v1/nodes",
+        json={"type": "generic", "label": "orphan"},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    assert res.json()["design_id"] is None
+
+
 async def test_delete_node_not_found(client: AsyncClient, headers: dict):
     res = await client.delete("/api/v1/nodes/nonexistent", headers=headers)
     assert res.status_code == 404

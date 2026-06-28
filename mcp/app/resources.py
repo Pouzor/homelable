@@ -21,6 +21,10 @@ ROUTES = {
 
 
 async def read_resource(uri: str) -> list[TextContent]:
+    # The MCP framework hands us a pydantic AnyUrl, not a plain str, so string
+    # ops like .startswith / dict lookups blow up with
+    # "'AnyUrl' object has no attribute 'startswith'". Coerce to str first.
+    uri = str(uri)
     if uri.startswith("homelable://nodes/") and uri != "homelable://nodes/":
         node_id = uri.split("/")[-1]
         data = await backend.get(f"/api/v1/nodes/{node_id}")
