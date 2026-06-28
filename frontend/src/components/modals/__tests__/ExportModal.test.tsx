@@ -12,6 +12,10 @@ vi.mock('@/utils/export', () => ({
     { value: 'high',     label: 'High',     pixelRatio: 2, hint: '2× — recommended' },
     { value: 'ultra',    label: 'Ultra',    pixelRatio: 4, hint: '4× — print quality, large file' },
   ],
+  EXPORT_BACKGROUND_OPTIONS: [
+    { value: 'dark',  label: 'Dark',  color: '#0d1117', hint: 'screen / docs' },
+    { value: 'white', label: 'White', color: '#ffffff', hint: 'printing' },
+  ],
 }))
 
 const el = document.createElement('div')
@@ -49,7 +53,7 @@ describe('ExportModal', () => {
     render(<ExportModal open onClose={onClose} getElement={getElement} />)
     fireEvent.click(screen.getByText('Standard').closest('button')!)
     fireEvent.click(screen.getByRole('button', { name: /download/i }))
-    await waitFor(() => expect(mockExportToPng).toHaveBeenCalledWith(el, 'standard'))
+    await waitFor(() => expect(mockExportToPng).toHaveBeenCalledWith(el, 'standard', 'dark'))
   })
 
   it('renders an SVG option under the quality options', () => {
@@ -62,7 +66,7 @@ describe('ExportModal', () => {
     fireEvent.click(screen.getByText('SVG').closest('button')!)
     expect(screen.getByText('SVG').closest('button')!.className).toContain('border-[#00d4ff]')
     fireEvent.click(screen.getByRole('button', { name: /download/i }))
-    await waitFor(() => expect(mockExportToSvg).toHaveBeenCalledWith(el))
+    await waitFor(() => expect(mockExportToSvg).toHaveBeenCalledWith(el, 'dark'))
     expect(mockExportToPng).not.toHaveBeenCalled()
   })
 
@@ -72,6 +76,28 @@ describe('ExportModal', () => {
     fireEvent.click(screen.getByText('Ultra').closest('button')!)
     expect(screen.getByText('Ultra').closest('button')!.className).toContain('border-[#00d4ff]')
     expect(screen.getByText('SVG').closest('button')!.className).not.toContain('border-[#00d4ff]')
+  })
+
+  it('renders dark and white background options, dark selected by default', () => {
+    render(<ExportModal open onClose={onClose} getElement={getElement} />)
+    expect(screen.getByText('Dark')).toBeInTheDocument()
+    expect(screen.getByText('White')).toBeInTheDocument()
+    expect(screen.getByText('Dark').closest('button')!.className).toContain('border-[#00d4ff]')
+  })
+
+  it('exports with white background when White is selected (printing)', async () => {
+    render(<ExportModal open onClose={onClose} getElement={getElement} />)
+    fireEvent.click(screen.getByText('White').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /download/i }))
+    await waitFor(() => expect(mockExportToPng).toHaveBeenCalledWith(el, 'high', 'white'))
+  })
+
+  it('applies the background choice to SVG export too', async () => {
+    render(<ExportModal open onClose={onClose} getElement={getElement} />)
+    fireEvent.click(screen.getByText('SVG').closest('button')!)
+    fireEvent.click(screen.getByText('White').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /download/i }))
+    await waitFor(() => expect(mockExportToSvg).toHaveBeenCalledWith(el, 'white'))
   })
 
   it('closes after successful export', async () => {
