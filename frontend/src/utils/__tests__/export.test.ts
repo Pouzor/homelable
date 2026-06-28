@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { exportToPng, EXPORT_QUALITY_OPTIONS } from '../export'
+import { exportToPng, exportToSvg, EXPORT_QUALITY_OPTIONS } from '../export'
 
 const mockToPng = vi.fn()
-vi.mock('html-to-image', () => ({ toPng: (...args: unknown[]) => mockToPng(...args) }))
+const mockToSvg = vi.fn()
+vi.mock('html-to-image', () => ({
+  toPng: (...args: unknown[]) => mockToPng(...args),
+  toSvg: (...args: unknown[]) => mockToSvg(...args),
+}))
 
 describe('exportToPng', () => {
   let el: HTMLElement
@@ -18,6 +22,7 @@ describe('exportToPng', () => {
     )
     appendSpy = vi.spyOn(document.body, 'appendChild').mockImplementation((n) => n)
     mockToPng.mockResolvedValue('data:image/png;base64,abc')
+    mockToSvg.mockResolvedValue('data:image/svg+xml;base64,abc')
   })
 
   afterEach(() => {
@@ -53,6 +58,35 @@ describe('exportToPng', () => {
   it('passes dark background color', async () => {
     await exportToPng(el, 'standard')
     expect(mockToPng).toHaveBeenCalledWith(el, expect.objectContaining({ backgroundColor: '#0d1117' }))
+  })
+})
+
+describe('exportToSvg', () => {
+  let el: HTMLElement
+  let clickSpy: ReturnType<typeof vi.fn>
+  let createSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    el = document.createElement('div')
+    clickSpy = vi.fn()
+    createSpy = vi.spyOn(document, 'createElement').mockReturnValue(
+      Object.assign(document.createElement('a'), { click: clickSpy }) as HTMLAnchorElement
+    )
+    mockToSvg.mockResolvedValue('data:image/svg+xml;base64,abc')
+  })
+
+  afterEach(() => {
+    createSpy.mockRestore()
+  })
+
+  it('calls toSvg with dark background color', async () => {
+    await exportToSvg(el)
+    expect(mockToSvg).toHaveBeenCalledWith(el, expect.objectContaining({ backgroundColor: '#0d1117' }))
+  })
+
+  it('triggers a download', async () => {
+    await exportToSvg(el)
+    expect(clickSpy).toHaveBeenCalled()
   })
 })
 

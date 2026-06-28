@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Download, Loader2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { exportToPng, EXPORT_QUALITY_OPTIONS, type ExportQuality } from '@/utils/export'
+import { exportToPng, exportToSvg, EXPORT_QUALITY_OPTIONS, type ExportQuality, type ExportFormat } from '@/utils/export'
 
 interface ExportModalProps {
   open: boolean
@@ -12,6 +12,7 @@ interface ExportModalProps {
 
 export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
   const [quality, setQuality] = useState<ExportQuality>('high')
+  const [format, setFormat] = useState<ExportFormat>('png')
   const [exporting, setExporting] = useState(false)
 
   const handleExport = async () => {
@@ -19,7 +20,11 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
     if (!el) return
     setExporting(true)
     try {
-      await exportToPng(el, quality)
+      if (format === 'svg') {
+        await exportToSvg(el)
+      } else {
+        await exportToPng(el, quality)
+      }
       onClose()
     } finally {
       setExporting(false)
@@ -30,7 +35,7 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="bg-[#161b22] border-border max-w-sm">
         <DialogHeader>
-          <DialogTitle className="text-foreground">Export as PNG</DialogTitle>
+          <DialogTitle className="text-foreground">Export Canvas</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-2 py-2">
@@ -38,10 +43,10 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
             <button
               key={opt.value}
               type="button"
-              onClick={() => setQuality(opt.value)}
+              onClick={() => { setFormat('png'); setQuality(opt.value) }}
               className={[
                 'w-full flex items-center justify-between px-3 py-2.5 rounded-md border text-sm transition-colors',
-                quality === opt.value
+                format === 'png' && quality === opt.value
                   ? 'border-[#00d4ff] bg-[#00d4ff10] text-foreground'
                   : 'border-border bg-[#0d1117] text-muted-foreground hover:border-muted-foreground',
               ].join(' ')}
@@ -50,6 +55,19 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
               <span className="text-xs opacity-70">{opt.hint}</span>
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setFormat('svg')}
+            className={[
+              'w-full flex items-center justify-between px-3 py-2.5 rounded-md border text-sm transition-colors',
+              format === 'svg'
+                ? 'border-[#00d4ff] bg-[#00d4ff10] text-foreground'
+                : 'border-border bg-[#0d1117] text-muted-foreground hover:border-muted-foreground',
+            ].join(' ')}
+          >
+            <span className="font-medium">SVG</span>
+            <span className="text-xs opacity-70">vector — scalable, small file</span>
+          </button>
         </div>
 
         <DialogFooter className="gap-2">

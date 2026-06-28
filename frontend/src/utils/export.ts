@@ -1,6 +1,7 @@
-import { toPng } from 'html-to-image'
+import { toPng, toSvg } from 'html-to-image'
 
 export type ExportQuality = 'standard' | 'high' | 'ultra'
+export type ExportFormat = 'png' | 'svg'
 
 export const EXPORT_QUALITY_OPTIONS: { value: ExportQuality; label: string; pixelRatio: number; hint: string }[] = [
   { value: 'standard', label: 'Standard', pixelRatio: 1, hint: '1× — small file' },
@@ -18,8 +19,23 @@ export async function exportToPng(element: HTMLElement, quality: ExportQuality =
     } as Partial<CSSStyleDeclaration>,
   })
 
+  triggerDownload(dataUrl, 'homelable-canvas.png')
+}
+
+export async function exportToSvg(element: HTMLElement): Promise<void> {
+  const dataUrl = await toSvg(element, {
+    backgroundColor: '#0d1117',
+    style: {
+      '--xy-controls-display': 'none',
+    } as Partial<CSSStyleDeclaration>,
+  })
+
+  triggerDownload(dataUrl, 'homelable-canvas.svg')
+}
+
+function triggerDownload(dataUrl: string, filename: string): void {
   const link = document.createElement('a')
-  link.download = 'homelable-canvas.png'
+  link.download = filename
   link.href = dataUrl
   link.click()
 }
