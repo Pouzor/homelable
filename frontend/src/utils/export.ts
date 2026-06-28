@@ -25,11 +25,15 @@ export async function exportToPng(
   background: ExportBackground = 'dark',
 ): Promise<void> {
   const option = EXPORT_QUALITY_OPTIONS.find((o) => o.value === quality) ?? EXPORT_QUALITY_OPTIONS[1]
+  const color = backgroundColor(background)
   const dataUrl = await toPng(element, {
-    backgroundColor: backgroundColor(background),
+    backgroundColor: color,
     pixelRatio: option.pixelRatio,
     style: {
       '--xy-controls-display': 'none',
+      // The .react-flow root paints its own opaque background (colorMode),
+      // which would hide the canvas backgroundColor above — override it inline.
+      backgroundColor: color,
     } as Partial<CSSStyleDeclaration>,
   })
 
@@ -40,10 +44,12 @@ export async function exportToSvg(
   element: HTMLElement,
   background: ExportBackground = 'dark',
 ): Promise<void> {
+  const color = backgroundColor(background)
   const dataUrl = await toSvg(element, {
-    backgroundColor: backgroundColor(background),
+    backgroundColor: color,
     style: {
       '--xy-controls-display': 'none',
+      backgroundColor: color,
     } as Partial<CSSStyleDeclaration>,
   })
 

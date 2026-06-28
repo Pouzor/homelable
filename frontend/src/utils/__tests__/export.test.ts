@@ -68,6 +68,14 @@ describe('exportToPng', () => {
     expect(mockToPng).toHaveBeenCalledWith(el, expect.objectContaining({ backgroundColor: '#ffffff' }))
   })
 
+  it('overrides the react-flow root background via inline style so white is visible', async () => {
+    await exportToPng(el, 'standard', 'white')
+    expect(mockToPng).toHaveBeenCalledWith(
+      el,
+      expect.objectContaining({ style: expect.objectContaining({ backgroundColor: '#ffffff' }) }),
+    )
+  })
+
   it('attaches the download anchor to the DOM so Firefox triggers the download', async () => {
     await exportToPng(el, 'high')
     expect(appendSpy).toHaveBeenCalled()
@@ -107,6 +115,14 @@ describe('exportToSvg', () => {
   it('uses white background color when white is requested (printing)', async () => {
     await exportToSvg(el, 'white')
     expect(mockToSvg).toHaveBeenCalledWith(el, expect.objectContaining({ backgroundColor: '#ffffff' }))
+  })
+
+  it('overrides the react-flow root background via inline style so white is visible', async () => {
+    await exportToSvg(el, 'white')
+    expect(mockToSvg).toHaveBeenCalledWith(
+      el,
+      expect.objectContaining({ style: expect.objectContaining({ backgroundColor: '#ffffff' }) }),
+    )
   })
 
   it('triggers a download', async () => {
