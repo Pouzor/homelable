@@ -38,6 +38,7 @@ import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { canvasApi, designsApi, liveviewApi } from '@/api/client'
+import * as standaloneStorage from '@/utils/standaloneStorage'
 import { demoNodes, demoEdges } from '@/utils/demoData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
 import type { NodeData, EdgeData, CustomStyleDef } from '@/types'
@@ -45,7 +46,6 @@ import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 import type { ZwaveNode, ZwaveEdge } from '@/components/zwave/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
-const STANDALONE_STORAGE_KEY = 'homelable_canvas'
 
 export default function App() {
   const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addToGroup, addToContainer } = useCanvasStore()
@@ -90,7 +90,8 @@ export default function App() {
     try {
       const saveDesignId = designIdOverride ?? activeDesignId
       if (STANDALONE) {
-        localStorage.setItem(STANDALONE_STORAGE_KEY, JSON.stringify({ nodes, edges, theme_id: activeTheme, custom_style: customStyle }))
+        if (!saveDesignId) return false
+        standaloneStorage.saveCanvas(saveDesignId, { nodes, edges, theme_id: activeTheme, custom_style: customStyle })
         markSaved()
         toast.success('Canvas saved')
         return true
@@ -135,8 +136,30 @@ export default function App() {
     }
   }, [loadCanvas, setTheme, setCustomStyle])
 
+  // Standalone counterpart of loadCanvasFromApi — reads a design's canvas from
+  // localStorage, falling back to the demo canvas when it has never been saved.
+  const loadStandaloneCanvas = useCallback((designId: string) => {
+    const saved = standaloneStorage.loadCanvas(designId)
+    if (saved && saved.nodes.length > 0) {
+      if (saved.theme_id) setTheme(saved.theme_id)
+      if (saved.custom_style) setCustomStyle(saved.custom_style)
+      loadCanvas(saved.nodes, saved.edges)
+    } else {
+      loadCanvas(demoNodes, demoEdges)
+    }
+  }, [loadCanvas, setTheme, setCustomStyle])
+
   const loadDesignsAndCanvas = useCallback(async () => {
-    if (STANDALONE) return
+    if (STANDALONE) {
+      const designs = standaloneStorage.ensureSeed()
+      setDesigns(designs)
+      const targetId = activeDesignId ?? designs[0]?.id
+      if (targetId) {
+        setActiveDesign(targetId)
+        loadStandaloneCanvas(targetId)
+      }
+      return
+    }
     try {
       const res = await designsApi.list()
       const loadedDesigns = res.data
@@ -150,29 +173,23 @@ export default function App() {
       // If API fails (e.g. fresh DB with no designs), fall back to demo data
       loadCanvas(demoNodes, demoEdges)
     }
-  }, [setDesigns, setActiveDesign, loadCanvasFromApi, activeDesignId, loadCanvas])
+  }, [setDesigns, setActiveDesign, loadCanvasFromApi, loadStandaloneCanvas, activeDesignId, loadCanvas])
 
-  // Load canvas on auth (or immediately in standalone mode)
+  // Keep a ref so the auth effect can call the latest loader without listing it
+  // as a dependency (which would re-fire on every design switch).
+  const loadDesignsAndCanvasRef = useRef(loadDesignsAndCanvas)
+  useEffect(() => { loadDesignsAndCanvasRef.current = loadDesignsAndCanvas }, [loadDesignsAndCanvas])
+
+  // Load designs + canvas on auth (or immediately in standalone mode, which has
+  // no auth gate).
   useEffect(() => {
     if (STANDALONE) {
-      try {
-        const saved = localStorage.getItem(STANDALONE_STORAGE_KEY)
-        if (saved) {
-          const { nodes: savedNodes, edges: savedEdges, theme_id, custom_style } = JSON.parse(saved)
-          if (theme_id) setTheme(theme_id)
-          if (custom_style) setCustomStyle(custom_style)
-          loadCanvas(savedNodes, savedEdges)
-        } else {
-          loadCanvas(demoNodes, demoEdges)
-        }
-      } catch {
-        loadCanvas(demoNodes, demoEdges)
-      }
+      loadDesignsAndCanvasRef.current()
       return
     }
     if (!isAuthenticated) return
-    loadDesignsAndCanvas()
-  }, [isAuthenticated, loadCanvas, setTheme, setCustomStyle]) // only on auth change, not design change
+    loadDesignsAndCanvasRef.current()
+  }, [isAuthenticated]) // only on auth change, not design change
 
   // Reload canvas when active design changes (after initial load)
   const initialLoadDone = useRef(false)
@@ -186,7 +203,10 @@ export default function App() {
       prevDesignRef.current = activeDesignId
       return
     }
-    if (!STANDALONE && isAuthenticated && activeDesignId && initialLoadDone.current) {
+    // Standalone has no auth gate; backed mode requires authentication.
+    const ready = STANDALONE || isAuthenticated
+    const loadForDesign = STANDALONE ? loadStandaloneCanvas : loadCanvasFromApi
+    if (ready && activeDesignId && initialLoadDone.current) {
       const oldId = prevDesignRef.current
       // If the previous design was deleted (no longer in the list), don't try to
       // save into it — just load the newly-selected design.
@@ -199,7 +219,7 @@ export default function App() {
         const targetId = activeDesignId
         handleSave(oldId).then((ok) => {
           if (ok) {
-            loadCanvasFromApi(targetId)
+            loadForDesign(targetId)
           } else {
             // Save failed: don't load the new design — that would overwrite the
             // unsaved in-memory canvas. Revert the selection back to the old
@@ -210,7 +230,7 @@ export default function App() {
           }
         })
       } else {
-        loadCanvasFromApi(activeDesignId)
+        loadForDesign(activeDesignId)
       }
     }
     if (activeDesignId) {
@@ -478,7 +498,10 @@ export default function App() {
   // Otherwise fetch the configured live view key and build /view?key=...&design=<id>.
   const handleViewOnly = useCallback(async () => {
     if (STANDALONE) {
-      window.open('/view', '_blank', 'noopener,noreferrer')
+      // Standalone reads canvas from localStorage; pass the active design id so
+      // the read-only tab renders the same canvas the user is viewing.
+      const url = activeDesignId ? `/view?design=${encodeURIComponent(activeDesignId)}` : '/view'
+      window.open(url, '_blank', 'noopener,noreferrer')
       return
     }
     try {
@@ -913,9 +936,9 @@ export default function App() {
           onCancel={() => setPendingContainerAdd(null)}
         />
 
-        {!STANDALONE && (
-          <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-        )}
+        {/* Mounted in standalone too: status-check settings are hidden inside,
+            but canvas prefs (snap, hide-IP) still apply. */}
+        <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
         <PendingDevicesModal
           open={pendingModalOpen}

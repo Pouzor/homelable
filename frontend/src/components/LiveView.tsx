@@ -30,10 +30,10 @@ import { edgeTypes } from '@/components/canvas/edges/edgeTypes'
 import { deserializeApiNode, deserializeApiEdge, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { computeCollapseInfo, rewireEdgesForCollapse } from '@/utils/collapseFilter'
 import { liveviewApi } from '@/api/client'
+import * as standaloneStorage from '@/utils/standaloneStorage'
 import type { NodeData, CustomStyleDef } from '@/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
-const STORAGE_KEY = 'homelable_canvas'
 
 type ViewState = 'loading' | 'disabled' | 'invalid-key' | 'no-key' | 'network-error' | 'ready'
 
@@ -55,14 +55,16 @@ function LiveViewCanvas() {
 
   useEffect(() => {
     if (STANDALONE) {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY)
-        if (saved) {
-          const { nodes: savedNodes, edges: savedEdges } = JSON.parse(saved)
-          loadCanvas(savedNodes, savedEdges)
-        }
-      } catch {
-        // empty canvas on parse error — show empty canvas
+      // ?design=<id> selects which canvas to render; fall back to the first
+      // design when omitted. Standalone stores full React Flow nodes/edges, so
+      // no API deserialization is needed.
+      const designId = new URLSearchParams(window.location.search).get('design')
+        ?? standaloneStorage.listDesigns()[0]?.id
+      const saved = designId ? standaloneStorage.loadCanvas(designId) : null
+      if (saved) {
+        if (saved.theme_id) setTheme(saved.theme_id)
+        if (saved.custom_style) setCustomStyle(saved.custom_style)
+        loadCanvas(saved.nodes, saved.edges)
       }
       return
     }

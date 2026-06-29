@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Toolbar } from '../Toolbar'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -55,5 +55,34 @@ describe('Toolbar', () => {
     render(<Toolbar {...defaultProps} />)
     fireEvent.click(screen.getByText('Save'))
     expect(defaultProps.onSave).toHaveBeenCalledWith()
+  })
+
+  it('shows the View (live view) link in full mode', () => {
+    render(<Toolbar {...defaultProps} />)
+    expect(screen.getByText('View')).toBeInTheDocument()
+  })
+})
+
+// ── Standalone mode ────────────────────────────────────────────────────────────
+// VITE_STANDALONE is read at module load, so re-import Toolbar after stubbing it.
+describe('Toolbar (standalone)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('hides the View link (live view is pointless without a backend)', async () => {
+    vi.stubEnv('VITE_STANDALONE', 'true')
+    vi.resetModules()
+    const { useCanvasStore: cs } = await import('@/stores/canvasStore')
+    vi.mocked(cs).mockReturnValue({
+      hasUnsavedChanges: false, past: [], future: [],
+    } as ReturnType<typeof useCanvasStore>)
+    const { Toolbar: TB } = await import('../Toolbar')
+
+    render(<TB {...defaultProps} />)
+    expect(screen.queryByText('View')).not.toBeInTheDocument()
+    // Other actions remain.
+    expect(screen.getByText('Save')).toBeInTheDocument()
+    expect(screen.getByText('MD')).toBeInTheDocument()
   })
 })

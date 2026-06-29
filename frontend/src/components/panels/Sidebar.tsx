@@ -6,6 +6,7 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
 import { designsApi } from '@/api/client'
+import * as standaloneStorage from '@/utils/standaloneStorage'
 import { resolveDesignIcon, DEFAULT_DESIGN_ICON } from '@/utils/designIcons'
 import { DesignModal, type DesignFormData } from '@/components/modals/DesignModal'
 import type { Design } from '@/types'
@@ -43,11 +44,15 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
     if (!designModal) return
     try {
       if (designModal.mode === 'create') {
-        const res = await designsApi.create({ name: data.name, icon: data.icon })
-        addDesign(res.data)
+        const created = STANDALONE
+          ? standaloneStorage.createDesign(data.name, data.icon)
+          : (await designsApi.create({ name: data.name, icon: data.icon })).data
+        addDesign(created)
       } else if (designModal.design) {
-        const res = await designsApi.update(designModal.design.id, { name: data.name, icon: data.icon })
-        updateDesign(res.data.id, { name: res.data.name, icon: res.data.icon })
+        const updated = STANDALONE
+          ? standaloneStorage.updateDesign(designModal.design.id, { name: data.name, icon: data.icon })
+          : (await designsApi.update(designModal.design.id, { name: data.name, icon: data.icon })).data
+        if (updated) updateDesign(updated.id, { name: updated.name, icon: updated.icon })
       }
       setDesignModal(null)
     } catch {
@@ -59,7 +64,11 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
     if (designs.length <= 1) { toast.error('Cannot delete the only canvas'); return }
     if (!window.confirm(`Delete canvas "${d.name}"? Its nodes and links will be removed.`)) return
     try {
-      await designsApi.delete(d.id)
+      if (STANDALONE) {
+        standaloneStorage.deleteDesign(d.id)
+      } else {
+        await designsApi.delete(d.id)
+      }
       removeDesign(d.id)
       toast.success('Canvas deleted')
     } catch {
@@ -193,8 +202,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
 
       {!collapsed && <div className="flex-1" />}
 
-      {/* Stats footer */}
-      {!collapsed && (
+      {/* Stats footer — hidden in standalone (no scan / live status to count) */}
+      {!collapsed && !STANDALONE && (
         <div className="px-3 py-2 border-t border-border text-xs text-muted-foreground space-y-0.5">
           <div className="flex justify-between">
             <span>Total</span>

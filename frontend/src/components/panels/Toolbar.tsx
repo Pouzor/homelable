@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/ui/Logo'
 import { useCanvasStore } from '@/stores/canvasStore'
 
+const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
+
 interface ToolbarProps {
   onSave: () => void
   onAutoLayout: () => void
@@ -82,9 +84,13 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExportMd} title="Copy inventory as Markdown table">
         <Table2 size={14} /> MD
       </Button>
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onViewOnly} title="Open read-only live view of this canvas">
-        <Eye size={14} /> View
-      </Button>
+      {/* Live view reads backend/localStorage canvas; pointless in standalone
+          where the editor already shows the only (localStorage) copy. */}
+      {!STANDALONE && (
+        <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onViewOnly} title="Open read-only live view of this canvas">
+          <Eye size={14} /> View
+        </Button>
+      )}
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onShortcuts} title="Keyboard shortcuts (?)">
         <HelpCircle size={14} />
       </Button>

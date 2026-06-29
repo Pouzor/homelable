@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { Sidebar } from '../Sidebar'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
 import type { Node } from '@xyflow/react'
-import type { NodeData } from '@/types'
+import type { NodeData, Design } from '@/types'
+import * as standaloneStorage from '@/utils/standaloneStorage'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -275,5 +276,105 @@ describe('Sidebar', () => {
     render(<Sidebar {...defaultProps} />)
     fireEvent.click(screen.getByText('Logout'))
     expect(mockLogout).toHaveBeenCalledOnce()
+  })
+})
+
+// ── Standalone mode ────────────────────────────────────────────────────────────
+// VITE_STANDALONE is read at module load, so re-import Sidebar after stubbing it.
+// The hoisted vi.mock auto-mocks re-apply on re-import; configure the fresh mock
+// instances after the dynamic import.
+describe('Sidebar (standalone)', () => {
+  const makeDesign = (id: string, name: string): Design => ({
+    id, name, design_type: 'network', icon: null,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  })
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  // Re-import Sidebar after stubbing VITE_STANDALONE. Returns the design-store
+  // instance the re-imported Sidebar uses, seeded with `designs` so we can drive
+  // and assert the switcher.
+  async function renderStandalone(nodes: Node<NodeData>[] = [], designs: Design[] = []) {
+    vi.stubEnv('VITE_STANDALONE', 'true')
+    vi.resetModules()
+    const { useCanvasStore: cs } = await import('@/stores/canvasStore')
+    const { useAuthStore: as } = await import('@/stores/authStore')
+    const { useDesignStore: ds } = await import('@/stores/designStore')
+    vi.mocked(cs).mockReturnValue({
+      nodes, hasUnsavedChanges: false, addNode: vi.fn(), scanEventTs: 0,
+    } as ReturnType<typeof useCanvasStore>)
+    vi.mocked(as).mockImplementation((selector: (s: { logout: () => void }) => unknown) =>
+      selector({ logout: mockLogout }) as ReturnType<typeof useAuthStore>
+    )
+    ds.setState({ designs, activeDesignId: designs[0]?.id ?? null, loaded: true })
+    const { Sidebar: SB } = await import('../Sidebar')
+    render(<SB {...defaultProps} />)
+    return ds
+  }
+
+  it('hides the Total/Online/Offline stats footer', async () => {
+    await renderStandalone([makeNode('n1', 'online'), makeNode('n2', 'offline')])
+    expect(screen.queryByText('Total')).not.toBeInTheDocument()
+    expect(screen.queryByText('Online')).not.toBeInTheDocument()
+    expect(screen.queryByText('Offline')).not.toBeInTheDocument()
+  })
+
+  it('hides scan-dependent items but keeps canvas actions', async () => {
+    await renderStandalone()
+    expect(screen.queryByText('Scan Network')).not.toBeInTheDocument()
+    expect(screen.queryByText('Device Inventory')).not.toBeInTheDocument()
+    expect(screen.queryByText('Logout')).not.toBeInTheDocument()
+    expect(screen.getByText('Add Node')).toBeInTheDocument()
+    expect(screen.getByText('Save Canvas')).toBeInTheDocument()
+  })
+
+  it('creates a canvas via localStorage (no API) and adds it to the store', async () => {
+    const ds = await renderStandalone([], [makeDesign('d1', 'Main')])
+
+    fireEvent.click(screen.getByText('Main'))          // open switcher
+    fireEvent.click(screen.getByText('New Canvas'))    // open create modal
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Garage' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await screen.findByText('Garage')
+    expect(ds.getState().designs.map((d) => d.name)).toContain('Garage')
+    expect(standaloneStorage.listDesigns().map((d) => d.name)).toContain('Garage')
+  })
+
+  it('renames a canvas via localStorage (no API)', async () => {
+    standaloneStorage.createDesign('Old')
+    const seeded = standaloneStorage.listDesigns()
+    const ds = await renderStandalone([], seeded)
+
+    fireEvent.click(screen.getByText('Old'))
+    fireEvent.click(screen.getByLabelText('Edit Old'))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Renamed' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await screen.findByText('Renamed')
+    expect(ds.getState().designs.map((d) => d.name)).toContain('Renamed')
+    expect(standaloneStorage.listDesigns()[0].name).toBe('Renamed')
+  })
+
+  it('deletes a canvas via localStorage (no API)', async () => {
+    standaloneStorage.createDesign('Keep')
+    standaloneStorage.createDesign('Drop')
+    const seeded = standaloneStorage.listDesigns()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const ds = await renderStandalone([], seeded)
+
+    fireEvent.click(screen.getByText('Keep'))          // open switcher
+    fireEvent.click(screen.getByLabelText('Delete Drop'))
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(standaloneStorage.listDesigns().map((d) => d.name)).toEqual(['Keep'])
+    expect(ds.getState().designs.map((d) => d.name)).toEqual(['Keep'])
+    confirmSpy.mockRestore()
   })
 })
