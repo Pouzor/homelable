@@ -312,6 +312,44 @@ async def test_approve_device(client: AsyncClient, headers, pending_device):
 
 
 @pytest.mark.asyncio
+async def test_approve_device_no_dupe_same_ieee_same_design(
+    client: AsyncClient, headers, db_session
+):
+    """Approving a device whose IEEE is already on the target design must reuse
+    the existing node, not create a duplicate (source of the crash bug)."""
+    design = Design(name="d1")
+    db_session.add(design)
+    await db_session.flush()
+    existing = Node(
+        label="sensor", type="zigbee_enddevice", ieee_address="0xZZZ",
+        services=[], design_id=design.id,
+    )
+    db_session.add(existing)
+    device = PendingDevice(
+        id=str(uuid.uuid4()), ieee_address="0xZZZ", suggested_type="zigbee_enddevice",
+        status="pending", discovery_source="zigbee",
+    )
+    db_session.add(device)
+    await db_session.commit()
+
+    res = await client.post(
+        f"/api/v1/scan/pending/{device.id}/approve",
+        json={
+            "label": "sensor", "type": "zigbee_enddevice",
+            "status": "online", "services": [], "design_id": design.id,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    assert res.json()["node_id"] == existing.id  # reused, not new
+
+    nodes = (
+        await db_session.execute(select(Node).where(Node.ieee_address == "0xZZZ"))
+    ).scalars().all()
+    assert len(nodes) == 1  # no duplicate created
+
+
+@pytest.mark.asyncio
 async def test_approve_nonexistent_device(client: AsyncClient, headers):
     node_payload = {
         "label": "Ghost",

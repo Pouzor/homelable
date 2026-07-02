@@ -619,6 +619,43 @@ async def test_persist_pending_import_refreshes_existing_coordinator_properties(
 
 
 @pytest.mark.asyncio
+async def test_persist_pending_import_device_on_multiple_canvases(
+    db_session,
+) -> None:
+    """Regression: a device approved onto TWO designs (one Node each) must not
+    crash re-import with MultipleResultsFound — props refresh on both nodes."""
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import Design, Node
+
+    d1 = Design(name="d1")
+    d2 = Design(name="d2")
+    db_session.add_all([d1, d2])
+    await db_session.flush()
+    for d in (d1, d2):
+        db_session.add(Node(
+            label="router_1", type="zigbee_router", status="online",
+            check_method="none", ieee_address="0xR1", services=[],
+            properties=[], design_id=d.id,
+        ))
+    await db_session.commit()
+
+    bumped = [dict(n) for n in _PENDING_NODES]
+    bumped[1]["lqi"] = 240
+    # Must not raise.
+    await _persist_pending_import(db_session, bumped, _PENDING_EDGES)
+
+    nodes = (
+        await db_session.execute(select(Node).where(Node.ieee_address == "0xR1"))
+    ).scalars().all()
+    assert len(nodes) == 2  # both canvas placements preserved
+    for n in nodes:
+        lqi = {p["key"]: p["value"] for p in n.properties}.get("LQI")
+        assert lqi == "240"  # refreshed on every canvas
+
+
+@pytest.mark.asyncio
 async def test_import_pending_requires_auth(client: AsyncClient) -> None:
     res = await client.post(
         "/api/v1/zigbee/import-pending",

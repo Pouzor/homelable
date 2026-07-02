@@ -15,8 +15,12 @@ from app.db.database import AsyncSessionLocal, get_db
 from app.db.models import Design, Edge, Node, PendingDevice, PendingDeviceLink, ScanRun
 from app.schemas.nodes import NodeCreate
 from app.schemas.scan import PendingDeviceResponse, ScanRunResponse
+from app.services.node_dedupe import dedupe_nodes_by_ieee
 from app.services.scanner import DeepScanOptions, _valid_port_range, request_cancel, run_scan
-from app.services.zigbee_service import build_zigbee_properties
+from app.services.zigbee_service import (
+    build_zigbee_properties,
+    merge_zigbee_properties,
+)
 from app.services.zwave_service import build_zwave_properties
 
 _ZIGBEE_TYPES = {"zigbee_coordinator", "zigbee_router", "zigbee_enddevice"}
@@ -308,6 +312,9 @@ async def bulk_approve_devices(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ) -> dict[str, Any]:
+    # Repair any legacy same-canvas duplicate nodes before placing more.
+    await dedupe_nodes_by_ieee(db)
+
     # Target the design the user is on; fall back to the first design.
     default_design_id = payload.design_id
     if default_design_id is None:
@@ -469,6 +476,35 @@ async def approve_device(
         raise HTTPException(status_code=409, detail="Device already processed")
     device.status = "approved"
     wireless = _is_wireless(node_data.type)
+
+    # Guard against a true duplicate: same IEEE already placed on THIS design.
+    # (The same device on a *different* design is valid — one Node per canvas.)
+    if device.ieee_address is not None:
+        dup = (
+            await db.execute(
+                select(Node).where(
+                    Node.ieee_address == device.ieee_address,
+                    Node.design_id == node_design_id,
+                )
+            )
+        ).scalars().first()
+        if dup is not None:
+            dup.properties = merge_zigbee_properties(
+                dup.properties,
+                _wireless_properties(
+                    node_data.type, device.ieee_address,
+                    device.vendor, device.model, device.lqi,
+                ) if wireless else [],
+            )
+            edges = await _resolve_pending_links_for_ieee(db, device.ieee_address)
+            await db.commit()
+            return {
+                "approved": True,
+                "node_id": dup.id,
+                "edges_created": len(edges),
+                "edges": edges,
+            }
+
     # Prefer the MAC discovered during the scan (stored on the pending device);
     # fall back to whatever the approve payload carried.
     _mac = device.mac or node_data.mac

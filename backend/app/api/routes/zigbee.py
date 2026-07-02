@@ -23,6 +23,7 @@ from app.schemas.zigbee import (
     ZigbeeTestConnectionRequest,
     ZigbeeTestConnectionResponse,
 )
+from app.services.node_dedupe import dedupe_nodes_by_ieee
 from app.services.zigbee_service import (
     build_zigbee_properties,
     fetch_networkmap,
@@ -138,6 +139,10 @@ async def _persist_pending_import(
     Coordinator auto-approves to a canvas Node. Other devices upsert by IEEE.
     All zigbee-source links are wiped and re-inserted from the new map.
     """
+    # Repair any pre-existing duplicate nodes (same IEEE) before upserting, so
+    # the by-IEEE lookups below resolve to a single row.
+    await dedupe_nodes_by_ieee(db)
+
     # Determine target design (use first design as fallback)
     first_design = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
     default_design_id = first_design.id if first_design else None
@@ -156,15 +161,22 @@ async def _persist_pending_import(
         )
 
         if n.get("device_type") == "Coordinator":
-            existing = await db.execute(select(Node).where(Node.ieee_address == ieee))
-            existing_node = existing.scalar_one_or_none()
-            if existing_node:
-                existing_node.properties = merge_zigbee_properties(
-                    existing_node.properties, props
+            # The coordinator may sit on several canvases (one Node per design).
+            # Refresh props on every matching node, not just one.
+            existing_nodes = (
+                await db.execute(
+                    select(Node).where(Node.ieee_address == ieee).order_by(Node.id)
                 )
+            ).scalars().all()
+            if existing_nodes:
+                for existing_node in existing_nodes:
+                    existing_node.properties = merge_zigbee_properties(
+                        existing_node.properties, props
+                    )
+                first = existing_nodes[0]
                 coordinator_out = ZigbeeCoordinatorOut(
-                    id=existing_node.id,
-                    label=existing_node.label,
+                    id=first.id,
+                    label=first.label,
                     ieee_address=ieee,
                 )
                 coordinator_existed = True
@@ -188,16 +200,18 @@ async def _persist_pending_import(
             continue
 
         # If the device has already been approved as a canvas Node, refresh
-        # its properties and skip creating a pending row (keeps approved
-        # devices out of pending/hidden modals on re-import).
-        existing_node_q = await db.execute(
-            select(Node).where(Node.ieee_address == ieee)
-        )
-        existing_node = existing_node_q.scalar_one_or_none()
-        if existing_node:
-            existing_node.properties = merge_zigbee_properties(
-                existing_node.properties, props
+        # its properties on every canvas it sits on and skip creating a pending
+        # row (keeps approved devices out of pending/hidden modals on re-import).
+        existing_nodes = (
+            await db.execute(
+                select(Node).where(Node.ieee_address == ieee).order_by(Node.id)
             )
+        ).scalars().all()
+        if existing_nodes:
+            for existing_node in existing_nodes:
+                existing_node.properties = merge_zigbee_properties(
+                    existing_node.properties, props
+                )
             continue
 
         result = await db.execute(

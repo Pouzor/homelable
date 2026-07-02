@@ -445,3 +445,38 @@ async def test_persist_keeps_hidden_hidden(db_session) -> None:
         )
     ).scalar_one()
     assert still_hidden.status == "hidden"
+
+
+@pytest.mark.asyncio
+async def test_persist_device_on_multiple_canvases(db_session) -> None:
+    """Regression: a device on TWO designs (one Node each) must not crash
+    re-import with MultipleResultsFound — props refresh on both nodes."""
+    from sqlalchemy import select
+
+    from app.api.routes.zwave import _persist_pending_import
+    from app.db.models import Design, Node
+
+    d1 = Design(name="d1")
+    d2 = Design(name="d2")
+    db_session.add_all([d1, d2])
+    await db_session.flush()
+    for d in (d1, d2):
+        db_session.add(Node(
+            label="Wall Plug", type="zwave_router", status="online",
+            check_method="none", ieee_address="zwave-0xh-2", services=[],
+            properties=[], design_id=d.id,
+        ))
+    await db_session.commit()
+
+    bumped = [dict(n) for n in _PENDING_NODES]
+    bumped[1]["model"] = "ZW200"
+    # Must not raise.
+    await _persist_pending_import(db_session, bumped, _PENDING_EDGES)
+
+    nodes = (
+        await db_session.execute(select(Node).where(Node.ieee_address == "zwave-0xh-2"))
+    ).scalars().all()
+    assert len(nodes) == 2  # both canvas placements preserved
+    for n in nodes:
+        model = {p["key"]: p["value"] for p in n.properties}.get("Model")
+        assert model == "ZW200"  # refreshed on every canvas
