@@ -9,7 +9,7 @@ import {
   type EdgeProps,
   type Edge,
 } from '@xyflow/react'
-import type { EdgeData, EdgeType, Waypoint } from '@/types'
+import type { EdgeData, EdgeType, NodeData, Waypoint } from '@/types'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { THEMES } from '@/utils/themes'
@@ -20,6 +20,13 @@ const VLAN_COLORS = ['#00d4ff', '#a855f7', '#39d353', '#ff6e00', '#e3b341', '#f8
 function getVlanColor(vlanId?: number): string {
   if (!vlanId) return '#00d4ff'
   return VLAN_COLORS[vlanId % VLAN_COLORS.length]
+}
+
+function getLqiColor(lqi: number): string {
+  if (lqi >= 200) return '#00cc00'
+  if (lqi >= 150) return '#88cc00'
+  if (lqi >= 100) return '#ffaa00'
+  return '#ff3300'
 }
 
 // ── Waypoint drag handle ─────────────────────────────────────────────────────
@@ -289,7 +296,8 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
   const activeTheme = useThemeStore((s) => s.activeTheme)
   const theme = THEMES[activeTheme]
   const sourceType = useStore((s) => s.nodeLookup.get(source)?.type)
-  const targetType = useStore((s) => s.nodeLookup.get(target)?.type)
+  const targetNode = useStore((s) => s.nodeLookup.get(target))
+  const targetType = targetNode?.type
   const isBidirectional = sourceType === 'proxmox' && targetType === 'proxmox'
 
   const waypoints: Waypoint[] = Array.isArray(data?.waypoints) && data.waypoints.length > 0
@@ -315,6 +323,8 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
 
   const edgeType: EdgeType = data?.type ?? 'ethernet'
   const edgeColors = theme.colors.edgeColors
+  const highlightedPath = useCanvasStore((s) => s.highlightedPath)
+  const isHighlighted = highlightedPath.includes(id)
 
   const BASE_STYLES: Record<EdgeType, React.CSSProperties> = {
     ethernet: { stroke: edgeColors.ethernet, strokeWidth: 2 },
@@ -328,15 +338,36 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
   }
 
   const customColor = data?.custom_color as string | undefined
-  const strokeColor: string = selected
+
+  // Derive LQI color from the target node's properties for iot edges
+  const lqiColor = (edgeType === 'iot' && targetNode?.data?.properties)
+    ? (() => {
+        const props = (targetNode.data as NodeData).properties ?? []
+        const lqiProp = props.find(
+          (p: { key: string; value: string }) => p.key === 'LQI'
+        )
+        if (lqiProp) {
+          const lqi = parseInt(lqiProp.value, 10)
+          if (!isNaN(lqi)) return getLqiColor(lqi)
+        }
+        return null
+      })()
+    : null
+
+  const pathHighlightColor = '#00d4ff'
+  const strokeColor: string = isHighlighted
+    ? pathHighlightColor
+    : selected
     ? theme.colors.edgeSelectedColor
-    : customColor
+    : lqiColor
+    ?? customColor
     ?? (edgeType === 'vlan' ? getVlanColor(data?.vlan_id as number | undefined) : (BASE_STYLES[edgeType].stroke as string ?? edgeColors.ethernet))
 
   const style: React.CSSProperties = {
     ...BASE_STYLES[edgeType],
     ...(edgeType === 'vlan' ? { stroke: getVlanColor(data?.vlan_id as number | undefined) } : {}),
     ...(customColor ? { stroke: customColor } : {}),
+    ...(isHighlighted ? { stroke: pathHighlightColor, strokeWidth: 3, filter: `drop-shadow(0 0 6px ${pathHighlightColor}aa)` } : {}),
     ...(selected ? { stroke: theme.colors.edgeSelectedColor, filter: `drop-shadow(0 0 4px ${theme.colors.edgeSelectedColor}88)` } : {}),
   }
 
