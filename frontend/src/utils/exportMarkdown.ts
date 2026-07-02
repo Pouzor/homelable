@@ -5,8 +5,11 @@ const EMPTY = '—'
 
 function cell(v: string | null | undefined): string {
   if (!v) return EMPTY
-  // Escape pipe chars so they don't break the table
-  return v.replace(/\|/g, '\\|')
+  // Escape backslashes first, then pipes, and collapse newlines so they don't break the table
+  return v
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, ' ')
 }
 
 export function generateMarkdownTable(nodes: Node<NodeData>[]): string {
@@ -27,7 +30,7 @@ export function generateMarkdownTable(nodes: Node<NodeData>[]): string {
         cell(d.ip),
         cell(d.hostname),
         cell(d.status),
-        services,
+        cell(services),
       ]
     })
 

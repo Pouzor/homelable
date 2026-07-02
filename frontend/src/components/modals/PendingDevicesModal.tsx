@@ -1,15 +1,20 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Globe, Router, Server, Layers, Box, Container, HardDrive, Cpu, Wifi, Circle, Network,
-  Search, RefreshCw, X, CheckCircle2, EyeOff, Trash2, Loader2,
+  Search, RefreshCw, X, CheckCircle2, EyeOff, Trash2, Loader2, ServerCog,
 } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { scanApi } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { useDesignStore } from '@/stores/designStore'
 import { toast } from 'sonner'
 import { PendingDeviceModal, type PendingDevice } from '@/components/modals/PendingDeviceModal'
 import type { NodeType, ServiceInfo } from '@/types'
 import { buildZigbeeProperties, isZigbeeType } from '@/utils/zigbeeProperties'
+import { buildZwaveProperties, isZwaveType } from '@/utils/zwaveProperties'
+import { buildMacProperty } from '@/utils/macProperty'
+import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
+import { getCenteredPosition } from '@/utils/viewportCenter'
 
 interface PendingDevicesModalProps {
   open: boolean
@@ -66,11 +71,13 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   generic: Circle,
 }
 
-type SourceFilter = 'all' | 'ip' | 'zigbee'
+type SourceFilter = 'all' | 'ip' | 'zigbee' | 'zwave'
 type StatusFilter = 'pending' | 'hidden'
 
-function inferSource(d: PendingDevice): 'zigbee' | 'ip' {
-  if (d.discovery_source === 'zigbee' || d.ieee_address) return 'zigbee'
+function inferSource(d: PendingDevice): 'zigbee' | 'zwave' | 'ip' {
+  if (d.discovery_source === 'zwave') return 'zwave'
+  if (d.discovery_source === 'zigbee') return 'zigbee'
+  if (d.ieee_address) return 'zigbee'
   return 'ip'
 }
 
@@ -118,7 +125,12 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatus)
+  // Inventory shows on-canvas devices by default; toggle off to hide them.
+  const [showOnCanvas, setShowOnCanvas] = useState(true)
+  // Optionally restrict to devices that have at least one detected service.
+  const [withServicesOnly, setWithServicesOnly] = useState(false)
   const { addNode, scanEventTs } = useCanvasStore()
+  const activeDesignId = useDesignStore((s) => s.activeDesignId)
   const highlightRef = useRef<HTMLButtonElement>(null)
 
   const load = useCallback(async () => {
@@ -158,6 +170,9 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     return devices.filter((d) => {
       if (sourceFilter !== 'all' && inferSource(d) !== sourceFilter) return false
       if (typeFilter !== 'all' && d.suggested_type !== typeFilter) return false
+      // Inventory-only: optionally hide devices already placed on a canvas.
+      if (statusFilter === 'pending' && !showOnCanvas && (d.canvas_count ?? 0) > 0) return false
+      if (withServicesOnly && (d.services?.length ?? 0) === 0) return false
       if (q) {
         const hay = [
           d.friendly_name, d.hostname, d.ip, d.mac, d.ieee_address, d.vendor, d.model,
@@ -167,7 +182,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       }
       return true
     })
-  }, [devices, search, sourceFilter, typeFilter])
+  }, [devices, search, sourceFilter, typeFilter, statusFilter, showOnCanvas, withServicesOnly])
 
   useEffect(() => {
     if (!highlightId || loading || !open) return
@@ -240,9 +255,11 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
         if (failed > 0) toast.error(`Removed ${removedIds.size}, ${failed} failed`)
         else toast.success(`Removed ${removedIds.size} device${removedIds.size !== 1 ? 's' : ''}`)
       } else {
+        // Clears only pending rows server-side; approved/on-canvas devices stay,
+        // so reload rather than blanking the whole inventory.
         await scanApi.clearPending()
-        setDevices([])
         setSelectedIds(new Set())
+        await load()
         toast.success('Pending devices cleared')
       }
     } catch {
@@ -254,24 +271,32 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     try {
       const fallbackLabel = deviceLabel(device)
       const type = (device.suggested_type ?? 'generic') as NodeType
-      const zigbee = isZigbeeType(type)
-      const properties = zigbee ? buildZigbeeProperties(device) : []
+      const zwave = isZwaveType(type)
+      const wireless = isZigbeeType(type) || zwave
+      const properties = zwave
+        ? buildZwaveProperties(device)
+        : isZigbeeType(type)
+          ? buildZigbeeProperties(device)
+          : buildMacProperty(device.mac)
       const nodeData = {
         label: fallbackLabel,
         type,
         ip: device.ip ?? undefined,
+        mac: device.mac ?? undefined,
         hostname: device.hostname ?? undefined,
-        status: zigbee ? 'online' : 'unknown',
+        status: wireless ? 'online' : 'unknown',
         services: (device.services ?? []) as ServiceInfo[],
         properties,
+        // Approve onto the design the user is viewing, not the first design.
+        design_id: activeDesignId ?? undefined,
       }
       const res = await scanApi.approve(device.id, nodeData)
       const nodeId = res.data.node_id
       addNode({
         id: nodeId,
         type: nodeData.type,
-        position: { x: 400, y: 300 },
-        data: { ...nodeData, status: zigbee ? ('online' as const) : ('unknown' as const) },
+        position: getCenteredPosition(),
+        data: { ...nodeData, status: wireless ? ('online' as const) : ('unknown' as const) },
       })
       injectAutoEdges(res.data.edges)
       const extra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
@@ -308,27 +333,36 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     const ids = [...selectedIds]
     if (ids.length === 0) return
     try {
-      const res = await scanApi.bulkApprove(ids)
+      const res = await scanApi.bulkApprove(ids, activeDesignId)
       const deviceToNode: Record<string, string> = {}
       res.data.device_ids.forEach((did, i) => { deviceToNode[did] = res.data.node_ids[i] })
       const approvedDevices = devices.filter((d) => ids.includes(d.id))
+      const cols = Math.min(4, approvedDevices.length)
+      const rows = Math.ceil(approvedDevices.length / 4)
+      const origin = getCenteredPosition(cols * 160, rows * 100)
       approvedDevices.forEach((d, i) => {
         const nodeId = deviceToNode[d.id]
         if (!nodeId) return
         const type = (d.suggested_type ?? 'generic') as NodeType
-        const zigbee = isZigbeeType(type)
+        const zwave = isZwaveType(type)
+        const wireless = isZigbeeType(type) || zwave
         addNode({
           id: nodeId,
           type,
-          position: { x: 400 + (i % 4) * 160, y: 300 + Math.floor(i / 4) * 100 },
+          position: { x: origin.x + (i % 4) * 160, y: origin.y + Math.floor(i / 4) * 100 },
           data: {
             label: deviceLabel(d),
             type,
             ip: d.ip ?? undefined,
+            mac: d.mac ?? undefined,
             hostname: d.hostname ?? undefined,
-            status: zigbee ? ('online' as const) : ('unknown' as const),
+            status: wireless ? ('online' as const) : ('unknown' as const),
             services: (d.services ?? []) as ServiceInfo[],
-            properties: zigbee ? buildZigbeeProperties(d) : [],
+            properties: zwave
+              ? buildZwaveProperties(d)
+              : isZigbeeType(type)
+                ? buildZigbeeProperties(d)
+                : buildMacProperty(d.mac),
           },
         })
       })
@@ -370,12 +404,20 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       if (e.key === '/') { e.preventDefault(); searchRef.current?.focus() }
       else if (e.key.toLowerCase() === 's') { e.preventDefault(); if (selectMode) exitSelectMode(); else enterSelectMode() }
       else if (e.key.toLowerCase() === 'a' && selectMode) { e.preventDefault(); selectAllVisible() }
-      else if (e.key === 'Enter' && selectMode && selectedIds.size > 0) { e.preventDefault(); handleBulkApprove() }
+      else if (e.key === 'Enter' && selectMode && selectedIds.size > 0) {
+        // Enter confirms the bulk action for the current view: approving
+        // hidden devices would be wrong — they restore.
+        e.preventDefault()
+        if (statusFilter === 'hidden') handleBulkRestore()
+        else handleBulkApprove()
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
+    // statusFilter is included so Enter dispatches the correct bulk action
+    // (approve vs restore) even if the device list doesn't change on switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, selectMode, selectedIds, filtered])
+  }, [open, selectMode, selectedIds, filtered, statusFilter])
 
   return (
     <>
@@ -387,7 +429,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
           <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
             <div className="flex items-center justify-between gap-3">
               <DialogTitle className="text-base font-semibold flex items-center gap-2">
-                {statusFilter === 'pending' ? 'Pending Devices' : 'Hidden Devices'}
+                {statusFilter === 'pending' ? 'Device Inventory' : 'Hidden Devices'}
                 <span className="text-muted-foreground font-normal text-xs">
                   ({filtered.length}{filtered.length !== devices.length && ` of ${devices.length}`})
                 </span>
@@ -405,9 +447,19 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
                     <Trash2 size={14} />
                   </button>
                 )}
-                <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors" title="Close">
+                {/* Route the close X through Base UI's DialogClose (same path as
+                    outside-click) instead of a raw onClick — the latter's synthetic
+                    click was being dropped on Firefox/Windows. */}
+                <DialogClose
+                  render={
+                    <button
+                      className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors"
+                      aria-label="Close"
+                    />
+                  }
+                >
                   <X size={14} />
-                </button>
+                </DialogClose>
               </div>
             </div>
           </DialogHeader>
@@ -443,6 +495,12 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
               >
                 Zigbee
               </button>
+              <button
+                onClick={() => setSourceFilter('zwave')}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'zwave' ? 'bg-[#ff6e00]/20 text-[#ff6e00]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+              >
+                Z-Wave
+              </button>
             </div>
             <select
               value={typeFilter}
@@ -458,7 +516,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
                 onClick={() => setStatusFilter('pending')}
                 className={`px-2.5 py-1.5 transition-colors ${statusFilter === 'pending' ? 'bg-[#00d4ff]/20 text-[#00d4ff]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
               >
-                Pending
+                Inventory
               </button>
               <button
                 onClick={() => setStatusFilter('hidden')}
@@ -467,6 +525,26 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
                 Hidden
               </button>
             </div>
+            {statusFilter === 'pending' && (
+              <button
+                onClick={() => setShowOnCanvas((v) => !v)}
+                className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${showOnCanvas ? 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground' : 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50'}`}
+                title="Show or hide devices already on a canvas"
+                aria-pressed={!showOnCanvas}
+              >
+                <Layers size={12} />
+                {showOnCanvas ? 'Hide on-canvas' : 'Show on-canvas'}
+              </button>
+            )}
+            <button
+              onClick={() => setWithServicesOnly((v) => !v)}
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${withServicesOnly ? 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
+              title="Only show devices with at least one detected service"
+              aria-pressed={withServicesOnly}
+            >
+              <ServerCog size={12} />
+              With services
+            </button>
             <button
               onClick={() => selectMode ? exitSelectMode() : enterSelectMode()}
               className={`text-xs px-2.5 py-1.5 rounded border transition-colors ${selectMode ? 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
@@ -489,7 +567,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
               </p>
             )}
             {!loading && filtered.length > 0 && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                 {filtered.map((d) => (
                   <DeviceCard
                     key={d.id}
@@ -581,11 +659,30 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
   const source = inferSource(device)
   const Icon = TYPE_ICONS[device.suggested_type ?? 'generic'] ?? Circle
   const label = deviceLabel(device)
-  const sourceColor = source === 'zigbee' ? '#00d4ff' : '#a855f7'
-  const sourceLabel = source === 'zigbee' ? 'ZIGBEE' : (device.discovery_source ?? 'IP').toUpperCase()
+  const sourceColor = source === 'zigbee' ? '#00d4ff' : source === 'zwave' ? '#ff6e00' : '#a855f7'
+  const sourceLabel =
+    source === 'zigbee' ? 'ZIGBEE'
+    : source === 'zwave' ? 'Z-WAVE'
+    : (device.discovery_source ?? 'IP').toUpperCase()
   const services = device.services ?? []
   const visibleServices = services.slice(0, 4)
   const moreServices = services.length - visibleServices.length
+
+  // Timestamps: a device placed on a canvas shows its linked node's lifecycle
+  // (created / last scan / last modified / last seen). A device that is only in
+  // the discovery inventory has no node yet, so it falls back to when the
+  // scanner first saw it.
+  const onCanvas = (device.canvas_count ?? 0) > 0
+  const timestamps: { label: string; iso: string }[] = []
+  if (onCanvas) {
+    if (device.node_created_at) timestamps.push({ label: 'Created', iso: device.node_created_at })
+    if (device.node_last_scan) timestamps.push({ label: 'Scan', iso: device.node_last_scan })
+    if (device.node_last_modified) timestamps.push({ label: 'Modified', iso: device.node_last_modified })
+    if (device.node_last_seen) timestamps.push({ label: 'Seen', iso: device.node_last_seen })
+  }
+  if (timestamps.length === 0) {
+    timestamps.push({ label: 'Discovered', iso: device.discovered_at })
+  }
 
   const borderClass = highlighted
     ? 'border-[#e3b341] bg-[#2d3748]'
@@ -598,16 +695,28 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
       ref={cardRef}
       onClick={onClick}
       data-testid={`pending-card-${device.id}`}
-      className={`relative text-left rounded-lg border p-3 transition-all duration-150 ${borderClass}`}
+      className={`relative text-left rounded-lg border p-2.5 transition-all duration-150 ${borderClass}`}
     >
       {selectMode && selected && (
         <CheckCircle2
           size={18}
-          className="absolute top-2 right-2 text-[#00d4ff] fill-[#0d1117]"
+          className="absolute top-2 right-2 text-[#00d4ff] fill-[#0d1117] z-10"
         />
       )}
       {!selectMode && device.status === 'hidden' && (
         <EyeOff size={14} className="absolute top-2 right-2 text-muted-foreground" />
+      )}
+      {/* Canvas-presence corner: how many canvases this device already sits on.
+          Hidden while a select-mode checkmark occupies the same corner. */}
+      {device.status !== 'hidden' && (device.canvas_count ?? 0) > 0 && !(selectMode && selected) && (
+        <div
+          className="absolute top-0 right-0 flex items-center gap-1 rounded-bl-lg rounded-tr-lg bg-[#00d4ff] text-[#0d1117] text-xs font-bold px-2 py-1 shadow-md"
+          title={`On ${device.canvas_count} canvas${device.canvas_count !== 1 ? 'es' : ''}`}
+          aria-label={`On ${device.canvas_count} canvas${device.canvas_count !== 1 ? 'es' : ''}`}
+        >
+          <Layers size={12} strokeWidth={2.5} />
+          {device.canvas_count}
+        </div>
       )}
 
       {/* Header */}
@@ -671,6 +780,14 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
           )}
         </div>
       )}
+
+      {/* Timestamps — compact relative times, full date on hover. Kept tiny so
+          the tile footprint stays the same as before. */}
+      <div className="mt-2 pt-2 border-t border-border/50 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px]">
+        {timestamps.map((t) => (
+          <TimeLine key={t.label} label={t.label} iso={t.iso} />
+        ))}
+      </div>
     </button>
   )
 }
@@ -680,6 +797,15 @@ function InfoLine({ label, value }: { label: string; value: string }) {
     <div className="flex items-baseline gap-1.5 min-w-0">
       <span className="text-muted-foreground shrink-0 w-12">{label}</span>
       <span className="font-mono text-foreground truncate">{value}</span>
+    </div>
+  )
+}
+
+function TimeLine({ label, iso }: { label: string; iso: string }) {
+  return (
+    <div className="flex items-baseline gap-1 min-w-0" title={formatTimestamp(iso)}>
+      <span className="text-muted-foreground shrink-0">{label}</span>
+      <span className="font-mono text-foreground/80 truncate">{formatRelative(iso)}</span>
     </div>
   )
 }

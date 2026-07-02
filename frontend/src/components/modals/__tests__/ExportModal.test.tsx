@@ -3,12 +3,18 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ExportModal } from '../ExportModal'
 
 const mockExportToPng = vi.fn()
+const mockExportToSvg = vi.fn()
 vi.mock('@/utils/export', () => ({
   exportToPng: (...args: unknown[]) => mockExportToPng(...args),
+  exportToSvg: (...args: unknown[]) => mockExportToSvg(...args),
   EXPORT_QUALITY_OPTIONS: [
     { value: 'standard', label: 'Standard', pixelRatio: 1, hint: '1× — small file' },
     { value: 'high',     label: 'High',     pixelRatio: 2, hint: '2× — recommended' },
     { value: 'ultra',    label: 'Ultra',    pixelRatio: 4, hint: '4× — print quality, large file' },
+  ],
+  EXPORT_BACKGROUND_OPTIONS: [
+    { value: 'dark',  label: 'Dark',  color: '#0d1117', hint: 'screen / docs' },
+    { value: 'white', label: 'White', color: '#ffffff', hint: 'printing' },
   ],
 }))
 
@@ -20,6 +26,7 @@ describe('ExportModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockExportToPng.mockResolvedValue(undefined)
+    mockExportToSvg.mockResolvedValue(undefined)
   })
 
   it('renders all three quality options', () => {
@@ -46,7 +53,51 @@ describe('ExportModal', () => {
     render(<ExportModal open onClose={onClose} getElement={getElement} />)
     fireEvent.click(screen.getByText('Standard').closest('button')!)
     fireEvent.click(screen.getByRole('button', { name: /download/i }))
-    await waitFor(() => expect(mockExportToPng).toHaveBeenCalledWith(el, 'standard'))
+    await waitFor(() => expect(mockExportToPng).toHaveBeenCalledWith(el, 'standard', 'dark'))
+  })
+
+  it('renders an SVG option under the quality options', () => {
+    render(<ExportModal open onClose={onClose} getElement={getElement} />)
+    expect(screen.getByText('SVG')).toBeInTheDocument()
+  })
+
+  it('selects SVG and calls exportToSvg on Download click', async () => {
+    render(<ExportModal open onClose={onClose} getElement={getElement} />)
+    fireEvent.click(screen.getByText('SVG').closest('button')!)
+    expect(screen.getByText('SVG').closest('button')!.className).toContain('border-[#00d4ff]')
+    fireEvent.click(screen.getByRole('button', { name: /download/i }))
+    await waitFor(() => expect(mockExportToSvg).toHaveBeenCalledWith(el, 'dark'))
+    expect(mockExportToPng).not.toHaveBeenCalled()
+  })
+
+  it('switches back to PNG when a quality option is clicked after SVG', () => {
+    render(<ExportModal open onClose={onClose} getElement={getElement} />)
+    fireEvent.click(screen.getByText('SVG').closest('button')!)
+    fireEvent.click(screen.getByText('Ultra').closest('button')!)
+    expect(screen.getByText('Ultra').closest('button')!.className).toContain('border-[#00d4ff]')
+    expect(screen.getByText('SVG').closest('button')!.className).not.toContain('border-[#00d4ff]')
+  })
+
+  it('renders dark and white background options, dark selected by default', () => {
+    render(<ExportModal open onClose={onClose} getElement={getElement} />)
+    expect(screen.getByText('Dark')).toBeInTheDocument()
+    expect(screen.getByText('White')).toBeInTheDocument()
+    expect(screen.getByText('Dark').closest('button')!.className).toContain('border-[#00d4ff]')
+  })
+
+  it('exports with white background when White is selected (printing)', async () => {
+    render(<ExportModal open onClose={onClose} getElement={getElement} />)
+    fireEvent.click(screen.getByText('White').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /download/i }))
+    await waitFor(() => expect(mockExportToPng).toHaveBeenCalledWith(el, 'high', 'white'))
+  })
+
+  it('applies the background choice to SVG export too', async () => {
+    render(<ExportModal open onClose={onClose} getElement={getElement} />)
+    fireEvent.click(screen.getByText('SVG').closest('button')!)
+    fireEvent.click(screen.getByText('White').closest('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /download/i }))
+    await waitFor(() => expect(mockExportToSvg).toHaveBeenCalledWith(el, 'white'))
   })
 
   it('closes after successful export', async () => {
@@ -69,6 +120,6 @@ describe('ExportModal', () => {
 
   it('does not render when closed', () => {
     render(<ExportModal open={false} onClose={onClose} getElement={getElement} />)
-    expect(screen.queryByText('Export as PNG')).not.toBeInTheDocument()
+    expect(screen.queryByText('Export Canvas')).not.toBeInTheDocument()
   })
 })

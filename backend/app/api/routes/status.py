@@ -1,3 +1,4 @@
+import contextlib
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -8,6 +9,12 @@ router = APIRouter()
 
 # Active WebSocket connections
 _connections: list[WebSocket] = []
+
+
+def _drop(websocket: WebSocket) -> None:
+    """Remove a connection if still present — idempotent, never raises."""
+    with contextlib.suppress(ValueError):
+        _connections.remove(websocket)
 
 
 @router.websocket("/ws/status")
@@ -33,7 +40,11 @@ async def ws_status(websocket: WebSocket) -> None:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        _connections.remove(websocket)
+        pass
+    finally:
+        # Any error (disconnect or otherwise) must release the slot, else the
+        # dead socket lingers in the broadcast pool.
+        _drop(websocket)
 
 
 async def _broadcast(payload: str) -> None:
@@ -41,7 +52,7 @@ async def _broadcast(payload: str) -> None:
         try:
             await conn.send_text(payload)
         except Exception:
-            _connections.remove(conn)
+            _drop(conn)
 
 
 async def broadcast_status(node_id: str, status: str, checked_at: str, response_time_ms: int | None = None) -> None:
@@ -51,6 +62,15 @@ async def broadcast_status(node_id: str, status: str, checked_at: str, response_
         "status": status,
         "checked_at": checked_at,
         "response_time_ms": response_time_ms,
+    }))
+
+
+async def broadcast_service_status(node_id: str, services: list[dict[str, object]], checked_at: str) -> None:
+    await _broadcast(json.dumps({
+        "type": "service_status",
+        "node_id": node_id,
+        "services": services,
+        "checked_at": checked_at,
     }))
 
 

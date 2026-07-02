@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.db.database import AsyncSessionLocal
 from app.db.models import Node
-from app.services.status_checker import check_node
+from app.services.status_checker import check_node, check_services
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,50 @@ async def _run_status_checks() -> None:
     ])
 
 
+def _node_host(ip: str | None, hostname: str | None) -> str | None:
+    """Pick the address to probe services on: first IP, else hostname."""
+    if ip:
+        first = ip.split(",")[0].strip()
+        if first:
+            return first
+    return hostname or None
+
+
+async def _run_service_checks() -> None:
+    """Check every service of every node and broadcast per-service results."""
+    if not settings.service_check_enabled:
+        return
+    from app.api.routes.status import broadcast_service_status  # avoid circular import
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(Node))
+        nodes = result.scalars().all()
+        checkable = [
+            (n.id, _node_host(n.ip, n.hostname), list(n.services or []))
+            for n in nodes
+            if n.services
+        ]
+
+    now = datetime.now(timezone.utc).isoformat()
+    for node_id, host, services in checkable:
+        try:
+            statuses = await check_services(host, services)
+            await broadcast_service_status(node_id=node_id, services=statuses, checked_at=now)
+        except Exception as exc:
+            logger.error("Service checks failed for node %s: %s", node_id, exc)
+
+
+def _add_service_check_job() -> None:
+    scheduler.add_job(
+        _run_service_checks,
+        "interval",
+        seconds=settings.service_check_interval,
+        id="service_checks",
+        max_instances=1,
+        coalesce=True,
+    )
+
+
 def start_scheduler() -> None:
     global scheduler
     if scheduler.running:
@@ -89,6 +133,8 @@ def start_scheduler() -> None:
         max_instances=1,
         coalesce=True,
     )
+    if settings.service_check_enabled:
+        _add_service_check_job()
     scheduler.start()
     logger.info("Scheduler started — status checks every %ds", settings.status_checker_interval)
 
@@ -102,6 +148,31 @@ def reschedule_status_checks(interval_seconds: int) -> None:
         return
     scheduler.reschedule_job("status_checks", trigger="interval", seconds=interval_seconds)
     logger.info("Status checks rescheduled to every %ds", interval_seconds)
+
+
+def reschedule_service_checks(interval_seconds: int) -> None:
+    """Update the service-check interval on the running scheduler (if enabled)."""
+    if interval_seconds < 30:
+        raise ValueError(f"interval_seconds must be >= 30, got {interval_seconds}")
+    if not scheduler.running:
+        logger.warning("Scheduler not running, skipping reschedule")
+        return
+    if scheduler.get_job("service_checks"):
+        scheduler.reschedule_job("service_checks", trigger="interval", seconds=interval_seconds)
+        logger.info("Service checks rescheduled to every %ds", interval_seconds)
+
+
+def set_service_checks_enabled(enabled: bool) -> None:
+    """Add or remove the service-check job on the running scheduler."""
+    if not scheduler.running:
+        return
+    job = scheduler.get_job("service_checks")
+    if enabled and not job:
+        _add_service_check_job()
+        logger.info("Service checks enabled — every %ds", settings.service_check_interval)
+    elif not enabled and job:
+        scheduler.remove_job("service_checks")
+        logger.info("Service checks disabled")
 
 
 def stop_scheduler() -> None:

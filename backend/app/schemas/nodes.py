@@ -27,6 +27,7 @@ class NodeBase(BaseModel):
     ram_gb: float | None = None
     disk_gb: float | None = None
     show_hardware: bool = False
+    show_port_numbers: bool = False
     properties: list[dict[str, Any]] = []
     width: float | None = None
     height: float | None = None
@@ -34,7 +35,7 @@ class NodeBase(BaseModel):
 
 
 class NodeCreate(NodeBase):
-    pass
+    design_id: str | None = None
 
 
 class NodeUpdate(BaseModel):
@@ -60,6 +61,7 @@ class NodeUpdate(BaseModel):
     ram_gb: float | None = None
     disk_gb: float | None = None
     show_hardware: bool | None = None
+    show_port_numbers: bool | None = None
     properties: list[dict[str, Any]] | None = None
     width: float | None = None
     height: float | None = None
@@ -68,7 +70,10 @@ class NodeUpdate(BaseModel):
 
 class NodeResponse(NodeBase):
     id: str
+    design_id: str | None = None
+    ieee_address: str | None = None
     last_seen: datetime | None = None
+    last_scan: datetime | None = None
     response_time_ms: int | None = None
     created_at: datetime
     updated_at: datetime

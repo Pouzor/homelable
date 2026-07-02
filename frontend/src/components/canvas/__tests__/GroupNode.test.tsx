@@ -42,6 +42,7 @@ function renderGroupNode(props: Partial<Parameters<typeof GroupNode>[0]> = {}, s
     nodes: storeNodes,
     updateNode: vi.fn(),
     snapshotHistory: vi.fn(),
+    toggleNodeCollapsed: vi.fn(),
   } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
 
   return render(
@@ -133,5 +134,52 @@ describe('GroupNode', () => {
   it('does not show status summary when group has no children', () => {
     renderGroupNode()
     expect(screen.queryByText(/●/)).toBeNull()
+  })
+
+  it('renders a collapse toggle when the group has parentId children', () => {
+    const storeNodes = [
+      { id: 'c1', parentId: 'g1', data: { status: 'online' } },
+      { id: 'c2', parentId: 'g1', data: { status: 'online' } },
+    ]
+    renderGroupNode({}, storeNodes)
+    expect(screen.getByTitle('Hide 2 items')).toBeDefined()
+  })
+
+  it('flips the toggle title when collapsed', () => {
+    const storeNodes = [
+      { id: 'c1', parentId: 'g1', data: { status: 'online' } },
+    ]
+    renderGroupNode({ data: makeGroupNode({ collapsed: true }).data }, storeNodes)
+    expect(screen.getByTitle('Show 1 hidden items')).toBeDefined()
+  })
+
+  it('calls toggleNodeCollapsed when the toggle is clicked', () => {
+    const toggleNodeCollapsed = vi.fn()
+    const storeNodes = [{ id: 'c1', parentId: 'g1', data: { status: 'online' } }]
+    vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+      nodes: storeNodes,
+      updateNode: vi.fn(),
+      snapshotHistory: vi.fn(),
+      toggleNodeCollapsed,
+    } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+    render(
+      <GroupNode
+        id="g1"
+        data={makeGroupNode().data}
+        selected={false}
+        dragging={false}
+        zIndex={1}
+        isConnectable={true}
+        positionAbsoluteX={0}
+        positionAbsoluteY={0}
+      />,
+    )
+    fireEvent.click(screen.getByTitle('Hide 1 items'))
+    expect(toggleNodeCollapsed).toHaveBeenCalledWith('g1')
+  })
+
+  it('does not render the toggle when the group has no children', () => {
+    renderGroupNode()
+    expect(screen.queryByTitle(/Hide.*items|Show.*hidden/)).toBeNull()
   })
 })

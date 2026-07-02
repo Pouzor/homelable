@@ -51,6 +51,18 @@ async def test_save_canvas_creates_nodes_and_edges(client: AsyncClient, headers:
     assert canvas["viewport"] == {"x": 1, "y": 2, "zoom": 1.5}
 
 
+async def test_load_canvas_exposes_inventory_timestamps(client: AsyncClient, headers: dict):
+    n1 = node_payload(label="Router", type="router")
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    node = (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"][0]
+    # created_at / updated_at always set; last_seen / last_scan null until observed.
+    assert node["created_at"] is not None
+    assert node["updated_at"] is not None
+    assert "last_seen" in node
+    assert node["last_scan"] is None
+
+
 async def test_save_canvas_updates_existing_node(client: AsyncClient, headers: dict):
     n1 = node_payload(label="Old Label")
     await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
@@ -197,6 +209,24 @@ async def test_save_canvas_show_hardware_defaults_false(client: AsyncClient, hea
 
     canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
     assert canvas["nodes"][0]["show_hardware"] is False
+
+
+# Regression (#184): show_port_numbers was dropped by the save schema, so the
+# toggle reset on every reload.
+async def test_save_canvas_persists_show_port_numbers(client: AsyncClient, headers: dict):
+    n1 = node_payload(show_port_numbers=True)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["nodes"][0]["show_port_numbers"] is True
+
+
+async def test_save_canvas_show_port_numbers_defaults_false(client: AsyncClient, headers: dict):
+    n1 = node_payload()
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {}}, headers=headers)
+
+    canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
+    assert canvas["nodes"][0]["show_port_numbers"] is False
 
 
 async def test_save_canvas_hardware_fields_cleared_on_update(client: AsyncClient, headers: dict):

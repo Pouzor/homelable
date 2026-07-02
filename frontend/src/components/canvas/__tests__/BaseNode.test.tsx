@@ -20,7 +20,9 @@ vi.mock('@/stores/themeStore', () => ({
 }))
 
 vi.mock('@/stores/canvasStore', () => ({
-  useCanvasStore: (sel: (s: { hideIp: boolean }) => unknown) => sel({ hideIp: false }),
+  useCanvasStore: (sel: (s: { hideIp: boolean; serviceStatuses: Record<string, string> }) => unknown) =>
+    sel({ hideIp: false, serviceStatuses: {} }),
+  serviceStatusKey: (nodeId: string, port?: number, protocol?: string) => `${nodeId}:${port ?? ''}/${protocol ?? ''}`,
 }))
 
 vi.mock('@/utils/themes', () => ({
@@ -59,7 +61,10 @@ vi.mock('@/utils/propertyIcons', () => ({
 
 vi.mock('@/utils/handleUtils', () => ({
   bottomHandleId: (idx: number) => idx === 0 ? 'bottom' : `bottom-${idx + 1}`,
-  bottomHandlePositions: () => [50],
+  bottomHandlePositions: (count: number) => {
+    const c = typeof count === 'number' && count > 0 ? Math.floor(count) : 1
+    return Array.from({ length: c }, (_, i) => ((i + 1) * 100) / (c + 1))
+  },
   clampBottomHandles: (n: unknown) => typeof n === 'number' ? n : 1,
 }))
 
@@ -168,6 +173,29 @@ describe('BaseNode — properties rendering', () => {
     expect(screen.getByText('My Server')).toBeDefined()
     expect(screen.getByText('192.168.1.10')).toBeDefined()
     expect(screen.getByText('OS')).toBeDefined()
+  })
+})
+
+describe('BaseNode — port numbers (issue #20)', () => {
+  it('renders a number above each bottom handle when show_port_numbers is on', () => {
+    renderBaseNode({ bottom_handles: 4, show_port_numbers: true })
+    expect(screen.getByText('1')).toBeDefined()
+    expect(screen.getByText('2')).toBeDefined()
+    expect(screen.getByText('3')).toBeDefined()
+    expect(screen.getByText('4')).toBeDefined()
+  })
+
+  it('does not render port numbers when show_port_numbers is off', () => {
+    renderBaseNode({ bottom_handles: 4 })
+    expect(screen.queryByText('1')).toBeNull()
+    expect(screen.queryByText('4')).toBeNull()
+  })
+
+  it('numbers match the handle count', () => {
+    renderBaseNode({ bottom_handles: 2, show_port_numbers: true })
+    expect(screen.getByText('1')).toBeDefined()
+    expect(screen.getByText('2')).toBeDefined()
+    expect(screen.queryByText('3')).toBeNull()
   })
 })
 

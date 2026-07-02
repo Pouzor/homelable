@@ -5,7 +5,10 @@ import * as canvasStore from '@/stores/canvasStore'
 import type { NodeData } from '@/types'
 import type { Node } from '@xyflow/react'
 
-vi.mock('@/stores/canvasStore')
+vi.mock('@/stores/canvasStore', async (importActual) => ({
+  ...(await importActual<typeof canvasStore>()),
+  useCanvasStore: vi.fn(),
+}))
 
 function makeNode(data: Partial<NodeData>): Node<NodeData> {
   return {
@@ -22,8 +25,8 @@ function makeNode(data: Partial<NodeData>): Node<NodeData> {
   }
 }
 
-function setupStore(nodeData: Partial<NodeData> = {}) {
-  vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+function setupStore(nodeData: Partial<NodeData> = {}, serviceStatuses: Record<string, string> = {}) {
+  const state = {
     nodes: [makeNode(nodeData)],
     selectedNodeId: 'n1',
     selectedNodeIds: [],
@@ -33,7 +36,13 @@ function setupStore(nodeData: Partial<NodeData> = {}) {
     snapshotHistory: vi.fn(),
     createGroup: vi.fn(),
     ungroup: vi.fn(),
-  } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+    setNodeSize: vi.fn(),
+    serviceStatuses,
+  }
+  // Support both the bare destructure call and the selector-based call.
+  vi.mocked(canvasStore.useCanvasStore).mockImplementation(
+    ((sel?: (s: typeof state) => unknown) => (sel ? sel(state) : state)) as unknown as typeof canvasStore.useCanvasStore,
+  )
 }
 
 describe('DetailPanel', () => {
@@ -200,6 +209,37 @@ describe('DetailPanel', () => {
       const confirmButtons = screen.getAllByRole('button', { name: 'Add' })
       fireEvent.click(confirmButtons[confirmButtons.length - 1])
       expect(updateNode).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Inventory timestamps', () => {
+    it('renders Created, Last Scan and Last Modified rows when present', () => {
+      setupStore({
+        created_at: '2026-01-02T10:00:00Z',
+        last_scan: '2026-06-01T08:30:00Z',
+        updated_at: '2026-06-20T12:00:00Z',
+        last_seen: '2026-06-25T09:15:00Z',
+      })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText('Created')).toBeInTheDocument()
+      expect(screen.getByText('Last Scan')).toBeInTheDocument()
+      expect(screen.getByText('Last Modified')).toBeInTheDocument()
+      expect(screen.getByText('Last Seen')).toBeInTheDocument()
+    })
+
+    it('omits rows whose timestamps are absent', () => {
+      setupStore({ created_at: '2026-01-02T10:00:00Z' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText('Created')).toBeInTheDocument()
+      expect(screen.queryByText('Last Scan')).not.toBeInTheDocument()
+      expect(screen.queryByText('Last Modified')).not.toBeInTheDocument()
+    })
+
+    it('parses naive (suffix-less) UTC timestamps without throwing', () => {
+      setupStore({ created_at: '2026-01-02 10:00:00' })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      // Renders a locale string for the date (year is locale-independent).
+      expect(screen.getByText(/2026/)).toBeInTheDocument()
     })
   })
 
@@ -502,6 +542,43 @@ describe('DetailPanel', () => {
       render(<DetailPanel onEdit={vi.fn()} />)
       expect(screen.getByText('health').tagName).not.toBe('A')
     })
+
+    it('colors a categoryless but reachable web service blue, not grey', () => {
+      setupStore({ ip: '192.168.1.10', services: [{ port: 8080, protocol: 'tcp', service_name: 'nginx', path: '' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const link = screen.getByRole('link', { name: 'nginx' })
+      expect(link.style.color).toBe('rgb(0, 212, 255)') // #00d4ff (web)
+    })
+
+    it('keeps a categoryless unreachable service grey', () => {
+      setupStore({ ip: undefined, services: [{ protocol: 'tcp', service_name: 'health', path: '' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText('health').style.color).toBe('rgb(139, 148, 158)') // #8b949e
+    })
+
+    it('respects an explicit category over the url fallback', () => {
+      setupStore({ ip: '192.168.1.10', services: [{ port: 5432, protocol: 'tcp', service_name: 'pg', category: 'database', path: '' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText('pg').style.color).toBe('rgb(168, 85, 247)') // #a855f7 (database)
+    })
+
+    it('paints a service red when its live status is offline', () => {
+      setupStore(
+        { ip: '192.168.1.10', services: [{ port: 8080, protocol: 'tcp', service_name: 'nginx', path: '' }] },
+        { 'n1:8080/tcp': 'offline' },
+      )
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByRole('link', { name: 'nginx' }).style.color).toBe('rgb(248, 81, 73)') // #f85149
+    })
+
+    it('keeps the category colour when the live status is online', () => {
+      setupStore(
+        { ip: '192.168.1.10', services: [{ port: 8080, protocol: 'tcp', service_name: 'nginx', path: '' }] },
+        { 'n1:8080/tcp': 'online' },
+      )
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByRole('link', { name: 'nginx' }).style.color).toBe('rgb(0, 212, 255)') // #00d4ff (web)
+    })
   })
 
   describe('Last Seen formatting', () => {
@@ -524,6 +601,71 @@ describe('DetailPanel', () => {
       render(<DetailPanel onEdit={vi.fn()} />)
       const row = screen.getByText('Last Seen').parentElement
       expect(row?.textContent).not.toMatch(/Invalid Date/)
+    })
+  })
+
+  describe('Size section', () => {
+    function setupSized(node: Partial<Node<NodeData>>, setNodeSize = vi.fn()) {
+      const state = {
+        nodes: [{ ...makeNode({}), ...node }],
+        selectedNodeId: 'n1',
+        selectedNodeIds: [],
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode: vi.fn(),
+        snapshotHistory: vi.fn(),
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
+        setNodeSize,
+        serviceStatuses: {},
+      }
+      vi.mocked(canvasStore.useCanvasStore).mockImplementation(
+        ((sel?: (s: typeof state) => unknown) => (sel ? sel(state) : state)) as unknown as typeof canvasStore.useCanvasStore,
+      )
+      return setNodeSize
+    }
+
+    it('shows the current width/height, preferring explicit over measured', () => {
+      setupSized({ width: 220, height: 130, measured: { width: 999, height: 999 } })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect((screen.getByLabelText('Width') as HTMLInputElement).value).toBe('220')
+      expect((screen.getByLabelText('Height') as HTMLInputElement).value).toBe('130')
+    })
+
+    it('falls back to the measured size before a resize', () => {
+      setupSized({ measured: { width: 187, height: 73 } })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect((screen.getByLabelText('Width') as HTMLInputElement).value).toBe('187')
+      expect((screen.getByLabelText('Height') as HTMLInputElement).value).toBe('73')
+    })
+
+    it('commits a manual width on blur', () => {
+      const setNodeSize = setupSized({ width: 200, height: 100 })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const w = screen.getByLabelText('Width')
+      fireEvent.change(w, { target: { value: '260' } })
+      fireEvent.blur(w)
+      expect(setNodeSize).toHaveBeenCalledWith('n1', { width: 260 })
+    })
+
+    it('reverts invalid input without committing', () => {
+      const setNodeSize = setupSized({ width: 200, height: 100 })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const w = screen.getByLabelText('Width') as HTMLInputElement
+      fireEvent.change(w, { target: { value: 'abc' } })
+      fireEvent.blur(w)
+      expect(setNodeSize).not.toHaveBeenCalled()
+      expect(w.value).toBe('200')
+    })
+
+    it('resyncs the field when the node is resized by corner drag', () => {
+      setupSized({ width: 200, height: 100 })
+      const { rerender } = render(<DetailPanel onEdit={vi.fn()} />)
+      expect((screen.getByLabelText('Width') as HTMLInputElement).value).toBe('200')
+      // Simulate a corner-drag resize updating the store dimension.
+      setupSized({ width: 340, height: 100 })
+      rerender(<DetailPanel onEdit={vi.fn()} />)
+      expect((screen.getByLabelText('Width') as HTMLInputElement).value).toBe('340')
     })
   })
 })

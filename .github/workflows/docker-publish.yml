@@ -16,14 +16,21 @@ jobs:
       matrix:
         include:
           - image: ghcr.io/pouzor/homelable-backend
+            context: .
             dockerfile: Dockerfile.backend
             build_args: ""
           - image: ghcr.io/pouzor/homelable-frontend
+            context: .
             dockerfile: Dockerfile.frontend
             build_args: ""
           - image: ghcr.io/pouzor/homelable-frontend-standalone
+            context: .
             dockerfile: Dockerfile.frontend
             build_args: "VITE_STANDALONE=true"
+          - image: ghcr.io/pouzor/homelable-mcp
+            context: ./mcp
+            dockerfile: Dockerfile.mcp
+            build_args: ""
 
     steps:
       - uses: actions/checkout@v4
@@ -55,8 +62,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ${{ matrix.dockerfile }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.context }}/${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

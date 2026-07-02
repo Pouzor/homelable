@@ -4,87 +4,133 @@ from mcp.types import Tool, TextContent
 from .backend_client import backend
 
 
+NODE_TYPES = ["isp", "router", "switch", "server", "proxmox", "vm", "lxc", "nas", "iot", "ap", "generic"]
+
+# Shared field schemas mirroring backend NodeBase / NodeUpdate (backend/app/schemas/nodes.py).
+# create_node and update_node both expose these so the MCP is symmetric with what the
+# backend already validates and stores. _dispatch forwards args verbatim, so any field
+# advertised here is accepted by the backend.
+_NODE_FIELDS = {
+    "label":         {"type": "string"},
+    "ip":            {"type": "string"},
+    "hostname":      {"type": "string"},
+    "mac":           {"type": "string", "description": "MAC address."},
+    "os":            {"type": "string", "description": "Operating system / distribution."},
+    "status":        {"type": "string", "enum": ["online", "offline", "unknown", "pending"]},
+    "check_method":  {"type": "string", "description": "Status check method (ping, http, https, ssh, prometheus, tcp)."},
+    "check_target":  {"type": "string", "description": "Target host/URL used by the status check."},
+    "services":      {"type": "array", "items": {"type": "object"}, "description": "Running services detected or documented on the node."},
+    "notes":         {"type": "string", "description": "Free-text notes / documentation for the node."},
+    "parent_id":     {"type": "string", "description": "ID of the parent node (e.g. Proxmox host for a VM/LXC). Pass null to detach."},
+    "container_mode": {"type": "boolean", "description": "Render this node as a container/group that can hold children."},
+    "custom_icon":   {"type": "string", "description": "Override icon name for the node."},
+    "cpu_count":     {"type": "integer", "description": "Number of CPU cores/threads."},
+    "cpu_model":     {"type": "string", "description": "CPU model name."},
+    "ram_gb":        {"type": "number", "description": "RAM in gigabytes."},
+    "disk_gb":       {"type": "number", "description": "Disk capacity in gigabytes."},
+    "show_hardware": {"type": "boolean", "description": "Display hardware specs on the node card."},
+    "properties":    {
+        "type": "array",
+        "description": "Arbitrary key/value metadata shown on the node.",
+        "items": {
+            "type": "object",
+            "required": ["name", "value"],
+            "properties": {
+                "name":  {"type": "string"},
+                "value": {"type": "string"},
+            },
+        },
+    },
+}
+
+
+def _build_tools() -> list[Tool]:
+    create_node_props = {
+        "type": {"type": "string", "enum": NODE_TYPES},
+        **_NODE_FIELDS,
+    }
+    create_node_props["status"] = {**_NODE_FIELDS["status"], "default": "unknown"}
+
+    update_node_props = {
+        "id":   {"type": "string"},
+        "type": {"type": "string", "enum": NODE_TYPES},
+        **_NODE_FIELDS,
+    }
+
+    return [
+        Tool(name="create_node", description="Add a new node to the homelab canvas", inputSchema={
+            "type": "object",
+            "required": ["type", "label"],
+            "properties": create_node_props,
+        }),
+        Tool(name="update_node", description="Update an existing node", inputSchema={
+            "type": "object",
+            "required": ["id"],
+            "properties": update_node_props,
+        }),
+        Tool(name="delete_node", description="Delete a node from the canvas", inputSchema={
+            "type": "object",
+            "required": ["id"],
+            "properties": {"id": {"type": "string"}},
+        }),
+        Tool(name="create_edge", description="Create a network link between two nodes", inputSchema={
+            "type": "object",
+            "required": ["source", "target"],
+            "properties": {
+                "source": {"type": "string"},
+                "target": {"type": "string"},
+                "type":   {"type": "string", "enum": ["ethernet", "wifi", "iot", "vlan", "virtual"], "default": "ethernet"},
+                "label":  {"type": "string"},
+            },
+        }),
+        Tool(name="delete_edge", description="Delete a network link", inputSchema={
+            "type": "object",
+            "required": ["id"],
+            "properties": {"id": {"type": "string"}},
+        }),
+        Tool(name="trigger_scan", description="Trigger a network discovery scan", inputSchema={
+            "type": "object",
+            "properties": {
+                "ranges": {"type": "array", "items": {"type": "string"}, "description": "CIDR ranges to scan (uses configured defaults if omitted)"},
+            },
+        }),
+        Tool(name="approve_device", description="Approve a pending discovered device and create a node", inputSchema={
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+                "id":    {"type": "string"},
+                "type":  {"type": "string", "enum": NODE_TYPES, "default": "generic"},
+                "label": {"type": "string"},
+            },
+        }),
+        Tool(name="hide_device", description="Hide a pending discovered device", inputSchema={
+            "type": "object",
+            "required": ["id"],
+            "properties": {"id": {"type": "string"}},
+        }),
+        Tool(name="get_canvas", description="Get the full canvas: all nodes and edges in the homelab topology", inputSchema={
+            "type": "object",
+            "properties": {},
+        }),
+        Tool(name="list_nodes", description="List all nodes (devices) in the homelab", inputSchema={
+            "type": "object",
+            "properties": {},
+        }),
+        Tool(name="list_pending_devices", description="List devices discovered by scan but not yet approved or hidden", inputSchema={
+            "type": "object",
+            "properties": {},
+        }),
+    ]
+
+
+TOOLS = _build_tools()
+
+
 def register_tools(server: Server):
 
     @server.list_tools()
     async def list_tools():
-        return [
-            Tool(name="create_node", description="Add a new node to the homelab canvas", inputSchema={
-                "type": "object",
-                "required": ["type", "label"],
-                "properties": {
-                    "type":     {"type": "string", "enum": ["isp","router","switch","server","proxmox","vm","lxc","nas","iot","ap","generic"]},
-                    "label":    {"type": "string"},
-                    "ip":       {"type": "string"},
-                    "hostname": {"type": "string"},
-                    "status":   {"type": "string", "enum": ["online","offline","unknown","pending"], "default": "unknown"},
-                },
-            }),
-            Tool(name="update_node", description="Update an existing node", inputSchema={
-                "type": "object",
-                "required": ["id"],
-                "properties": {
-                    "id":        {"type": "string"},
-                    "label":     {"type": "string"},
-                    "ip":        {"type": "string"},
-                    "hostname":  {"type": "string"},
-                    "status":    {"type": "string"},
-                    "parent_id": {"type": "string", "description": "ID of the parent node (e.g. Proxmox host for a VM/LXC). Pass null to detach."},
-                },
-            }),
-            Tool(name="delete_node", description="Delete a node from the canvas", inputSchema={
-                "type": "object",
-                "required": ["id"],
-                "properties": {"id": {"type": "string"}},
-            }),
-            Tool(name="create_edge", description="Create a network link between two nodes", inputSchema={
-                "type": "object",
-                "required": ["source", "target"],
-                "properties": {
-                    "source": {"type": "string"},
-                    "target": {"type": "string"},
-                    "type":   {"type": "string", "enum": ["ethernet","wifi","iot","vlan","virtual"], "default": "ethernet"},
-                    "label":  {"type": "string"},
-                },
-            }),
-            Tool(name="delete_edge", description="Delete a network link", inputSchema={
-                "type": "object",
-                "required": ["id"],
-                "properties": {"id": {"type": "string"}},
-            }),
-            Tool(name="trigger_scan", description="Trigger a network discovery scan", inputSchema={
-                "type": "object",
-                "properties": {
-                    "ranges": {"type": "array", "items": {"type": "string"}, "description": "CIDR ranges to scan (uses configured defaults if omitted)"},
-                },
-            }),
-            Tool(name="approve_device", description="Approve a pending discovered device and create a node", inputSchema={
-                "type": "object",
-                "required": ["id"],
-                "properties": {
-                    "id":    {"type": "string"},
-                    "type":  {"type": "string", "enum": ["isp","router","switch","server","proxmox","vm","lxc","nas","iot","ap","generic"], "default": "generic"},
-                    "label": {"type": "string"},
-                },
-            }),
-            Tool(name="hide_device", description="Hide a pending discovered device", inputSchema={
-                "type": "object",
-                "required": ["id"],
-                "properties": {"id": {"type": "string"}},
-            }),
-            Tool(name="get_canvas", description="Get the full canvas: all nodes and edges in the homelab topology", inputSchema={
-                "type": "object",
-                "properties": {},
-            }),
-            Tool(name="list_nodes", description="List all nodes (devices) in the homelab", inputSchema={
-                "type": "object",
-                "properties": {},
-            }),
-            Tool(name="list_pending_devices", description="List devices discovered by scan but not yet approved or hidden", inputSchema={
-                "type": "object",
-                "properties": {},
-            }),
-        ]
+        return TOOLS
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict):
@@ -94,7 +140,11 @@ def register_tools(server: Server):
 
 def _slim_canvas(raw: dict) -> dict:
     """Strip React Flow layout/style fields — keep only semantic data for AI use."""
-    NODE_KEEP = {"id", "type", "label", "ip", "hostname", "status", "services", "description", "parentId"}
+    NODE_KEEP = {
+        "id", "type", "label", "ip", "hostname", "mac", "os", "status", "services",
+        "notes", "description", "properties", "cpu_count", "cpu_model", "ram_gb",
+        "disk_gb", "parentId",
+    }
     EDGE_KEEP = {"id", "source", "target", "type", "label"}
 
     def slim_node(n: dict) -> dict:

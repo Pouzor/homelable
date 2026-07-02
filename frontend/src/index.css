@@ -11,6 +11,18 @@
   to   { stroke-dashoffset: 0; }
 }
 
+/* Edge flow animations — CSS (not SVG SMIL) so the browser pauses them when the
+   tab is hidden. SMIL <animate> keeps running in background tabs and leaks
+   memory in Chrome over time; CSS animations do neither. */
+@keyframes homelable-snake {
+  from { stroke-dashoffset: -10000; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes homelable-flow {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 18; }
+}
+
 /* Disable React Flow's built-in edgeupdater entirely — HomelableEdge renders
    its own interactive endpoint dots in EdgeLabelRenderer (above the node
    layer) so the node Handle DOM cannot steal the reconnection drag. */

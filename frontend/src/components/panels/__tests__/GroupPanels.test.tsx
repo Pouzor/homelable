@@ -42,6 +42,7 @@ const mockStore = {
   snapshotHistory: vi.fn(),
   createGroup: vi.fn(),
   ungroup: vi.fn(),
+  removeFromGroup: vi.fn(),
 }
 
 function setupStore(overrides = {}) {
@@ -229,5 +230,47 @@ describe('GroupDetailPanel', () => {
     renderPanel()
     fireEvent.click(screen.getByText('Child Node Alpha'))
     expect(setSelectedNode).toHaveBeenCalledWith('c1')
+  })
+
+  it('removes a child from the group via the remove button', () => {
+    const removeFromGroup = vi.fn()
+    const snapshotHistory = vi.fn()
+    const group = makeGroupNode()
+    const child = makeNode('c1', { parentId: 'g1', data: { label: 'Router', type: 'router', status: 'online', services: [] } })
+    setupStore({ nodes: [group, child], selectedNodeId: 'g1', selectedNodeIds: ['g1'], removeFromGroup, snapshotHistory })
+    renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: /remove router from group/i }))
+    expect(removeFromGroup).toHaveBeenCalledWith('g1', 'c1')
+    expect(snapshotHistory).toHaveBeenCalled()
+  })
+
+  it('renders the existing group description from notes', () => {
+    const group = makeGroupNode()
+    group.data = { ...group.data, notes: 'Critical DMZ hosts' } as typeof group.data
+    setupStore({ nodes: [group], selectedNodeId: 'g1', selectedNodeIds: ['g1'] })
+    renderPanel()
+    expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe('Critical DMZ hosts')
+  })
+
+  it('commits the description to the store on each change (so Ctrl+S captures it)', () => {
+    const updateNode = vi.fn()
+    const group = makeGroupNode()
+    setupStore({ nodes: [group], selectedNodeId: 'g1', selectedNodeIds: ['g1'], updateNode })
+    renderPanel()
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'New notes' } })
+    expect(updateNode).toHaveBeenCalledWith('g1', { notes: 'New notes' })
+  })
+
+  it('snapshots history once at the start of an edit, not on every keystroke', () => {
+    const updateNode = vi.fn()
+    const snapshotHistory = vi.fn()
+    const group = makeGroupNode()
+    setupStore({ nodes: [group], selectedNodeId: 'g1', selectedNodeIds: ['g1'], updateNode, snapshotHistory })
+    renderPanel()
+    const textarea = screen.getByLabelText('Description')
+    fireEvent.change(textarea, { target: { value: 'a' } })
+    fireEvent.change(textarea, { target: { value: 'ab' } })
+    fireEvent.change(textarea, { target: { value: 'abc' } })
+    expect(snapshotHistory).toHaveBeenCalledTimes(1)
   })
 })

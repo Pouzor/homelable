@@ -1,11 +1,25 @@
 import dagre from '@dagrejs/dagre'
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData } from '@/types'
+import { normalizeHandle } from '@/utils/handleUtils'
 
 const NODE_WIDTH = 180
 const NODE_HEIGHT = 52
 
 const PEER_TYPES = new Set(['proxmox', 'switch'])
+
+/**
+ * Port index encoded by a bottom source handle:
+ *   'bottom' → 0, 'bottom-2' → 1, 'bottom-3' → 2, ...
+ * Anything else (top handle, null, unknown) sorts last.
+ */
+function handlePortIndex(handle: string | null | undefined): number {
+  const h = normalizeHandle(handle)
+  if (!h || h === 'top') return Number.MAX_SAFE_INTEGER
+  if (h === 'bottom') return 0
+  const m = h.match(/^bottom-(\d+)$/)
+  return m ? Number(m[1]) - 1 : Number.MAX_SAFE_INTEGER
+}
 
 /**
  * Find groups of peer nodes (same type, directly connected to each other)
@@ -145,9 +159,91 @@ export function applyDagreLayout(
     }
   }
 
+  // Post-pass: reorder direct children left-to-right so their horizontal order
+  // matches the parent's bottom-port order. Dagre's ordering heuristic ignores
+  // handle ids and frequently flips siblings relative to the port they plug
+  // into on the host. We keep Dagre's X *slots* but reassign which child sits in
+  // each slot, then shift each child's whole subtree by the same delta so nested
+  // nodes follow their parent.
+  reorderChildrenByPort(topLevel, edges, positions, peerGroups, isPeerEdge)
+
   return nodes.map((node) => {
     if (node.parentId) return node
     const p = positions.get(node.id)!
     return { ...node, position: { x: p.x, y: p.y } }
   })
+}
+
+type Pos = { x: number; y: number; w: number; h: number }
+
+function reorderChildrenByPort(
+  topLevel: Node<NodeData>[],
+  edges: Edge<EdgeData>[],
+  positions: Map<string, Pos>,
+  peerGroups: Map<string, string>,
+  isPeerEdge: (e: Edge<EdgeData>) => boolean,
+): void {
+  const topLevelIds = new Set(topLevel.map((n) => n.id))
+
+  // Peer groups own their own X layout; skip nodes in a multi-member group so
+  // we don't fight the peer post-pass.
+  const peerGroupSize = new Map<string, number>()
+  for (const gid of peerGroups.values()) peerGroupSize.set(gid, (peerGroupSize.get(gid) ?? 0) + 1)
+  const inPeerGroup = (id: string) => (peerGroupSize.get(peerGroups.get(id) ?? '') ?? 0) > 1
+
+  // Build parent → children (with the port used on the parent) and a downward
+  // adjacency for subtree shifting. "Parent" = the visually upper node (smaller Y).
+  const childrenOf = new Map<string, { child: string; port: number }[]>()
+  const downAdj = new Map<string, string[]>()
+  for (const e of edges) {
+    if (!topLevelIds.has(e.source) || !topLevelIds.has(e.target) || isPeerEdge(e)) continue
+    const ps = positions.get(e.source)!
+    const pt = positions.get(e.target)!
+    if (ps.y === pt.y) continue // same rank — not a parent/child relationship
+    const sourceIsUpper = ps.y < pt.y
+    const parent = sourceIsUpper ? e.source : e.target
+    const child = sourceIsUpper ? e.target : e.source
+    // Port is read from the handle on the parent (upper) node.
+    const handle = sourceIsUpper ? e.sourceHandle : e.targetHandle
+    if (!childrenOf.has(parent)) childrenOf.set(parent, [])
+    childrenOf.get(parent)!.push({ child, port: handlePortIndex(handle) })
+    if (!downAdj.has(parent)) downAdj.set(parent, [])
+    downAdj.get(parent)!.push(child)
+  }
+
+  const shiftSubtree = (rootId: string, dx: number) => {
+    const seen = new Set<string>()
+    const stack = [rootId]
+    while (stack.length) {
+      const id = stack.pop()!
+      if (seen.has(id)) continue
+      seen.add(id)
+      const p = positions.get(id)
+      if (p) positions.set(id, { ...p, x: p.x + dx })
+      for (const next of downAdj.get(id) ?? []) if (!seen.has(next)) stack.push(next)
+    }
+  }
+
+  for (const [, rawKids] of childrenOf) {
+    // De-dup (a child may share several edges with the parent) and drop peers.
+    const seen = new Set<string>()
+    const kids = rawKids.filter((k) => {
+      if (seen.has(k.child) || inPeerGroup(k.child)) return false
+      seen.add(k.child)
+      return true
+    })
+    if (kids.length < 2) continue
+
+    // The X centre slots Dagre produced, sorted left-to-right.
+    const centerOf = (id: string) => positions.get(id)!.x + positions.get(id)!.w / 2
+    const slots = kids.map((k) => centerOf(k.child)).sort((a, b) => a - b)
+
+    // Desired order: by port, then current X (stable for equal/unknown ports).
+    const ordered = kids.slice().sort((a, b) => a.port - b.port || centerOf(a.child) - centerOf(b.child))
+
+    ordered.forEach((k, i) => {
+      const delta = slots[i] - centerOf(k.child)
+      if (delta !== 0) shiftSubtree(k.child, delta)
+    })
+  }
 }

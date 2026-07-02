@@ -146,3 +146,84 @@ async def test_liveview_disabled_after_key_cleared(client: AsyncClient):
     res = await client.get("/api/v1/liveview?key=was-enabled")
     assert res.status_code == 403
     assert res.json()["detail"] == "Live view is disabled"
+
+
+# ── /config (authenticated) — key used to build share links ──────────────────
+
+@pytest.mark.asyncio
+async def test_liveview_config_requires_auth(client: AsyncClient):
+    """The config endpoint exposes the key, so it must reject unauthenticated calls."""
+    settings.liveview_key = "secret"
+    res = await client.get("/api/v1/liveview/config")
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_liveview_config_returns_key_when_enabled(client: AsyncClient, auth_headers):
+    settings.liveview_key = "share-me"
+    headers = await auth_headers()
+    res = await client.get("/api/v1/liveview/config", headers=headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body == {"enabled": True, "key": "share-me"}
+
+
+@pytest.mark.asyncio
+async def test_liveview_config_disabled_hides_key(client: AsyncClient, auth_headers):
+    settings.liveview_key = None
+    headers = await auth_headers()
+    res = await client.get("/api/v1/liveview/config", headers=headers)
+    assert res.status_code == 200
+    assert res.json() == {"enabled": False, "key": None}
+
+
+@pytest.mark.asyncio
+async def test_liveview_config_empty_key_disabled(client: AsyncClient, auth_headers):
+    settings.liveview_key = ""
+    headers = await auth_headers()
+    res = await client.get("/api/v1/liveview/config", headers=headers)
+    assert res.status_code == 200
+    assert res.json() == {"enabled": False, "key": None}
+
+
+# ── design_id selects which canvas is rendered ───────────────────────────────
+
+@pytest.mark.asyncio
+async def test_liveview_design_id_selects_canvas(client: AsyncClient, auth_headers):
+    """?design_id=<id> renders that design's canvas, not the first one."""
+    settings.liveview_key = "test-key"
+    headers = await auth_headers()
+
+    # Create two designs
+    d1 = (await client.post("/api/v1/designs", json={"name": "Network"}, headers=headers)).json()
+    d2 = (await client.post("/api/v1/designs", json={"name": "Electrical"}, headers=headers)).json()
+
+    # Save a distinct node into each design
+    for design, node_id, label in ((d1, "n-net", "Net Node"), (d2, "n-elec", "Elec Node")):
+        payload = {
+            "nodes": [{
+                "id": node_id,
+                "type": "server",
+                "label": label,
+                "status": "online",
+                "services": [],
+                "pos_x": 0,
+                "pos_y": 0,
+            }],
+            "edges": [],
+            "viewport": {"x": 0, "y": 0, "zoom": 1},
+            "design_id": design["id"],
+        }
+        await client.post("/api/v1/canvas/save", json=payload, headers=headers)
+
+    # Requesting d2 returns only the electrical node
+    res = await client.get(f"/api/v1/liveview?key=test-key&design_id={d2['id']}")
+    assert res.status_code == 200
+    nodes = res.json()["nodes"]
+    assert [n["id"] for n in nodes] == ["n-elec"]
+
+    # Requesting d1 returns only the network node
+    res = await client.get(f"/api/v1/liveview?key=test-key&design_id={d1['id']}")
+    assert res.status_code == 200
+    nodes = res.json()["nodes"]
+    assert [n["id"] for n in nodes] == ["n-net"]

@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import ssl
 from typing import Any
+
+from app.services.mqtt_common import _build_tls_context, _sanitize_mqtt_error
 
 logger = logging.getLogger(__name__)
 
@@ -20,42 +21,8 @@ _NETWORKMAP_RESPONSE_TOPIC = "{base_topic}/bridge/response/networkmap"
 _CONNECTION_TIMEOUT = 5.0   # seconds to verify broker reachability
 _NETWORKMAP_TIMEOUT = 300.0  # seconds to wait for the networkmap response (large meshes can be slow)
 
-
-def _sanitize_mqtt_error(exc: BaseException) -> str:
-    """Return a generic, credential-free message for an MQTT error.
-
-    The raw aiomqtt/paho error string can include the broker URI with
-    embedded credentials (e.g. ``mqtt://user:pass@host``) or auth-related
-    detail that should not leak to API clients. Map known patterns to
-    coarse categories; default to a generic failure message. The original
-    exception is logged at WARNING level for operator debugging.
-    """
-    logger.warning("MQTT error (sanitized for client): %r", exc)
-    raw = str(exc).lower()
-    if "not authoriz" in raw or "bad user" in raw or "bad username" in raw:
-        return "Authentication failed"
-    if "refused" in raw:
-        return "Connection refused by broker"
-    if "name or service not known" in raw or "getaddrinfo" in raw or "nodename nor servname" in raw:
-        return "Broker hostname could not be resolved"
-    if "ssl" in raw or "tls" in raw or "certificate" in raw:
-        return "TLS handshake failed"
-    if "timed out" in raw or "timeout" in raw:
-        return "Connection to broker timed out"
-    return "MQTT connection failed"
-
-
-def _build_tls_context(insecure: bool) -> ssl.SSLContext:
-    """Build an SSL context for MQTT TLS. If insecure, skip verification."""
-    ctx = ssl.create_default_context()
-    if insecure:
-        logger.warning(
-            "MQTT TLS certificate verification is DISABLED — "
-            "use only with self-signed brokers on trusted networks."
-        )
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-    return ctx
+# Re-exported for backwards compatibility — these now live in mqtt_common.
+__all__ = ["_build_tls_context", "_sanitize_mqtt_error"]
 
 
 def build_zigbee_properties(

@@ -9,6 +9,7 @@ vi.mock('@/stores/authStore')
 
 const mockUpdateNode = vi.fn()
 const mockNotifyScanDeviceFound = vi.fn()
+const mockSetServiceStatuses = vi.fn()
 
 class MockWebSocket {
   static instances: MockWebSocket[] = []
@@ -33,6 +34,7 @@ describe('useStatusPolling', () => {
     vi.mocked(useCanvasStore).mockReturnValue({
       updateNode: mockUpdateNode,
       notifyScanDeviceFound: mockNotifyScanDeviceFound,
+      setServiceStatuses: mockSetServiceStatuses,
     } as ReturnType<typeof useCanvasStore>)
 
     vi.mocked(useAuthStore).mockReturnValue({
@@ -50,6 +52,7 @@ describe('useStatusPolling', () => {
     vi.restoreAllMocks()
     mockUpdateNode.mockClear()
     mockNotifyScanDeviceFound.mockClear()
+    mockSetServiceStatuses.mockClear()
   })
 
   it('does not open WebSocket when not authenticated', () => {
@@ -144,6 +147,17 @@ describe('useStatusPolling', () => {
     const ws = MockWebSocket.instances[0]
     ws.onmessage?.({ data: JSON.stringify({ type: 'scan_device_found' }) })
     expect(mockNotifyScanDeviceFound).toHaveBeenCalledOnce()
+    expect(mockUpdateNode).not.toHaveBeenCalled()
+  })
+
+  it('routes service_status messages to setServiceStatuses', () => {
+    renderHook(() => useStatusPolling())
+    const ws = MockWebSocket.instances[0]
+    const services = [{ port: 80, protocol: 'tcp', status: 'offline' }]
+    ws.onmessage?.({
+      data: JSON.stringify({ type: 'service_status', node_id: 'node-9', services }),
+    })
+    expect(mockSetServiceStatuses).toHaveBeenCalledWith('node-9', services)
     expect(mockUpdateNode).not.toHaveBeenCalled()
   })
 

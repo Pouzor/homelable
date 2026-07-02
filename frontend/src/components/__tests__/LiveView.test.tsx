@@ -2,12 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useThemeStore } from '@/stores/themeStore'
+import * as standaloneStorage from '@/utils/standaloneStorage'
 
 // ── Mock heavy dependencies ────────────────────────────────────────────────
 
+// Capture props passed to ReactFlow so we can assert zoom bounds etc.
+let rfProps: Record<string, unknown> = {}
+
 vi.mock('@xyflow/react', () => ({
   ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ReactFlow: () => <div data-testid="react-flow" />,
+  ReactFlow: (props: Record<string, unknown>) => {
+    rfProps = props
+    return <div data-testid="react-flow" />
+  },
   Background: () => null,
   Controls: () => null,
   BackgroundVariant: { Dots: 'dots' },
@@ -49,6 +56,7 @@ const canvasPayload = {
 
 describe('LiveView (non-standalone)', () => {
   beforeEach(() => {
+    rfProps = {}
     vi.mocked(liveviewApi.load).mockReset()
     useCanvasStore.setState({ nodes: [], edges: [] })
   })
@@ -111,7 +119,26 @@ describe('LiveView (non-standalone)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('react-flow')).toBeDefined()
     })
-    expect(liveviewApi.load).toHaveBeenCalledWith('correct-key')
+    expect(liveviewApi.load).toHaveBeenCalledWith('correct-key', undefined)
+  })
+
+  it('forwards ?design=<id> to the API so a specific canvas is loaded', async () => {
+    setSearch('?key=correct-key&design=elec-123')
+    vi.mocked(liveviewApi.load).mockResolvedValue(canvasPayload as never)
+    render(<LiveView />)
+    await waitFor(() => expect(screen.getByTestId('react-flow')).toBeDefined())
+    expect(liveviewApi.load).toHaveBeenCalledWith('correct-key', 'elec-123')
+  })
+
+  it('allows zooming out to 0.25 so large infra fits (matches the editor)', async () => {
+    setSearch('?key=correct-key')
+    vi.mocked(liveviewApi.load).mockResolvedValue(canvasPayload as never)
+    render(<LiveView />)
+    await waitFor(() => expect(screen.getByTestId('react-flow')).toBeDefined())
+    // Without an explicit minZoom, React Flow defaults to 0.5 and big canvases
+    // can't zoom out far enough to fit.
+    expect(rfProps.minZoom).toBe(0.25)
+    expect(rfProps.maxZoom).toBe(2.5)
   })
 
   it('loads nodes into the canvas store on success', async () => {
@@ -187,9 +214,13 @@ describe('LiveView (non-standalone)', () => {
 
 // ── Standalone mode ────────────────────────────────────────────────────────
 
+// Captures props from the re-imported (resetModules) ReactFlow so standalone
+// tests can assert which nodes were rendered without reaching into the fresh
+// canvas-store module instance.
+let standaloneRfProps: Record<string, unknown> = {}
 const XYFLOW_MOCK = {
   ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ReactFlow: () => <div data-testid="react-flow" />,
+  ReactFlow: (props: Record<string, unknown>) => { standaloneRfProps = props; return <div data-testid="react-flow" /> },
   Background: () => null,
   Controls: () => null,
   BackgroundVariant: { Dots: 'dots' },
@@ -209,16 +240,45 @@ describe('LiveView (standalone — localStorage)', () => {
     vi.unstubAllEnvs()
   })
 
-  it('loads canvas from localStorage without calling the API', async () => {
-    const stored = {
+  it('loads the active design canvas from localStorage without calling the API', async () => {
+    const design = standaloneStorage.createDesign('Main')
+    standaloneStorage.saveCanvas(design.id, {
       nodes: [{
         id: 'ls-node', type: 'router',
         position: { x: 10, y: 20 },
         data: { label: 'Router', type: 'router', status: 'unknown', services: [] },
       }],
       edges: [],
-    }
-    localStorage.setItem('homelable_canvas', JSON.stringify(stored))
+    })
+
+    vi.stubEnv('VITE_STANDALONE', 'true')
+    vi.resetModules()
+    const mockLoad = vi.fn()
+    vi.doMock('@xyflow/react', () => XYFLOW_MOCK)
+    vi.doMock('@xyflow/react/dist/style.css', () => ({}))
+    vi.doMock('@/api/client', () => ({ liveviewApi: { load: mockLoad } }))
+    const { default: LiveViewStandalone } = await import('../LiveView')
+
+    setSearch(`?design=${design.id}`)
+    render(<LiveViewStandalone />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('react-flow')).toBeDefined()
+    })
+    expect((standaloneRfProps.nodes as { id: string }[]).map((n) => n.id)).toContain('ls-node')
+    expect(mockLoad).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the first design when no ?design= param is given', async () => {
+    const design = standaloneStorage.createDesign('Only')
+    standaloneStorage.saveCanvas(design.id, {
+      nodes: [{
+        id: 'fb-node', type: 'server',
+        position: { x: 0, y: 0 },
+        data: { label: 'Srv', type: 'server', status: 'unknown', services: [] },
+      }],
+      edges: [],
+    })
 
     vi.stubEnv('VITE_STANDALONE', 'true')
     vi.resetModules()
@@ -234,6 +294,7 @@ describe('LiveView (standalone — localStorage)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('react-flow')).toBeDefined()
     })
+    expect((standaloneRfProps.nodes as { id: string }[]).map((n) => n.id)).toContain('fb-node')
     expect(mockLoad).not.toHaveBeenCalled()
   })
 

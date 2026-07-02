@@ -1,6 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
+import type { ServiceStatus } from '@/types'
+
+interface ServiceStatusEntry {
+  port?: number
+  protocol?: string
+  status: ServiceStatus
+}
 
 interface StatusMessage {
   type?: string
@@ -10,13 +17,14 @@ interface StatusMessage {
   response_time_ms?: number | null
   run_id?: string
   devices_found?: number
+  services?: ServiceStatusEntry[]
 }
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 export function useStatusPolling() {
   const wsRef = useRef<WebSocket | null>(null)
-  const { updateNode, notifyScanDeviceFound } = useCanvasStore()
+  const { updateNode, notifyScanDeviceFound, setServiceStatuses } = useCanvasStore()
   const { isAuthenticated, token } = useAuthStore()
 
   useEffect(() => {
@@ -39,6 +47,8 @@ export function useStatusPolling() {
         const msg: StatusMessage = JSON.parse(event.data)
         if (msg.type === 'scan_device_found') {
           notifyScanDeviceFound()
+        } else if (msg.type === 'service_status' && msg.node_id && msg.services) {
+          setServiceStatuses(msg.node_id, msg.services)
         } else if (msg.node_id && msg.status) {
           updateNode(msg.node_id, {
             status: msg.status,
@@ -59,5 +69,5 @@ export function useStatusPolling() {
       ws.close()
       wsRef.current = null
     }
-  }, [isAuthenticated, token, updateNode, notifyScanDeviceFound])
+  }, [isAuthenticated, token, updateNode, notifyScanDeviceFound, setServiceStatuses])
 }

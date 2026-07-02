@@ -102,6 +102,15 @@ describe('exportCanvasToYaml', () => {
     expect(entryA).not.toHaveProperty('clusterR')
   })
 
+  it('serializes a fibre edge with linkType "fibre" (issue #21)', () => {
+    const nodeA = makeNode({ label: 'Switch', type: 'switch' }, 'sw')
+    const nodeB = makeNode({ label: 'Server1', type: 'server' }, 's1')
+    const edge = makeEdge('e1', 'sw', 's1', { type: 'fibre', label: 'sfp0' })
+    const result = yaml.load(exportCanvasToYaml([nodeA, nodeB], [edge])) as Record<string, unknown>[]
+    const entryA = result.find((e) => e.label === 'Switch')!
+    expect(entryA.links).toEqual([{ label: 'Server1', linkType: 'fibre', linkLabel: 'sfp0' }])
+  })
+
   it('serializes multiple outgoing edges as links array', () => {
     const sw = makeNode({ label: 'Switch', type: 'switch' }, 'sw')
     const s1 = makeNode({ label: 'Server1', type: 'server' }, 's1')

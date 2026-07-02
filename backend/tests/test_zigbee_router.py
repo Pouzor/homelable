@@ -460,6 +460,92 @@ async def test_persist_pending_import_skips_pending_for_approved_node(
 
 
 @pytest.mark.asyncio
+async def test_persist_pending_import_revives_orphaned_approved_device(
+    db_session,
+) -> None:
+    """Regression for #167: approve → delete node → re-import must re-list device.
+
+    When a device was approved (PendingDevice.status="approved") and its canvas
+    Node was later deleted, the orphaned "approved" row must be reset to
+    "pending" on re-import so it shows up in the Pending list again — instead of
+    being silently swallowed (re-import reports "found" but Pending stays empty).
+    """
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import PendingDevice
+
+    # Simulate prior approve: a PendingDevice marked approved, but NO matching
+    # Node exists (the user deleted the canvas node afterwards).
+    orphan = PendingDevice(
+        ieee_address="0xR1",
+        friendly_name="router_1",
+        hostname="router_1",
+        suggested_type="zigbee_router",
+        device_subtype="Router",
+        model="CC2530",
+        vendor="TI",
+        lqi=220,
+        status="approved",
+        discovery_source="zigbee",
+    )
+    db_session.add(orphan)
+    await db_session.commit()
+
+    result = await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+
+    # No new row created for 0xR1 — the existing one was updated/revived.
+    revived = (
+        await db_session.execute(
+            select(PendingDevice).where(PendingDevice.ieee_address == "0xR1")
+        )
+    ).scalar_one()
+    assert revived.status == "pending"
+    # End device 0xE1 is brand new → created as pending; router was updated.
+    assert result.pending_created == 1
+    assert result.pending_updated == 1
+
+    # It is now visible to the Pending list (status filter == "pending").
+    listed = (
+        await db_session.execute(
+            select(PendingDevice).where(PendingDevice.status == "pending")
+        )
+    ).scalars().all()
+    assert {p.ieee_address for p in listed} == {"0xR1", "0xE1"}
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_keeps_hidden_hidden_on_reimport(
+    db_session,
+) -> None:
+    """A user-hidden device must stay hidden on re-import (not revived like #167)."""
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import PendingDevice
+
+    hidden = PendingDevice(
+        ieee_address="0xR1",
+        friendly_name="router_1",
+        suggested_type="zigbee_router",
+        device_subtype="Router",
+        status="hidden",
+        discovery_source="zigbee",
+    )
+    db_session.add(hidden)
+    await db_session.commit()
+
+    await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+
+    still_hidden = (
+        await db_session.execute(
+            select(PendingDevice).where(PendingDevice.ieee_address == "0xR1")
+        )
+    ).scalar_one()
+    assert still_hidden.status == "hidden"
+
+
+@pytest.mark.asyncio
 async def test_persist_pending_import_preserves_user_visibility(db_session) -> None:
     """If user has already made props visible, re-import must not flip them back."""
     from sqlalchemy import select

@@ -1,3 +1,15 @@
+export type DesignType = 'network' | 'electrical'
+
+export interface Design {
+  id: string
+  name: string
+  design_type: DesignType
+  /** Lucide icon key (see utils/designIcons). User-chosen; may be null on legacy rows. */
+  icon?: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type NodeType =
   | 'isp'
   | 'router'
@@ -13,6 +25,8 @@ export type NodeType =
   | 'camera'
   | 'printer'
   | 'computer'
+  | 'laptop'
+  | 'mobile'
   | 'cpl'
   | 'docker_host'
   | 'docker_container'
@@ -23,6 +37,23 @@ export type NodeType =
   | 'zigbee_coordinator'
   | 'zigbee_router'
   | 'zigbee_enddevice'
+  | 'zwave_coordinator'
+  | 'zwave_router'
+  | 'zwave_enddevice'
+  | 'grid'
+  | 'ups'
+  | 'battery'
+  | 'generator'
+  | 'solar_panel'
+  | 'inverter'
+  | 'circuit_breaker'
+  | 'contactor'
+  | 'electrical_switch'
+  | 'socket'
+  | 'light'
+  | 'meter'
+  | 'transformer'
+  | 'load'
 
 export type TextPosition =
   | 'top-left'
@@ -35,7 +66,7 @@ export type TextPosition =
   | 'bottom-center'
   | 'bottom-right'
 
-export type EdgeType = 'ethernet' | 'wifi' | 'iot' | 'vlan' | 'virtual' | 'cluster'
+export type EdgeType = 'ethernet' | 'wifi' | 'iot' | 'vlan' | 'virtual' | 'cluster' | 'fibre' | 'electrical'
 
 export type NodeStatus = 'online' | 'offline' | 'pending' | 'unknown'
 
@@ -49,6 +80,8 @@ export interface ServiceInfo {
   icon?: string
   category?: string
 }
+
+export type ServiceStatus = 'online' | 'offline' | 'unknown'
 
 export interface NodeProperty {
   key: string
@@ -69,6 +102,9 @@ export interface NodeData extends Record<string, unknown> {
   check_target?: string
   services: ServiceInfo[]
   last_seen?: string
+  last_scan?: string
+  created_at?: string
+  updated_at?: string
   response_time_ms?: number
   notes?: string
   cpu_count?: number
@@ -97,9 +133,17 @@ export interface NodeData extends Record<string, unknown> {
     width?: number
     height?: number
   }
+  /**
+   * Collapsible zone state (type === 'groupRect'). When true, the zone hides
+   * its descendants on the canvas. Persisted via `custom_colors.collapsed`
+   * round-trip for back-compat with older saves.
+   */
+  collapsed?: boolean
   custom_icon?: string
-  /** Number of bottom connection points, 1..48. Default 1 (centered). */
+  /** Number of bottom connection points, 1..64. Default 1 (centered). */
   bottom_handles?: number
+  /** Show a port number (1..N) above each bottom connection point. */
+  show_port_numbers?: boolean
   /** Text node content (type === 'text') */
   text_content?: string
 }
@@ -137,6 +181,8 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   camera: 'Camera',
   printer: 'Printer',
   computer: 'Computer',
+  laptop: 'Laptop',
+  mobile: 'Phone / Mobile',
   cpl: 'CPL / Powerline',
   docker_host: 'Docker Host',
   docker_container: 'Docker Container',
@@ -147,6 +193,23 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   zigbee_coordinator: 'Zigbee Coordinator',
   zigbee_router: 'Zigbee Router',
   zigbee_enddevice: 'Zigbee End Device',
+  zwave_coordinator: 'Z-Wave Controller',
+  zwave_router: 'Z-Wave Router',
+  zwave_enddevice: 'Z-Wave End Device',
+  grid: 'Grid Connection',
+  ups: 'UPS',
+  battery: 'Battery',
+  generator: 'Generator',
+  solar_panel: 'Solar Panel',
+  inverter: 'Inverter',
+  circuit_breaker: 'Circuit Breaker',
+  contactor: 'Contactor',
+  electrical_switch: 'Switch',
+  socket: 'Socket / Outlet',
+  light: 'Light Fixture',
+  meter: 'Energy Meter',
+  transformer: 'Transformer',
+  load: 'Electrical Load',
 }
 
 export const STATUS_COLORS: Record<NodeStatus, string> = {
@@ -163,6 +226,8 @@ export const EDGE_TYPE_LABELS: Record<EdgeType, string> = {
   vlan: 'VLAN',
   virtual: 'Virtual',
   cluster: 'Cluster',
+  fibre: 'Fibre',
+  electrical: 'Electrical Wire',
 }
 
 export interface NodeTypeStyle {

@@ -1,8 +1,10 @@
 import { useRef } from 'react'
-import { Save, LayoutDashboard, Download, Palette, Undo2, Redo2, HelpCircle, Table2, FileDown, Upload } from 'lucide-react'
+import { Save, LayoutDashboard, Download, Palette, Undo2, Redo2, HelpCircle, Table2, FileDown, Upload, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/ui/Logo'
 import { useCanvasStore } from '@/stores/canvasStore'
+
+const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 interface ToolbarProps {
   onSave: () => void
@@ -15,9 +17,10 @@ interface ToolbarProps {
   onExportMd: () => void
   onExportYaml: () => void
   onImportYaml: (content: string) => void
+  onViewOnly: () => void
 }
 
-export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo, onRedo, onShortcuts, onExportMd, onExportYaml, onImportYaml }: ToolbarProps) {
+export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo, onRedo, onShortcuts, onExportMd, onExportYaml, onImportYaml, onViewOnly }: ToolbarProps) {
   const { hasUnsavedChanges, past, future } = useCanvasStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -81,6 +84,13 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExportMd} title="Copy inventory as Markdown table">
         <Table2 size={14} /> MD
       </Button>
+      {/* Live view reads backend/localStorage canvas; pointless in standalone
+          where the editor already shows the only (localStorage) copy. */}
+      {!STANDALONE && (
+        <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onViewOnly} title="Open read-only live view of this canvas">
+          <Eye size={14} /> View
+        </Button>
+      )}
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onShortcuts} title="Keyboard shortcuts (?)">
         <HelpCircle size={14} />
       </Button>
@@ -91,7 +101,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
           background: hasUnsavedChanges ? '#00d4ff' : undefined,
           color: hasUnsavedChanges ? '#0d1117' : undefined,
         }}
-        onClick={onSave}
+        onClick={() => onSave()}
       >
         {hasUnsavedChanges && (
           <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#e3b341] border border-[#161b22]" />

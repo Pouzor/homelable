@@ -16,12 +16,24 @@ def _uuid() -> str:
     return str(uuid.uuid4())
 
 
+class Design(Base):
+    __tablename__ = "designs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    design_type: Mapped[str] = mapped_column(String, nullable=False, default="network")
+    icon: Mapped[str | None] = mapped_column(String, nullable=True, default="dashboard")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class Node(Base):
     __tablename__ = "nodes"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     type: Mapped[str] = mapped_column(String, nullable=False)
     label: Mapped[str] = mapped_column(String, nullable=False)
+    design_id: Mapped[str | None] = mapped_column(String, ForeignKey("designs.id", ondelete="SET NULL"), nullable=True)
     hostname: Mapped[str | None] = mapped_column(String)
     ip: Mapped[str | None] = mapped_column(String)
     mac: Mapped[str | None] = mapped_column(String)
@@ -42,12 +54,14 @@ class Node(Base):
     ram_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
     disk_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
     show_hardware: Mapped[bool] = mapped_column(Boolean, default=False)
+    show_port_numbers: Mapped[bool] = mapped_column(Boolean, default=False)
     properties: Mapped[list[Any]] = mapped_column(JSON, default=list)
     width: Mapped[float | None] = mapped_column(Float, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)
     bottom_handles: Mapped[int] = mapped_column(Integer, default=1)
     ieee_address: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_scan: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     response_time_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
@@ -61,6 +75,7 @@ class Edge(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     source: Mapped[str] = mapped_column(String, ForeignKey("nodes.id", ondelete="CASCADE"))
     target: Mapped[str] = mapped_column(String, ForeignKey("nodes.id", ondelete="CASCADE"))
+    design_id: Mapped[str | None] = mapped_column(String, ForeignKey("designs.id", ondelete="SET NULL"), nullable=True)
     type: Mapped[str] = mapped_column(String, default="ethernet")
     label: Mapped[str | None] = mapped_column(String)
     vlan_id: Mapped[int | None] = mapped_column(Integer)
@@ -77,7 +92,7 @@ class Edge(Base):
 class CanvasState(Base):
     __tablename__ = "canvas_state"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    design_id: Mapped[str] = mapped_column(String, ForeignKey("designs.id", ondelete="CASCADE"), primary_key=True)
     viewport: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     custom_style: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -85,6 +100,9 @@ class CanvasState(Base):
 
 class PendingDevice(Base):
     __tablename__ = "pending_devices"
+    # Permit the plain (non-Mapped[]) annotations on the transient request-only
+    # attributes below; without this SQLAlchemy 2.0 tries to map them as columns.
+    __allow_unmapped__ = True
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     ip: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -102,6 +120,16 @@ class PendingDevice(Base):
     vendor: Mapped[str | None] = mapped_column(String, nullable=True)
     lqi: Mapped[int | None] = mapped_column(Integer, nullable=True)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+    # Transient (not persisted): populated per-request by the scan routes to report
+    # how many canvases this device already appears on. Not a mapped column.
+    canvas_count: int = 0
+    # Transient (not persisted): timestamps from the linked canvas node(s),
+    # correlated by ip / ieee_address. None when the device is not on any canvas.
+    node_created_at: datetime | None = None
+    node_last_scan: datetime | None = None
+    node_last_modified: datetime | None = None
+    node_last_seen: datetime | None = None
 
 
 class PendingDeviceLink(Base):

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 _SIGNATURES: list[dict[str, Any]] | None = None
+_OUI_MAP: dict[str, str] | None = None
 _LOCK = threading.Lock()
 
 
@@ -26,25 +27,124 @@ def _load() -> list[dict[str, Any]]:
     return _SIGNATURES
 
 
-def match_port(port: int, protocol: str, banner: str | None = None) -> dict[str, Any] | None:
-    """Return the first signature matching port+protocol, optionally banner."""
-    for sig in _load():
-        if sig["port"] != port or sig["protocol"] != protocol:
-            continue
-        if sig.get("banner_regex") and (not banner or not re.search(sig["banner_regex"], banner, re.IGNORECASE)):
-            continue
-        return sig
-    return None
+def _load_oui() -> dict[str, str]:
+    """Load OUI database and flatten to {prefix: node_type}."""
+    global _OUI_MAP
+    if _OUI_MAP is None:
+        with _LOCK:
+            if _OUI_MAP is None:
+                path = Path(__file__).parent.parent / "data" / "oui_database.json"
+                try:
+                    with open(path) as f:
+                        entries = json.load(f)
+                except FileNotFoundError as err:
+                    raise FileNotFoundError(
+                        f"oui_database.json not found at {path}. "
+                        "This file should be bundled with the application."
+                    ) from err
+                _OUI_MAP = {
+                    prefix.lower(): entry["type"]
+                    for entry in entries
+                    for prefix in entry["prefixes"]
+                }
+    return _OUI_MAP
 
 
-def fingerprint_ports(open_ports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _http_regex_hit(sig: dict[str, Any], http_signals: dict[str, Any] | None) -> bool:
+    """True when the signature's http_regex matches the probe's title/headers."""
+    rx = sig.get("http_regex")
+    if not rx or not http_signals:
+        return False
+    headers = http_signals.get("headers") or {}
+    haystack = " ".join(
+        s for s in (
+            http_signals.get("title"),
+            headers.get("Server"),
+            headers.get("X-Powered-By"),
+        ) if s
+    )
+    return bool(haystack and re.search(rx, haystack, re.IGNORECASE))
+
+
+def _service_tier(
+    sig: dict[str, Any],
+    port: int,
+    protocol: str,
+    banner: str | None,
+    http_signals: dict[str, Any] | None,
+) -> int | None:
     """
-    Given a list of {port, protocol, banner?} dicts, return matched services.
-    Unknown ports are included as unknown_service.
+    Rank how well a signature matches (lower = stronger). None = not a match.
+
+    Tier 1: port match + http_regex confirmed
+    Tier 2: port match + banner_regex confirmed
+    Tier 3: port-agnostic (port: null) + http_regex confirmed
+    Tier 4: port match only (no regex, or http_regex with probe disabled)
+
+    When http_signals is None (probe not run) an http_regex entry degrades to
+    a port-only match — identical to pre-probe behaviour, no regression.
+    When http_signals is provided, http_regex is strict: a miss disqualifies.
+    """
+    probe_ran = http_signals is not None
+    has_http = bool(sig.get("http_regex"))
+
+    # Port-agnostic entries (port: null) match purely on HTTP signals.
+    if sig.get("port") is None:
+        if has_http and _http_regex_hit(sig, http_signals):
+            return 3
+        return None
+
+    if sig["port"] != port or sig["protocol"] != protocol:
+        return None
+
+    # http_regex is authoritative once a probe has run.
+    if has_http and probe_ran:
+        return 1 if _http_regex_hit(sig, http_signals) else None
+
+    if sig.get("banner_regex"):
+        if banner and re.search(sig["banner_regex"], banner, re.IGNORECASE):
+            return 2
+        return None
+
+    # No regex constraint (or http_regex but probe disabled) → port-only guess.
+    return 4
+
+
+def match_service(
+    port: int,
+    protocol: str,
+    banner: str | None = None,
+    http_signals: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Return the best signature for a port, walking tiers most-specific first."""
+    best: dict[str, Any] | None = None
+    best_tier = 99
+    for sig in _load():
+        tier = _service_tier(sig, port, protocol, banner, http_signals)
+        if tier is not None and tier < best_tier:
+            best, best_tier = sig, tier
+            if best_tier == 1:
+                break  # strongest possible — stop early
+    return best
+
+
+def match_port(port: int, protocol: str, banner: str | None = None) -> dict[str, Any] | None:
+    """Back-compat alias: match without HTTP-probe signals."""
+    return match_service(port, protocol, banner)
+
+
+def fingerprint_ports(
+    open_ports: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Given a list of {port, protocol, banner?, http_signals?} dicts, return
+    matched services. Unknown ports are included as unknown_service.
     """
     results = []
     for p in open_ports:
-        sig = match_port(p["port"], p.get("protocol", "tcp"), p.get("banner"))
+        sig = match_service(
+            p["port"], p.get("protocol", "tcp"), p.get("banner"), p.get("http_signals")
+        )
         if sig:
             results.append({
                 "port": p["port"],
@@ -65,55 +165,12 @@ def fingerprint_ports(open_ports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return results
 
 
-# Known OUI prefixes — lowercase, colon-separated, first 3 octets
-_MAC_OUI_TYPES: dict[str, str] = {
-    # Hypervisors / VMs
-    "52:54:00": "vm",    # QEMU/KVM (Proxmox VMs)
-    "bc:24:11": "vm",    # Proxmox official OUI (VMs and LXC, 7.3+)
-    "00:50:56": "vm",    # VMware
-    "00:0c:29": "vm",    # VMware Workstation / Fusion
-    "08:00:27": "vm",    # VirtualBox
-    "00:15:5d": "vm",    # Hyper-V
-    # Shelly
-    "34:94:54": "iot",
-    "84:f3:eb": "iot",
-    "ec:fa:bc": "iot",
-    "30:c6:f7": "iot",
-    # Espressif (ESP8266 / ESP32 — used by Sonoff, many DIY IoT)
-    "a0:20:a6": "iot",
-    "24:62:ab": "iot",
-    "30:ae:a4": "iot",
-    "cc:50:e3": "iot",
-    "ac:67:b2": "iot",
-    "b4:e6:2d": "iot",
-    "3c:71:bf": "iot",
-    "8c:aa:b5": "iot",
-    # Sonoff / ITEAD
-    "dc:4f:22": "iot",
-    "e8:db:84": "iot",
-    # Tapo / TP-Link smart home
-    "b0:a7:b9": "iot",
-    "50:c7:bf": "iot",
-    "1c:3b:f3": "iot",
-    "10:27:f5": "iot",
-    # Philips Hue
-    "00:17:88": "iot",
-    "ec:b5:fa": "iot",
-    # IKEA Tradfri
-    "34:13:e8": "iot",
-    "00:21:2e": "iot",
-    # Tuya / Smart Life (widely used chip in many brands)
-    "d8:f1:5b": "iot",
-    "68:57:2d": "iot",
-}
-
-
 def suggest_type_from_mac(mac: str | None) -> str | None:
     """Return a suggested node type from MAC OUI, or None if unknown."""
     if not mac:
         return None
     prefix = mac.lower()[:8]
-    return _MAC_OUI_TYPES.get(prefix)
+    return _load_oui().get(prefix)
 
 
 _PORT_TYPE_HINTS: dict[int, str] = {

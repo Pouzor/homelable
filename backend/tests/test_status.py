@@ -5,7 +5,13 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.api.routes.status import _connections, broadcast_scan_update, broadcast_status
+from app.api.routes.status import (
+    _connections,
+    _drop,
+    broadcast_scan_update,
+    broadcast_service_status,
+    broadcast_status,
+)
 from app.main import app
 
 # ---------------------------------------------------------------------------
@@ -155,3 +161,63 @@ async def test_broadcast_no_connections():
     assert len(_connections) == 0
     await broadcast_status(node_id="n", status="online", checked_at="t")
     await broadcast_scan_update(run_id="r", devices_found=0)
+
+
+# ---------------------------------------------------------------------------
+# broadcast_service_status
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_broadcast_service_status_payload():
+    received: list[str] = []
+
+    class FakeWS:
+        async def send_text(self, text: str) -> None:
+            received.append(text)
+
+    fake = FakeWS()
+    _connections.append(fake)
+    try:
+        await broadcast_service_status(
+            node_id="node-7",
+            services=[{"port": 80, "protocol": "tcp", "status": "offline"}],
+            checked_at="2024-01-01T00:00:00",
+        )
+    finally:
+        _drop(fake)
+
+    msg = json.loads(received[0])
+    assert msg["type"] == "service_status"
+    assert msg["node_id"] == "node-7"
+    assert msg["services"] == [{"port": 80, "protocol": "tcp", "status": "offline"}]
+
+
+# ---------------------------------------------------------------------------
+# _drop — idempotent connection removal (regression for double-remove crash)
+# ---------------------------------------------------------------------------
+
+def test_drop_is_idempotent():
+    """Dropping a connection twice must not raise (was a ValueError crash)."""
+    class FakeWS:
+        pass
+
+    fake = FakeWS()
+    _connections.append(fake)
+    _drop(fake)
+    _drop(fake)  # second drop must be a no-op
+    assert fake not in _connections
+
+
+@pytest.mark.asyncio
+async def test_broadcast_dead_connection_dropped_once_safely():
+    """A send failure removes the dead socket without a double-remove crash."""
+    class DeadWS:
+        async def send_text(self, _: str) -> None:
+            raise RuntimeError("disconnected")
+
+    dead = DeadWS()
+    _connections.append(dead)
+    await broadcast_status(node_id="n", status="online", checked_at="t")
+    # A second broadcast must not raise even though dead is already gone.
+    await broadcast_status(node_id="n", status="online", checked_at="t")
+    assert dead not in _connections

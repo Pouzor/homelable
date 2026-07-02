@@ -45,3 +45,42 @@ async def test_update_settings_saves_interval(client: AsyncClient, headers):
 async def test_update_settings_requires_auth(client: AsyncClient):
     res = await client.post("/api/v1/settings", json={"interval_seconds": 30})
     assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_settings_returns_service_check_fields(client: AsyncClient, headers):
+    res = await client.get("/api/v1/settings", headers=headers)
+    data = res.json()
+    assert "service_check_enabled" in data
+    assert "service_check_interval" in data
+    assert isinstance(data["service_check_enabled"], bool)
+    assert isinstance(data["service_check_interval"], int)
+
+
+@pytest.mark.asyncio
+async def test_update_settings_saves_service_check_fields(client: AsyncClient, headers):
+    with patch("app.api.routes.settings.settings") as mock_settings:
+        mock_settings.save_overrides = lambda: None
+        res = await client.post(
+            "/api/v1/settings",
+            json={
+                "interval_seconds": 60,
+                "service_check_enabled": True,
+                "service_check_interval": 600,
+            },
+            headers=headers,
+        )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["service_check_enabled"] is True
+    assert body["service_check_interval"] == 600
+
+
+@pytest.mark.asyncio
+async def test_update_settings_rejects_too_short_service_interval(client: AsyncClient, headers):
+    res = await client.post(
+        "/api/v1/settings",
+        json={"interval_seconds": 60, "service_check_enabled": True, "service_check_interval": 5},
+        headers=headers,
+    )
+    assert res.status_code == 422

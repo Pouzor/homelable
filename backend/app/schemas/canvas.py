@@ -29,6 +29,7 @@ class NodeSave(BaseModel):
     ram_gb: float | None = None
     disk_gb: float | None = None
     show_hardware: bool = False
+    show_port_numbers: bool = False
     properties: list[Any] = []
     width: float | None = None
     height: float | None = None
@@ -63,6 +64,7 @@ class CanvasSaveRequest(BaseModel):
     edges: list[EdgeSave] = []
     viewport: dict[str, Any] = {}
     custom_style: dict[str, Any] | None = None
+    design_id: str | None = None
 
 
 class CanvasStateResponse(BaseModel):

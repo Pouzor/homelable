@@ -1,9 +1,9 @@
-import { useState, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import {
   Globe, Router, Network, Server, Layers, Box, Container, HardDrive,
-  Cpu, Wifi, Camera, Printer, Monitor, PlugZap, Anchor, Package, Circle, Flame,
-  Radio, Zap, Lightbulb,
+  Cpu, Wifi, Camera, Printer, Monitor, Laptop, Smartphone, PlugZap, Anchor, Package, Circle, Flame,
+  Radio, Zap, Lightbulb, RadioTower, Share2,
   type LucideIcon,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -17,23 +17,27 @@ import type {
 } from '@/types'
 import { NODE_TYPE_LABELS, EDGE_TYPE_LABELS } from '@/types'
 
-// ── Node types exposed for custom style (skip groupRect/group) ───────────────
+// ── Node types exposed for custom style, grouped by category (skip groupRect/group) ──
 
-const EDITABLE_NODE_TYPES: NodeType[] = [
-  'isp', 'router', 'firewall', 'switch', 'server', 'proxmox', 'vm', 'lxc', 'nas',
-  'iot', 'ap', 'camera', 'printer', 'computer', 'cpl', 'docker_host',
-  'docker_container', 'zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice',
-  'generic',
+const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
+  { label: 'Hardware',       types: ['isp', 'router', 'firewall', 'switch', 'server', 'nas', 'ap', 'printer'] },
+  { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker_host', 'docker_container'] },
+  { label: 'IoT',            types: ['iot', 'camera', 'cpl'] },
+  { label: 'Zigbee',         types: ['zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice'] },
+  { label: 'Z-Wave',         types: ['zwave_coordinator', 'zwave_router', 'zwave_enddevice'] },
+  { label: 'Personal',       types: ['computer', 'laptop', 'mobile'] },
+  { label: 'Generic',        types: ['generic'] },
 ]
 
-const EDITABLE_EDGE_TYPES: EdgeType[] = ['ethernet', 'wifi', 'iot', 'vlan', 'virtual', 'cluster']
+const EDITABLE_EDGE_TYPES: EdgeType[] = ['ethernet', 'wifi', 'iot', 'vlan', 'virtual', 'cluster', 'fibre', 'electrical']
 
 const NODE_ICONS: Record<string, LucideIcon> = {
   isp: Globe, router: Router, firewall: Flame, switch: Network, server: Server, proxmox: Layers,
   vm: Box, lxc: Container, nas: HardDrive, iot: Cpu, ap: Wifi,
-  camera: Camera, printer: Printer, computer: Monitor, cpl: PlugZap,
+  camera: Camera, printer: Printer, computer: Monitor, laptop: Laptop, mobile: Smartphone, cpl: PlugZap,
   docker_host: Anchor, docker_container: Package,
   zigbee_coordinator: Radio, zigbee_router: Zap, zigbee_enddevice: Lightbulb,
+  zwave_coordinator: RadioTower, zwave_router: Share2, zwave_enddevice: Lightbulb,
   generic: Circle,
 }
 
@@ -156,7 +160,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
               min={0}
               step={10}
               value={style.width}
-              onChange={(e) => set('width', parseInt(e.target.value) || 0)}
+              onChange={(e) => set('width', parseInt(e.target.value, 10) || 0)}
               className="w-20 h-7 text-xs bg-[#0d1117] border border-[#30363d] rounded px-2 text-[#e6edf3]"
             />
           </div>
@@ -167,7 +171,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
               min={0}
               step={10}
               value={style.height}
-              onChange={(e) => set('height', parseInt(e.target.value) || 0)}
+              onChange={(e) => set('height', parseInt(e.target.value, 10) || 0)}
               className="w-20 h-7 text-xs bg-[#0d1117] border border-[#30363d] rounded px-2 text-[#e6edf3]"
             />
           </div>
@@ -281,14 +285,22 @@ export function CustomStyleModal({ open, onClose }: CustomStyleModalProps) {
     edges: { ...customStyle.edges },
   }))
 
-  const handleOpen = (isOpen: boolean) => {
-    if (isOpen) {
-      // Reset draft to current saved customStyle on open
+  // Reset the draft to the saved customStyle whenever the modal is (re)opened.
+  // The parent keeps this component mounted and only toggles `open`, so Radix's
+  // onOpenChange never fires for a parent-driven open — we key off the prop edge
+  // instead. Without this, abandoned edits (Cancel) would leak into the next open.
+  useEffect(() => {
+    if (open) {
       setDraft({ nodes: { ...customStyle.nodes }, edges: { ...customStyle.edges } })
       setSelection(null)
-    } else {
-      onClose()
     }
+    // Intentional snapshot-on-open: we don't want live customStyle changes to
+    // clobber an in-progress edit, only a fresh open should reset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const handleOpen = (isOpen: boolean) => {
+    if (!isOpen) onClose()
   }
 
   const getNodeStyle = (t: NodeType): NodeTypeStyle =>
@@ -363,34 +375,41 @@ export function CustomStyleModal({ open, onClose }: CustomStyleModalProps) {
 
             {/* Type list */}
             <div className="flex-1 overflow-y-auto py-1">
-              {tab === 'nodes' && EDITABLE_NODE_TYPES.map((t) => {
-                const Icon = NODE_ICONS[t] ?? Circle
-                const style = draft.nodes[t]
-                const isSelected = selection?.kind === 'node' && selection.type === t
-                const swatchColor = style
-                  ? applyOpacity(style.borderColor, style.borderOpacity)
-                  : THEMES.default.colors.nodeAccents[t]?.border ?? '#8b949e'
+              {tab === 'nodes' && NODE_TYPE_GROUPS.map((group) => (
+                <Fragment key={group.label}>
+                  <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#8b949e]/60">
+                    {group.label}
+                  </div>
+                  {group.types.map((t) => {
+                    const Icon = NODE_ICONS[t] ?? Circle
+                    const style = draft.nodes[t]
+                    const isSelected = selection?.kind === 'node' && selection.type === t
+                    const swatchColor = style
+                      ? applyOpacity(style.borderColor, style.borderOpacity)
+                      : THEMES.default.colors.nodeAccents[t]?.border ?? '#8b949e'
 
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setSelection({ kind: 'node', type: t })}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors text-left"
-                    style={{
-                      background: isSelected ? '#21262d' : 'transparent',
-                      color: isSelected ? '#e6edf3' : '#8b949e',
-                    }}
-                  >
-                    <Icon size={13} />
-                    <span className="flex-1 truncate">{NODE_TYPE_LABELS[t]}</span>
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ background: swatchColor }}
-                    />
-                  </button>
-                )
-              })}
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setSelection({ kind: 'node', type: t })}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors text-left"
+                        style={{
+                          background: isSelected ? '#21262d' : 'transparent',
+                          color: isSelected ? '#e6edf3' : '#8b949e',
+                        }}
+                      >
+                        <Icon size={13} />
+                        <span className="flex-1 truncate">{NODE_TYPE_LABELS[t]}</span>
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ background: swatchColor }}
+                        />
+                      </button>
+                    )
+                  })}
+                </Fragment>
+              ))}
 
               {tab === 'edges' && EDITABLE_EDGE_TYPES.map((t) => {
                 const style = draft.edges[t]

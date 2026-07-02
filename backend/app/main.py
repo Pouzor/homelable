@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, canvas, edges, liveview, nodes, scan, stats, status, zigbee
+from app.api.routes import auth, canvas, designs, edges, liveview, nodes, scan, stats, status, zigbee, zwave
 from app.api.routes import settings as settings_routes
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
@@ -51,11 +51,13 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(nodes.router, prefix="/api/v1/nodes", tags=["nodes"])
 app.include_router(edges.router, prefix="/api/v1/edges", tags=["edges"])
 app.include_router(canvas.router, prefix="/api/v1/canvas", tags=["canvas"])
+app.include_router(designs.router, prefix="/api/v1/designs", tags=["designs"])
 app.include_router(scan.router, prefix="/api/v1/scan", tags=["scan"])
 app.include_router(status.router, prefix="/api/v1/status", tags=["status"])
 app.include_router(settings_routes.router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(liveview.router, prefix="/api/v1/liveview", tags=["liveview"])
 app.include_router(zigbee.router, prefix="/api/v1/zigbee", tags=["zigbee"])
+app.include_router(zwave.router, prefix="/api/v1/zwave", tags=["zwave"])
 app.include_router(stats.router, prefix="/api/v1/stats", tags=["stats"])
 
 

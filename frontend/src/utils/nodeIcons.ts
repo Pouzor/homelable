@@ -11,7 +11,7 @@ import {
   // Security & Auth
   Shield, ShieldCheck, Lock, Key, Users, UserCheck, Flame,
   // Automation & IoT
-  Zap, Workflow, Bot, Home, Thermometer, Lightbulb, Radio, BotMessageSquare, Webhook,
+  Zap, Workflow, Bot, Home, Thermometer, Lightbulb, Radio, RadioTower, Share2, BotMessageSquare, Webhook,
   // Smart Home / Sensors
   Plug, Power, BatteryCharging, Sun, DoorOpen, KeyRound, AlarmSmoke, Siren,
   Radar, PersonStanding, Vibrate, Droplet, Droplets, Wind, AirVent, Fan,
@@ -24,7 +24,9 @@ import {
   // Communications
   Mail, MessageSquare, Phone,
   // Misc devices
-  Printer, Smartphone, Search, Filter, BookOpen, PlugZap, Type,
+  Printer, Smartphone, Laptop, Search, Filter, BookOpen, PlugZap, Type,
+  // Electrical
+  ToggleLeft,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -50,6 +52,7 @@ export const ICON_REGISTRY: IconEntry[] = [
   { key: 'wifi',       label: 'Access Point',         category: 'Infrastructure', icon: Wifi },
   { key: 'circle',     label: 'Generic',              category: 'Infrastructure', icon: Circle },
   { key: 'monitor',    label: 'Workstation',          category: 'Infrastructure', icon: Monitor },
+  { key: 'laptop',     label: 'Laptop',               category: 'Infrastructure', icon: Laptop },
   { key: 'smartphone', label: 'Phone / Mobile',       category: 'Infrastructure', icon: Smartphone },
   { key: 'printer',    label: 'Printer',              category: 'Infrastructure', icon: Printer },
   { key: 'plugzap',    label: 'CPL / Powerline',      category: 'Infrastructure', icon: PlugZap },
@@ -153,30 +156,49 @@ export const ICON_MAP: Record<string, LucideIcon> = Object.fromEntries(
 )
 
 export const NODE_TYPE_DEFAULT_ICONS: Record<NodeType, LucideIcon> = {
-  isp:          Globe,
-  router:       Router,
-  firewall:     Flame,
-  switch:       Network,
-  server:       Server,
-  proxmox:      Layers,
-  vm:           Box,
-  lxc:          Container,
-  nas:          HardDrive,
-  iot:          Cpu,
-  ap:           Wifi,
-  camera:       Cctv,
-  printer:      Printer,
-  computer:     Monitor,
-  cpl:          PlugZap,
-  docker_host:       Anchor,
-  docker_container:  Package,
+  isp:              Globe,
+  router:           Router,
+  firewall:         Flame,
+  switch:           Network,
+  server:           Server,
+  proxmox:          Layers,
+  vm:               Box,
+  lxc:              Container,
+  nas:              HardDrive,
+  iot:              Cpu,
+  ap:               Wifi,
+  camera:           Cctv,
+  printer:          Printer,
+  computer:         Monitor,
+  laptop:           Laptop,
+  mobile:           Smartphone,
+  cpl:              PlugZap,
+  docker_host:      Anchor,
+  docker_container: Package,
   zigbee_coordinator: Radio,
   zigbee_router:      Zap,
   zigbee_enddevice:   Lightbulb,
+  zwave_coordinator:  RadioTower,
+  zwave_router:       Share2,
+  zwave_enddevice:    Lightbulb,
   generic:           Circle,
-  group:        Circle,
-  groupRect:    Circle,
-  text:         Type,
+  group:             Circle,
+  groupRect:         Circle,
+  text:              Type,
+  grid:              Zap,
+  ups:               Power,
+  battery:           BatteryCharging,
+  generator:         Fan,
+  solar_panel:       Sun,
+  inverter:          Workflow,
+  circuit_breaker:   PlugZap,
+  contactor:         ToggleLeft,
+  electrical_switch: ToggleLeft,
+  socket:            Plug,
+  light:             Lightbulb,
+  meter:             Gauge,
+  transformer:       CircleDot,
+  load:              Circle,
 }
 
 /** Resolve the display icon for a node — custom_icon takes priority over type default.

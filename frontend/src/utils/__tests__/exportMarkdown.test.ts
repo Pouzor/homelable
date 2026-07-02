@@ -53,6 +53,33 @@ describe('generateMarkdownTable', () => {
     expect(md).toContain('A\\|B')
   })
 
+  it('escapes backslashes before pipes so the escape char is not ambiguous', () => {
+    const nodes = [makeNode({ label: 'A\\|B' })]
+    const md = generateMarkdownTable(nodes)
+    // backslash doubled, then the literal pipe escaped
+    expect(md).toContain('A\\\\\\|B')
+  })
+
+  it('collapses newlines in cell values so they do not break the table', () => {
+    const nodes = [makeNode({ label: 'line1\nline2', hostname: 'a\r\nb' })]
+    const lines = generateMarkdownTable(nodes).split('\n')
+    // header + separator + exactly one data row (no extra line from the value)
+    expect(lines).toHaveLength(3)
+    expect(lines[2]).toContain('line1 line2')
+    expect(lines[2]).toContain('a b')
+  })
+
+  it('escapes pipe characters inside service names', () => {
+    const nodes = [makeNode({
+      label: 'Server',
+      services: [{ port: 80, protocol: 'tcp', service_name: 'web|proxy' }],
+    })]
+    const lines = generateMarkdownTable(nodes).split('\n')
+    // header + separator + exactly one data row — the pipe must not add a column
+    expect(lines).toHaveLength(3)
+    expect(lines[2]).toContain('web\\|proxy')
+  })
+
   it('generates one row per non-groupRect node', () => {
     const nodes = [
       makeNode({ type: 'server', label: 'A' }, '1'),

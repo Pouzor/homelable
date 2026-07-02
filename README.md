@@ -40,6 +40,20 @@ The scanner runs `nmap -sV --open` on your configured CIDR ranges and populates 
 To save you time when mapping your infrastructure, Homlable can scan your network and report all the services it detects. It can also identify them, saving you even more time.
 Click **Scan Network** in the sidebar. The Scan History tab opens automatically and refreshes every 3 seconds until the scan completes.
 
+### Deep scan (custom ports)
+
+By default the scanner only probes nmap's standard port set. To fingerprint services on non-standard ports, enable the deep scan via `.env` (all options are overridable per-scan from the scan dialog):
+
+```env
+# JSON array of port specs — each entry is a single port "N" or an inclusive
+# range "N-M" (1–65535, N <= M). These are ports, not CIDRs or bare integers.
+SCANNER_HTTP_RANGES=["8080","9000-9100"]
+SCANNER_HTTP_PROBE_ENABLED=true   # send an HTTP probe to those ports for service ID
+SCANNER_HTTP_VERIFY_TLS=false     # verify TLS certs on the HTTP probe
+```
+
+The listed ports are appended to nmap's `-p` spec. Invalid entries (out-of-range, malformed, or reversed ranges) are silently skipped.
+
 ### macOS / root privileges
 
 Some nmap scan types (SYN scan, OS detection) require root. If the scan fails with a permissions error, run it manually with sudo using the included script:
@@ -106,6 +120,37 @@ Hierarchy is set automatically: coordinator → routers → end devices (`parent
 LQI (Link Quality Indicator) is stored as a node property.
 
 > **Full documentation:** [docs/zigbee-import.md](./docs/zigbee-import.md)
+
+---
+
+## Z-Wave Import
+
+Homelable can also import your **Z-Wave** network from **Z-Wave JS UI** (formerly `zwavejs2mqtt`) over the same MQTT broker, dropping each node on the canvas as a typed node.
+
+### Prerequisites
+
+- A running **MQTT broker** (e.g. Mosquitto) accessible from the Homelable host
+- **Z-Wave JS UI** connected to the broker with its MQTT gateway enabled and at least one node included
+
+### Usage
+
+1. Click **Z-Wave Import** in the left sidebar (below "Zigbee Import")
+2. Enter your broker host, port (default `1883`), optional credentials, MQTT prefix (default `zwave`), and gateway name (default `zwavejs2mqtt`)
+3. Click **Test Connection** to verify reachability
+4. Choose a target — **Pending section** or **Canvas directly** — then **Import to Pending** / **Fetch Devices**
+5. Select the devices you want from the grouped list (Controller / Router / End Device) and click **Add N to Canvas**
+
+### Node Types
+
+| Type | Z-Wave Role | Icon |
+|------|-------------|------|
+| `zwave_coordinator` | Controller | Network hub |
+| `zwave_router` | Routing (mains-powered) node | Radio |
+| `zwave_enddevice` | End Device (battery) | Antenna |
+
+Hierarchy is set automatically: controller → routers → end devices (`parent_id`), derived from each node's neighbor list. Z-Wave has no LQI, so that property is omitted.
+
+> **Full documentation:** [docs/zwave-import.md](./docs/zwave-import.md)
 
 ---
 
@@ -222,6 +267,12 @@ No plain-text passwords involved — `AUTH_PASSWORD_HASH` is only used for the w
 docker compose up -d mcp
 # MCP server is now listening on http://<your-homelab-ip>:8001
 ```
+
+> **Proxmox LXC / bare-metal (no Docker):** create the LXC via
+> [community-scripts/ProxmoxVE](https://github.com/community-scripts/ProxmoxVE) (or any
+> Debian/Ubuntu LXC), then inside it run `sudo bash scripts/lxc-mcp-install.sh`.
+> Installs a `homelable-mcp` systemd service, prompts for `MCP_API_KEY` / `MCP_SERVICE_KEY`
+> (auto-generated if you press Enter), and skips prompts if `mcp/.env` already exists.
 
 **3. Configure your AI client:**
 

@@ -7,4 +7,6 @@ export const edgeTypes = {
   vlan: HomelableEdge,
   virtual: HomelableEdge,
   cluster: HomelableEdge,
+  fibre: HomelableEdge,
+  electrical: HomelableEdge,
 }

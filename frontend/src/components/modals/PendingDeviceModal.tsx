@@ -27,6 +27,14 @@ export interface PendingDevice {
   vendor?: string | null
   lqi?: number | null
   discovered_at: string
+  // How many canvases (designs) this device already appears on. Computed server-side.
+  canvas_count?: number
+  // Timestamps from the linked canvas node(s), correlated by ip/ieee_address.
+  // Null/absent when the device is not on any canvas yet.
+  node_created_at?: string | null
+  node_last_scan?: string | null
+  node_last_modified?: string | null
+  node_last_seen?: string | null
 }
 
 interface PendingDeviceModalProps {

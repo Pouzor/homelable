@@ -89,6 +89,22 @@ describe('parseYamlToCanvas', () => {
     expect(edges[0].targetHandle).toBe('top-t')
   })
 
+  it('imports a fibre link type onto the edge (issue #21)', () => {
+    const yaml = `
+- nodeType: switch
+  label: "SW"
+  links:
+    - label: "SRV"
+      linkType: fibre
+- nodeType: server
+  label: "SRV"
+`
+    const { edges } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    expect(edges).toHaveLength(1)
+    expect(edges[0].type).toBe('fibre')
+    expect(edges[0].data?.type).toBe('fibre')
+  })
+
   it('cluster edges have cluster-right→cluster-left handles', () => {
     const yaml = `
 - nodeType: proxmox

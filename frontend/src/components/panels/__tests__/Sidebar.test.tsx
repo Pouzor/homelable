@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { Sidebar } from '../Sidebar'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
 import type { Node } from '@xyflow/react'
-import type { NodeData } from '@/types'
+import type { NodeData, Design } from '@/types'
+import * as standaloneStorage from '@/utils/standaloneStorage'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -46,15 +47,12 @@ const makeNode = (id: string, status: NodeData['status'], type: NodeData['type']
   data: { label: id, type, status, services: [] },
 })
 
-const mockToggleHideIp = vi.fn()
 const mockLogout = vi.fn()
 
 function mockStore(overrides: Partial<ReturnType<typeof useCanvasStore>> = {}) {
   vi.mocked(useCanvasStore).mockReturnValue({
     nodes: [],
     hasUnsavedChanges: false,
-    hideIp: false,
-    toggleHideIp: mockToggleHideIp,
     addNode: vi.fn(),
     scanEventTs: 0,
     ...overrides,
@@ -70,9 +68,13 @@ function mockAuth() {
 const defaultProps = {
   onAddNode: vi.fn(),
   onAddGroupRect: vi.fn(),
+  onAddText: vi.fn(),
   onScan: vi.fn(),
   onZigbeeImport: vi.fn(),
+  onZwaveImport: vi.fn(),
   onSave: vi.fn(),
+  onOpenSettings: vi.fn(),
+  onOpenHistory: vi.fn(),
   onOpenPending: vi.fn(),
 }
 
@@ -98,7 +100,7 @@ describe('Sidebar', () => {
   it('shows all view nav items', () => {
     render(<Sidebar {...defaultProps} />)
     expect(screen.getByText('Canvas')).toBeInTheDocument()
-    expect(screen.getByText('Pending Devices')).toBeInTheDocument()
+    expect(screen.getByText('Device Inventory')).toBeInTheDocument()
     expect(screen.getByText('Hidden Devices')).toBeInTheDocument()
     expect(screen.getByText('Scan History')).toBeInTheDocument()
   })
@@ -184,22 +186,31 @@ describe('Sidebar', () => {
     expect(defaultProps.onAddGroupRect).toHaveBeenCalledOnce()
   })
 
+  it('calls onZwaveImport when Z-Wave Import is clicked', () => {
+    render(<Sidebar {...defaultProps} />)
+    fireEvent.click(screen.getByText('Z-Wave Import'))
+    expect(defaultProps.onZwaveImport).toHaveBeenCalledOnce()
+  })
+
   it('calls onSave when Save Canvas is clicked', () => {
     render(<Sidebar {...defaultProps} />)
     fireEvent.click(screen.getByText('Save Canvas'))
     expect(defaultProps.onSave).toHaveBeenCalledOnce()
   })
 
-  it('calls toggleHideIp when Hide IPs is clicked', () => {
+  // Regression (#186): the click handler must not forward the MouseEvent as an
+  // argument — handleSave treats its first arg as a designIdOverride, so leaking
+  // the event corrupts design_id and the save silently fails.
+  it('calls onSave with no arguments (does not leak the click event)', () => {
     render(<Sidebar {...defaultProps} />)
-    fireEvent.click(screen.getByText('Hide IPs'))
-    expect(mockToggleHideIp).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByText('Save Canvas'))
+    expect(defaultProps.onSave).toHaveBeenCalledWith()
   })
 
-  it('shows Show IPs label when hideIp is true', () => {
-    mockStore({ hideIp: true })
+  it('calls onOpenSettings when Settings is clicked', () => {
     render(<Sidebar {...defaultProps} />)
-    expect(screen.getByText('Show IPs')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Settings'))
+    expect(defaultProps.onOpenSettings).toHaveBeenCalledOnce()
   })
 
   // ── Unsaved changes badge ──────────────────────────────────────────────────
@@ -230,9 +241,9 @@ describe('Sidebar', () => {
 
   // ── Pending / Hidden open modal ────────────────────────────────────────────
 
-  it('calls onOpenPending with pending status when Pending Devices is clicked', () => {
+  it('calls onOpenPending with pending status when Device Inventory is clicked', () => {
     render(<Sidebar {...defaultProps} />)
-    fireEvent.click(screen.getByText('Pending Devices'))
+    fireEvent.click(screen.getByText('Device Inventory'))
     expect(defaultProps.onOpenPending).toHaveBeenCalledWith(undefined, 'pending')
   })
 
@@ -242,29 +253,16 @@ describe('Sidebar', () => {
     expect(defaultProps.onOpenPending).toHaveBeenCalledWith(undefined, 'hidden')
   })
 
-  it('shows History panel when Scan History nav item is clicked', async () => {
+  it('calls onOpenHistory when Scan History nav item is clicked', () => {
     render(<Sidebar {...defaultProps} />)
     fireEvent.click(screen.getByText('Scan History'))
-    await waitFor(() => expect(screen.getByText('No scans yet')).toBeInTheDocument())
+    expect(defaultProps.onOpenHistory).toHaveBeenCalledOnce()
   })
 
-  // Regression: forceView must not freeze local state across rerenders.
-  it('allows switching views after forceView is set by parent', async () => {
-    const { rerender } = render(<Sidebar {...defaultProps} forceView="history" />)
-    await waitFor(() => expect(screen.getByText('No scans yet')).toBeInTheDocument())
-    rerender(<Sidebar {...defaultProps} forceView="history" />)
-    fireEvent.click(screen.getByText('Canvas'))
-    await waitFor(() => expect(screen.queryByText('No scans yet')).not.toBeInTheDocument())
-  })
-
-  it('toggles Settings panel on Settings click', async () => {
+  it('calls onOpenSettings when Settings is clicked', () => {
     render(<Sidebar {...defaultProps} />)
-    fireEvent.click(screen.getByText('Settings'))
-    await waitFor(() =>
-      expect(screen.getByText('Status check interval (s)')).toBeInTheDocument(),
-    )
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-    expect(screen.queryByText('Status check interval (s)')).not.toBeInTheDocument()
+    expect(defaultProps.onOpenSettings).toHaveBeenCalledOnce()
   })
 
   // ── Logout ─────────────────────────────────────────────────────────────────
@@ -278,5 +276,105 @@ describe('Sidebar', () => {
     render(<Sidebar {...defaultProps} />)
     fireEvent.click(screen.getByText('Logout'))
     expect(mockLogout).toHaveBeenCalledOnce()
+  })
+})
+
+// ── Standalone mode ────────────────────────────────────────────────────────────
+// VITE_STANDALONE is read at module load, so re-import Sidebar after stubbing it.
+// The hoisted vi.mock auto-mocks re-apply on re-import; configure the fresh mock
+// instances after the dynamic import.
+describe('Sidebar (standalone)', () => {
+  const makeDesign = (id: string, name: string): Design => ({
+    id, name, design_type: 'network', icon: null,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  })
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  // Re-import Sidebar after stubbing VITE_STANDALONE. Returns the design-store
+  // instance the re-imported Sidebar uses, seeded with `designs` so we can drive
+  // and assert the switcher.
+  async function renderStandalone(nodes: Node<NodeData>[] = [], designs: Design[] = []) {
+    vi.stubEnv('VITE_STANDALONE', 'true')
+    vi.resetModules()
+    const { useCanvasStore: cs } = await import('@/stores/canvasStore')
+    const { useAuthStore: as } = await import('@/stores/authStore')
+    const { useDesignStore: ds } = await import('@/stores/designStore')
+    vi.mocked(cs).mockReturnValue({
+      nodes, hasUnsavedChanges: false, addNode: vi.fn(), scanEventTs: 0,
+    } as ReturnType<typeof useCanvasStore>)
+    vi.mocked(as).mockImplementation((selector: (s: { logout: () => void }) => unknown) =>
+      selector({ logout: mockLogout }) as ReturnType<typeof useAuthStore>
+    )
+    ds.setState({ designs, activeDesignId: designs[0]?.id ?? null, loaded: true })
+    const { Sidebar: SB } = await import('../Sidebar')
+    render(<SB {...defaultProps} />)
+    return ds
+  }
+
+  it('hides the Total/Online/Offline stats footer', async () => {
+    await renderStandalone([makeNode('n1', 'online'), makeNode('n2', 'offline')])
+    expect(screen.queryByText('Total')).not.toBeInTheDocument()
+    expect(screen.queryByText('Online')).not.toBeInTheDocument()
+    expect(screen.queryByText('Offline')).not.toBeInTheDocument()
+  })
+
+  it('hides scan-dependent items but keeps canvas actions', async () => {
+    await renderStandalone()
+    expect(screen.queryByText('Scan Network')).not.toBeInTheDocument()
+    expect(screen.queryByText('Device Inventory')).not.toBeInTheDocument()
+    expect(screen.queryByText('Logout')).not.toBeInTheDocument()
+    expect(screen.getByText('Add Node')).toBeInTheDocument()
+    expect(screen.getByText('Save Canvas')).toBeInTheDocument()
+  })
+
+  it('creates a canvas via localStorage (no API) and adds it to the store', async () => {
+    const ds = await renderStandalone([], [makeDesign('d1', 'Main')])
+
+    fireEvent.click(screen.getByText('Main'))          // open switcher
+    fireEvent.click(screen.getByText('New Canvas'))    // open create modal
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Garage' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await screen.findByText('Garage')
+    expect(ds.getState().designs.map((d) => d.name)).toContain('Garage')
+    expect(standaloneStorage.listDesigns().map((d) => d.name)).toContain('Garage')
+  })
+
+  it('renames a canvas via localStorage (no API)', async () => {
+    standaloneStorage.createDesign('Old')
+    const seeded = standaloneStorage.listDesigns()
+    const ds = await renderStandalone([], seeded)
+
+    fireEvent.click(screen.getByText('Old'))
+    fireEvent.click(screen.getByLabelText('Edit Old'))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Renamed' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await screen.findByText('Renamed')
+    expect(ds.getState().designs.map((d) => d.name)).toContain('Renamed')
+    expect(standaloneStorage.listDesigns()[0].name).toBe('Renamed')
+  })
+
+  it('deletes a canvas via localStorage (no API)', async () => {
+    standaloneStorage.createDesign('Keep')
+    standaloneStorage.createDesign('Drop')
+    const seeded = standaloneStorage.listDesigns()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const ds = await renderStandalone([], seeded)
+
+    fireEvent.click(screen.getByText('Keep'))          // open switcher
+    fireEvent.click(screen.getByLabelText('Delete Drop'))
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(standaloneStorage.listDesigns().map((d) => d.name)).toEqual(['Keep'])
+    expect(ds.getState().designs.map((d) => d.name)).toEqual(['Keep'])
+    confirmSpy.mockRestore()
   })
 })

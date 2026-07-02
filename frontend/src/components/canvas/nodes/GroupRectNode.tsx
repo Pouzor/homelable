@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflow/react'
+import { ChevronDown } from 'lucide-react'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { getZoneSpatialChildren } from '@/utils/collapseFilter'
 import type { NodeData, TextPosition } from '@/types'
 
 const FONT_FAMILIES: Record<string, string> = {
@@ -36,9 +38,12 @@ const HANDLE_SIDES = [
 
 export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
   const setEditingGroupRectId = useCanvasStore((s) => s.setEditingGroupRectId)
+  const toggleNodeCollapsed = useCanvasStore((s) => s.toggleNodeCollapsed)
+  const nodes = useCanvasStore((s) => s.nodes)
   const [hovered, setHovered] = useState(false)
 
   const rc = data.custom_colors ?? {}
+  const isCollapsed = data.collapsed ?? false
   const borderColor = rc.border ?? '#00d4ff'
   const borderStyle = rc.border_style ?? 'solid'
   const borderWidth = rc.border_width ?? 2
@@ -49,6 +54,13 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
   const fontFamily = FONT_FAMILIES[rc.font ?? 'inter'] ?? FONT_FAMILIES.inter
   const textPos = (rc.text_position ?? 'top-left') as TextPosition
   const posStyle = POSITION_STYLES[textPos]
+
+  // Count children for collapse badge — groupRect zones don't parent their
+  // contents via React Flow parentId, so we hit-test by spatial containment.
+  const selfNode = (nodes ?? []).find((n) => n.id === id)
+  const childrenCount = selfNode
+    ? getZoneSpatialChildren(selfNode, nodes ?? []).length
+    : 0
 
   const outsideJustify = textPos.includes('right') ? 'flex-end'
     : (textPos.includes('center') || textPos === 'center') ? 'center'
@@ -118,6 +130,8 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
           borderRadius: 10,
           boxSizing: 'border-box',
           cursor: 'default',
+          transition: 'opacity 0.2s ease-out, filter 0.2s ease-out',
+          opacity: isCollapsed ? 0.6 : 1,
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
@@ -126,6 +140,51 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
           setEditingGroupRectId(id)
         }}
       >
+        {childrenCount > 0 && (
+          <button
+            className="nodrag"
+            onClick={(e) => {
+              e.stopPropagation()
+              toggleNodeCollapsed(id)
+            }}
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 6,
+              width: 20,
+              height: 20,
+              padding: 0,
+              background: 'rgba(0, 212, 255, 0.1)',
+              border: '1px solid rgba(0, 212, 255, 0.3)',
+              borderRadius: 4,
+              color: borderColor,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.2s ease-out, transform 0.2s ease-out',
+              transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+            }}
+            title={isCollapsed ? `Show ${childrenCount} hidden items` : `Hide ${childrenCount} items`}
+          >
+            <ChevronDown size={14} />
+          </button>
+        )}
+        {isCollapsed && childrenCount > 0 && (
+          <span
+            style={{
+              position: 'absolute',
+              bottom: 6,
+              right: 6,
+              fontSize: 10,
+              color: borderColor,
+              opacity: 0.7,
+              userSelect: 'none',
+            }}
+          >
+            +{childrenCount}
+          </span>
+        )}
         {labelPosition === 'outside' && data.label && (
           <span
             style={{

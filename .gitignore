@@ -46,7 +46,14 @@ htmlcov/
 *.db-shm
 *.db-wal
 *.db.back
+*.db.back-*
 
 # Docker
 .docker/
 Ideas.md
+
+# Local dev/test utilities (never commit)
+scripts/zwave-mock-gateway.py
+
+# Docs (local only)
+docs/database-model.md

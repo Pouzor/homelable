@@ -1,13 +1,14 @@
-import { createElement, useState } from 'react'
+import { createElement, useRef, useState } from 'react'
 import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
-import { useCanvasStore } from '@/stores/canvasStore'
-import { NODE_TYPE_LABELS, STATUS_COLORS, type ServiceInfo, type NodeData, type NodeProperty } from '@/types'
+import { useCanvasStore, serviceStatusKey } from '@/stores/canvasStore'
+import { NODE_TYPE_LABELS, STATUS_COLORS, type ServiceInfo, type ServiceStatus, type NodeData, type NodeProperty } from '@/types'
 import { getServiceUrl } from '@/utils/serviceUrl'
 import { splitIps } from '@/utils/maskIp'
 import { PROPERTY_ICONS, PROPERTY_ICON_NAMES, resolvePropertyIcon } from '@/utils/propertyIcons'
+import { formatTimestamp } from '@/utils/timeFormat'
 import type { Node } from '@xyflow/react'
 
 interface DetailPanelProps {
@@ -21,7 +22,8 @@ type PropForm = { key: string; value: string; icon: string | null; visible: bool
 const EMPTY_PROP: PropForm = { key: '', value: '', icon: null, visible: true }
 
 export function DetailPanel({ onEdit }: DetailPanelProps) {
-  const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup } = useCanvasStore()
+  const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup, removeFromGroup, setNodeSize } = useCanvasStore()
+  const serviceStatuses = useCanvasStore((s) => s.serviceStatuses)
 
   const [addingForNode, setAddingForNode] = useState<string | null>(null)
   const [newSvc, setNewSvc] = useState<SvcForm>(EMPTY_FORM)
@@ -64,6 +66,9 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         node={node}
         nodes={nodes}
         onUngroup={() => { ungroup(node.id) }}
+        onRemoveChild={(id) => { snapshotHistory(); removeFromGroup(node.id, id) }}
+        onChangeDescription={(value) => updateNode(node.id, { notes: value })}
+        onSnapshotBeforeEdit={snapshotHistory}
         onToggleBorder={() => {
           snapshotHistory()
           updateNode(node.id, {
@@ -248,8 +253,18 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         {data.mac && <DetailRow label="MAC" value={data.mac} mono />}
         {data.os && <DetailRow label="OS" value={data.os} />}
         {data.check_method && <DetailRow label="Check" value={data.check_method} mono />}
-        {data.last_seen && <DetailRow label="Last Seen" value={new Date(/[Zz]|[+-]\d{2}:?\d{2}$/.test(data.last_seen) ? data.last_seen : data.last_seen + 'Z').toLocaleString()} />}
+        {data.last_seen && <DetailRow label="Last Seen" value={formatTimestamp(data.last_seen)} />}
+        {data.last_scan && <DetailRow label="Last Scan" value={formatTimestamp(data.last_scan)} />}
+        {data.created_at && <DetailRow label="Created" value={formatTimestamp(data.created_at)} />}
+        {data.updated_at && <DetailRow label="Last Modified" value={formatTimestamp(data.updated_at)} />}
       </div>
+
+      {/* Size section — manual width/height entry for pixel-exact sizing */}
+      <SizeFields
+        key={node.id}
+        node={node}
+        onCommit={(size) => { snapshotHistory(); setNodeSize(node.id, size) }}
+      />
 
       {/* Properties section */}
       <div className="px-4 py-3 border-t border-border">
@@ -314,7 +329,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
               editingIndex === i ? (
                 <ServiceForm key={`edit-${i}`} form={editSvc} onChange={setEditSvc} onConfirm={handleSaveEdit} onCancel={() => setEditingFor(null)} confirmLabel="Save" autoFocus />
               ) : (
-                <ServiceBadge key={`${svc.port ?? 'host'}-${svc.protocol}-${svc.path ?? ''}-${i}`} svc={svc} host={host} onEdit={() => handleStartEdit(i)} onRemove={() => handleRemoveService(i)} />
+                <ServiceBadge key={`${svc.port ?? 'host'}-${svc.protocol}-${svc.path ?? ''}-${i}`} svc={svc} host={host} status={serviceStatuses[serviceStatusKey(node.id, svc.port, svc.protocol)]} onEdit={() => handleStartEdit(i)} onRemove={() => handleRemoveService(i)} />
               )
             )}
           </div>
@@ -338,6 +353,79 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         </Button>
       </div>
     </aside>
+  )
+}
+
+// --- Size fields (manual width/height entry) ---
+
+const round = (v: number | undefined): string => (v != null ? String(Math.round(v)) : '')
+
+function SizeFields({ node, onCommit }: { node: Node<NodeData>; onCommit: (size: { width?: number; height?: number }) => void }) {
+  // Live size from the explicit dimension, falling back to the DOM-measured
+  // size so the field shows the node's current footprint even before resize.
+  const liveWidth = round(node.width ?? node.measured?.width)
+  const liveHeight = round(node.height ?? node.measured?.height)
+  const [width, setWidth] = useState(liveWidth)
+  const [height, setHeight] = useState(liveHeight)
+
+  // Resync the fields when the node is resized by dragging its corner handle
+  // (which mutates node.width/height in the store). Adjusting state during
+  // render — the React-blessed alternative to an effect — keeps it in step
+  // without cascading renders. The field the user is actively editing is left
+  // alone so we don't clobber their keystrokes mid-type.
+  const [editing, setEditing] = useState<'width' | 'height' | null>(null)
+  const [prev, setPrev] = useState({ w: liveWidth, h: liveHeight })
+  if (prev.w !== liveWidth || prev.h !== liveHeight) {
+    setPrev({ w: liveWidth, h: liveHeight })
+    if (editing !== 'width') setWidth(liveWidth)
+    if (editing !== 'height') setHeight(liveHeight)
+  }
+
+  const commit = (raw: string, axis: 'width' | 'height') => {
+    const n = Number(raw)
+    if (!raw.trim() || Number.isNaN(n) || n <= 0) {
+      // Reset the field to the live value on invalid input — no mutation.
+      if (axis === 'width') setWidth(round(node.width ?? node.measured?.width))
+      else setHeight(round(node.height ?? node.measured?.height))
+      return
+    }
+    onCommit({ [axis]: n })
+  }
+
+  return (
+    <div className="px-4 py-3 border-t border-border">
+      <span className="text-xs text-muted-foreground">Size</span>
+      <div className="mt-2 flex items-center gap-2">
+        <label className="flex flex-1 items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground/70 w-3">W</span>
+          <Input
+            type="number"
+            min={140}
+            aria-label="Width"
+            value={width}
+            onFocus={() => setEditing('width')}
+            onChange={(e) => setWidth(e.target.value)}
+            onBlur={() => { setEditing(null); commit(width, 'width') }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+            className="h-7 text-xs font-mono"
+          />
+        </label>
+        <label className="flex flex-1 items-center gap-1.5">
+          <span className="text-[10px] text-muted-foreground/70 w-3">H</span>
+          <Input
+            type="number"
+            min={50}
+            aria-label="Height"
+            value={height}
+            onFocus={() => setEditing('height')}
+            onChange={(e) => setHeight(e.target.value)}
+            onBlur={() => { setEditing(null); commit(height, 'height') }}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+            className="h-7 text-xs font-mono"
+          />
+        </label>
+      </div>
+    </div>
   )
 }
 
@@ -425,16 +513,32 @@ interface GroupDetailPanelProps {
   node: Node<NodeData>
   nodes: Node<NodeData>[]
   onUngroup: () => void
+  onRemoveChild: (id: string) => void
+  onChangeDescription: (value: string) => void
+  onSnapshotBeforeEdit: () => void
   onToggleBorder: () => void
   onClose: () => void
   onSelectChild: (id: string) => void
 }
 
-function GroupDetailPanel({ node, nodes, onUngroup, onToggleBorder, onClose, onSelectChild }: GroupDetailPanelProps) {
+function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescription, onSnapshotBeforeEdit, onToggleBorder, onClose, onSelectChild }: GroupDetailPanelProps) {
   const children = nodes.filter((n) => n.parentId === node.id)
   const onlineCount = children.filter((n) => n.data.status === 'online').length
   const offlineCount = children.filter((n) => n.data.status === 'offline').length
   const showBorder = node.data.custom_colors?.show_border !== false
+
+  // Description reuses data.notes, which already round-trips to the backend.
+  // Controlled + committed on every keystroke so ANY save path (incl. Ctrl+S,
+  // which never blurs the field) captures it. History is snapshotted once at the
+  // start of an edit session so the whole edit is a single undo step.
+  const snappedRef = useRef(false)
+  const handleDescriptionChange = (value: string) => {
+    if (!snappedRef.current) {
+      onSnapshotBeforeEdit()
+      snappedRef.current = true
+    }
+    onChangeDescription(value)
+  }
 
   const handleUngroup = () => {
     if (confirm(`Ungroup "${node.data.label}"? Nodes will be released to the canvas.`)) {
@@ -461,20 +565,48 @@ function GroupDetailPanel({ node, nodes, onUngroup, onToggleBorder, onClose, onS
         {offlineCount > 0 && <span style={{ color: STATUS_COLORS.offline }}>● {offlineCount} offline</span>}
       </div>
 
+      {/* Description */}
+      <div className="px-4 py-3 border-b border-border">
+        <label htmlFor="group-description" className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+          Description
+        </label>
+        <textarea
+          id="group-description"
+          value={node.data.notes ?? ''}
+          onFocus={() => { snappedRef.current = false }}
+          onChange={(e) => handleDescriptionChange(e.target.value)}
+          placeholder="Add a description for this group…"
+          rows={3}
+          className="mt-1.5 w-full resize-y rounded-md bg-[#21262d] border border-[#30363d] px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#00d4ff]/50"
+        />
+      </div>
+
       {/* Children list */}
       <div className="flex-1 px-4 py-3 space-y-1.5 overflow-y-auto">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">Members</span>
         {children.length === 0 && <p className="text-xs text-muted-foreground/50">No nodes in this group.</p>}
         {children.map((child) => (
-          <button
+          <div
             key={child.id}
-            onClick={() => onSelectChild(child.id)}
-            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md bg-[#21262d] text-xs hover:bg-[#30363d] transition-colors text-left"
+            className="group/member w-full flex items-center gap-2 px-2 py-1.5 rounded-md bg-[#21262d] text-xs hover:bg-[#30363d] transition-colors"
           >
-            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[child.data.status] }} />
-            <span className="truncate text-foreground font-medium">{child.data.label}</span>
-            <span className="ml-auto text-muted-foreground shrink-0">{NODE_TYPE_LABELS[child.data.type] ?? child.data.type}</span>
-          </button>
+            <button
+              onClick={() => onSelectChild(child.id)}
+              className="flex items-center gap-2 min-w-0 flex-1 text-left cursor-pointer"
+            >
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[child.data.status] }} />
+              <span className="truncate text-foreground font-medium">{child.data.label}</span>
+              <span className="ml-auto text-muted-foreground shrink-0">{NODE_TYPE_LABELS[child.data.type] ?? child.data.type}</span>
+            </button>
+            <button
+              onClick={() => onRemoveChild(child.id)}
+              aria-label={`Remove ${child.data.label} from group`}
+              title="Remove from group"
+              className="shrink-0 opacity-0 group-hover/member:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] cursor-pointer"
+            >
+              <X size={12} />
+            </button>
+          </div>
         ))}
       </div>
 
@@ -673,9 +805,13 @@ const CATEGORY_COLORS: Record<string, string> = {
   web: '#00d4ff', database: '#a855f7', monitoring: '#39d353', storage: '#e3b341', security: '#f85149', remote: '#8b949e',
 }
 
-function ServiceBadge({ svc, host, onEdit, onRemove }: { svc: ServiceInfo; host?: string; onEdit: () => void; onRemove: () => void }) {
+function ServiceBadge({ svc, host, status, onEdit, onRemove }: { svc: ServiceInfo; host?: string; status?: ServiceStatus; onEdit: () => void; onRemove: () => void }) {
   const url = getServiceUrl(svc, host)
-  const color = CATEGORY_COLORS[svc.category ?? ''] ?? '#8b949e'
+  // Manually-added services carry no category, so they fell back to grey even
+  // when they're reachable HTTP/HTTPS. Treat any resolvable web URL as `web`.
+  const categoryColor = CATEGORY_COLORS[svc.category ?? ''] ?? (url ? CATEGORY_COLORS.web : '#8b949e')
+  // A live offline service overrides the category colour with red.
+  const color = status === 'offline' ? '#f85149' : categoryColor
   const pathLabel = svc.path?.trim() ? svc.path.trim() : ''
 
   return (

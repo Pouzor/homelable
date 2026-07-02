@@ -2,14 +2,14 @@
  * Bottom handle configuration for multi-handle nodes.
  *
  * Handle IDs:  index 0 = 'bottom' (always the default, backward-compatible)
- *              index N≥1 = 'bottom-${N+1}'  (so idx 1 = 'bottom-2', idx 47 = 'bottom-48')
+ *              index N≥1 = 'bottom-${N+1}'  (so idx 1 = 'bottom-2', idx 63 = 'bottom-64')
  *
  * Invisible target handles follow the same pattern with a '-t' suffix:
- *   'bottom-t', 'bottom-2-t', ..., 'bottom-48-t'
+ *   'bottom-t', 'bottom-2-t', ..., 'bottom-64-t'
  */
 
 export const MIN_BOTTOM_HANDLES = 1
-export const MAX_BOTTOM_HANDLES = 48
+export const MAX_BOTTOM_HANDLES = 64
 
 /** Returns the source handle ID at a given slot index. */
 export function bottomHandleId(idx: number): string {

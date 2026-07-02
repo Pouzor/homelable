@@ -9,6 +9,9 @@ import type { NodeData, EdgeData } from '@/types'
 // Capture props passed to ReactFlow so we can test the callbacks
 let rfProps: Record<string, unknown> = {}
 
+// Hoisted holder so the mock factory can read the configurable intersection set.
+const rf = vi.hoisted(() => ({ intersecting: [] as unknown[] }))
+
 vi.mock('@xyflow/react', () => ({
   ReactFlow: (props: Record<string, unknown>) => {
     rfProps = props
@@ -21,7 +24,13 @@ vi.mock('@xyflow/react', () => ({
   ConnectionMode: { Loose: 'loose' },
   SelectionMode: { Partial: 'partial' },
   Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
-  useReactFlow: () => ({ fitView: vi.fn() }),
+  useReactFlow: () => ({
+    fitView: vi.fn(),
+    screenToFlowPosition: vi.fn(),
+    getIntersectingNodes: () => rf.intersecting,
+    setNodes: vi.fn(),
+    getNodes: () => [],
+  }),
 }))
 
 vi.mock('@xyflow/react/dist/style.css', () => ({}))
@@ -42,6 +51,7 @@ function makeEdge(id: string): Edge<EdgeData> {
 describe('CanvasContainer', () => {
   beforeEach(() => {
     rfProps = {}
+    rf.intersecting = []
     useCanvasStore.setState({ nodes: [], edges: [], selectedNodeId: null })
     useThemeStore.setState({ activeTheme: 'default' })
   })
@@ -152,6 +162,93 @@ describe('CanvasContainer', () => {
     const onNodeDragStart = vi.fn()
     render(<CanvasContainer onNodeDragStart={onNodeDragStart} />)
     expect(rfProps.onNodeDragStart).toBe(onNodeDragStart)
+  })
+
+  // ── Drag onto group → onRequestAddToGroup ─────────────────────────────────
+
+  function groupNode(id: string): Node<NodeData> {
+    return { id, type: 'group', position: { x: 0, y: 0 }, data: { label: id, type: 'group', status: 'unknown', services: [] } }
+  }
+
+  it('fires onRequestAddToGroup when a node is dropped over a group', () => {
+    const onRequestAddToGroup = vi.fn()
+    const node = makeNode('n1')
+    const group = groupNode('g1')
+    rf.intersecting = [group]
+    render(<CanvasContainer onRequestAddToGroup={onRequestAddToGroup} />)
+    ;(rfProps.onNodeDragStop as (...args: unknown[]) => unknown)({} as MouseEvent, node, [node])
+    expect(onRequestAddToGroup).toHaveBeenCalledWith({ nodeId: 'n1', groupId: 'g1' })
+  })
+
+  it('does not fire onRequestAddToGroup when no group is under the node', () => {
+    const onRequestAddToGroup = vi.fn()
+    const node = makeNode('n1')
+    rf.intersecting = [makeNode('n2')]
+    render(<CanvasContainer onRequestAddToGroup={onRequestAddToGroup} />)
+    ;(rfProps.onNodeDragStop as (...args: unknown[]) => unknown)({} as MouseEvent, node, [node])
+    expect(onRequestAddToGroup).not.toHaveBeenCalled()
+  })
+
+  it('does not fire onRequestAddToGroup for an already-parented node', () => {
+    const onRequestAddToGroup = vi.fn()
+    const node = { ...makeNode('n1'), parentId: 'gOther' }
+    rf.intersecting = [groupNode('g1')]
+    render(<CanvasContainer onRequestAddToGroup={onRequestAddToGroup} />)
+    ;(rfProps.onNodeDragStop as (...args: unknown[]) => unknown)({} as MouseEvent, node, [node])
+    expect(onRequestAddToGroup).not.toHaveBeenCalled()
+  })
+
+  it('does not fire onRequestAddToGroup when the dragged node is itself a group', () => {
+    const onRequestAddToGroup = vi.fn()
+    const node = groupNode('g2')
+    rf.intersecting = [groupNode('g1')]
+    render(<CanvasContainer onRequestAddToGroup={onRequestAddToGroup} />)
+    ;(rfProps.onNodeDragStop as (...args: unknown[]) => unknown)({} as MouseEvent, node, [node])
+    expect(onRequestAddToGroup).not.toHaveBeenCalled()
+  })
+
+  // ── Drag onto container node → onRequestAddToContainer ────────────────────
+
+  function containerNode(id: string, type: NodeData['type'] = 'proxmox'): Node<NodeData> {
+    return { id, type, position: { x: 0, y: 0 }, data: { label: id, type, status: 'unknown', services: [], container_mode: true } }
+  }
+
+  it('fires onRequestAddToContainer when a node is dropped over a container_mode node', () => {
+    const onRequestAddToContainer = vi.fn()
+    const node = makeNode('n1')
+    rf.intersecting = [containerNode('px1')]
+    render(<CanvasContainer onRequestAddToContainer={onRequestAddToContainer} />)
+    ;(rfProps.onNodeDragStop as (...args: unknown[]) => unknown)({} as MouseEvent, node, [node])
+    expect(onRequestAddToContainer).toHaveBeenCalledWith({ nodeId: 'n1', containerId: 'px1' })
+  })
+
+  it('prefers a group over a container when both intersect', () => {
+    const onRequestAddToGroup = vi.fn()
+    const onRequestAddToContainer = vi.fn()
+    const node = makeNode('n1')
+    rf.intersecting = [containerNode('px1'), groupNode('g1')]
+    render(<CanvasContainer onRequestAddToGroup={onRequestAddToGroup} onRequestAddToContainer={onRequestAddToContainer} />)
+    ;(rfProps.onNodeDragStop as (...args: unknown[]) => unknown)({} as MouseEvent, node, [node])
+    expect(onRequestAddToGroup).toHaveBeenCalledWith({ nodeId: 'n1', groupId: 'g1' })
+    expect(onRequestAddToContainer).not.toHaveBeenCalled()
+  })
+
+  it('does not fire onRequestAddToContainer for an already-parented node', () => {
+    const onRequestAddToContainer = vi.fn()
+    const node = { ...makeNode('n1'), parentId: 'pxOther' }
+    rf.intersecting = [containerNode('px1')]
+    render(<CanvasContainer onRequestAddToContainer={onRequestAddToContainer} />)
+    ;(rfProps.onNodeDragStop as (...args: unknown[]) => unknown)({} as MouseEvent, node, [node])
+    expect(onRequestAddToContainer).not.toHaveBeenCalled()
+  })
+
+  it('does not fire onRequestAddToContainer when the target node is not in container_mode', () => {
+    const onRequestAddToContainer = vi.fn()
+    const node = makeNode('n1')
+    rf.intersecting = [makeNode('n2')]
+    render(<CanvasContainer onRequestAddToContainer={onRequestAddToContainer} />)
+    ;(rfProps.onNodeDragStop as (...args: unknown[]) => unknown)({} as MouseEvent, node, [node])
+    expect(onRequestAddToContainer).not.toHaveBeenCalled()
   })
 
   // ── Canvas settings ───────────────────────────────────────────────────────

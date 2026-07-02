@@ -9,12 +9,21 @@ import {
   applyEdgeChanges,
   addEdge,
 } from '@xyflow/react'
-import type { NodeData, EdgeData, NodeType, EdgeType, NodeTypeStyle, EdgeTypeStyle, CustomStyleDef } from '@/types'
+import type { NodeData, EdgeData, NodeType, EdgeType, NodeTypeStyle, EdgeTypeStyle, CustomStyleDef, ServiceStatus } from '@/types'
 import { generateUUID } from '@/utils/uuid'
 import { normalizeHandle, removedBottomHandleIds } from '@/utils/handleUtils'
 import { applyOpacity } from '@/utils/colorUtils'
+import { readHideIp, writeHideIp } from '@/utils/ipDisplay'
 
 type HistoryEntry = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
+type Clipboard = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
+
+/** Resolve a node's effective parent id from either the RF field or domain data. */
+const parentIdOf = (n: Node<NodeData>): string | undefined => n.parentId ?? n.data.parent_id ?? undefined
+
+/** Key for the live per-service status overlay. */
+export const serviceStatusKey = (nodeId: string, port?: number, protocol?: string): string =>
+  `${nodeId}:${port ?? ''}/${protocol ?? ''}`
 
 interface CanvasState {
   nodes: Node<NodeData>[]
@@ -23,6 +32,8 @@ interface CanvasState {
   selectedNodeId: string | null
   selectedNodeIds: string[]
   scanEventTs: number
+  // Live per-service status overlay (not persisted), keyed via serviceStatusKey.
+  serviceStatuses: Record<string, ServiceStatus>
 
   // History
   past: HistoryEntry[]
@@ -31,10 +42,12 @@ interface CanvasState {
   undo: () => void
   redo: () => void
 
-  // Clipboard
-  clipboard: Node<NodeData>[]
+  // Clipboard — survives design switches so nodes can be pasted into another design
+  clipboard: Clipboard
   copySelectedNodes: () => void
-  pasteNodes: () => void
+  /** Paste clipboard into the current canvas. `center` (flow coords) lands the
+   *  pasted bounding-box center under the cursor / viewport center. */
+  pasteNodes: (center?: { x: number; y: number }) => void
 
   onNodesChange: (changes: NodeChange<Node<NodeData>>[]) => void
   onEdgesChange: (changes: EdgeChange<Edge<EdgeData>>[]) => void
@@ -48,20 +61,27 @@ interface CanvasState {
   deleteEdge: (id: string) => void
   setProxmoxContainerMode: (proxmoxId: string, enabled: boolean) => void
   setNodeZIndex: (id: string, zIndex: number) => void
+  setNodeSize: (id: string, size: { width?: number; height?: number }) => void
   editingGroupRectId: string | null
   setEditingGroupRectId: (id: string | null) => void
   editingTextId: string | null
   setEditingTextId: (id: string | null) => void
+  toggleNodeCollapsed: (id: string) => void
   createGroup: (nodeIds: string[], name: string) => void
   ungroup: (groupId: string) => void
+  addToGroup: (groupId: string, childId: string) => void
+  addToContainer: (containerId: string, childId: string) => void
+  removeFromGroup: (groupId: string, childId: string) => void
   markSaved: () => void
   markUnsaved: () => void
   loadCanvas: (nodes: Node<NodeData>[], edges: Edge<EdgeData>[]) => void
   fitViewPending: boolean
   clearFitViewPending: () => void
   notifyScanDeviceFound: () => void
+  setServiceStatuses: (nodeId: string, statuses: { port?: number; protocol?: string; status: ServiceStatus }[]) => void
   hideIp: boolean
   toggleHideIp: () => void
+  setHideIp: (value: boolean) => void
   applyTypeNodeStyle: (nodeType: NodeType, style: NodeTypeStyle) => void
   applyTypeEdgeStyle: (edgeType: EdgeType, style: EdgeTypeStyle) => void
   applyAllCustomStyles: (def: CustomStyleDef) => void
@@ -75,13 +95,14 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   selectedNodeIds: [],
   editingGroupRectId: null,
   editingTextId: null,
-  hideIp: false,
+  hideIp: readHideIp(),
   scanEventTs: 0,
+  serviceStatuses: {},
   fitViewPending: false,
 
   past: [],
   future: [],
-  clipboard: [],
+  clipboard: { nodes: [], edges: [] },
 
   snapshotHistory: () =>
     set((state) => ({
@@ -116,24 +137,100 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     }),
 
   copySelectedNodes: () =>
-    set((state) => ({
-      clipboard: state.nodes.filter((n) => n.selected),
-    })),
-
-  pasteNodes: () =>
     set((state) => {
-      if (state.clipboard.length === 0) return state
-      const newNodes = state.clipboard.map((n) => ({
-        ...n,
+      // Start from explicitly selected nodes, then pull in all descendants so a
+      // copied group / container brings its children along.
+      const ids = new Set(state.nodes.filter((n) => n.selected).map((n) => n.id))
+      if (ids.size === 0) return { clipboard: { nodes: [], edges: [] } }
+      let grew = true
+      while (grew) {
+        grew = false
+        for (const n of state.nodes) {
+          const pid = parentIdOf(n)
+          if (pid && ids.has(pid) && !ids.has(n.id)) {
+            ids.add(n.id)
+            grew = true
+          }
+        }
+      }
+      const nodes = state.nodes.filter((n) => ids.has(n.id))
+      // Keep only edges whose both endpoints are inside the copied set.
+      const edges = state.edges.filter((e) => ids.has(e.source) && ids.has(e.target))
+      return { clipboard: { nodes, edges } }
+    }),
+
+  pasteNodes: (center) =>
+    set((state) => {
+      const clip = state.clipboard
+      if (clip.nodes.length === 0) return state
+
+      // Fresh ids for every copied node; edges/parent links are remapped through it.
+      const idMap = new Map<string, string>()
+      clip.nodes.forEach((n) => idMap.set(n.id, generateUUID()))
+
+      // A "root" is a copied node whose parent was not also copied — these carry
+      // absolute positions and receive the paste offset; children move with them.
+      const isRoot = (n: Node<NodeData>) => {
+        const pid = parentIdOf(n)
+        return !pid || !idMap.has(pid)
+      }
+      const roots = clip.nodes.filter(isRoot)
+
+      // Default cascade offset; when a target center is given, shift the root
+      // bounding-box center onto it instead.
+      let offsetX = 50
+      let offsetY = 50
+      if (center && roots.length > 0) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        for (const n of roots) {
+          const w = n.width ?? n.measured?.width ?? 200
+          const h = n.height ?? n.measured?.height ?? 80
+          minX = Math.min(minX, n.position.x)
+          minY = Math.min(minY, n.position.y)
+          maxX = Math.max(maxX, n.position.x + w)
+          maxY = Math.max(maxY, n.position.y + h)
+        }
+        offsetX = center.x - (minX + maxX) / 2
+        offsetY = center.y - (minY + maxY) / 2
+      }
+
+      const pasted = clip.nodes.map((n) => {
+        const root = isRoot(n)
+        const newParentId = root ? undefined : idMap.get(parentIdOf(n)!)
+        return {
+          ...n,
+          id: idMap.get(n.id)!,
+          position: root
+            ? { x: n.position.x + offsetX, y: n.position.y + offsetY }
+            : { ...n.position },
+          selected: true,
+          parentId: newParentId,
+          extent: newParentId ? ('parent' as const) : undefined,
+          data: { ...n.data, parent_id: newParentId },
+        }
+      })
+
+      const pastedEdges = clip.edges.map((e) => ({
+        ...e,
         id: generateUUID(),
-        position: { x: n.position.x + 50, y: n.position.y + 50 },
+        source: idMap.get(e.source)!,
+        target: idMap.get(e.target)!,
         selected: false,
-        parentId: undefined,
-        extent: undefined,
-        data: { ...n.data, parent_id: undefined },
       }))
+
+      // React Flow requires parents before children within the appended block.
+      const parents = pasted.filter((n) => !n.parentId)
+      const children = pasted.filter((n) => !!n.parentId)
+      const pastedNodes = [...parents, ...children]
+
+      // Deselect everything already on the canvas so only the paste is selected.
+      const existing = state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n))
+
       return {
-        nodes: [...state.nodes, ...newNodes],
+        nodes: [...existing, ...pastedNodes],
+        edges: [...state.edges, ...pastedEdges],
+        selectedNodeId: null,
+        selectedNodeIds: pastedNodes.map((n) => n.id),
         past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
         future: [],
         hasUnsavedChanges: true,
@@ -192,7 +289,9 @@ export const useCanvasStore = create<CanvasState>((set) => ({
               y: Math.max(10, node.position.y - parent.position.y),
             },
           }
-        : node
+        // Not nesting: strip any parentId/extent a caller may have set so a
+        // non-container parent can't trap the node in its bounding box.
+        : { ...node, parentId: undefined, extent: undefined }
       // Parents must come before children in the array (React Flow requirement)
       const withoutNew = state.nodes.filter((n) => n.id !== node.id)
       if (enriched.parentId) {
@@ -370,9 +469,35 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       hasUnsavedChanges: true,
     })),
 
+  // Manual width/height entry. Lets the user type an exact size instead of
+  // dragging the resize handle (which lands on fractional content-fit pixels).
+  // A clamp matches the NodeResizer minimums so the box can't collapse.
+  setNodeSize: (id, size) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        if (n.id !== id) return n
+        return {
+          ...n,
+          ...(size.width != null ? { width: Math.max(140, size.width) } : {}),
+          ...(size.height != null ? { height: Math.max(50, size.height) } : {}),
+        }
+      }),
+      hasUnsavedChanges: true,
+    })),
+
   setEditingGroupRectId: (id) => set({ editingGroupRectId: id }),
 
   setEditingTextId: (id) => set({ editingTextId: id }),
+
+  toggleNodeCollapsed: (id) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === id
+          ? { ...n, data: { ...n.data, collapsed: !n.data.collapsed } }
+          : n
+      ),
+      hasUnsavedChanges: true,
+    })),
 
   createGroup: (nodeIds, name) =>
     set((state) => {
@@ -480,19 +605,155 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       }
     }),
 
+  // Nest an existing top-level node inside a group. Inverse of removeFromGroup.
+  addToGroup: (groupId, childId) =>
+    set((state) => {
+      const group = state.nodes.find((n) => n.id === groupId)
+      const child = state.nodes.find((n) => n.id === childId)
+      if (!group || !child || group.data.type !== 'group') return state
+      if (child.id === groupId || child.parentId === groupId) return state
+
+      const updatedNodes = state.nodes.map((n) => {
+        if (n.id !== childId) return n
+        return {
+          ...n,
+          parentId: groupId,
+          extent: 'parent' as const,
+          // Absolute → group-relative. Clamp so the node stays inside the box.
+          position: {
+            x: Math.max(8, n.position.x - group.position.x),
+            y: Math.max(8, n.position.y - group.position.y),
+          },
+          selected: false,
+          data: { ...n.data, parent_id: groupId },
+        }
+      })
+
+      // React Flow requires the parent to precede its children in the array.
+      const others = updatedNodes.filter((n) => n.id !== childId)
+      const movedChild = updatedNodes.find((n) => n.id === childId)!
+      const groupIdx = others.findIndex((n) => n.id === groupId)
+      const nodes = [
+        ...others.slice(0, groupIdx + 1),
+        movedChild,
+        ...others.slice(groupIdx + 1),
+      ]
+
+      return {
+        nodes,
+        hasUnsavedChanges: true,
+        past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
+        future: [],
+      }
+    }),
+
+  // Nest an existing top-level node inside a container node (proxmox /
+  // docker_host / … in container_mode). Mirrors addToGroup but the target is
+  // any node with data.container_mode === true rather than a group.
+  addToContainer: (containerId, childId) =>
+    set((state) => {
+      const container = state.nodes.find((n) => n.id === containerId)
+      const child = state.nodes.find((n) => n.id === childId)
+      if (!container || !child || container.data.container_mode !== true) return state
+      if (child.id === containerId || child.parentId === containerId) return state
+
+      const updatedNodes = state.nodes.map((n) => {
+        if (n.id !== childId) return n
+        return {
+          ...n,
+          parentId: containerId,
+          extent: 'parent' as const,
+          // Absolute → container-relative. Clamp so the node stays inside.
+          position: {
+            x: Math.max(8, n.position.x - container.position.x),
+            y: Math.max(8, n.position.y - container.position.y),
+          },
+          selected: false,
+          data: { ...n.data, parent_id: containerId },
+        }
+      })
+
+      // React Flow requires the parent to precede its children in the array.
+      const others = updatedNodes.filter((n) => n.id !== childId)
+      const movedChild = updatedNodes.find((n) => n.id === childId)!
+      const containerIdx = others.findIndex((n) => n.id === containerId)
+      const nodes = [
+        ...others.slice(0, containerIdx + 1),
+        movedChild,
+        ...others.slice(containerIdx + 1),
+      ]
+
+      return {
+        nodes,
+        hasUnsavedChanges: true,
+        past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
+        future: [],
+      }
+    }),
+
+  // Release a single child from a group back to the canvas. Group stays.
+  removeFromGroup: (groupId, childId) =>
+    set((state) => {
+      const group = state.nodes.find((n) => n.id === groupId)
+      const child = state.nodes.find((n) => n.id === childId)
+      if (!group || !child || child.parentId !== groupId) return state
+
+      const nodes = state.nodes.map((n) => {
+        if (n.id !== childId) return n
+        return {
+          ...n,
+          parentId: undefined,
+          extent: undefined,
+          position: {
+            x: n.position.x + group.position.x,
+            y: n.position.y + group.position.y,
+          },
+          data: { ...n.data, parent_id: undefined },
+        }
+      })
+
+      return {
+        nodes,
+        hasUnsavedChanges: true,
+        past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
+        future: [],
+      }
+    }),
+
   markSaved: () => set({ hasUnsavedChanges: false }),
 
   markUnsaved: () => set({ hasUnsavedChanges: true }),
 
   notifyScanDeviceFound: () => set({ scanEventTs: Date.now() }),
 
-  toggleHideIp: () => set((s) => ({ hideIp: !s.hideIp })),
+  setServiceStatuses: (nodeId, statuses) =>
+    set((state) => {
+      // Live overlay only — never touches node data, so it stays out of saves.
+      const next = { ...state.serviceStatuses }
+      for (const s of statuses) {
+        next[serviceStatusKey(nodeId, s.port, s.protocol)] = s.status
+      }
+      return { serviceStatuses: next }
+    }),
+
+  toggleHideIp: () => set((s) => {
+    const hideIp = !s.hideIp
+    writeHideIp(hideIp)
+    return { hideIp }
+  }),
+
+  setHideIp: (value) => {
+    writeHideIp(value)
+    set({ hideIp: value })
+  },
 
   loadCanvas: (nodes, edges) => {
     // React Flow requires parents before children in the array
     const parents = nodes.filter((n) => !n.parentId)
     const children = nodes.filter((n) => !!n.parentId)
-    set({ nodes: [...parents, ...children], edges, hasUnsavedChanges: false, selectedNodeId: null, past: [], future: [], clipboard: [], fitViewPending: true })
+    // NOTE: clipboard is intentionally preserved here so nodes copied in one
+    // design can be pasted after switching to another design.
+    set({ nodes: [...parents, ...children], edges, hasUnsavedChanges: false, selectedNodeId: null, past: [], future: [], fitViewPending: true })
   },
 
   clearFitViewPending: () => set({ fitViewPending: false }),

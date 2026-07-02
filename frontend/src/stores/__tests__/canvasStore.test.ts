@@ -30,8 +30,35 @@ describe('canvasStore', () => {
       editingTextId: null,
       past: [],
       future: [],
-      clipboard: [],
+      clipboard: { nodes: [], edges: [] },
+      serviceStatuses: {},
     })
+  })
+
+  it('setServiceStatuses stores live status keyed by node/port/protocol', () => {
+    const { setServiceStatuses } = useCanvasStore.getState()
+    setServiceStatuses('node-1', [
+      { port: 80, protocol: 'tcp', status: 'offline' },
+      { port: 443, protocol: 'tcp', status: 'online' },
+    ])
+    const { serviceStatuses } = useCanvasStore.getState()
+    expect(serviceStatuses['node-1:80/tcp']).toBe('offline')
+    expect(serviceStatuses['node-1:443/tcp']).toBe('online')
+  })
+
+  it('setServiceStatuses merges without dropping other nodes', () => {
+    const { setServiceStatuses } = useCanvasStore.getState()
+    setServiceStatuses('node-1', [{ port: 80, protocol: 'tcp', status: 'online' }])
+    setServiceStatuses('node-2', [{ port: 22, protocol: 'tcp', status: 'offline' }])
+    const { serviceStatuses } = useCanvasStore.getState()
+    expect(serviceStatuses['node-1:80/tcp']).toBe('online')
+    expect(serviceStatuses['node-2:22/tcp']).toBe('offline')
+  })
+
+  it('does not mark canvas unsaved on a service status update', () => {
+    useCanvasStore.setState({ hasUnsavedChanges: false })
+    useCanvasStore.getState().setServiceStatuses('n', [{ port: 80, protocol: 'tcp', status: 'offline' }])
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
   })
 
   it('setEditingTextId sets and clears editing text id', () => {
@@ -121,6 +148,23 @@ describe('canvasStore', () => {
     const nested = useCanvasStore.getState().nodes.find((n) => n.id === 'c1')
     expect(nested?.parentId).toBe('p1')
     expect(nested?.extent).toBe('parent')
+  })
+
+  it('addNode strips parentId/extent when the parent is not a container', () => {
+    // Regression: a stray extent:'parent' on a non-container parent traps the
+    // node in the parent's tiny box with no way to drag it out (issue #205).
+    const parent = { ...makeNode('p1', { container_mode: false }), position: { x: 100, y: 100 } }
+    useCanvasStore.getState().addNode(parent)
+    const trapped: Node<NodeData> = {
+      ...makeNode('c1', { parent_id: 'p1' }),
+      position: { x: 150, y: 180 },
+      parentId: 'p1',
+      extent: 'parent',
+    }
+    useCanvasStore.getState().addNode(trapped)
+    const child = useCanvasStore.getState().nodes.find((n) => n.id === 'c1')
+    expect(child?.parentId).toBeUndefined()
+    expect(child?.extent).toBeUndefined()
   })
 
   it('docker_container nests under docker_host with container_mode on', () => {
@@ -487,6 +531,186 @@ describe('canvasStore', () => {
     expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
   })
 
+  // ── addToGroup ──────────────────────────────────────────────────────────────
+
+  it('addToGroup nests a top-level node with parent-relative position', () => {
+    const group = { ...makeNode('g1', { type: 'group', label: 'G' }), position: { x: 76, y: 52 }, width: 448, height: 252 }
+    const child = { ...makeNode('n1'), position: { x: 300, y: 200 } }
+    useCanvasStore.setState({ nodes: [group, child] })
+
+    useCanvasStore.getState().addToGroup('g1', 'n1')
+
+    const moved = useCanvasStore.getState().nodes.find((n) => n.id === 'n1')
+    expect(moved?.parentId).toBe('g1')
+    expect(moved?.extent).toBe('parent')
+    expect(moved?.data.parent_id).toBe('g1')
+    // 300-76=224, 200-52=148
+    expect(moved?.position).toEqual({ x: 224, y: 148 })
+  })
+
+  it('addToGroup places the group before the child in the array', () => {
+    const child = { ...makeNode('n1'), position: { x: 300, y: 200 } }
+    const group = { ...makeNode('g1', { type: 'group', label: 'G' }), position: { x: 0, y: 0 } }
+    // child first to prove reordering
+    useCanvasStore.setState({ nodes: [child, group] })
+
+    useCanvasStore.getState().addToGroup('g1', 'n1')
+
+    const { nodes } = useCanvasStore.getState()
+    expect(nodes.findIndex((n) => n.id === 'g1')).toBeLessThan(nodes.findIndex((n) => n.id === 'n1'))
+  })
+
+  it('addToGroup is a no-op when target is not a group', () => {
+    const notGroup = { ...makeNode('s1'), position: { x: 0, y: 0 } }
+    const child = { ...makeNode('n1'), position: { x: 50, y: 50 } }
+    useCanvasStore.setState({ nodes: [notGroup, child] })
+    useCanvasStore.getState().markSaved()
+
+    useCanvasStore.getState().addToGroup('s1', 'n1')
+
+    expect(useCanvasStore.getState().nodes.find((n) => n.id === 'n1')?.parentId).toBeUndefined()
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
+  })
+
+  it('addToGroup is a no-op when child already belongs to the group', () => {
+    const group = { ...makeNode('g1', { type: 'group', label: 'G' }), position: { x: 0, y: 0 } }
+    const child = { ...makeNode('n1'), position: { x: 50, y: 50 }, parentId: 'g1', extent: 'parent' as const }
+    useCanvasStore.setState({ nodes: [group, child] })
+    useCanvasStore.getState().markSaved()
+
+    useCanvasStore.getState().addToGroup('g1', 'n1')
+
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
+  })
+
+  it('addToGroup snapshots history and marks unsaved', () => {
+    const group = { ...makeNode('g1', { type: 'group', label: 'G' }), position: { x: 0, y: 0 } }
+    const child = { ...makeNode('n1'), position: { x: 50, y: 50 } }
+    useCanvasStore.setState({ nodes: [group, child] })
+    useCanvasStore.getState().markSaved()
+
+    useCanvasStore.getState().addToGroup('g1', 'n1')
+
+    expect(useCanvasStore.getState().past).toHaveLength(1)
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  // ── addToContainer ──────────────────────────────────────────────────────────
+
+  it('addToContainer nests a top-level node under a container_mode node', () => {
+    const container = { ...makeNode('px1', { type: 'proxmox', container_mode: true, label: 'PX' }), position: { x: 76, y: 52 }, width: 448, height: 252 }
+    const child = { ...makeNode('n1'), position: { x: 300, y: 200 } }
+    useCanvasStore.setState({ nodes: [container, child] })
+
+    useCanvasStore.getState().addToContainer('px1', 'n1')
+
+    const moved = useCanvasStore.getState().nodes.find((n) => n.id === 'n1')
+    expect(moved?.parentId).toBe('px1')
+    expect(moved?.extent).toBe('parent')
+    expect(moved?.data.parent_id).toBe('px1')
+    // 300-76=224, 200-52=148
+    expect(moved?.position).toEqual({ x: 224, y: 148 })
+  })
+
+  it('addToContainer works for any container_mode type (docker_host)', () => {
+    const host = { ...makeNode('dh1', { type: 'docker_host', container_mode: true }), position: { x: 0, y: 0 } }
+    const child = { ...makeNode('n1'), position: { x: 50, y: 50 } }
+    useCanvasStore.setState({ nodes: [host, child] })
+
+    useCanvasStore.getState().addToContainer('dh1', 'n1')
+
+    expect(useCanvasStore.getState().nodes.find((n) => n.id === 'n1')?.parentId).toBe('dh1')
+  })
+
+  it('addToContainer places the container before the child in the array', () => {
+    const child = { ...makeNode('n1'), position: { x: 300, y: 200 } }
+    const container = { ...makeNode('px1', { type: 'proxmox', container_mode: true }), position: { x: 0, y: 0 } }
+    useCanvasStore.setState({ nodes: [child, container] })
+
+    useCanvasStore.getState().addToContainer('px1', 'n1')
+
+    const { nodes } = useCanvasStore.getState()
+    expect(nodes.findIndex((n) => n.id === 'px1')).toBeLessThan(nodes.findIndex((n) => n.id === 'n1'))
+  })
+
+  it('addToContainer is a no-op when target is not in container_mode', () => {
+    const notContainer = { ...makeNode('px1', { type: 'proxmox', container_mode: false }), position: { x: 0, y: 0 } }
+    const child = { ...makeNode('n1'), position: { x: 50, y: 50 } }
+    useCanvasStore.setState({ nodes: [notContainer, child] })
+    useCanvasStore.getState().markSaved()
+
+    useCanvasStore.getState().addToContainer('px1', 'n1')
+
+    expect(useCanvasStore.getState().nodes.find((n) => n.id === 'n1')?.parentId).toBeUndefined()
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
+  })
+
+  it('addToContainer is a no-op when child already belongs to the container', () => {
+    const container = { ...makeNode('px1', { type: 'proxmox', container_mode: true }), position: { x: 0, y: 0 } }
+    const child = { ...makeNode('n1'), position: { x: 50, y: 50 }, parentId: 'px1', extent: 'parent' as const }
+    useCanvasStore.setState({ nodes: [container, child] })
+    useCanvasStore.getState().markSaved()
+
+    useCanvasStore.getState().addToContainer('px1', 'n1')
+
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
+  })
+
+  it('addToContainer snapshots history and marks unsaved', () => {
+    const container = { ...makeNode('px1', { type: 'proxmox', container_mode: true }), position: { x: 0, y: 0 } }
+    const child = { ...makeNode('n1'), position: { x: 50, y: 50 } }
+    useCanvasStore.setState({ nodes: [container, child] })
+    useCanvasStore.getState().markSaved()
+
+    useCanvasStore.getState().addToContainer('px1', 'n1')
+
+    expect(useCanvasStore.getState().past).toHaveLength(1)
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  // ── removeFromGroup ─────────────────────────────────────────────────────────
+
+  it('removeFromGroup releases the child to absolute coords and keeps the group', () => {
+    const group = { ...makeNode('g1', { type: 'group', label: 'G' }), position: { x: 76, y: 52 } }
+    const child = { ...makeNode('n1'), position: { x: 224, y: 148 }, parentId: 'g1', extent: 'parent' as const }
+    useCanvasStore.setState({ nodes: [group, child] })
+
+    useCanvasStore.getState().removeFromGroup('g1', 'n1')
+
+    const { nodes } = useCanvasStore.getState()
+    const released = nodes.find((n) => n.id === 'n1')
+    expect(released?.parentId).toBeUndefined()
+    expect(released?.extent).toBeUndefined()
+    expect(released?.data.parent_id).toBeUndefined()
+    // 224+76=300, 148+52=200
+    expect(released?.position).toEqual({ x: 300, y: 200 })
+    // group survives
+    expect(nodes.find((n) => n.id === 'g1')).toBeDefined()
+  })
+
+  it('removeFromGroup is a no-op when child is not in the group', () => {
+    const group = { ...makeNode('g1', { type: 'group', label: 'G' }), position: { x: 0, y: 0 } }
+    const child = { ...makeNode('n1'), position: { x: 50, y: 50 } }
+    useCanvasStore.setState({ nodes: [group, child] })
+    useCanvasStore.getState().markSaved()
+
+    useCanvasStore.getState().removeFromGroup('g1', 'n1')
+
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
+  })
+
+  it('removeFromGroup snapshots history and marks unsaved', () => {
+    const group = { ...makeNode('g1', { type: 'group', label: 'G' }), position: { x: 0, y: 0 } }
+    const child = { ...makeNode('n1'), position: { x: 50, y: 50 }, parentId: 'g1', extent: 'parent' as const }
+    useCanvasStore.setState({ nodes: [group, child] })
+    useCanvasStore.getState().markSaved()
+
+    useCanvasStore.getState().removeFromGroup('g1', 'n1')
+
+    expect(useCanvasStore.getState().past).toHaveLength(1)
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
   it('updateEdge updates edge data and marks unsaved', () => {
     useCanvasStore.setState((s) => ({ edges: [...s.edges, makeEdge('e1', 'n1', 'n2')] }))
     useCanvasStore.getState().markSaved()
@@ -690,27 +914,134 @@ describe('canvasStore', () => {
     })
     useCanvasStore.getState().copySelectedNodes()
     const { clipboard } = useCanvasStore.getState()
-    expect(clipboard).toHaveLength(1)
-    expect(clipboard[0].id).toBe('a')
+    expect(clipboard.nodes).toHaveLength(1)
+    expect(clipboard.nodes[0].id).toBe('a')
   })
 
-  it('pasteNodes creates new nodes with new IDs and offset position', () => {
-    const node = { ...makeNode('src'), position: { x: 100, y: 100 }, selected: true }
-    useCanvasStore.setState({ nodes: [node], edges: [], clipboard: [node] })
+  it('copySelectedNodes captures edges whose endpoints are both selected', () => {
+    useCanvasStore.setState({
+      nodes: [
+        { ...makeNode('a'), selected: true },
+        { ...makeNode('b'), selected: true },
+        { ...makeNode('c'), selected: false },
+      ],
+      edges: [makeEdge('e-ab', 'a', 'b'), makeEdge('e-bc', 'b', 'c')],
+    })
+    useCanvasStore.getState().copySelectedNodes()
+    const { clipboard } = useCanvasStore.getState()
+    expect(clipboard.nodes.map((n) => n.id).sort()).toEqual(['a', 'b'])
+    expect(clipboard.edges).toHaveLength(1)
+    expect(clipboard.edges[0].id).toBe('e-ab')
+  })
+
+  it('copySelectedNodes pulls in children of a selected group', () => {
+    useCanvasStore.setState({
+      nodes: [
+        { ...makeNode('g', { type: 'group' }), type: 'group', selected: true },
+        { ...makeNode('child', { parent_id: 'g' }), parentId: 'g', selected: false },
+      ],
+      edges: [],
+    })
+    useCanvasStore.getState().copySelectedNodes()
+    expect(useCanvasStore.getState().clipboard.nodes.map((n) => n.id).sort()).toEqual(['child', 'g'])
+  })
+
+  it('pasteNodes creates new nodes with new IDs and a cascade offset by default', () => {
+    const node = { ...makeNode('src'), position: { x: 100, y: 100 } }
+    useCanvasStore.setState({ nodes: [], edges: [], clipboard: { nodes: [node], edges: [] } })
     useCanvasStore.getState().pasteNodes()
     const { nodes } = useCanvasStore.getState()
-    expect(nodes).toHaveLength(2)
-    const pasted = nodes.find((n) => n.id !== 'src')!
-    expect(pasted).toBeDefined()
-    expect(pasted.position.x).toBe(150)
-    expect(pasted.position.y).toBe(150)
-    expect(pasted.selected).toBe(false)
+    expect(nodes).toHaveLength(1)
+    const pasted = nodes[0]
+    expect(pasted.id).not.toBe('src')
+    expect(pasted.position).toEqual({ x: 150, y: 150 })
+    expect(pasted.selected).toBe(true)
+  })
+
+  it('pasteNodes centers the pasted bounding box on the target point', () => {
+    const node = { ...makeNode('src'), position: { x: 0, y: 0 }, width: 100, height: 100 }
+    useCanvasStore.setState({ nodes: [], edges: [], clipboard: { nodes: [node], edges: [] } })
+    useCanvasStore.getState().pasteNodes({ x: 500, y: 300 })
+    const pasted = useCanvasStore.getState().nodes[0]
+    // bbox center (50,50) shifted onto (500,300) → top-left at (450,250)
+    expect(pasted.position).toEqual({ x: 450, y: 250 })
+  })
+
+  it('pasteNodes remaps edge endpoints to the new node IDs', () => {
+    const a = { ...makeNode('a') }
+    const b = { ...makeNode('b') }
+    useCanvasStore.setState({
+      nodes: [],
+      edges: [],
+      clipboard: { nodes: [a, b], edges: [makeEdge('e-ab', 'a', 'b')] },
+    })
+    useCanvasStore.getState().pasteNodes()
+    const { nodes, edges } = useCanvasStore.getState()
+    expect(edges).toHaveLength(1)
+    const ids = nodes.map((n) => n.id)
+    expect(ids).toContain(edges[0].source)
+    expect(ids).toContain(edges[0].target)
+    expect(edges[0].source).not.toBe('a')
+    expect(edges[0].id).not.toBe('e-ab')
+  })
+
+  it('pasteNodes preserves parent-child relationship under remapped IDs', () => {
+    const group = { ...makeNode('g', { type: 'group' }), type: 'group', position: { x: 0, y: 0 } }
+    const child = { ...makeNode('child', { parent_id: 'g' }), parentId: 'g', extent: 'parent' as const, position: { x: 20, y: 30 } }
+    useCanvasStore.setState({ nodes: [], edges: [], clipboard: { nodes: [group, child], edges: [] } })
+    useCanvasStore.getState().pasteNodes()
+    const { nodes } = useCanvasStore.getState()
+    const newGroup = nodes.find((n) => n.data.type === 'group')!
+    const newChild = nodes.find((n) => n.id !== newGroup.id)!
+    expect(newChild.parentId).toBe(newGroup.id)
+    expect(newChild.data.parent_id).toBe(newGroup.id)
+    // Child keeps its parent-relative position (no offset applied to children)
+    expect(newChild.position).toEqual({ x: 20, y: 30 })
+    // Group (the root) precedes its child in the array
+    expect(nodes.findIndex((n) => n.id === newGroup.id)).toBeLessThan(
+      nodes.findIndex((n) => n.id === newChild.id),
+    )
+  })
+
+  it('clipboard survives loadCanvas so nodes can be pasted into another design', () => {
+    useCanvasStore.setState({
+      nodes: [{ ...makeNode('a'), selected: true }],
+      edges: [],
+    })
+    useCanvasStore.getState().copySelectedNodes()
+    // Switch to another design: loadCanvas replaces nodes/edges.
+    useCanvasStore.getState().loadCanvas([makeNode('other')], [])
+    expect(useCanvasStore.getState().clipboard.nodes).toHaveLength(1)
+    useCanvasStore.getState().pasteNodes()
+    const ids = useCanvasStore.getState().nodes.map((n) => n.id)
+    expect(ids).toContain('other')
+    expect(ids).toHaveLength(2)
   })
 
   it('pasteNodes does nothing when clipboard is empty', () => {
-    useCanvasStore.setState({ nodes: [makeNode('n1')], edges: [], clipboard: [] })
+    useCanvasStore.setState({ nodes: [makeNode('n1')], edges: [], clipboard: { nodes: [], edges: [] } })
     useCanvasStore.getState().pasteNodes()
     expect(useCanvasStore.getState().nodes).toHaveLength(1)
+  })
+
+  // --- Hide IP preference (persisted to localStorage) ---
+
+  it('toggleHideIp flips the flag and persists it', () => {
+    localStorage.removeItem('homelable.hideIp')
+    useCanvasStore.setState({ hideIp: false })
+    useCanvasStore.getState().toggleHideIp()
+    expect(useCanvasStore.getState().hideIp).toBe(true)
+    expect(localStorage.getItem('homelable.hideIp')).toBe('true')
+    useCanvasStore.getState().toggleHideIp()
+    expect(useCanvasStore.getState().hideIp).toBe(false)
+    expect(localStorage.getItem('homelable.hideIp')).toBe('false')
+  })
+
+  it('setHideIp sets the flag and persists it', () => {
+    localStorage.removeItem('homelable.hideIp')
+    useCanvasStore.getState().setHideIp(true)
+    expect(useCanvasStore.getState().hideIp).toBe(true)
+    expect(localStorage.getItem('homelable.hideIp')).toBe('true')
   })
 
   // --- Node resizing (width / height) ---
@@ -867,7 +1198,7 @@ describe('canvasStore — custom style apply', () => {
       editingTextId: null,
       past: [],
       future: [],
-      clipboard: [],
+      clipboard: { nodes: [], edges: [] },
     })
   })
 
@@ -948,5 +1279,30 @@ describe('canvasStore — custom style apply', () => {
     expect(ns.data.custom_colors?.border).toBeUndefined()
     expect(e.data?.custom_color).toBe('#aabbcc')
     expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  it('setNodeSize sets explicit width/height and marks unsaved', () => {
+    useCanvasStore.setState({ nodes: [makeNode('n1')], hasUnsavedChanges: false })
+    useCanvasStore.getState().setNodeSize('n1', { width: 220, height: 130 })
+    const n = useCanvasStore.getState().nodes.find((x) => x.id === 'n1')!
+    expect(n.width).toBe(220)
+    expect(n.height).toBe(130)
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  it('setNodeSize clamps below the minimum box', () => {
+    useCanvasStore.setState({ nodes: [makeNode('n1')] })
+    useCanvasStore.getState().setNodeSize('n1', { width: 10, height: 10 })
+    const n = useCanvasStore.getState().nodes.find((x) => x.id === 'n1')!
+    expect(n.width).toBe(140)
+    expect(n.height).toBe(50)
+  })
+
+  it('setNodeSize updates only the provided axis', () => {
+    useCanvasStore.setState({ nodes: [{ ...makeNode('n1'), width: 200, height: 100 }] })
+    useCanvasStore.getState().setNodeSize('n1', { width: 300 })
+    const n = useCanvasStore.getState().nodes.find((x) => x.id === 'n1')!
+    expect(n.width).toBe(300)
+    expect(n.height).toBe(100)
   })
 })

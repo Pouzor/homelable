@@ -278,6 +278,74 @@ async def test_nmap_scan_raises_on_sweep_error():
 
 
 # ---------------------------------------------------------------------------
+# Cancellation responsiveness (issue #218)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_nmap_scan_cancelled_before_start_skips_phases():
+    """A run already cancelled returns immediately without touching the network."""
+    from app.services.scanner import _cancelled_runs, _nmap_scan, request_cancel
+
+    run_id = "cancel-before-start"
+    request_cancel(run_id)
+    try:
+        with patch("app.services.scanner._ping_sweep", new_callable=AsyncMock) as mock_sweep, \
+             patch("app.services.scanner._nmap_port_scan", new_callable=AsyncMock) as mock_port:
+            result = await _nmap_scan("192.168.1.0/24", run_id=run_id)
+        assert result == []
+        mock_sweep.assert_not_called()
+        mock_port.assert_not_called()
+    finally:
+        _cancelled_runs.discard(run_id)
+
+
+@pytest.mark.asyncio
+async def test_ping_sweep_cancelled_mid_sweep_returns_empty():
+    """Cancelling during Phase 1 bails before Phase 2 — no alive hosts returned."""
+    from app.services.scanner import _cancelled_runs, _ping_sweep, request_cancel
+
+    run_id = "cancel-during-sweep"
+
+    async def _fake_subprocess(*args, **kwargs):
+        proc = AsyncMock()
+        proc.wait = AsyncMock(return_value=1)
+        proc.returncode = 1
+        return proc
+
+    request_cancel(run_id)
+    try:
+        with patch("app.services.scanner.asyncio.create_subprocess_exec", new=_fake_subprocess), \
+             patch("app.services.scanner._arp_table_hosts", return_value={}):
+            result = await _ping_sweep("192.168.1.0/30", run_id=run_id)
+        assert result == {}
+    finally:
+        _cancelled_runs.discard(run_id)
+
+
+@pytest.mark.asyncio
+async def test_nmap_port_scan_skips_queued_hosts_when_cancelled():
+    """Once cancelled, queued hosts return unscanned instead of invoking nmap."""
+    from app.services.scanner import _cancelled_runs, _nmap_port_scan, request_cancel
+
+    run_id = "cancel-port-scan"
+    alive = {
+        "192.168.1.10": {
+            "ip": "192.168.1.10", "mac": None, "hostname": None,
+            "os": None, "open_ports": [],
+        },
+    }
+    request_cancel(run_id)
+    try:
+        with patch("app.services.scanner._nmap_scan_single") as mock_single:
+            result = await _nmap_port_scan(alive, run_id=run_id)
+        mock_single.assert_not_called()
+        assert result[0]["ip"] == "192.168.1.10"
+        assert result[0]["open_ports"] == []
+    finally:
+        _cancelled_runs.discard(run_id)
+
+
+# ---------------------------------------------------------------------------
 # _mdns_discover
 # ---------------------------------------------------------------------------
 
@@ -359,7 +427,7 @@ async def test_nmap_port_scan_tolerates_single_host_exception():
 
     call_count = 0
 
-    def _flaky_scan(host_dict):
+    def _flaky_scan(host_dict, port_spec=None):
         nonlocal call_count
         call_count += 1
         if host_dict["ip"] == "192.168.1.1":
@@ -402,6 +470,84 @@ async def test_run_scan_adds_nmap_devices_as_pending(mem_db):
         devices = result.scalars().all()
 
     assert any(d.ip == "192.168.1.5" for d in devices)
+
+
+@pytest.mark.asyncio
+async def test_run_scan_stamps_last_scan_on_matching_node_by_ip(mem_db):
+    """A scan that sees a device matching a canvas node (by IP) stamps last_scan."""
+    from app.services.scanner import run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        session.add(Node(id="n1", type="server", label="NAS", ip="192.168.1.5"))
+        await session.commit()
+
+    nmap_hosts = [{"ip": "192.168.1.5", "hostname": "nas.lan", "mac": None, "os": None, "open_ports": []}]
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", return_value=nmap_hosts), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(["192.168.1.0/24"], session, run_id)
+
+    async with mem_db() as session:
+        node = await session.get(Node, "n1")
+
+    assert node is not None
+    assert node.last_scan is not None
+
+
+@pytest.mark.asyncio
+async def test_run_scan_stamps_last_scan_on_matching_node_by_mac(mem_db):
+    """A node with no IP but a matching MAC still gets last_scan stamped."""
+    from app.services.scanner import run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        session.add(Node(id="n2", type="iot", label="Sensor", mac="AA:BB:CC:DD:EE:FF"))
+        await session.commit()
+
+    nmap_hosts = [{"ip": "192.168.1.9", "hostname": None, "mac": "AA:BB:CC:DD:EE:FF", "os": None, "open_ports": []}]
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", return_value=nmap_hosts), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(["192.168.1.0/24"], session, run_id)
+
+    async with mem_db() as session:
+        node = await session.get(Node, "n2")
+
+    assert node is not None
+    assert node.last_scan is not None
+
+
+@pytest.mark.asyncio
+async def test_run_scan_leaves_last_scan_untouched_on_unmatched_node(mem_db):
+    """A node whose IP/MAC is not seen by the scan keeps last_scan = None."""
+    from app.services.scanner import run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        session.add(Node(id="n3", type="server", label="Other", ip="10.0.0.99"))
+        await session.commit()
+
+    nmap_hosts = [{"ip": "192.168.1.5", "hostname": None, "mac": None, "os": None, "open_ports": []}]
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", return_value=nmap_hosts), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(["192.168.1.0/24"], session, run_id)
+
+    async with mem_db() as session:
+        node = await session.get(Node, "n3")
+
+    assert node is not None
+    assert node.last_scan is None
 
 
 @pytest.mark.asyncio
@@ -457,8 +603,9 @@ async def test_run_scan_mdns_skipped_if_already_in_nmap(mem_db):
 
 
 @pytest.mark.asyncio
-async def test_run_scan_skips_canvas_nodes(mem_db):
-    """Hosts already approved onto the canvas must be skipped."""
+async def test_run_scan_keeps_canvas_nodes(mem_db):
+    """Hosts already on a canvas are NOT suppressed — they stay in the inventory
+    (badged "In N canvas" via correlation), so a re-scan still records them."""
     from app.services.scanner import run_scan
 
     run_id = _make_run_id()
@@ -481,7 +628,9 @@ async def test_run_scan_skips_canvas_nodes(mem_db):
 
     async with mem_db() as session:
         result = await session.execute(sa_select(PendingDevice).where(PendingDevice.ip == "192.168.1.100"))
-        assert result.scalar_one_or_none() is None
+        device = result.scalar_one_or_none()
+        assert device is not None
+        assert device.status == "pending"
 
 
 @pytest.mark.asyncio
@@ -533,3 +682,135 @@ async def test_run_scan_cancelled_marks_status_cancelled(mem_db):
         run = await session.get(ScanRun, run_id)
         assert run is not None
         assert run.status == "cancelled"
+
+
+# ---------------------------------------------------------------------------
+# Deep scan: port-range plumbing + HTTP probe
+# ---------------------------------------------------------------------------
+
+def test_valid_port_range():
+    from app.services.scanner import _valid_port_range
+
+    assert _valid_port_range("8080")
+    assert _valid_port_range("8000-8100")
+    assert not _valid_port_range("8100-8000")   # reversed
+    assert not _valid_port_range("0")           # below 1
+    assert not _valid_port_range("70000")       # above 65535
+    assert not _valid_port_range("abc")
+    assert not _valid_port_range("80,443")      # not a single range
+
+
+def test_build_port_spec_default_when_empty():
+    from app.services.scanner import _EXTRA_PORTS, _build_port_spec
+
+    assert _build_port_spec([]) == _EXTRA_PORTS
+    assert _build_port_spec(None) == _EXTRA_PORTS
+
+
+def test_build_port_spec_appends_valid_ranges():
+    from app.services.scanner import _EXTRA_PORTS, _build_port_spec
+
+    spec = _build_port_spec(["8000-8100", "9000"])
+    assert spec == _EXTRA_PORTS + ",8000-8100,9000"
+
+
+def test_build_port_spec_drops_invalid_ranges():
+    from app.services.scanner import _EXTRA_PORTS, _build_port_spec
+
+    # invalid entries silently dropped; only valid kept
+    assert _build_port_spec(["bad", "70000"]) == _EXTRA_PORTS
+    assert _build_port_spec(["bad", "9000"]) == _EXTRA_PORTS + ",9000"
+
+
+@pytest.mark.asyncio
+async def test_run_scan_deep_scan_passes_port_spec_to_nmap(mem_db):
+    from app.services.scanner import DeepScanOptions, run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        await session.commit()
+
+    captured = {}
+
+    async def fake_nmap(target, port_spec, run_id=None):
+        captured["port_spec"] = port_spec
+        return []
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", new=fake_nmap), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(
+                ["192.168.1.0/24"], session, run_id,
+                deep_scan=DeepScanOptions(http_ranges=["8000-8100"]),
+            )
+
+    assert "8000-8100" in captured["port_spec"]
+
+
+@pytest.mark.asyncio
+async def test_run_scan_probe_enriches_services(mem_db):
+    """With probe enabled, a custom-port service is identified via HTTP signals."""
+    from app.services.scanner import DeepScanOptions, run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        await session.commit()
+
+    nmap_hosts = [{
+        "ip": "192.168.1.50", "hostname": None, "mac": None, "os": None,
+        "open_ports": [{"port": 8096, "protocol": "tcp", "banner": ""}],
+    }]
+    jellyfin_sig = [{
+        "port": 8096, "protocol": "tcp", "banner_regex": None, "http_regex": "Jellyfin",
+        "service_name": "Jellyfin", "icon": "🎬", "category": "media", "suggested_node_type": "server",
+    }]
+
+    async def fake_probe(ip, ports, verify_tls=False, concurrency=50):
+        return [{**p, "http_signals": {"title": "Jellyfin", "headers": {}}} for p in ports]
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", new=AsyncMock(return_value=nmap_hosts)), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.services.scanner.probe_open_ports", new=fake_probe), \
+             patch("app.services.fingerprint._load", return_value=jellyfin_sig), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(
+                ["192.168.1.0/24"], session, run_id,
+                deep_scan=DeepScanOptions(http_probe_enabled=True),
+            )
+
+    async with mem_db() as session:
+        result = await session.execute(sa_select(PendingDevice).where(PendingDevice.ip == "192.168.1.50"))
+        device = result.scalar_one_or_none()
+
+    assert device is not None
+    assert any(s["service_name"] == "Jellyfin" for s in device.services)
+
+
+@pytest.mark.asyncio
+async def test_run_scan_no_probe_when_disabled(mem_db):
+    """Probe must not be called on a standard (non-deep) scan."""
+    from app.services.scanner import run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        await session.commit()
+
+    nmap_hosts = [{
+        "ip": "192.168.1.51", "hostname": None, "mac": None, "os": None,
+        "open_ports": [{"port": 8096, "protocol": "tcp", "banner": ""}],
+    }]
+    probe = AsyncMock()
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", new=AsyncMock(return_value=nmap_hosts)), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.services.scanner.probe_open_ports", new=probe), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(["192.168.1.0/24"], session, run_id)
+
+    probe.assert_not_called()

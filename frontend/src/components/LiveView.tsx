@@ -10,7 +10,7 @@
  * Clicking a node with an IP opens http://<ip> in a new tab.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ReactFlowProvider,
   ReactFlow,
@@ -28,11 +28,12 @@ import { THEMES } from '@/utils/themes'
 import { nodeTypes } from '@/components/canvas/nodes/nodeTypes'
 import { edgeTypes } from '@/components/canvas/edges/edgeTypes'
 import { deserializeApiNode, deserializeApiEdge, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
+import { computeCollapseInfo, rewireEdgesForCollapse } from '@/utils/collapseFilter'
 import { liveviewApi } from '@/api/client'
+import * as standaloneStorage from '@/utils/standaloneStorage'
 import type { NodeData, CustomStyleDef } from '@/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
-const STORAGE_KEY = 'homelable_canvas'
 
 type ViewState = 'loading' | 'disabled' | 'invalid-key' | 'no-key' | 'network-error' | 'ready'
 
@@ -54,23 +55,29 @@ function LiveViewCanvas() {
 
   useEffect(() => {
     if (STANDALONE) {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY)
-        if (saved) {
-          const { nodes: savedNodes, edges: savedEdges } = JSON.parse(saved)
-          loadCanvas(savedNodes, savedEdges)
-        }
-      } catch {
-        // empty canvas on parse error — show empty canvas
+      // ?design=<id> selects which canvas to render; fall back to the first
+      // design when omitted. Standalone stores full React Flow nodes/edges, so
+      // no API deserialization is needed.
+      const designId = new URLSearchParams(window.location.search).get('design')
+        ?? standaloneStorage.listDesigns()[0]?.id
+      const saved = designId ? standaloneStorage.loadCanvas(designId) : null
+      if (saved) {
+        if (saved.theme_id) setTheme(saved.theme_id)
+        if (saved.custom_style) setCustomStyle(saved.custom_style)
+        loadCanvas(saved.nodes, saved.edges)
       }
       return
     }
 
     // Already handled synchronously in useState initializer
-    const key = new URLSearchParams(window.location.search).get('key')
+    const search = new URLSearchParams(window.location.search)
+    const key = search.get('key')
     if (!key) return
+    // Optional ?design=<id> selects which canvas to render; backend falls back
+    // to the first design when omitted.
+    const design = search.get('design') ?? undefined
 
-    liveviewApi.load(key)
+    liveviewApi.load(key, design)
       .then((res) => {
         const { nodes: apiNodes, edges: apiEdges } = res.data
         const proxmoxMap = new Map<string, boolean>(
@@ -108,6 +115,18 @@ function LiveViewCanvas() {
     if (ip) window.open(`http://${ip}`, '_blank', 'noopener,noreferrer')
   }, [])
 
+  // Apply collapse-state filtering — same pipeline the editor canvas uses,
+  // so a collapsed group/zone hides its contents in live view too.
+  const collapseInfo = useMemo(() => computeCollapseInfo(nodes), [nodes])
+  const visibleNodes = useMemo(
+    () => nodes.filter((n) => collapseInfo.visibleIds.has(n.id)),
+    [nodes, collapseInfo],
+  )
+  const visibleEdges = useMemo(
+    () => rewireEdgesForCollapse(edges, nodes, collapseInfo.visibleIds, collapseInfo.hiddenBy),
+    [edges, nodes, collapseInfo],
+  )
+
   if (viewState === 'loading') {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-[#0d1117] text-[#8b949e]">
@@ -136,8 +155,8 @@ function LiveViewCanvas() {
   return (
     <div className="w-full h-screen" style={{ background: theme.colors.canvasBackground }}>
       <ReactFlow
-        nodes={nodes}
-        edges={edges}
+        nodes={visibleNodes}
+        edges={visibleEdges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         nodesDraggable={false}
@@ -145,6 +164,8 @@ function LiveViewCanvas() {
         elementsSelectable={false}
         panOnDrag
         zoomOnScroll
+        minZoom={0.25}
+        maxZoom={2.5}
         colorMode={theme.colors.reactFlowColorMode}
         connectionMode={ConnectionMode.Loose}
         onNodeClick={onNodeClick}

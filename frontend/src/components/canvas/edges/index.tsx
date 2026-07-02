@@ -323,6 +323,8 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
     vlan:     { strokeWidth: 2.5 },
     virtual:  { stroke: edgeColors.virtual,  strokeWidth: 1,   strokeDasharray: '4 4' },
     cluster:  { stroke: edgeColors.cluster,  strokeWidth: 2.5, strokeDasharray: '8 3' },
+    fibre:    { stroke: edgeColors.fibre,    strokeWidth: 2.5, filter: `drop-shadow(0 0 3px ${edgeColors.fibre}aa)` },
+    electrical: { stroke: edgeColors.electrical, strokeWidth: 2 },
   }
 
   const customColor = data?.custom_color as string | undefined
@@ -376,14 +378,14 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
           strokeWidth={((style.strokeWidth as number ?? 2) + 1.5) * 2}
           strokeDasharray="20 10000"
           strokeLinecap="round"
-          style={{ pointerEvents: 'none' }}
-        >
-          {isBidirectional ? (
-            <animate attributeName="stroke-dashoffset" values="-10000;0;-10000" keyTimes="0;0.5;1" dur="20s" repeatCount="indefinite" />
-          ) : (
-            <animate attributeName="stroke-dashoffset" from="-10000" to="0" dur="10s" repeatCount="indefinite" />
-          )}
-        </path>
+          style={{
+            pointerEvents: 'none',
+            // CSS (not SMIL) so it pauses when the tab is hidden — see index.css.
+            // Bidirectional yo-yos via `alternate` (10s each way = 20s round trip,
+            // matching the old SMIL keyTimes); unidirectional loops in one direction.
+            animation: `homelable-snake 10s linear infinite${isBidirectional ? ' alternate' : ''}`,
+          }}
+        />
       )}
       {animMode === 'flow' && (
         <path
@@ -394,16 +396,17 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
           strokeDasharray="6 12"
           strokeLinecap="round"
           strokeOpacity={0.85}
-          style={{ pointerEvents: 'none' }}
-        >
-          <animate attributeName="stroke-dashoffset" from="0" to="18" dur="1.2s" repeatCount="indefinite" />
-        </path>
+          style={{
+            pointerEvents: 'none',
+            animation: 'homelable-flow 1.2s linear infinite',
+          }}
+        />
       )}
 
       <EdgeLabelRenderer>
         {data?.label && (
           <div
-            className="absolute pointer-events-none font-mono text-[10px] px-1.5 py-0.5 rounded"
+            className="absolute pointer-events-none font-mono text-[10px] px-1.5 py-0.5 rounded whitespace-pre-line text-center"
             style={{
               transform: `translate(-50%, -50%) translate(${labelPosition.x}px, ${labelPosition.y}px)`,
               background: theme.colors.edgeLabelBackground,

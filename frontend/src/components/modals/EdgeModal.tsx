@@ -4,6 +4,7 @@ import { RotateCcw } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { EDGE_TYPE_LABELS, type EdgeData, type EdgePathStyle, type EdgeType } from '@/types'
@@ -44,7 +45,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
     e.preventDefault()
     onSubmit({
       type,
-      label: label || undefined,
+      label: label.trim() || undefined,
       vlan_id: type === 'vlan' && vlanId ? parseInt(vlanId) : undefined,
       custom_color: customColor,
       path_style: pathStyle,
@@ -96,12 +97,13 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
           )}
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Label <span className="text-muted-foreground/50">(optional)</span></Label>
-            <Input
+            <Label className="text-xs text-muted-foreground">Label <span className="text-muted-foreground/50">(optional, multi-line)</span></Label>
+            <Textarea
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g. 1G, trunk..."
-              className={`bg-[#21262d] border-[#30363d] text-sm h-8 ${modalStyles['modal-radius']}`}
+              placeholder={'e.g. 1G, trunk...\nsecond line'}
+              rows={2}
+              className={`bg-[#21262d] border-[#30363d] text-sm min-h-16 resize-none ${modalStyles['modal-radius']}`}
             />
           </div>
 

@@ -37,6 +37,16 @@ describe('CustomStyleModal', () => {
     expect(screen.getByText(/edge type from the list/i)).toBeDefined()
   })
 
+  it('groups node types under category headers (incl. Zigbee and Z-Wave)', () => {
+    render(<CustomStyleModal open onClose={vi.fn()} />)
+    expect(screen.getByText('Hardware')).toBeDefined()
+    expect(screen.getByText('Zigbee')).toBeDefined()
+    expect(screen.getByText('Z-Wave')).toBeDefined()
+    // A Z-Wave node type is selectable from its category.
+    fireEvent.click(screen.getByRole('button', { name: /Z-Wave Controller/ }))
+    expect(screen.getByText(/Apply to existing Z-Wave Controller/)).toBeDefined()
+  })
+
   it('selecting a node type opens the node editor', () => {
     render(<CustomStyleModal open onClose={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Router' }))
@@ -123,5 +133,24 @@ describe('CustomStyleModal', () => {
     const widthInputs = screen.getAllByRole('spinbutton')
     fireEvent.change(widthInputs[0], { target: { value: '250' } })
     expect((widthInputs[0] as HTMLInputElement).value).toBe('250')
+  })
+
+  it('resets abandoned edits when reopened after cancel (mounted parent)', () => {
+    // Parent keeps the modal mounted and only toggles `open`, so the reset must
+    // happen on the open-prop edge, not via Radix onOpenChange.
+    const { rerender } = render(<CustomStyleModal open onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Router' }))
+    const widthInput = screen.getAllByRole('spinbutton')[0]
+    fireEvent.change(widthInput, { target: { value: '250' } })
+    expect((widthInput as HTMLInputElement).value).toBe('250')
+
+    // Cancel = parent flips open → false, then later → true again.
+    rerender(<CustomStyleModal open={false} onClose={vi.fn()} />)
+    rerender(<CustomStyleModal open onClose={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Router' }))
+    const reopenedWidth = screen.getAllByRole('spinbutton')[0]
+    // Draft was reset to saved style (default width 0) — edit did not leak.
+    expect((reopenedWidth as HTMLInputElement).value).toBe('0')
   })
 })

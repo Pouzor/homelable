@@ -1,5 +1,6 @@
 """Tests for scan routes: trigger, pending devices, approve/hide/ignore, stop."""
 import uuid
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -7,7 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Node, PendingDevice, ScanRun
+from app.db.models import Design, Node, PendingDevice, ScanRun
 from app.services.scanner import _cancelled_runs, request_cancel, run_scan
 
 
@@ -122,7 +123,8 @@ async def test_background_scan_success_path_invokes_run_scan(mem_db):
         patch("app.api.routes.scan.AsyncSessionLocal", mem_db),
         patch("app.api.routes.scan.run_scan", new_callable=AsyncMock) as mock_run_scan,
     ):
-        await _background_scan(run_id, ["10.0.0.0/24"])
+        from app.services.scanner import DeepScanOptions
+        await _background_scan(run_id, ["10.0.0.0/24"], DeepScanOptions())
         mock_run_scan.assert_awaited_once()
 
 
@@ -166,6 +168,116 @@ async def test_list_pending_returns_device(client: AsyncClient, headers, pending
     assert len(data) == 1
     assert data[0]["ip"] == "192.168.1.100"
     assert data[0]["hostname"] == "my-server"
+    # No matching node → not on any canvas.
+    assert data[0]["canvas_count"] == 0
+
+
+# --- Canvas-presence correlation (canvas_count) ---
+
+async def _add_design(db_session, name: str) -> str:
+    design = Design(id=str(uuid.uuid4()), name=name)
+    db_session.add(design)
+    await db_session.commit()
+    return design.id
+
+
+def _node(design_id: str, *, ip=None, ieee=None) -> Node:
+    return Node(
+        id=str(uuid.uuid4()), label="n", type="server", status="online",
+        ip=ip, ieee_address=ieee, services=[], pos_x=0.0, pos_y=0.0,
+        design_id=design_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_canvas_count_counts_distinct_designs_by_ip(client, headers, db_session, pending_device):
+    # Same IP placed on two different canvases → canvas_count == 2.
+    d1 = await _add_design(db_session, "Home")
+    d2 = await _add_design(db_session, "Lab")
+    db_session.add(_node(d1, ip="192.168.1.100"))
+    db_session.add(_node(d2, ip="192.168.1.100"))
+    await db_session.commit()
+
+    res = await client.get("/api/v1/scan/pending", headers=headers)
+    data = res.json()
+    assert len(data) == 1
+    assert data[0]["canvas_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_canvas_count_correlates_by_ieee(client, headers, db_session):
+    device = PendingDevice(
+        id=str(uuid.uuid4()), ieee_address="0x00124b001", discovery_source="zigbee",
+        suggested_type="zigbee_enddevice", services=[], status="pending",
+    )
+    db_session.add(device)
+    d1 = await _add_design(db_session, "Zigbee")
+    db_session.add(_node(d1, ieee="0x00124b001"))
+    await db_session.commit()
+
+    res = await client.get("/api/v1/scan/pending", headers=headers)
+    by_id = {d["id"]: d for d in res.json()}
+    assert by_id[device.id]["canvas_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_canvas_count_ignores_nodes_without_design(client, headers, db_session, pending_device):
+    # A node with no design_id is not "on a canvas".
+    db_session.add(_node(None, ip="192.168.1.100"))
+    await db_session.commit()
+
+    res = await client.get("/api/v1/scan/pending", headers=headers)
+    assert res.json()[0]["canvas_count"] == 0
+
+
+# --- Linked-node timestamps on the inventory response ---
+
+@pytest.mark.asyncio
+async def test_pending_device_without_node_has_null_node_timestamps(client, headers, pending_device):
+    # No matching canvas node → node_* timestamps are all null; the device still
+    # carries its own discovered_at for the "Discovered" fallback on the tile.
+    data = (await client.get("/api/v1/scan/pending", headers=headers)).json()[0]
+    assert data["discovered_at"] is not None
+    assert data["node_created_at"] is None
+    assert data["node_last_scan"] is None
+    assert data["node_last_modified"] is None
+    assert data["node_last_seen"] is None
+
+
+@pytest.mark.asyncio
+async def test_pending_device_exposes_linked_node_timestamps(client, headers, db_session, pending_device):
+    d1 = await _add_design(db_session, "Home")
+    node = _node(d1, ip="192.168.1.100")
+    node.last_scan = datetime(2026, 6, 1, 8, 30, tzinfo=timezone.utc)
+    node.last_seen = datetime(2026, 6, 25, 9, 15, tzinfo=timezone.utc)
+    db_session.add(node)
+    await db_session.commit()
+
+    data = (await client.get("/api/v1/scan/pending", headers=headers)).json()[0]
+    assert data["node_created_at"] is not None      # defaulted on insert
+    assert data["node_last_modified"] is not None    # updated_at defaulted on insert
+    assert data["node_last_scan"].startswith("2026-06-01")
+    assert data["node_last_seen"].startswith("2026-06-25")
+
+
+@pytest.mark.asyncio
+async def test_node_timestamps_aggregate_across_matches(client, headers, db_session, pending_device):
+    # Two canvas nodes share the device IP: created_at takes the OLDEST,
+    # last_scan takes the NEWEST.
+    d1 = await _add_design(db_session, "Home")
+    d2 = await _add_design(db_session, "Lab")
+    older = _node(d1, ip="192.168.1.100")
+    older.created_at = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+    older.last_scan = datetime(2026, 3, 1, 0, 0, tzinfo=timezone.utc)
+    newer = _node(d2, ip="192.168.1.100")
+    newer.created_at = datetime(2026, 5, 1, 0, 0, tzinfo=timezone.utc)
+    newer.last_scan = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
+    db_session.add_all([older, newer])
+    await db_session.commit()
+
+    data = (await client.get("/api/v1/scan/pending", headers=headers)).json()[0]
+    assert data["node_created_at"].startswith("2026-01-01")  # oldest
+    assert data["node_last_scan"].startswith("2026-06-01")   # newest
 
 
 # --- Approve device ---
@@ -190,9 +302,13 @@ async def test_approve_device(client: AsyncClient, headers, pending_device):
     assert data["approved"] is True
     assert "node_id" in data
 
-    # Device should no longer appear in pending list
+    # Approved devices stay in the inventory (status != "hidden") so they keep
+    # showing with an "In N canvas" badge — they are no longer dropped.
     pending_res = await client.get("/api/v1/scan/pending", headers=headers)
-    assert pending_res.json() == []
+    inventory = pending_res.json()
+    assert len(inventory) == 1
+    assert inventory[0]["id"] == pending_device.id
+    assert inventory[0]["status"] == "approved"
 
 
 @pytest.mark.asyncio
@@ -331,8 +447,9 @@ async def test_run_scan_creates_new_pending_device(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_run_scan_purges_stale_pending_for_canvas_nodes(db_session: AsyncSession):
-    """Pending devices that were already in canvas before scan starts must be removed."""
+async def test_run_scan_keeps_stale_pending_for_canvas_nodes(db_session: AsyncSession):
+    """Pending devices whose IP is already on a canvas are NOT purged — they stay
+    in the inventory and are surfaced with an "In N canvas" badge."""
     node = Node(
         id=str(uuid.uuid4()),
         label="Existing Server",
@@ -371,12 +488,13 @@ async def test_run_scan_purges_stale_pending_for_canvas_nodes(db_session: AsyncS
     result = await db_session.execute(
         select(PendingDevice).where(PendingDevice.ip == "192.168.1.50")
     )
-    assert result.scalar_one_or_none() is None
+    assert result.scalar_one_or_none() is not None
 
 
 @pytest.mark.asyncio
-async def test_run_scan_skips_ip_already_in_canvas(db_session: AsyncSession):
-    """Devices whose IP already exists as a canvas Node must not appear in pending."""
+async def test_run_scan_records_ip_already_in_canvas(db_session: AsyncSession):
+    """A scanned IP that already exists as a canvas Node still produces a pending
+    device (no longer suppressed)."""
     node = Node(
         id=str(uuid.uuid4()),
         label="Existing Server",
@@ -404,7 +522,62 @@ async def test_run_scan_skips_ip_already_in_canvas(db_session: AsyncSession):
     result = await db_session.execute(
         select(PendingDevice).where(PendingDevice.ip == "192.168.1.50")
     )
-    assert result.scalar_one_or_none() is None
+    device = result.scalar_one_or_none()
+    assert device is not None
+    assert device.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_run_scan_refreshes_approved_device_without_duplicating(db_session: AsyncSession):
+    """Re-scanning an already-approved device updates its row in place instead of
+    spawning a fresh pending duplicate, and keeps it approved."""
+    approved = PendingDevice(
+        id=str(uuid.uuid4()), ip="192.168.1.50", mac=None, hostname="old",
+        os=None, services=[], suggested_type="server", status="approved",
+    )
+    db_session.add(approved)
+    run_id = str(uuid.uuid4())
+    db_session.add(ScanRun(id=run_id, status="running", ranges=["192.168.1.0/24"]))
+    await db_session.commit()
+
+    with (
+        patch("app.services.scanner._nmap_scan", return_value=[MOCK_HOST]),
+        patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock),
+    ):
+        await run_scan(["192.168.1.0/24"], db_session, run_id)
+
+    rows = (await db_session.execute(
+        select(PendingDevice).where(PendingDevice.ip == "192.168.1.50")
+    )).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].status == "approved"
+    assert rows[0].hostname == "myhost.lan"  # refreshed from the scan
+
+
+@pytest.mark.asyncio
+async def test_run_scan_collapses_existing_duplicate_rows(db_session: AsyncSession):
+    """Pre-existing duplicate inventory rows for one IP are collapsed to a single
+    row at scan start, even if the device is not re-discovered."""
+    for status in ("approved", "pending", "pending"):
+        db_session.add(PendingDevice(
+            id=str(uuid.uuid4()), ip="192.168.1.77", mac=None, hostname=None,
+            os=None, services=[], suggested_type="server", status=status,
+        ))
+    run_id = str(uuid.uuid4())
+    db_session.add(ScanRun(id=run_id, status="running", ranges=["192.168.1.0/24"]))
+    await db_session.commit()
+
+    with (
+        patch("app.services.scanner._nmap_scan", return_value=[]),
+        patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock),
+    ):
+        await run_scan(["192.168.1.0/24"], db_session, run_id)
+
+    rows = (await db_session.execute(
+        select(PendingDevice).where(PendingDevice.ip == "192.168.1.77")
+    )).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].status == "approved"  # approved row is the one kept
 
 
 @pytest.mark.asyncio
@@ -479,6 +652,10 @@ async def test_stop_scan_success(client: AsyncClient, headers, db_session: Async
     assert res.json() == {"stopping": True}
     # run_id added to cancel set
     assert run.id in _cancelled_runs
+    # status flipped eagerly so the UI reacts without waiting for a checkpoint
+    await db_session.refresh(run)
+    assert run.status == "cancelled"
+    assert run.finished_at is not None
     # cleanup for other tests
     _cancelled_runs.discard(run.id)
 
@@ -518,7 +695,7 @@ async def test_run_scan_cancelled_mid_scan_skips_remaining_cidrs(db_session: Asy
 
     call_count = 0
 
-    def nmap_side_effect(target: str):
+    def nmap_side_effect(target: str, port_spec: str | None = None, run_id: str | None = None):
         nonlocal call_count
         call_count += 1
         # Signal cancellation after the first CIDR scan completes
@@ -612,9 +789,80 @@ async def test_bulk_approve_approves_devices(client: AsyncClient, headers, two_p
     assert all(nid is not None for nid in data["node_ids"]), "node_ids must be non-null UUIDs"
     assert len(data["device_ids"]) == 2
     assert data["skipped"] == 0
-    # Pending list should now be empty
+    # Approved devices stay in the inventory, now marked "approved".
     pending_res = await client.get("/api/v1/scan/pending", headers=headers)
-    assert pending_res.json() == []
+    inventory = pending_res.json()
+    assert len(inventory) == 2
+    assert all(d["status"] == "approved" for d in inventory)
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_places_already_approved_device_on_another_design(
+    client: AsyncClient, headers, db_session, two_pending_devices
+):
+    """Regression: a device already approved (status='approved', e.g. placed on
+    another canvas) must still get a node on the design being approved onto.
+
+    Previously bulk-approve filtered status=='pending', so selecting an
+    already-approved device created no node — the user saw fewer nodes than
+    they selected."""
+    ids = [d.id for d in two_pending_devices]
+    design_a = await _add_design(db_session, "Canvas A")
+    design_b = await _add_design(db_session, "Canvas B")
+
+    # Approve both onto design A.
+    res_a = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": ids, "design_id": design_a},
+        headers=headers,
+    )
+    assert res_a.json()["approved"] == 2
+
+    # Re-approve the same (now status='approved') devices onto design B.
+    res_b = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": ids, "design_id": design_b},
+        headers=headers,
+    )
+    data_b = res_b.json()
+    assert data_b["approved"] == 2, "already-approved devices must place onto the new canvas"
+    assert data_b["skipped"] == 0
+
+    # Two nodes now exist on each design.
+    from app.db.models import Node as NodeModel
+    nodes_b = (
+        await db_session.execute(select(NodeModel).where(NodeModel.design_id == design_b))
+    ).scalars().all()
+    assert len(nodes_b) == 2
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_skips_device_already_on_target_design(
+    client: AsyncClient, headers, db_session, two_pending_devices
+):
+    """A device already on the target canvas (same ip) is not placed twice."""
+    ids = [d.id for d in two_pending_devices]
+    design = await _add_design(db_session, "Canvas")
+    # First device already sits on the canvas (matched by ip).
+    db_session.add(_node(design, ip="192.168.1.10"))
+    await db_session.commit()
+
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": ids, "design_id": design},
+        headers=headers,
+    )
+    data = res.json()
+    assert data["approved"] == 1   # only the second device (192.168.1.11)
+    assert data["skipped"] == 1
+
+    from app.db.models import Node as NodeModel
+    nodes = (
+        await db_session.execute(select(NodeModel).where(NodeModel.design_id == design))
+    ).scalars().all()
+    # The pre-existing node plus the one newly approved — no duplicate for .10.
+    assert len(nodes) == 2
+    assert sorted(n.ip for n in nodes) == ["192.168.1.10", "192.168.1.11"]
 
 
 @pytest.fixture
@@ -696,6 +944,144 @@ async def test_bulk_approve_zigbee_populates_properties(
     assert keys["Model"] == "TRADFRI"
     assert keys["LQI"] == "180"
     assert node.check_method == "none"
+
+
+# --- MAC address propagation on approve (issue #168) ---
+
+def test_build_mac_property_returns_hidden_row():
+    from app.api.routes.scan import build_mac_property
+
+    assert build_mac_property("aa:bb:cc:dd:ee:ff") == [
+        {"key": "MAC", "value": "aa:bb:cc:dd:ee:ff", "icon": None, "visible": False}
+    ]
+
+
+def test_build_mac_property_empty_when_no_mac():
+    from app.api.routes.scan import build_mac_property
+
+    assert build_mac_property(None) == []
+    assert build_mac_property("") == []
+
+
+def test_merge_mac_property_appends_when_absent():
+    from app.api.routes.scan import merge_mac_property
+
+    existing = [{"key": "Custom", "value": "x", "icon": None, "visible": True}]
+    merged = merge_mac_property(existing, "aa:bb:cc:dd:ee:ff")
+    assert {"key": "MAC", "value": "aa:bb:cc:dd:ee:ff", "icon": None, "visible": False} in merged
+    # Existing prop preserved untouched.
+    assert existing[0] in merged
+
+
+def test_merge_mac_property_idempotent_and_preserves_visibility():
+    from app.api.routes.scan import merge_mac_property
+
+    existing = [{"key": "MAC", "value": "aa:bb:cc:dd:ee:ff", "icon": None, "visible": True}]
+    merged = merge_mac_property(existing, "aa:bb:cc:dd:ee:ff")
+    # No duplicate MAC row; user's visible=True choice kept.
+    macs = [p for p in merged if p["key"] == "MAC"]
+    assert len(macs) == 1
+    assert macs[0]["visible"] is True
+
+
+def test_merge_mac_property_noop_without_mac():
+    from app.api.routes.scan import merge_mac_property
+
+    existing = [{"key": "Custom", "value": "x", "icon": None, "visible": True}]
+    assert merge_mac_property(existing, None) == existing
+
+
+@pytest.mark.asyncio
+async def test_approve_device_copies_mac_to_node_and_properties(
+    client: AsyncClient, headers, pending_device, db_session
+):
+    """Approving a scanned device must carry its MAC onto the node + properties."""
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    # Payload intentionally omits mac — it must come from the pending device.
+    res = await client.post(
+        f"/api/v1/scan/pending/{pending_device.id}/approve",
+        json={"label": "My Server", "type": "server", "ip": "192.168.1.100", "status": "unknown", "services": []},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (
+        await db_session.execute(select(NodeModel).where(NodeModel.ip == "192.168.1.100"))
+    ).scalar_one()
+    assert node.mac == "aa:bb:cc:dd:ee:ff"
+    mac_props = [p for p in node.properties if p["key"] == "MAC"]
+    assert mac_props == [
+        {"key": "MAC", "value": "aa:bb:cc:dd:ee:ff", "icon": None, "visible": False}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_approve_device_does_not_duplicate_mac_property(
+    client: AsyncClient, headers, pending_device, db_session
+):
+    """If the approve payload already carries a MAC prop, don't add a second one."""
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    res = await client.post(
+        f"/api/v1/scan/pending/{pending_device.id}/approve",
+        json={
+            "label": "My Server",
+            "type": "server",
+            "ip": "192.168.1.100",
+            "status": "unknown",
+            "services": [],
+            "properties": [
+                {"key": "MAC", "value": "aa:bb:cc:dd:ee:ff", "icon": None, "visible": True}
+            ],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (
+        await db_session.execute(select(NodeModel).where(NodeModel.ip == "192.168.1.100"))
+    ).scalar_one()
+    mac_props = [p for p in node.properties if p["key"] == "MAC"]
+    assert len(mac_props) == 1
+    # User's visibility choice is preserved.
+    assert mac_props[0]["visible"] is True
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_copies_mac_to_node_and_properties(
+    client: AsyncClient, headers, db_session
+):
+    """Bulk approve must also propagate the scanned MAC to node + properties."""
+    from sqlalchemy import select
+
+    from app.db.models import Node as NodeModel
+    device = PendingDevice(
+        id=str(uuid.uuid4()),
+        ip="192.168.1.55",
+        mac="11:22:33:44:55:66",
+        hostname="host-mac",
+        services=[],
+        suggested_type="generic",
+        status="pending",
+    )
+    db_session.add(device)
+    await db_session.commit()
+
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": [device.id]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    node = (
+        await db_session.execute(select(NodeModel).where(NodeModel.ip == "192.168.1.55"))
+    ).scalar_one()
+    assert node.mac == "11:22:33:44:55:66"
+    mac_props = [p for p in node.properties if p["key"] == "MAC"]
+    assert mac_props == [
+        {"key": "MAC", "value": "11:22:33:44:55:66", "icon": None, "visible": False}
+    ]
 
 
 @pytest.mark.asyncio
@@ -984,3 +1370,187 @@ async def test_approve_zigbee_resolves_link_after_second_approval(
     assert len(edges) == 1
     links = (await db_session.execute(select(PendingDeviceLink))).scalars().all()
     assert links == []  # consumed
+
+
+# --- Deep scan: trigger overrides + config persistence ---
+
+@pytest.mark.asyncio
+async def test_resolve_deep_scan_falls_back_to_settings():
+    from app.api.routes.scan import TriggerScanRequest, _resolve_deep_scan
+
+    with patch("app.api.routes.scan.settings") as mock_settings:
+        mock_settings.scanner_http_ranges = ["7000-7100"]
+        mock_settings.scanner_http_probe_enabled = True
+        mock_settings.scanner_http_verify_tls = False
+        # Empty payload → all values come from settings defaults
+        ds = _resolve_deep_scan(TriggerScanRequest())
+    assert ds.http_ranges == ["7000-7100"]
+    assert ds.http_probe_enabled is True
+    assert ds.verify_tls is False
+
+
+@pytest.mark.asyncio
+async def test_resolve_deep_scan_override_wins():
+    from app.api.routes.scan import TriggerScanRequest, _resolve_deep_scan
+
+    with patch("app.api.routes.scan.settings") as mock_settings:
+        mock_settings.scanner_http_ranges = []
+        mock_settings.scanner_http_probe_enabled = False
+        mock_settings.scanner_http_verify_tls = False
+        ds = _resolve_deep_scan(
+            TriggerScanRequest(http_ranges=["9000"], http_probe_enabled=True, verify_tls=True)
+        )
+    assert ds.http_ranges == ["9000"]
+    assert ds.http_probe_enabled is True
+    assert ds.verify_tls is True
+
+
+@pytest.mark.asyncio
+async def test_trigger_scan_passes_deep_scan_options(client: AsyncClient, headers):
+    captured = {}
+
+    async def fake_bg(run_id, ranges, deep_scan):
+        captured["deep_scan"] = deep_scan
+
+    with (
+        patch("app.api.routes.scan._background_scan", new=fake_bg),
+        patch("app.api.routes.scan.settings") as mock_settings,
+    ):
+        mock_settings.scanner_ranges = ["192.168.1.0/24"]
+        mock_settings.scanner_http_ranges = []
+        mock_settings.scanner_http_probe_enabled = False
+        mock_settings.scanner_http_verify_tls = False
+        res = await client.post(
+            "/api/v1/scan/trigger",
+            json={"http_probe_enabled": True, "http_ranges": ["8000-8100"]},
+            headers=headers,
+        )
+    assert res.status_code == 200
+    assert captured["deep_scan"].http_probe_enabled is True
+    assert captured["deep_scan"].http_ranges == ["8000-8100"]
+
+
+@pytest.mark.asyncio
+async def test_trigger_scan_rejects_invalid_port_range(client: AsyncClient, headers):
+    with patch("app.api.routes.scan.settings") as mock_settings:
+        mock_settings.scanner_ranges = ["192.168.1.0/24"]
+        res = await client.post(
+            "/api/v1/scan/trigger",
+            json={"http_ranges": ["70000-80000"]},
+            headers=headers,
+        )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_scan_config_includes_deep_scan(client: AsyncClient, headers):
+    with patch("app.api.routes.scan.settings") as mock_settings:
+        mock_settings.scanner_ranges = ["192.168.1.0/24"]
+        mock_settings.scanner_http_ranges = ["8000-8100"]
+        mock_settings.scanner_http_probe_enabled = True
+        mock_settings.scanner_http_verify_tls = False
+        res = await client.get("/api/v1/scan/config", headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["http_ranges"] == ["8000-8100"]
+    assert data["http_probe_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_scan_config_persists_deep_scan(client: AsyncClient, headers):
+    saved = {}
+
+    with patch("app.api.routes.scan.settings") as mock_settings:
+        mock_settings.scanner_ranges = ["192.168.1.0/24"]
+        mock_settings.scanner_http_ranges = []
+        mock_settings.scanner_http_probe_enabled = False
+        mock_settings.scanner_http_verify_tls = False
+        mock_settings.save_overrides = lambda: saved.update(
+            http_ranges=mock_settings.scanner_http_ranges,
+            probe=mock_settings.scanner_http_probe_enabled,
+        )
+        res = await client.post(
+            "/api/v1/scan/config",
+            json={
+                "ranges": ["192.168.1.0/24"],
+                "http_ranges": ["9000-9100"],
+                "http_probe_enabled": True,
+                "verify_tls": True,
+            },
+            headers=headers,
+        )
+    assert res.status_code == 200
+    assert saved == {"http_ranges": ["9000-9100"], "probe": True}
+
+
+# --- Z-Wave approve: active design targeting + wireless props (regression) ---
+
+@pytest.mark.asyncio
+async def test_bulk_approve_targets_requested_design(client, headers, db_session):
+    """bulk-approve must place nodes on the design_id sent by the UI, not the
+    first design — otherwise approved devices land on the wrong canvas."""
+    first = await _add_design(db_session, "Default")  # first design (fallback)
+    active = await _add_design(db_session, "zwave")    # the design the user is on
+    dev = PendingDevice(
+        id=str(uuid.uuid4()),
+        ieee_address="zwave-H-2",
+        friendly_name="Living Room Plug",
+        suggested_type="zwave_router",
+        device_subtype="Router",
+        vendor="Aeotec",
+        model="ZW096",
+        status="pending",
+        discovery_source="zwave",
+    )
+    db_session.add(dev)
+    await db_session.commit()
+
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": [dev.id], "design_id": active},
+        headers=headers,
+    )
+    assert res.status_code == 200
+    assert res.json()["approved"] == 1
+
+    node = (
+        await db_session.execute(select(Node).where(Node.ieee_address == "zwave-H-2"))
+    ).scalar_one()
+    assert node.design_id == active
+    assert node.design_id != first
+    # Z-Wave device → online + Z-Wave property rows, no ICMP check.
+    assert node.status == "online"
+    assert node.check_method == "none"
+    assert {p["key"] for p in node.properties} == {"Z-Wave ID", "Vendor", "Model"}
+
+
+@pytest.mark.asyncio
+async def test_single_approve_zwave_sets_wireless_fields(client, headers, db_session):
+    active = await _add_design(db_session, "zwave")
+    dev = PendingDevice(
+        id=str(uuid.uuid4()),
+        ieee_address="zwave-H-9",
+        friendly_name="Door Sensor",
+        suggested_type="zwave_enddevice",
+        vendor="Aeotec",
+        model="ZW120",
+        status="pending",
+        discovery_source="zwave",
+    )
+    db_session.add(dev)
+    await db_session.commit()
+
+    res = await client.post(
+        f"/api/v1/scan/pending/{dev.id}/approve",
+        json={"label": "Door Sensor", "type": "zwave_enddevice", "design_id": active},
+        headers=headers,
+    )
+    assert res.status_code == 200
+
+    node = (
+        await db_session.execute(select(Node).where(Node.ieee_address == "zwave-H-9"))
+    ).scalar_one()
+    assert node.design_id == active
+    assert node.status == "online"
+    assert node.check_method == "none"
+    assert any(p["key"] == "Z-Wave ID" for p in node.properties)

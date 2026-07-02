@@ -188,6 +188,20 @@ describe('NodeModal', () => {
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).type).toBe('nas')
   })
 
+  it('offers Z-Wave node types and submits one', () => {
+    const { onSubmit } = renderModal({ initial: BASE })
+    fireEvent.change(selects()[0], { target: { value: 'zwave_enddevice' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).type).toBe('zwave_enddevice')
+  })
+
+  it('forces check_method to none when a Z-Wave type is selected', () => {
+    const { onSubmit } = renderModal({ initial: { ...BASE, check_method: 'ping' } })
+    fireEvent.change(selects()[0], { target: { value: 'zwave_coordinator' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).check_method).toBe('none')
+  })
+
   // ── Check method ──────────────────────────────────────────────────────
 
   it('pre-fills check_method from initial', () => {
@@ -353,6 +367,48 @@ describe('NodeModal', () => {
     expect(screen.getByText('Parent Container')).toBeDefined()
   })
 
+  it('renders Parent Container for a plain node when a container-mode candidate exists', () => {
+    renderModal({
+      initial: { ...BASE, type: 'server' },
+      parentCandidates: [{ id: 'px1', label: 'PVE', type: 'proxmox', container_mode: true }],
+    })
+    expect(screen.getByText('Parent Container')).toBeDefined()
+  })
+
+  it('still hides Parent Container for a plain node when the candidate is not in container mode', () => {
+    renderModal({
+      initial: { ...BASE, type: 'server' },
+      parentCandidates: [{ id: 'px1', label: 'PVE', type: 'proxmox', container_mode: false }],
+    })
+    expect(screen.queryByText('Parent Container')).toBeNull()
+  })
+
+  it('renders Parent Container for an already-nested plain node so it can be detached', () => {
+    renderModal({
+      initial: { ...BASE, type: 'server', parent_id: 'px1' },
+      parentCandidates: [{ id: 'px1', label: 'PVE', type: 'proxmox', container_mode: true }],
+    })
+    expect(screen.getByText('Parent Container')).toBeDefined()
+  })
+
+  it('keeps a container-mode parent_id on submit for a plain node', () => {
+    const { onSubmit } = renderModal({
+      initial: { ...BASE, type: 'server', parent_id: 'px1' },
+      parentCandidates: [{ id: 'px1', label: 'PVE', type: 'proxmox', container_mode: true }],
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).parent_id).toBe('px1')
+  })
+
+  it('drops a parent_id that is not a valid container on submit', () => {
+    const { onSubmit } = renderModal({
+      initial: { ...BASE, type: 'server', parent_id: 'px1' },
+      parentCandidates: [{ id: 'px1', label: 'PVE', type: 'proxmox', container_mode: false }],
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).parent_id).toBeUndefined()
+  })
+
   // ── Appearance ────────────────────────────────────────────────────────
 
   it('renders 3 color swatch labels (border, background, icon)', () => {
@@ -416,20 +472,30 @@ describe('NodeModal', () => {
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).bottom_handles).toBe(12)
   })
 
-  it('supports the full 1..48 range', () => {
+  it('supports the full 1..64 range (issue #20)', () => {
     const { onSubmit } = renderModal({ initial: BASE })
     const slider = screen.getByLabelText('Bottom connection points slider') as HTMLInputElement
     expect(slider.min).toBe('1')
-    expect(slider.max).toBe('48')
-    fireEvent.change(slider, { target: { value: '48' } })
+    expect(slider.max).toBe('64')
+    fireEvent.change(slider, { target: { value: '52' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
-    expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).bottom_handles).toBe(48)
+    expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).bottom_handles).toBe(52)
   })
 
-  it('clamps pre-filled out-of-range values into [1,48]', () => {
+  it('clamps pre-filled out-of-range values into [1,64]', () => {
     renderModal({ initial: { ...BASE, bottom_handles: 9999 } })
     const slider = screen.getByLabelText('Bottom connection points slider') as HTMLInputElement
-    expect(slider.value).toBe('48')
+    expect(slider.value).toBe('64')
+  })
+
+  it('toggles show_port_numbers and submits it (issue #20)', () => {
+    const { onSubmit } = renderModal({ initial: BASE })
+    const toggle = screen.getByLabelText('Toggle port numbers')
+    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).show_port_numbers).toBe(true)
   })
 
   // ── Zigbee nodes ──────────────────────────────────────────────────────

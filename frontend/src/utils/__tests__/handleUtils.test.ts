@@ -29,8 +29,12 @@ describe('clampBottomHandles', () => {
     expect(clampBottomHandles(-5)).toBe(MIN_BOTTOM_HANDLES)
   })
 
+  it('supports at least 52 ports (issue #20 — Cisco 48+4 SFP)', () => {
+    expect(MAX_BOTTOM_HANDLES).toBeGreaterThanOrEqual(52)
+  })
+
   it('clamps above MAX to MAX', () => {
-    expect(clampBottomHandles(49)).toBe(MAX_BOTTOM_HANDLES)
+    expect(clampBottomHandles(65)).toBe(MAX_BOTTOM_HANDLES)
     expect(clampBottomHandles(9999)).toBe(MAX_BOTTOM_HANDLES)
   })
 
@@ -49,6 +53,8 @@ describe('clampBottomHandles', () => {
     expect(clampBottomHandles(1)).toBe(1)
     expect(clampBottomHandles(24)).toBe(24)
     expect(clampBottomHandles(48)).toBe(48)
+    expect(clampBottomHandles(52)).toBe(52)
+    expect(clampBottomHandles(64)).toBe(64)
   })
 })
 
