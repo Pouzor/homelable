@@ -25,6 +25,12 @@ If you are running  <img width="35" height="35" align="middle" alt="New_Home_Ass
 
 ---
 
+## Features
+
+Every feature, with how to turn it on and use it, is described in **[FEATURES.md](./FEATURES.md)**.
+
+---
+
 ## Installation
 
 Docker, Proxmox LXC, build from source, configuration, and development setup are all covered in **[INSTALLATION.md](./INSTALLATION.md)**.
