@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.database import AsyncSessionLocal, get_db
-from app.db.models import Design, Node, PendingDevice, PendingDeviceLink, ScanRun
+from app.db.models import Node, PendingDevice, PendingDeviceLink, ScanRun
 from app.schemas.scan import ScanRunResponse
 from app.schemas.zwave import (
     ZwaveCoordinatorOut,
@@ -139,9 +139,8 @@ async def _persist_pending_import(
     # the by-IEEE lookups below resolve cleanly.
     await dedupe_nodes_by_ieee(db)
 
-    first_design = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
-    default_design_id = first_design.id if first_design else None
-
+    # Coordinator is no longer auto-placed, so the response's coordinator fields
+    # stay unset — retained for backward-compatible response shape.
     coordinator_out: ZwaveCoordinatorOut | None = None
     coordinator_existed = False
     pending_created = 0
@@ -153,44 +152,9 @@ async def _persist_pending_import(
             continue
         props = build_zwave_properties(ieee, n.get("vendor"), n.get("model"))
 
-        if n.get("type") == "zwave_coordinator":
-            # The coordinator may sit on several canvases (one Node per design).
-            # Refresh props on every matching node, not just one.
-            existing_nodes = (
-                await db.execute(
-                    select(Node).where(Node.ieee_address == ieee).order_by(Node.id)
-                )
-            ).scalars().all()
-            if existing_nodes:
-                for existing_node in existing_nodes:
-                    existing_node.properties = merge_zwave_properties(
-                        existing_node.properties, props
-                    )
-                first = existing_nodes[0]
-                coordinator_out = ZwaveCoordinatorOut(
-                    id=first.id,
-                    label=first.label,
-                    ieee_address=ieee,
-                )
-                coordinator_existed = True
-                continue
-            label = n.get("friendly_name") or ieee
-            node = Node(
-                label=label,
-                type=n.get("type") or "zwave_coordinator",
-                status="online",
-                check_method="none",
-                ieee_address=ieee,
-                services=[],
-                properties=props,
-                design_id=default_design_id,
-            )
-            db.add(node)
-            await db.flush()
-            coordinator_out = ZwaveCoordinatorOut(
-                id=node.id, label=label, ieee_address=ieee
-            )
-            continue
+        # The coordinator is no longer auto-placed on the canvas — it flows to
+        # the pending inventory like every other device, so the user approves it
+        # explicitly. Only the shared paths below run for it.
 
         # Already approved as a canvas Node → refresh props on every canvas it
         # sits on, skip pending row.
