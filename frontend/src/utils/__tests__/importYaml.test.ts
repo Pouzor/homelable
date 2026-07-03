@@ -105,7 +105,7 @@ describe('parseYamlToCanvas', () => {
     expect(edges[0].data?.type).toBe('fibre')
   })
 
-  it('cluster edges have cluster-right→cluster-left handles', () => {
+  it('cluster edges are remapped onto right→left connection points (#243)', () => {
     const yaml = `
 - nodeType: proxmox
   label: "PVE1"
@@ -115,10 +115,15 @@ describe('parseYamlToCanvas', () => {
 - nodeType: proxmox
   label: "PVE2"
 `
-    const { edges } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    const { nodes, edges } = parseYamlToCanvas(yaml, empty, emptyEdges)
     expect(edges).toHaveLength(1)
-    expect(edges[0].sourceHandle).toBe('cluster-right')
-    expect(edges[0].targetHandle).toBe('cluster-left')
+    expect(edges[0].sourceHandle).toBe('right')
+    expect(edges[0].targetHandle).toBe('left')
+    // Connected sides get a connection point so the link is anchored.
+    const src = nodes.find((n) => n.id === edges[0].source)!
+    const tgt = nodes.find((n) => n.id === edges[0].target)!
+    expect(src.data.right_handles).toBe(1)
+    expect(tgt.data.left_handles).toBe(1)
   })
 
   it('parent relationship sets parentId and creates an edge', () => {

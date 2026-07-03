@@ -1,6 +1,6 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData, Waypoint } from '@/types'
-import { normalizeHandle, clampHandles } from '@/utils/handleUtils'
+import { normalizeHandle, clampHandles, handleId, handleCountField, type Side } from '@/utils/handleUtils'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -215,4 +215,53 @@ export function deserializeApiEdge(e: ApiEdge): Edge<EdgeData> {
     targetHandle: e.target_handle ?? null,
     data: e as unknown as EdgeData,
   }
+}
+
+// Legacy Proxmox nodes had two always-on cluster handles ('cluster-left' /
+// 'cluster-right'). Those are gone — cluster links now use the normal, per-side
+// connection points. On load we remap any edge still bound to a cluster handle
+// onto the matching left/right slot-0 handle and give that node's side a
+// connection point (count → at least 1) so the link survives. The edge's
+// 'cluster' type/colour is untouched.
+const CLUSTER_HANDLE_SIDE: Record<string, Side> = {
+  'cluster-left': 'left',
+  'cluster-right': 'right',
+}
+
+export function migrateClusterHandles(
+  nodes: Node<NodeData>[],
+  edges: Edge<EdgeData>[],
+): { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] } {
+  // nodeId → sides that need at least one connection point after remap.
+  const needed = new Map<string, Set<Side>>()
+  const mark = (id: string, side: Side) => {
+    const set = needed.get(id) ?? new Set<Side>()
+    set.add(side)
+    needed.set(id, set)
+  }
+
+  const migratedEdges = edges.map((e) => {
+    const srcSide = e.sourceHandle ? CLUSTER_HANDLE_SIDE[e.sourceHandle] : undefined
+    const tgtSide = e.targetHandle ? CLUSTER_HANDLE_SIDE[e.targetHandle] : undefined
+    if (!srcSide && !tgtSide) return e
+    const next = { ...e }
+    if (srcSide) { next.sourceHandle = handleId(srcSide, 0); mark(e.source, srcSide) }
+    if (tgtSide) { next.targetHandle = handleId(tgtSide, 0); mark(e.target, tgtSide) }
+    return next
+  })
+
+  if (needed.size === 0) return { nodes, edges: migratedEdges }
+
+  const migratedNodes = nodes.map((n) => {
+    const sides = needed.get(n.id)
+    if (!sides) return n
+    const data: NodeData = { ...n.data }
+    for (const side of sides) {
+      const field = handleCountField(side)
+      data[field] = Math.max((data[field] as number | undefined) ?? 0, 1)
+    }
+    return { ...n, data }
+  })
+
+  return { nodes: migratedNodes, edges: migratedEdges }
 }

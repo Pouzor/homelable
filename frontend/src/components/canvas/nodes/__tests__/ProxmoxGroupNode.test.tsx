@@ -114,10 +114,20 @@ describe('ProxmoxGroupNode', () => {
     expect(sourceHandles.length).toBe(1)
   })
 
-  it('renders cluster handles in both modes', () => {
+  it('no longer renders the always-on cluster handles (#243)', () => {
     const { container: groupC } = renderNode({})
-    expect(groupC.querySelectorAll('[title="Same cluster"]').length).toBeGreaterThanOrEqual(2)
+    expect(groupC.querySelectorAll('[title="Same cluster"]').length).toBe(0)
     const { container: nodeC } = renderNode({ container_mode: false })
-    expect(nodeC.querySelectorAll('[title="Same cluster"]').length).toBeGreaterThanOrEqual(2)
+    expect(nodeC.querySelectorAll('[title="Same cluster"]').length).toBe(0)
+  })
+
+  it('renders configurable left/right handles only when counts > 0', () => {
+    const { container: none } = renderNode({ container_mode: false })
+    expect(none.querySelectorAll('.react-flow__handle-left.source').length).toBe(0)
+    expect(none.querySelectorAll('.react-flow__handle-right.source').length).toBe(0)
+
+    const { container: set } = renderNode({ container_mode: false, left_handles: 1, right_handles: 2 })
+    expect(set.querySelectorAll('.react-flow__handle-left.source').length).toBe(1)
+    expect(set.querySelectorAll('.react-flow__handle-right.source').length).toBe(2)
   })
 })

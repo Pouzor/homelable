@@ -6,6 +6,7 @@ import {
   serializeEdge,
   deserializeApiNode,
   deserializeApiEdge,
+  migrateClusterHandles,
   type ApiNode,
   type ApiEdge,
 } from '@/utils/canvasSerializer'
@@ -481,5 +482,42 @@ describe('serializeNode — text node roundtrip', () => {
     expect(serialized.label).toBe('Hello world')
     const restored = deserializeApiNode(serialized, emptyMap)
     expect(restored.data.label).toBe('Hello world')
+  })
+})
+
+// ── migrateClusterHandles (#243) ──────────────────────────────────────────────
+
+describe('migrateClusterHandles', () => {
+  it('remaps cluster-right/left edge handles to right/left slot-0', () => {
+    const nodes = [makeRfNode({ id: 'p1', type: 'proxmox' }), makeRfNode({ id: 'p2', type: 'proxmox' })]
+    const edges = [makeRfEdge({ id: 'c1', source: 'p1', target: 'p2', type: 'cluster', sourceHandle: 'cluster-right', targetHandle: 'cluster-left', data: { type: 'cluster' } })]
+    const out = migrateClusterHandles(nodes, edges)
+    const e = out.edges.find((x) => x.id === 'c1')!
+    expect(e.sourceHandle).toBe('right')
+    expect(e.targetHandle).toBe('left')
+    expect(e.type).toBe('cluster') // style/type preserved
+  })
+
+  it('bumps the connected side to 1 on each proxmox node', () => {
+    const nodes = [makeRfNode({ id: 'p1', type: 'proxmox' }), makeRfNode({ id: 'p2', type: 'proxmox' })]
+    const edges = [makeRfEdge({ id: 'c1', source: 'p1', target: 'p2', sourceHandle: 'cluster-right', targetHandle: 'cluster-left' })]
+    const out = migrateClusterHandles(nodes, edges)
+    expect(out.nodes.find((n) => n.id === 'p1')!.data.right_handles).toBe(1)
+    expect(out.nodes.find((n) => n.id === 'p2')!.data.left_handles).toBe(1)
+  })
+
+  it('does not lower an already-higher side count', () => {
+    const nodes = [makeRfNode({ id: 'p1', type: 'proxmox', data: { label: 'x', type: 'proxmox', status: 'online', services: [], right_handles: 3 } })]
+    const edges = [makeRfEdge({ id: 'c1', source: 'p1', target: 'p2', sourceHandle: 'cluster-right' })]
+    const out = migrateClusterHandles(nodes, edges)
+    expect(out.nodes[0].data.right_handles).toBe(3)
+  })
+
+  it('leaves non-cluster edges and their nodes untouched (identity when nothing to do)', () => {
+    const nodes = [makeRfNode({ id: 'p1' })]
+    const edges = [makeRfEdge({ id: 'e1', sourceHandle: 'bottom', targetHandle: 'top' })]
+    const out = migrateClusterHandles(nodes, edges)
+    expect(out.nodes).toBe(nodes)
+    expect(out.edges[0].sourceHandle).toBe('bottom')
   })
 })

@@ -27,7 +27,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { nodeTypes } from '@/components/canvas/nodes/nodeTypes'
 import { edgeTypes } from '@/components/canvas/edges/edgeTypes'
-import { deserializeApiNode, deserializeApiEdge, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
+import { deserializeApiNode, deserializeApiEdge, migrateClusterHandles, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { computeCollapseInfo, rewireEdgesForCollapse } from '@/utils/collapseFilter'
 import { liveviewApi } from '@/api/client'
 import * as standaloneStorage from '@/utils/standaloneStorage'
@@ -88,10 +88,11 @@ function LiveViewCanvas() {
         const savedTheme = res.data.viewport?.theme_id
         if (savedTheme) setTheme(savedTheme)
         if (res.data.custom_style) setCustomStyle(res.data.custom_style as CustomStyleDef)
-        loadCanvas(
+        const migrated = migrateClusterHandles(
           (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxMap)),
           (apiEdges as ApiEdge[]).map(deserializeApiEdge),
         )
+        loadCanvas(migrated.nodes, migrated.edges)
         setViewState('ready')
       })
       .catch((err) => {

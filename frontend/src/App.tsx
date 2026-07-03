@@ -2,7 +2,7 @@ import { useEffect, useCallback, useRef, useState } from 'react'
 import { ReactFlowProvider, type Connection, type Edge } from '@xyflow/react'
 import { type Node } from '@xyflow/react'
 import { applyDagreLayout } from '@/utils/layout'
-import { serializeNode, serializeEdge, deserializeApiNode, deserializeApiEdge, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
+import { serializeNode, serializeEdge, deserializeApiNode, deserializeApiEdge, migrateClusterHandles, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { generateUUID } from '@/utils/uuid'
 import { getCenteredPosition } from '@/utils/viewportCenter'
 import { resolveVirtualEdgeParent } from '@/utils/virtualEdgeParent'
@@ -125,8 +125,10 @@ export default function App() {
             .filter((n) => n.type === 'group' || n.container_mode === true)
             .map((n) => [n.id, true])
         )
-        const rfNodes = (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxContainerMap))
-        const rfEdges = (apiEdges as ApiEdge[]).map(deserializeApiEdge)
+        const { nodes: rfNodes, edges: rfEdges } = migrateClusterHandles(
+          (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxContainerMap)),
+          (apiEdges as ApiEdge[]).map(deserializeApiEdge),
+        )
         const savedTheme = res.data.viewport?.theme_id
         if (savedTheme) setTheme(savedTheme)
         if (res.data.custom_style) setCustomStyle(res.data.custom_style as CustomStyleDef)
@@ -154,7 +156,8 @@ export default function App() {
       if (saved.custom_style) setCustomStyle(saved.custom_style)
       // Floor plans are backend-only; keep the store clear in standalone mode.
       setFloorMap(null)
-      loadCanvas(saved.nodes, saved.edges)
+      const migrated = migrateClusterHandles(saved.nodes, saved.edges)
+      loadCanvas(migrated.nodes, migrated.edges)
     } else {
       setFloorMap(null)
       loadCanvas(demoNodes, demoEdges)
@@ -788,11 +791,6 @@ export default function App() {
           open={!!pendingConnection}
           onClose={() => setPendingConnection(null)}
           onSubmit={handleEdgeConfirm}
-          initial={
-            pendingConnection?.sourceHandle?.includes('cluster') || pendingConnection?.targetHandle?.includes('cluster')
-              ? { type: 'cluster' }
-              : undefined
-          }
         />
 
         <EdgeModal

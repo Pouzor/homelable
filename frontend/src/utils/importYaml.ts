@@ -4,6 +4,7 @@ import type { NodeData, EdgeData } from '@/types'
 import type { YamlNode, YamlNodeConnection } from '@/types/yaml'
 import { generateUUID } from '@/utils/uuid'
 import { applyDagreLayout } from '@/utils/layout'
+import { migrateClusterHandles } from '@/utils/canvasSerializer'
 
 /**
  * Parse a YAML string and merge the resulting nodes/edges into the existing canvas.
@@ -170,5 +171,9 @@ export function parseYamlToCanvas(
   const mergedEdges = [...existingEdges, ...newEdges]
   const laidOut = applyDagreLayout(mergedNodes, mergedEdges)
 
-  return { nodes: laidOut, edges: mergedEdges, imported: newNodes.length }
+  // Cluster links are imported on the legacy 'cluster-left/right' handles;
+  // remap them to the per-side connection points (and give the side a point).
+  const migrated = migrateClusterHandles(laidOut, mergedEdges)
+
+  return { nodes: migrated.nodes, edges: migrated.edges, imported: newNodes.length }
 }
