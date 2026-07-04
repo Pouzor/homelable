@@ -351,9 +351,48 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
     ? segmentMidpoints(sourceX, sourceY, waypoints, targetX, targetY, pathStyle, sourcePosition)
     : []
 
+  // ── Arrowheads ─────────────────────────────────────────────────────────────
+  // Custom inline <marker> defs filled with the live strokeColor so they recolor
+  // reactively (custom_color / vlan / selected). Sized from the stroke width.
+  const markerStart = data?.marker_start === true
+  const markerEnd = data?.marker_end === true
+  const strokeW = (style.strokeWidth as number) ?? 2
+  const markerSize = 6 + strokeW * 2
+  const startMarkerId = `arrow-start-${id}`
+  const endMarkerId = `arrow-end-${id}`
+
+  const arrowMarker = (markerId: string, orient: string) => (
+    <marker
+      id={markerId}
+      viewBox="0 0 10 10"
+      refX={9}
+      refY={5}
+      markerWidth={markerSize}
+      markerHeight={markerSize}
+      markerUnits="userSpaceOnUse"
+      orient={orient}
+    >
+      <path d="M 0 0 L 10 5 L 0 10 z" fill={strokeColor} />
+    </marker>
+  )
+
   return (
     <>
-      <BaseEdge id={id} path={edgePath} style={animMode === 'basic' ? { ...style, stroke: 'transparent' } : style} interactionWidth={16} />
+      {(markerStart || markerEnd) && (
+        <defs>
+          {markerStart && arrowMarker(startMarkerId, 'auto-start-reverse')}
+          {markerEnd && arrowMarker(endMarkerId, 'auto')}
+        </defs>
+      )}
+
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        style={animMode === 'basic' ? { ...style, stroke: 'transparent' } : style}
+        interactionWidth={16}
+        markerStart={markerStart ? `url(#${startMarkerId})` : undefined}
+        markerEnd={markerEnd ? `url(#${endMarkerId})` : undefined}
+      />
 
       {animMode === 'basic' && (
         <path

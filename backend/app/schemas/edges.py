@@ -15,6 +15,8 @@ class EdgeBase(BaseModel):
     custom_color: str | None = None
     path_style: str | None = None
     animated: str = 'none'
+    marker_start: bool = False
+    marker_end: bool = False
     source_handle: str | None = None
     target_handle: str | None = None
     waypoints: list[dict[str, float]] | None = None
@@ -37,6 +39,8 @@ class EdgeUpdate(BaseModel):
     custom_color: str | None = None
     path_style: str | None = None
     animated: str | None = None
+    marker_start: bool | None = None
+    marker_end: bool | None = None
     source_handle: str | None = None
     target_handle: str | None = None
     waypoints: list[dict[str, float]] | None = None

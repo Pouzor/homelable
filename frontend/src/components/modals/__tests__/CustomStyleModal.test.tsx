@@ -124,6 +124,28 @@ describe('CustomStyleModal', () => {
     expect(markUnsaved).not.toHaveBeenCalled()
   })
 
+  it('edge editor exposes Start/End arrow toggles defaulting off', () => {
+    render(<CustomStyleModal open onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edges' }))
+    fireEvent.click(screen.getByRole('button', { name: /Ethernet/ }))
+    const startBtn = screen.getByRole('button', { name: 'Start' })
+    const endBtn = screen.getByRole('button', { name: 'End' })
+    expect(startBtn.getAttribute('aria-pressed')).toBe('false')
+    expect(endBtn.getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('toggling End arrow feeds arrowEnd to applyTypeEdgeStyle', () => {
+    const applyTypeEdgeStyle = vi.fn()
+    useCanvasStore.setState({ applyTypeEdgeStyle })
+    render(<CustomStyleModal open onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edges' }))
+    fireEvent.click(screen.getByRole('button', { name: /Ethernet/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'End' }))
+    fireEvent.click(screen.getByRole('button', { name: /Apply to existing Ethernet/ }))
+    expect(applyTypeEdgeStyle.mock.calls[0][1].arrowEnd).toBe(true)
+    expect(applyTypeEdgeStyle.mock.calls[0][1].arrowStart).toBe(false)
+  })
+
   it('editing path style updates the edge draft', () => {
     render(<CustomStyleModal open onClose={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Edges' }))

@@ -38,6 +38,8 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
   const [customColor, setCustomColor] = useState<string | undefined>(initial?.custom_color)
   const [pathStyle, setPathStyle] = useState<EdgePathStyle>(initial?.path_style ?? 'bezier')
   const [animation, setAnimation] = useState<AnimMode>(() => toAnimMode(initial?.animated))
+  const [markerStart, setMarkerStart] = useState<boolean>(initial?.marker_start ?? false)
+  const [markerEnd, setMarkerEnd] = useState<boolean>(initial?.marker_end ?? false)
 
   const effectiveColor = customColor ?? EDGE_DEFAULT_COLORS[type]
 
@@ -50,6 +52,8 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
       custom_color: customColor,
       path_style: pathStyle,
       animated: animation !== 'none' ? animation : undefined,
+      marker_start: markerStart,
+      marker_end: markerEnd,
     })
     onClose()
   }
@@ -148,6 +152,30 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
                   }}
                 >
                   {mode === 'none' ? 'None' : mode === 'basic' ? 'Basic' : mode === 'snake' ? 'Snake' : 'Flow'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Arrows</Label>
+            <div className={`flex rounded-md overflow-hidden border border-[#30363d] ${modalStyles['modal-interactive']}`}>
+              {([['Start', markerStart, setMarkerStart], ['End', markerEnd, setMarkerEnd]] as [string, boolean, (v: boolean) => void][]).map(([label, active, set], i) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => set(!active)}
+                  className="flex-1 py-1 text-xs capitalize transition-colors cursor-pointer"
+                  tabIndex={0}
+                  aria-label={`Arrow ${label} ${active ? 'on' : 'off'}`}
+                  aria-pressed={active}
+                  style={{
+                    background: active ? '#00d4ff22' : '#21262d',
+                    color: active ? '#00d4ff' : '#8b949e',
+                    borderRight: i === 0 ? '1px solid #30363d' : undefined,
+                  }}
+                >
+                  {label}
                 </button>
               ))}
             </div>

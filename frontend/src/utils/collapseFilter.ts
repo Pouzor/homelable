@@ -184,11 +184,18 @@ export function rewireEdgesForCollapse(
     if (src === null || tgt === null) continue
     if (src === tgt) continue
     const key = `${src}->${tgt}`
-    if (seen.has(key)) continue
-    seen.add(key)
     if (src === e.source && tgt === e.target) {
+      // Real edge between two visible nodes — always keep. A homelab has
+      // multiple parallel links between the same two devices, so these must
+      // NOT be de-duplicated. Record the pair so redundant collapse stubs to
+      // the same pair are still suppressed.
+      seen.add(key)
       out.push(e)
     } else {
+      // Rewired collapse stub — de-duplicate parallel stubs to the same
+      // visible pair (prevents a 20-device mesh rendering 20 stacked stubs).
+      if (seen.has(key)) continue
+      seen.add(key)
       out.push({ ...e, source: src, target: tgt, sourceHandle: null, targetHandle: null })
     }
   }

@@ -39,7 +39,7 @@ describe('themeStore', () => {
   it('setCustomStyle replaces the entire definition', () => {
     const def: CustomStyleDef = {
       nodes: { server: { borderColor: '#ff0000', borderOpacity: 1, bgColor: '#000000', bgOpacity: 1, iconColor: '#ff0000', iconOpacity: 1, width: 200, height: 80 } },
-      edges: { ethernet: { color: '#00ff00', opacity: 0.8, pathStyle: 'bezier', animated: 'none' } },
+      edges: { ethernet: { color: '#00ff00', opacity: 0.8, pathStyle: 'bezier', animated: 'none', arrowStart: false, arrowEnd: false } },
     }
     useThemeStore.getState().setCustomStyle(def)
     expect(useThemeStore.getState().customStyle.nodes.server?.borderColor).toBe('#ff0000')

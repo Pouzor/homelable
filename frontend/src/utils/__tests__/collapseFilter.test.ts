@@ -182,6 +182,17 @@ describe('rewireEdgesForCollapse', () => {
     expect(out[0]).toBe(edges[0])
   })
 
+  it('keeps multiple parallel edges between two visible nodes (no dedupe)', () => {
+    // Regression: parallel links between the same two visible devices must all
+    // render. The seen-key dedupe applies only to rewired collapse stubs.
+    const nodes = [mkNode('a'), mkNode('b', { position: FAR })]
+    const edges = [mkEdge('e1', 'a', 'b'), mkEdge('e2', 'a', 'b'), mkEdge('e3', 'a', 'b')]
+    const info = computeCollapseInfo(nodes)
+    const out = rewireEdgesForCollapse(edges, nodes, info.visibleIds, info.hiddenBy)
+    expect(out).toHaveLength(3)
+    expect(out.map((e) => e.id)).toEqual(['e1', 'e2', 'e3'])
+  })
+
   it('reroutes a cross-boundary edge to the collapsed parentId ancestor', () => {
     const nodes = [
       mkNode('zone', { collapsed: true }),

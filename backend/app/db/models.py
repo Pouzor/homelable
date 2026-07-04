@@ -86,6 +86,8 @@ class Edge(Base):
     custom_color: Mapped[str | None] = mapped_column(String)
     path_style: Mapped[str | None] = mapped_column(String)
     animated: Mapped[str] = mapped_column(String, nullable=False, default='none')
+    marker_start: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    marker_end: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     source_handle: Mapped[str | None] = mapped_column(String)
     target_handle: Mapped[str | None] = mapped_column(String)
     waypoints: Mapped[list[dict[str, float]] | None] = mapped_column(JSON, nullable=True)

@@ -169,6 +169,10 @@ export interface EdgeData extends Record<string, unknown> {
   custom_color?: string
   path_style?: EdgePathStyle
   animated?: boolean | 'snake' | 'flow' | 'basic' | 'none'
+  /** Filled arrowhead at the source end. */
+  marker_start?: boolean
+  /** Filled arrowhead at the target end. */
+  marker_end?: boolean
   waypoints?: Waypoint[]
 }
 
@@ -257,6 +261,10 @@ export interface EdgeTypeStyle {
   opacity: number
   pathStyle: EdgePathStyle
   animated: 'none' | 'snake' | 'flow' | 'basic'
+  /** Default filled arrowhead at the source end for new edges of this type. */
+  arrowStart: boolean
+  /** Default filled arrowhead at the target end for new edges of this type. */
+  arrowEnd: boolean
 }
 
 export interface CustomStyleDef {

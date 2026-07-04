@@ -243,6 +243,19 @@ describe('serializeEdge', () => {
     expect(result.animated).toBe(true)
   })
 
+  it('serializes arrow markers', () => {
+    const edge = makeRfEdge({ data: { type: 'ethernet', marker_start: true, marker_end: true } })
+    const result = serializeEdge(edge)
+    expect(result.marker_start).toBe(true)
+    expect(result.marker_end).toBe(true)
+  })
+
+  it('defaults arrow markers to false when absent', () => {
+    const result = serializeEdge(makeRfEdge())
+    expect(result.marker_start).toBe(false)
+    expect(result.marker_end).toBe(false)
+  })
+
   it('nulls optional fields when absent', () => {
     const result = serializeEdge(makeRfEdge({ sourceHandle: undefined, targetHandle: undefined }))
     expect(result.source_handle).toBeNull()

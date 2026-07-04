@@ -64,6 +64,8 @@ function defaultEdgeStyle(edgeType: EdgeType): EdgeTypeStyle {
     opacity: 1,
     pathStyle: 'bezier',
     animated: 'none',
+    arrowStart: false,
+    arrowEnd: false,
   }
 }
 
@@ -278,6 +280,28 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
             <option value="flow">Flow</option>
             <option value="snake">Snake</option>
           </select>
+        </div>
+
+        <div>
+          <div className="text-xs text-[#8b949e] mb-2">Arrows</div>
+          <div className="flex gap-2">
+            {([['Start', 'arrowStart'], ['End', 'arrowEnd']] as [string, 'arrowStart' | 'arrowEnd'][]).map(([label, key]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => set(key, !style[key])}
+                aria-pressed={style[key]}
+                className="px-3 py-1 text-xs rounded border transition-colors"
+                style={{
+                  borderColor: style[key] ? '#00d4ff' : '#30363d',
+                  background: style[key] ? '#00d4ff22' : 'transparent',
+                  color: style[key] ? '#00d4ff' : '#8b949e',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

@@ -332,6 +332,25 @@ describe('canvasStore', () => {
     expect(edges[0].data?.animated).toBe('snake')
   })
 
+  it('onConnect allows multiple edges between the same two nodes (no dedupe)', () => {
+    // Regression: React Flow addEdge() dropped a second edge between the same
+    // source+target when handles were null/equal. A homelab has multiple links
+    // between two devices, so every connect must add an edge.
+    useCanvasStore.getState().onConnect({ source: 'n1', target: 'n2', sourceHandle: null, targetHandle: null })
+    useCanvasStore.getState().onConnect({ source: 'n1', target: 'n2', sourceHandle: null, targetHandle: null })
+    const { edges } = useCanvasStore.getState()
+    expect(edges).toHaveLength(2)
+    expect(edges[0].id).not.toBe(edges[1].id)
+  })
+
+  it('onConnect preserves arrow markers from edge data', () => {
+    const conn = Object.assign({ source: 'n1', target: 'n2', sourceHandle: null, targetHandle: null }, { type: 'ethernet', marker_start: true, marker_end: true })
+    useCanvasStore.getState().onConnect(conn)
+    const { edges } = useCanvasStore.getState()
+    expect(edges[0].data?.marker_start).toBe(true)
+    expect(edges[0].data?.marker_end).toBe(true)
+  })
+
   it('onConnect preserves sourceHandle and targetHandle for cluster edges', () => {
     const conn = Object.assign({ source: 'n1', target: 'n2', sourceHandle: 'cluster-right', targetHandle: 'cluster-left' }, { type: 'cluster' })
     useCanvasStore.getState().onConnect(conn)
@@ -1301,14 +1320,17 @@ describe('canvasStore — custom style apply', () => {
     const e2: Edge<EdgeData> = { id: 'e2', source: 'n1', target: 'n2', type: 'wifi', data: { type: 'wifi' } }
     useCanvasStore.setState({ nodes: [], edges: [e1, e2] })
 
-    useCanvasStore.getState().applyTypeEdgeStyle('ethernet', { color: '#00ff00', opacity: 1, pathStyle: 'smooth', animated: 'flow' })
+    useCanvasStore.getState().applyTypeEdgeStyle('ethernet', { color: '#00ff00', opacity: 1, pathStyle: 'smooth', animated: 'flow', arrowStart: true, arrowEnd: true })
 
     const updated1 = useCanvasStore.getState().edges.find((e) => e.id === 'e1')!
     const updated2 = useCanvasStore.getState().edges.find((e) => e.id === 'e2')!
     expect(updated1.data?.custom_color).toBe('#00ff00')
     expect(updated1.data?.path_style).toBe('smooth')
     expect(updated1.data?.animated).toBe('flow')
+    expect(updated1.data?.marker_start).toBe(true)
+    expect(updated1.data?.marker_end).toBe(true)
     expect(updated2.data?.custom_color).toBeUndefined()
+    expect(updated2.data?.marker_end).toBeUndefined()
   })
 
   it('applyAllCustomStyles applies all defined types', () => {
@@ -1322,7 +1344,7 @@ describe('canvasStore — custom style apply', () => {
         proxmox: { borderColor: '#ff6e00', borderOpacity: 1, bgColor: '#111', bgOpacity: 1, iconColor: '#ff6e00', iconOpacity: 1, width: 0, height: 0 },
       },
       edges: {
-        ethernet: { color: '#aabbcc', opacity: 1, pathStyle: 'bezier', animated: 'none' },
+        ethernet: { color: '#aabbcc', opacity: 1, pathStyle: 'bezier', animated: 'none', arrowStart: false, arrowEnd: true },
       },
     })
 
@@ -1332,6 +1354,8 @@ describe('canvasStore — custom style apply', () => {
     expect(np.data.custom_colors?.border).toBe('#ff6e00')
     expect(ns.data.custom_colors?.border).toBeUndefined()
     expect(e.data?.custom_color).toBe('#aabbcc')
+    expect(e.data?.marker_end).toBe(true)
+    expect(e.data?.marker_start).toBe(false)
     expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
   })
 

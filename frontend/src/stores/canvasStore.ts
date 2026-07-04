@@ -7,7 +7,6 @@ import {
   type Connection,
   applyNodeChanges,
   applyEdgeChanges,
-  addEdge,
 } from '@xyflow/react'
 import type { NodeData, EdgeData, NodeType, EdgeType, NodeTypeStyle, EdgeTypeStyle, CustomStyleDef, ServiceStatus, FloorMapConfig } from '@/types'
 import { generateUUID } from '@/utils/uuid'
@@ -268,14 +267,22 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     set((state) => {
       const extra = connection as Connection & Partial<EdgeData>
       const edgeType = extra.type ?? 'ethernet'
+      // Build the edge with our own unique id and append directly instead of
+      // React Flow's addEdge(): addEdge silently drops any new edge whose
+      // source+target already match an existing edge when handles are null/equal
+      // (connectionExists dedupe). A homelab legitimately has multiple links
+      // between the same two devices, so we allow them.
+      const newEdge: Edge<EdgeData> = {
+        id: `edge-${generateUUID()}`,
+        source: connection.source,
+        target: connection.target,
+        sourceHandle: normalizeHandle(extra.sourceHandle),
+        targetHandle: normalizeHandle(extra.targetHandle),
+        type: edgeType,
+        data: { type: edgeType, label: extra.label, vlan_id: extra.vlan_id, custom_color: extra.custom_color, path_style: extra.path_style, animated: extra.animated, marker_start: extra.marker_start, marker_end: extra.marker_end },
+      }
       return {
-        edges: addEdge({
-          ...connection,
-          sourceHandle: normalizeHandle(extra.sourceHandle),
-          targetHandle: normalizeHandle(extra.targetHandle),
-          type: edgeType,
-          data: { type: edgeType, label: extra.label, vlan_id: extra.vlan_id, custom_color: extra.custom_color, path_style: extra.path_style, animated: extra.animated },
-        }, state.edges),
+        edges: [...state.edges, newEdge],
         hasUnsavedChanges: true,
       }
     }),
@@ -816,6 +823,8 @@ export const useCanvasStore = create<CanvasState>((set) => ({
             custom_color: applyOpacity(style.color, style.opacity),
             path_style: style.pathStyle,
             animated: style.animated,
+            marker_start: style.arrowStart,
+            marker_end: style.arrowEnd,
           } as EdgeData,
         }
       }),
@@ -854,6 +863,8 @@ export const useCanvasStore = create<CanvasState>((set) => ({
             custom_color: applyOpacity(style.color, style.opacity),
             path_style: style.pathStyle,
             animated: style.animated,
+            marker_start: style.arrowStart,
+            marker_end: style.arrowEnd,
           } as EdgeData,
         }
       })

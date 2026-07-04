@@ -51,6 +51,28 @@ async def test_save_canvas_creates_nodes_and_edges(client: AsyncClient, headers:
     assert canvas["viewport"] == {"x": 1, "y": 2, "zoom": 1.5}
 
 
+async def test_save_canvas_round_trips_arrow_markers(client: AsyncClient, headers: dict):
+    n1 = node_payload(label="Router", type="router")
+    n2 = node_payload(label="Switch", type="switch")
+    e1 = edge_payload(n1["id"], n2["id"], marker_start=True, marker_end=True)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    edge = (await client.get("/api/v1/canvas", headers=headers)).json()["edges"][0]
+    assert edge["marker_start"] is True
+    assert edge["marker_end"] is True
+
+
+async def test_save_canvas_defaults_arrow_markers_off(client: AsyncClient, headers: dict):
+    n1 = node_payload(label="Router", type="router")
+    n2 = node_payload(label="Switch", type="switch")
+    e1 = edge_payload(n1["id"], n2["id"])
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    edge = (await client.get("/api/v1/canvas", headers=headers)).json()["edges"][0]
+    assert edge["marker_start"] is False
+    assert edge["marker_end"] is False
+
+
 async def test_save_canvas_round_trips_per_side_handles(client: AsyncClient, headers: dict):
     # Regression (#243): top/left/right_handles must persist across save+reload,
     # not just bottom_handles.
