@@ -118,6 +118,8 @@ async def init_db() -> None:
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN properties JSON")
         with suppress(OperationalError):
+            await conn.exec_driver_sql("UPDATE pending_devices SET properties = '[]' WHERE properties IS NULL")
+        with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE scan_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'ip'")
         # --- Zigbee schema migrations (logged variant per CLAUDE.md feedback) ---
         zigbee_migrations: list[tuple[str, str]] = [

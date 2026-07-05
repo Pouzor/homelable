@@ -179,6 +179,21 @@ async def test_persist_keeps_hidden_hidden(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_pending_endpoint_tolerates_legacy_null_properties(client: AsyncClient, headers: dict, db_session) -> None:
+    # Legacy row: properties column NULL (added by migration on older DBs).
+    dev = PendingDevice(
+        id=str(uuid.uuid4()), ip="192.168.1.9", suggested_type="server",
+        status="pending", discovery_source="arp",
+    )
+    dev.properties = None
+    db_session.add(dev)
+    await db_session.commit()
+    res = await client.get("/api/v1/scan/pending", headers=headers)
+    assert res.status_code == 200
+    assert res.json()[0]["properties"] == []
+
+
+@pytest.mark.asyncio
 async def test_persist_never_deletes(db_session) -> None:
     await _persist_pending_import(db_session, [_guest_node(101, "10.0.0.5")], [])
     # A later sync that no longer includes vm101 must not remove it.

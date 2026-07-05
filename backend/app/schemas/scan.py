@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class PendingDeviceResponse(BaseModel):
@@ -34,6 +34,12 @@ class PendingDeviceResponse(BaseModel):
     node_last_scan: datetime | None = None
     node_last_modified: datetime | None = None
     node_last_seen: datetime | None = None
+
+    @field_validator("properties", mode="before")
+    @classmethod
+    def _coerce_properties(cls, v: Any) -> list[Any]:
+        # Legacy rows (column added by migration) have properties = NULL.
+        return v if isinstance(v, list) else []
 
     model_config = {"from_attributes": True}
 
