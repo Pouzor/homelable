@@ -250,6 +250,19 @@ describe('serializeEdge', () => {
     expect(result.marker_end).toBe('arrow')
   })
 
+  it('serializes line style + width multiplier', () => {
+    const edge = makeRfEdge({ data: { type: 'wifi', line_style: 'dotted', width_mult: 3 } })
+    const result = serializeEdge(edge)
+    expect(result.line_style).toBe('dotted')
+    expect(result.width_mult).toBe(3)
+  })
+
+  it('nulls line style + width multiplier when absent', () => {
+    const result = serializeEdge(makeRfEdge())
+    expect(result.line_style).toBeNull()
+    expect(result.width_mult).toBeNull()
+  })
+
   it('coerces legacy boolean markers to shape strings', () => {
     const edge = makeRfEdge({ data: { type: 'ethernet', marker_start: true, marker_end: false } })
     const result = serializeEdge(edge)

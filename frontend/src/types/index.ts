@@ -156,6 +156,9 @@ export interface NodeData extends Record<string, unknown> {
 
 export type EdgePathStyle = 'bezier' | 'smooth'
 
+/** How the edge line itself is drawn (independent of color/width). */
+export type EdgeLineStyle = 'solid' | 'dashed' | 'dotted'
+
 /**
  * Endpoint marker shape for an edge end. `none` = no marker.
  * Legacy saves stored a boolean (`true` = filled arrow) — coerced via
@@ -175,6 +178,10 @@ export interface EdgeData extends Record<string, unknown> {
   speed?: string
   custom_color?: string
   path_style?: EdgePathStyle
+  /** Line render style override. Unset = use the edge type's default preset. */
+  line_style?: EdgeLineStyle
+  /** Stroke-width multiplier (1×–4×) applied to the edge type's base width. */
+  width_mult?: number
   animated?: boolean | 'snake' | 'flow' | 'basic' | 'none'
   /** Marker shape at the source end. Legacy boolean (`true`=arrow) coerced on read. */
   marker_start?: MarkerShape | boolean
@@ -267,6 +274,10 @@ export interface EdgeTypeStyle {
   color: string
   opacity: number
   pathStyle: EdgePathStyle
+  /** Line render style (solid/dashed/dotted). */
+  lineStyle: EdgeLineStyle
+  /** Stroke-width multiplier (1×–4×). */
+  widthMult: number
   animated: 'none' | 'snake' | 'flow' | 'basic'
   /** Default marker shape at the source end for new edges of this type. */
   arrowStart: MarkerShape

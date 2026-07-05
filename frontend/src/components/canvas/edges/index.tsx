@@ -9,11 +9,12 @@ import {
   type EdgeProps,
   type Edge,
 } from '@xyflow/react'
-import type { EdgeData, EdgeType, Waypoint } from '@/types'
+import type { EdgeData, EdgeLineStyle, EdgeType, Waypoint } from '@/types'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { THEMES } from '@/utils/themes'
 import { MARKER_GEOMETRY, normalizeMarker, type NonNoneMarkerShape } from '@/utils/edgeMarkers'
+import { clampWidthMult, dashArrayFor } from '@/utils/edgeLineStyle'
 import { buildWaypointPath, getAddWaypointHandlePosition, getWaypointLabelPosition, snap45, snap45both } from './waypointUtils'
 
 const VLAN_COLORS = ['#00d4ff', '#a855f7', '#39d353', '#ff6e00', '#e3b341', '#f85149']
@@ -350,8 +351,23 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
     : customColor
     ?? (edgeType === 'vlan' ? getVlanColor(data?.vlan_id as number | undefined) : (BASE_STYLES[edgeType].stroke as string ?? edgeColors.ethernet))
 
+  // Per-edge line render overrides (custom style editor). Width multiplies the
+  // type's base width; line style overrides the preset dash pattern. Both are
+  // optional — unset leaves the type default from BASE_STYLES untouched.
+  const baseWidth = (BASE_STYLES[edgeType].strokeWidth as number) ?? 2
+  const widthMult = clampWidthMult(data?.width_mult as number | undefined)
+  const resolvedWidth = baseWidth * widthMult
+  const lineStyleOverride = data?.line_style as EdgeLineStyle | undefined
+
   const style: React.CSSProperties = {
     ...BASE_STYLES[edgeType],
+    strokeWidth: resolvedWidth,
+    ...(lineStyleOverride
+      ? {
+          strokeDasharray: dashArrayFor(lineStyleOverride, resolvedWidth),
+          strokeLinecap: lineStyleOverride === 'dotted' ? 'round' : 'butt',
+        }
+      : {}),
     ...(edgeType === 'vlan' ? { stroke: getVlanColor(data?.vlan_id as number | undefined) } : {}),
     ...(customColor ? { stroke: customColor } : {}),
     ...(selected ? { stroke: theme.colors.edgeSelectedColor, filter: `drop-shadow(0 0 4px ${theme.colors.edgeSelectedColor}88)` } : {}),

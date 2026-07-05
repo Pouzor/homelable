@@ -14,9 +14,13 @@ import { clampHandles, sideDefault } from '@/utils/handleUtils'
 import { THEMES } from '@/utils/themes'
 import { applyOpacity } from '@/utils/colorUtils'
 import type {
-  NodeType, EdgeType, NodeTypeStyle, EdgeTypeStyle, CustomStyleDef, EdgePathStyle,
+  NodeType, EdgeType, NodeTypeStyle, EdgeTypeStyle, CustomStyleDef, EdgePathStyle, EdgeLineStyle,
 } from '@/types'
 import { NODE_TYPE_LABELS, EDGE_TYPE_LABELS } from '@/types'
+import {
+  EDGE_LINE_STYLES, EDGE_LINE_STYLE_LABELS, EDGE_TYPE_BASE_WIDTH, EDGE_TYPE_DEFAULT_LINE,
+  clampWidthMult, dashArrayFor,
+} from '@/utils/edgeLineStyle'
 import { MarkerShapePicker } from './MarkerShapePicker'
 
 // ── Node types exposed for custom style, grouped by category (skip groupRect/group) ──
@@ -64,10 +68,39 @@ function defaultEdgeStyle(edgeType: EdgeType): EdgeTypeStyle {
     color: THEMES.default.colors.edgeColors[edgeType],
     opacity: 1,
     pathStyle: 'bezier',
+    lineStyle: EDGE_TYPE_DEFAULT_LINE[edgeType],
+    widthMult: 1,
     animated: 'none',
     arrowStart: 'none',
     arrowEnd: 'none',
   }
+}
+
+// ── Edge line preview (renders the actual dash pattern + width) ────────────────
+
+interface EdgeLineSwatchProps {
+  color: string
+  lineStyle: EdgeLineStyle
+  strokeWidth: number
+  width?: number
+}
+
+function EdgeLineSwatch({ color, lineStyle, strokeWidth, width = 40 }: EdgeLineSwatchProps) {
+  const h = 12
+  return (
+    <svg width={width} height={h} className="shrink-0" aria-hidden>
+      <line
+        x1={2}
+        y1={h / 2}
+        x2={width - 2}
+        y2={h / 2}
+        stroke={color}
+        strokeWidth={strokeWidth}
+        strokeDasharray={dashArrayFor(lineStyle, strokeWidth)}
+        strokeLinecap={lineStyle === 'dotted' ? 'round' : 'butt'}
+      />
+    </svg>
+  )
 }
 
 // ── Color + opacity row ──────────────────────────────────────────────────────
@@ -248,6 +281,52 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
       </div>
 
       <div className="border-t border-[#30363d] pt-3 flex flex-col gap-3">
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-[#8b949e]">Line style</span>
+            <EdgeLineSwatch
+              color={applyOpacity(style.color, style.opacity)}
+              lineStyle={style.lineStyle}
+              strokeWidth={EDGE_TYPE_BASE_WIDTH[edgeType] * style.widthMult}
+              width={72}
+            />
+          </div>
+          <div className="flex gap-2">
+            {EDGE_LINE_STYLES.map((ls) => (
+              <button
+                key={ls}
+                type="button"
+                onClick={() => set('lineStyle', ls)}
+                className="px-3 py-1 text-xs rounded border transition-colors"
+                style={{
+                  borderColor: style.lineStyle === ls ? '#00d4ff' : '#30363d',
+                  background: style.lineStyle === ls ? '#00d4ff22' : 'transparent',
+                  color: style.lineStyle === ls ? '#00d4ff' : '#8b949e',
+                }}
+              >
+                {EDGE_LINE_STYLE_LABELS[ls]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-[#8b949e]">Line width</span>
+            <span className="text-xs text-[#8b949e]">{style.widthMult}×</span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={4}
+            step={1}
+            value={style.widthMult}
+            onChange={(e) => set('widthMult', clampWidthMult(parseInt(e.target.value, 10)))}
+            aria-label="Line width multiplier"
+            className="w-full h-1 accent-[#00d4ff]"
+          />
+        </div>
+
         <div>
           <div className="text-xs text-[#8b949e] mb-2">Path style</div>
           <div className="flex gap-2">
@@ -463,6 +542,8 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
                 const swatchColor = style
                   ? applyOpacity(style.color, style.opacity)
                   : THEMES.default.colors.edgeColors[t]
+                const lineStyle = style?.lineStyle ?? EDGE_TYPE_DEFAULT_LINE[t]
+                const widthMult = clampWidthMult(style?.widthMult)
 
                 return (
                   <button
@@ -476,9 +557,10 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
                     }}
                   >
                     <span className="flex-1 truncate">{EDGE_TYPE_LABELS[t]}</span>
-                    <span
-                      className="w-8 h-1.5 rounded-full shrink-0"
-                      style={{ background: swatchColor }}
+                    <EdgeLineSwatch
+                      color={swatchColor}
+                      lineStyle={lineStyle}
+                      strokeWidth={EDGE_TYPE_BASE_WIDTH[t] * widthMult}
                     />
                   </button>
                 )

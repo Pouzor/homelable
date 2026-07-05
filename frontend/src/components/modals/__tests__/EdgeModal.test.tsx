@@ -125,6 +125,41 @@ describe('EdgeModal', () => {
     expect(onSubmit.mock.calls[0][0].path_style).toBe('smooth')
   })
 
+  // ── Line style + width ────────────────────────────────────────────────────
+
+  it('defaults line style to the edge type preset (ethernet → solid)', () => {
+    const onSubmit = vi.fn()
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    expect(onSubmit.mock.calls[0][0].line_style).toBe('solid')
+    expect(onSubmit.mock.calls[0][0].width_mult).toBe(1)
+  })
+
+  it('follows the type default (wifi → dashed) until overridden', () => {
+    const onSubmit = vi.fn()
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} initial={{ type: 'wifi' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    expect(onSubmit.mock.calls[0][0].line_style).toBe('dashed')
+  })
+
+  it('picking a line style + width sends line_style/width_mult', () => {
+    const onSubmit = vi.fn()
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Line style dotted' }))
+    fireEvent.change(screen.getByRole('slider', { name: 'Line width multiplier' }), { target: { value: '4' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    expect(onSubmit.mock.calls[0][0].line_style).toBe('dotted')
+    expect(onSubmit.mock.calls[0][0].width_mult).toBe(4)
+  })
+
+  it('pre-fills line style + width from initial prop', () => {
+    const onSubmit = vi.fn()
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} initial={{ line_style: 'dashed', width_mult: 3 }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    expect(onSubmit.mock.calls[0][0].line_style).toBe('dashed')
+    expect(onSubmit.mock.calls[0][0].width_mult).toBe(3)
+  })
+
   // ── Animation select ──────────────────────────────────────────────────────
 
   it('animation defaults to None — animated omitted from payload', () => {

@@ -1320,12 +1320,14 @@ describe('canvasStore — custom style apply', () => {
     const e2: Edge<EdgeData> = { id: 'e2', source: 'n1', target: 'n2', type: 'wifi', data: { type: 'wifi' } }
     useCanvasStore.setState({ nodes: [], edges: [e1, e2] })
 
-    useCanvasStore.getState().applyTypeEdgeStyle('ethernet', { color: '#00ff00', opacity: 1, pathStyle: 'smooth', animated: 'flow', arrowStart: 'circle', arrowEnd: 'arrow' })
+    useCanvasStore.getState().applyTypeEdgeStyle('ethernet', { color: '#00ff00', opacity: 1, pathStyle: 'smooth', lineStyle: 'dotted', widthMult: 3, animated: 'flow', arrowStart: 'circle', arrowEnd: 'arrow' })
 
     const updated1 = useCanvasStore.getState().edges.find((e) => e.id === 'e1')!
     const updated2 = useCanvasStore.getState().edges.find((e) => e.id === 'e2')!
     expect(updated1.data?.custom_color).toBe('#00ff00')
     expect(updated1.data?.path_style).toBe('smooth')
+    expect(updated1.data?.line_style).toBe('dotted')
+    expect(updated1.data?.width_mult).toBe(3)
     expect(updated1.data?.animated).toBe('flow')
     expect(updated1.data?.marker_start).toBe('circle')
     expect(updated1.data?.marker_end).toBe('arrow')
@@ -1344,7 +1346,7 @@ describe('canvasStore — custom style apply', () => {
         proxmox: { borderColor: '#ff6e00', borderOpacity: 1, bgColor: '#111', bgOpacity: 1, iconColor: '#ff6e00', iconOpacity: 1, width: 0, height: 0 },
       },
       edges: {
-        ethernet: { color: '#aabbcc', opacity: 1, pathStyle: 'bezier', animated: 'none', arrowStart: 'none', arrowEnd: 'square' },
+        ethernet: { color: '#aabbcc', opacity: 1, pathStyle: 'bezier', lineStyle: 'dashed', widthMult: 2, animated: 'none', arrowStart: 'none', arrowEnd: 'square' },
       },
     })
 
@@ -1354,6 +1356,8 @@ describe('canvasStore — custom style apply', () => {
     expect(np.data.custom_colors?.border).toBe('#ff6e00')
     expect(ns.data.custom_colors?.border).toBeUndefined()
     expect(e.data?.custom_color).toBe('#aabbcc')
+    expect(e.data?.line_style).toBe('dashed')
+    expect(e.data?.width_mult).toBe(2)
     expect(e.data?.marker_end).toBe('square')
     expect(e.data?.marker_start).toBe('none')
     expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)

@@ -85,6 +85,8 @@ class Edge(Base):
     speed: Mapped[str | None] = mapped_column(String)
     custom_color: Mapped[str | None] = mapped_column(String)
     path_style: Mapped[str | None] = mapped_column(String)
+    line_style: Mapped[str | None] = mapped_column(String)
+    width_mult: Mapped[float | None] = mapped_column(Float)
     animated: Mapped[str] = mapped_column(String, nullable=False, default='none')
     marker_start: Mapped[str] = mapped_column(String, nullable=False, default='none')
     marker_end: Mapped[str] = mapped_column(String, nullable=False, default='none')

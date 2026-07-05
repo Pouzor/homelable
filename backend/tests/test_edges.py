@@ -91,6 +91,31 @@ async def test_update_edge_custom_color_and_path_style(client: AsyncClient, head
     assert res.json()["path_style"] == "smooth"
 
 
+async def test_create_edge_with_line_style_and_width(client: AsyncClient, headers: dict, two_nodes):
+    src, tgt = two_nodes
+    res = await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "wifi", "line_style": "dotted", "width_mult": 3}, headers=headers)
+    assert res.status_code == 201
+    assert res.json()["line_style"] == "dotted"
+    assert res.json()["width_mult"] == 3
+
+
+async def test_update_edge_line_style_and_width(client: AsyncClient, headers: dict, two_nodes):
+    src, tgt = two_nodes
+    edge_id = (await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet"}, headers=headers)).json()["id"]
+    res = await client.patch(f"/api/v1/edges/{edge_id}", json={"line_style": "dashed", "width_mult": 2}, headers=headers)
+    assert res.status_code == 200
+    assert res.json()["line_style"] == "dashed"
+    assert res.json()["width_mult"] == 2
+
+
+async def test_create_edge_defaults_line_style_none(client: AsyncClient, headers: dict, two_nodes):
+    src, tgt = two_nodes
+    res = await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet"}, headers=headers)
+    assert res.status_code == 201
+    assert res.json()["line_style"] is None
+    assert res.json()["width_mult"] is None
+
+
 async def test_create_edge_with_marker_shapes(client: AsyncClient, headers: dict, two_nodes):
     src, tgt = two_nodes
     res = await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet", "marker_start": "diamond", "marker_end": "arrow"}, headers=headers)

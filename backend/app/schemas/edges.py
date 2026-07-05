@@ -14,6 +14,8 @@ class EdgeBase(BaseModel):
     speed: str | None = None
     custom_color: str | None = None
     path_style: str | None = None
+    line_style: str | None = None
+    width_mult: float | None = None
     animated: str = 'none'
     marker_start: str = 'none'
     marker_end: str = 'none'
@@ -43,6 +45,8 @@ class EdgeUpdate(BaseModel):
     speed: str | None = None
     custom_color: str | None = None
     path_style: str | None = None
+    line_style: str | None = None
+    width_mult: float | None = None
     animated: str | None = None
     marker_start: str | None = None
     marker_end: str | None = None

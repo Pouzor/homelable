@@ -7,9 +7,13 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { EDGE_TYPE_LABELS, type EdgeData, type EdgePathStyle, type EdgeType, type MarkerShape } from '@/types'
+import { EDGE_TYPE_LABELS, type EdgeData, type EdgeLineStyle, type EdgePathStyle, type EdgeType, type MarkerShape } from '@/types'
 import { EDGE_DEFAULT_COLORS } from '@/utils/edgeColors'
 import { normalizeMarker } from '@/utils/edgeMarkers'
+import {
+  EDGE_LINE_STYLES, EDGE_LINE_STYLE_LABELS, EDGE_TYPE_BASE_WIDTH, EDGE_TYPE_DEFAULT_LINE,
+  clampWidthMult, dashArrayFor,
+} from '@/utils/edgeLineStyle'
 import { MarkerShapePicker } from './MarkerShapePicker'
 
 const EDGE_TYPES = Object.entries(EDGE_TYPE_LABELS) as [EdgeType, string][]
@@ -42,8 +46,13 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
   const [animation, setAnimation] = useState<AnimMode>(() => toAnimMode(initial?.animated))
   const [markerStart, setMarkerStart] = useState<MarkerShape>(normalizeMarker(initial?.marker_start))
   const [markerEnd, setMarkerEnd] = useState<MarkerShape>(normalizeMarker(initial?.marker_end))
+  // Undefined = follow the edge type's default line preset (live, like color).
+  const [lineStyle, setLineStyle] = useState<EdgeLineStyle | undefined>(initial?.line_style)
+  const [widthMult, setWidthMult] = useState<number>(clampWidthMult(initial?.width_mult))
 
   const effectiveColor = customColor ?? EDGE_DEFAULT_COLORS[type]
+  const effectiveLineStyle = lineStyle ?? EDGE_TYPE_DEFAULT_LINE[type]
+  const previewWidth = EDGE_TYPE_BASE_WIDTH[type] * widthMult
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -53,6 +62,8 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
       vlan_id: type === 'vlan' && vlanId ? parseInt(vlanId) : undefined,
       custom_color: customColor,
       path_style: pathStyle,
+      line_style: effectiveLineStyle,
+      width_mult: widthMult,
       animated: animation !== 'none' ? animation : undefined,
       marker_start: markerStart,
       marker_end: markerEnd,
@@ -134,6 +145,60 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground">Line Style</Label>
+              <svg width={56} height={12} aria-hidden>
+                <line
+                  x1={2}
+                  y1={6}
+                  x2={54}
+                  y2={6}
+                  stroke={effectiveColor}
+                  strokeWidth={previewWidth}
+                  strokeDasharray={dashArrayFor(effectiveLineStyle, previewWidth)}
+                  strokeLinecap={effectiveLineStyle === 'dotted' ? 'round' : 'butt'}
+                />
+              </svg>
+            </div>
+            <div className={`flex rounded-md overflow-hidden border border-[#30363d] ${modalStyles['modal-interactive']}`}>
+              {EDGE_LINE_STYLES.map((ls, i) => (
+                <button
+                  key={ls}
+                  type="button"
+                  onClick={() => setLineStyle(ls)}
+                  className="flex-1 py-1 text-xs transition-colors cursor-pointer"
+                  tabIndex={0}
+                  aria-label={`Line style ${ls}`}
+                  style={{
+                    background: effectiveLineStyle === ls ? '#00d4ff22' : '#21262d',
+                    color: effectiveLineStyle === ls ? '#00d4ff' : '#8b949e',
+                    borderRight: i < EDGE_LINE_STYLES.length - 1 ? '1px solid #30363d' : undefined,
+                  }}
+                >
+                  {EDGE_LINE_STYLE_LABELS[ls]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground">Line Width</Label>
+              <span className="text-xs text-muted-foreground">{widthMult}×</span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={4}
+              step={1}
+              value={widthMult}
+              onChange={(e) => setWidthMult(clampWidthMult(parseInt(e.target.value, 10)))}
+              aria-label="Line width multiplier"
+              className="w-full h-1 accent-[#00d4ff]"
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">

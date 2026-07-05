@@ -49,6 +49,8 @@ export interface ApiEdge {
   speed?: string | null
   custom_color?: string | null
   path_style?: string | null
+  line_style?: string | null
+  width_mult?: number | null
   animated?: boolean | 'snake' | 'flow' | 'basic' | 'none'
   marker_start?: string | boolean | null
   marker_end?: string | boolean | null
@@ -144,6 +146,8 @@ export function serializeEdge(e: Edge<EdgeData>): Record<string, unknown> {
     speed: e.data?.speed ?? null,
     custom_color: e.data?.custom_color ?? null,
     path_style: e.data?.path_style ?? null,
+    line_style: e.data?.line_style ?? null,
+    width_mult: e.data?.width_mult ?? null,
     animated: e.data?.animated ?? false,
     marker_start: normalizeMarker(e.data?.marker_start),
     marker_end: normalizeMarker(e.data?.marker_end),

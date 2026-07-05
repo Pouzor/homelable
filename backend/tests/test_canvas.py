@@ -62,6 +62,17 @@ async def test_save_canvas_round_trips_marker_shapes(client: AsyncClient, header
     assert edge["marker_end"] == "arrow"
 
 
+async def test_save_canvas_round_trips_line_style_and_width(client: AsyncClient, headers: dict):
+    n1 = node_payload(label="Router", type="router")
+    n2 = node_payload(label="Switch", type="switch")
+    e1 = edge_payload(n1["id"], n2["id"], type="wifi", line_style="dotted", width_mult=3)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    edge = (await client.get("/api/v1/canvas", headers=headers)).json()["edges"][0]
+    assert edge["line_style"] == "dotted"
+    assert edge["width_mult"] == 3
+
+
 async def test_save_canvas_coerces_legacy_boolean_marker(client: AsyncClient, headers: dict):
     n1 = node_payload(label="Router", type="router")
     n2 = node_payload(label="Switch", type="switch")

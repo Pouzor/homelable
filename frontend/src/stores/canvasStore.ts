@@ -279,7 +279,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         sourceHandle: normalizeHandle(extra.sourceHandle),
         targetHandle: normalizeHandle(extra.targetHandle),
         type: edgeType,
-        data: { type: edgeType, label: extra.label, vlan_id: extra.vlan_id, custom_color: extra.custom_color, path_style: extra.path_style, animated: extra.animated, marker_start: extra.marker_start, marker_end: extra.marker_end },
+        data: { type: edgeType, label: extra.label, vlan_id: extra.vlan_id, custom_color: extra.custom_color, path_style: extra.path_style, line_style: extra.line_style, width_mult: extra.width_mult, animated: extra.animated, marker_start: extra.marker_start, marker_end: extra.marker_end },
       }
       return {
         edges: [...state.edges, newEdge],
@@ -822,6 +822,8 @@ export const useCanvasStore = create<CanvasState>((set) => ({
             type: edgeType,
             custom_color: applyOpacity(style.color, style.opacity),
             path_style: style.pathStyle,
+            line_style: style.lineStyle,
+            width_mult: style.widthMult,
             animated: style.animated,
             marker_start: style.arrowStart,
             marker_end: style.arrowEnd,
@@ -862,6 +864,8 @@ export const useCanvasStore = create<CanvasState>((set) => ({
             type: edgeType,
             custom_color: applyOpacity(style.color, style.opacity),
             path_style: style.pathStyle,
+            line_style: style.lineStyle,
+            width_mult: style.widthMult,
             animated: style.animated,
             marker_start: style.arrowStart,
             marker_end: style.arrowEnd,

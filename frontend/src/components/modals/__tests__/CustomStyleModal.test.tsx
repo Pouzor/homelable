@@ -146,6 +146,19 @@ describe('CustomStyleModal', () => {
     expect(applyTypeEdgeStyle.mock.calls[0][1].arrowStart).toBe('none')
   })
 
+  it('picking a line style + width feeds lineStyle/widthMult to applyTypeEdgeStyle', () => {
+    const applyTypeEdgeStyle = vi.fn()
+    useCanvasStore.setState({ applyTypeEdgeStyle })
+    render(<CustomStyleModal open onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edges' }))
+    fireEvent.click(screen.getByRole('button', { name: /Ethernet/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Dotted' }))
+    fireEvent.change(screen.getByRole('slider', { name: 'Line width multiplier' }), { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: /Apply to existing Ethernet/ }))
+    expect(applyTypeEdgeStyle.mock.calls[0][1].lineStyle).toBe('dotted')
+    expect(applyTypeEdgeStyle.mock.calls[0][1].widthMult).toBe(3)
+  })
+
   it('editing path style updates the edge draft', () => {
     render(<CustomStyleModal open onClose={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Edges' }))
