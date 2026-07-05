@@ -4,7 +4,7 @@ from pydantic import BaseModel, field_validator
 
 from app.schemas.edges import EdgeResponse
 from app.schemas.nodes import NodeResponse
-from app.schemas.utils import normalize_animated
+from app.schemas.utils import normalize_animated, normalize_marker
 
 
 class NodeSave(BaseModel):
@@ -52,8 +52,8 @@ class EdgeSave(BaseModel):
     custom_color: str | None = None
     path_style: str | None = None
     animated: str = 'none'
-    marker_start: bool = False
-    marker_end: bool = False
+    marker_start: str = 'none'
+    marker_end: str = 'none'
     source_handle: str | None = None
     target_handle: str | None = None
     waypoints: list[dict[str, float]] | None = None
@@ -62,6 +62,11 @@ class EdgeSave(BaseModel):
     @classmethod
     def validate_animated(cls, v: object) -> str:
         return normalize_animated(v)
+
+    @field_validator('marker_start', 'marker_end', mode='before')
+    @classmethod
+    def validate_marker(cls, v: object) -> str:
+        return normalize_marker(v)
 
 
 class CanvasSaveRequest(BaseModel):

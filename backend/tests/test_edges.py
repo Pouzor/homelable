@@ -91,29 +91,43 @@ async def test_update_edge_custom_color_and_path_style(client: AsyncClient, head
     assert res.json()["path_style"] == "smooth"
 
 
-async def test_create_edge_with_arrow_markers(client: AsyncClient, headers: dict, two_nodes):
+async def test_create_edge_with_marker_shapes(client: AsyncClient, headers: dict, two_nodes):
     src, tgt = two_nodes
-    res = await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet", "marker_start": True, "marker_end": True}, headers=headers)
+    res = await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet", "marker_start": "diamond", "marker_end": "arrow"}, headers=headers)
     assert res.status_code == 201
-    assert res.json()["marker_start"] is True
-    assert res.json()["marker_end"] is True
+    assert res.json()["marker_start"] == "diamond"
+    assert res.json()["marker_end"] == "arrow"
 
 
-async def test_create_edge_defaults_arrow_markers_off(client: AsyncClient, headers: dict, two_nodes):
+async def test_create_edge_defaults_markers_none(client: AsyncClient, headers: dict, two_nodes):
     src, tgt = two_nodes
     res = await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet"}, headers=headers)
     assert res.status_code == 201
-    assert res.json()["marker_start"] is False
-    assert res.json()["marker_end"] is False
+    assert res.json()["marker_start"] == "none"
+    assert res.json()["marker_end"] == "none"
 
 
-async def test_update_edge_arrow_markers(client: AsyncClient, headers: dict, two_nodes):
+async def test_create_edge_coerces_legacy_boolean_marker(client: AsyncClient, headers: dict, two_nodes):
+    src, tgt = two_nodes
+    res = await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet", "marker_end": True}, headers=headers)
+    assert res.status_code == 201
+    assert res.json()["marker_end"] == "arrow"
+
+
+async def test_create_edge_rejects_unknown_marker_shape(client: AsyncClient, headers: dict, two_nodes):
+    src, tgt = two_nodes
+    res = await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet", "marker_end": "bogus"}, headers=headers)
+    assert res.status_code == 201
+    assert res.json()["marker_end"] == "none"
+
+
+async def test_update_edge_marker_shape(client: AsyncClient, headers: dict, two_nodes):
     src, tgt = two_nodes
     edge_id = (await client.post("/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet"}, headers=headers)).json()["id"]
-    res = await client.patch(f"/api/v1/edges/{edge_id}", json={"marker_end": True}, headers=headers)
+    res = await client.patch(f"/api/v1/edges/{edge_id}", json={"marker_end": "circle"}, headers=headers)
     assert res.status_code == 200
-    assert res.json()["marker_end"] is True
-    assert res.json()["marker_start"] is False
+    assert res.json()["marker_end"] == "circle"
+    assert res.json()["marker_start"] == "none"
 
 
 async def test_create_edge_requires_auth(client: AsyncClient, two_nodes):

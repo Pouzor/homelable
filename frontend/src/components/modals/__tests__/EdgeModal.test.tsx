@@ -165,39 +165,56 @@ describe('EdgeModal', () => {
     expect(onSubmit.mock.calls[0][0].animated).toBe('basic')
   })
 
-  // ── Arrow markers ─────────────────────────────────────────────────────────
+  // ── Endpoint markers ──────────────────────────────────────────────────────
 
-  it('arrows default to off', () => {
+  it('endpoints default to none', () => {
     const onSubmit = vi.fn()
     render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} />)
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
-    expect(onSubmit.mock.calls[0][0].marker_start).toBe(false)
-    expect(onSubmit.mock.calls[0][0].marker_end).toBe(false)
+    expect(onSubmit.mock.calls[0][0].marker_start).toBe('none')
+    expect(onSubmit.mock.calls[0][0].marker_end).toBe('none')
   })
 
-  it('toggling End arrow sends marker_end: true', () => {
+  it('picking an End arrow sends marker_end: "arrow"', () => {
     const onSubmit = vi.fn()
     render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} />)
-    fireEvent.click(screen.getByRole('button', { name: /Arrow End/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'End marker arrow' }))
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
-    expect(onSubmit.mock.calls[0][0].marker_end).toBe(true)
-    expect(onSubmit.mock.calls[0][0].marker_start).toBe(false)
+    expect(onSubmit.mock.calls[0][0].marker_end).toBe('arrow')
+    expect(onSubmit.mock.calls[0][0].marker_start).toBe('none')
   })
 
-  it('toggling Start arrow sends marker_start: true', () => {
+  it('picking a Start circle sends marker_start: "circle"', () => {
     const onSubmit = vi.fn()
     render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} />)
-    fireEvent.click(screen.getByRole('button', { name: /Arrow Start/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start marker circle' }))
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
-    expect(onSubmit.mock.calls[0][0].marker_start).toBe(true)
+    expect(onSubmit.mock.calls[0][0].marker_start).toBe('circle')
   })
 
-  it('pre-fills arrows from initial', () => {
+  it('allows a different shape on each end', () => {
     const onSubmit = vi.fn()
-    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} initial={{ marker_start: true, marker_end: true }} />)
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Start marker diamond' }))
+    fireEvent.click(screen.getByRole('button', { name: 'End marker square' }))
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
-    expect(onSubmit.mock.calls[0][0].marker_start).toBe(true)
-    expect(onSubmit.mock.calls[0][0].marker_end).toBe(true)
+    expect(onSubmit.mock.calls[0][0].marker_start).toBe('diamond')
+    expect(onSubmit.mock.calls[0][0].marker_end).toBe('square')
+  })
+
+  it('pre-fills endpoint shapes from initial', () => {
+    const onSubmit = vi.fn()
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} initial={{ marker_start: 'diamond', marker_end: 'arrow-open' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    expect(onSubmit.mock.calls[0][0].marker_start).toBe('diamond')
+    expect(onSubmit.mock.calls[0][0].marker_end).toBe('arrow-open')
+  })
+
+  it('coerces a legacy boolean initial marker to "arrow"', () => {
+    const onSubmit = vi.fn()
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={onSubmit} initial={{ marker_end: true }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+    expect(onSubmit.mock.calls[0][0].marker_end).toBe('arrow')
   })
 
   it('selecting None after Snake omits animated from payload', () => {

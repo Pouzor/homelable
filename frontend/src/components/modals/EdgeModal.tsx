@@ -7,8 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { EDGE_TYPE_LABELS, type EdgeData, type EdgePathStyle, type EdgeType } from '@/types'
+import { EDGE_TYPE_LABELS, type EdgeData, type EdgePathStyle, type EdgeType, type MarkerShape } from '@/types'
 import { EDGE_DEFAULT_COLORS } from '@/utils/edgeColors'
+import { normalizeMarker } from '@/utils/edgeMarkers'
+import { MarkerShapePicker } from './MarkerShapePicker'
 
 const EDGE_TYPES = Object.entries(EDGE_TYPE_LABELS) as [EdgeType, string][]
 
@@ -38,8 +40,8 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
   const [customColor, setCustomColor] = useState<string | undefined>(initial?.custom_color)
   const [pathStyle, setPathStyle] = useState<EdgePathStyle>(initial?.path_style ?? 'bezier')
   const [animation, setAnimation] = useState<AnimMode>(() => toAnimMode(initial?.animated))
-  const [markerStart, setMarkerStart] = useState<boolean>(initial?.marker_start ?? false)
-  const [markerEnd, setMarkerEnd] = useState<boolean>(initial?.marker_end ?? false)
+  const [markerStart, setMarkerStart] = useState<MarkerShape>(normalizeMarker(initial?.marker_start))
+  const [markerEnd, setMarkerEnd] = useState<MarkerShape>(normalizeMarker(initial?.marker_end))
 
   const effectiveColor = customColor ?? EDGE_DEFAULT_COLORS[type]
 
@@ -158,26 +160,10 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Arrows</Label>
-            <div className={`flex rounded-md overflow-hidden border border-[#30363d] ${modalStyles['modal-interactive']}`}>
-              {([['Start', markerStart, setMarkerStart], ['End', markerEnd, setMarkerEnd]] as [string, boolean, (v: boolean) => void][]).map(([label, active, set], i) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => set(!active)}
-                  className="flex-1 py-1 text-xs capitalize transition-colors cursor-pointer"
-                  tabIndex={0}
-                  aria-label={`Arrow ${label} ${active ? 'on' : 'off'}`}
-                  aria-pressed={active}
-                  style={{
-                    background: active ? '#00d4ff22' : '#21262d',
-                    color: active ? '#00d4ff' : '#8b949e',
-                    borderRight: i === 0 ? '1px solid #30363d' : undefined,
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
+            <Label className="text-xs text-muted-foreground">Endpoints</Label>
+            <div className="flex flex-col gap-1.5">
+              <MarkerShapePicker label="Start" value={markerStart} onChange={setMarkerStart} />
+              <MarkerShapePicker label="End" value={markerEnd} onChange={setMarkerEnd} />
             </div>
           </div>
 

@@ -17,6 +17,7 @@ import type {
   NodeType, EdgeType, NodeTypeStyle, EdgeTypeStyle, CustomStyleDef, EdgePathStyle,
 } from '@/types'
 import { NODE_TYPE_LABELS, EDGE_TYPE_LABELS } from '@/types'
+import { MarkerShapePicker } from './MarkerShapePicker'
 
 // ── Node types exposed for custom style, grouped by category (skip groupRect/group) ──
 
@@ -64,8 +65,8 @@ function defaultEdgeStyle(edgeType: EdgeType): EdgeTypeStyle {
     opacity: 1,
     pathStyle: 'bezier',
     animated: 'none',
-    arrowStart: false,
-    arrowEnd: false,
+    arrowStart: 'none',
+    arrowEnd: 'none',
   }
 }
 
@@ -283,24 +284,10 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
         </div>
 
         <div>
-          <div className="text-xs text-[#8b949e] mb-2">Arrows</div>
-          <div className="flex gap-2">
-            {([['Start', 'arrowStart'], ['End', 'arrowEnd']] as [string, 'arrowStart' | 'arrowEnd'][]).map(([label, key]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => set(key, !style[key])}
-                aria-pressed={style[key]}
-                className="px-3 py-1 text-xs rounded border transition-colors"
-                style={{
-                  borderColor: style[key] ? '#00d4ff' : '#30363d',
-                  background: style[key] ? '#00d4ff22' : 'transparent',
-                  color: style[key] ? '#00d4ff' : '#8b949e',
-                }}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="text-xs text-[#8b949e] mb-2">Endpoints</div>
+          <div className="flex flex-col gap-1.5">
+            <MarkerShapePicker label="Start" value={style.arrowStart} onChange={(s) => set('arrowStart', s)} />
+            <MarkerShapePicker label="End" value={style.arrowEnd} onChange={(s) => set('arrowEnd', s)} />
           </div>
         </div>
       </div>

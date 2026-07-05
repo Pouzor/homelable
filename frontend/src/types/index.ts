@@ -156,6 +156,13 @@ export interface NodeData extends Record<string, unknown> {
 
 export type EdgePathStyle = 'bezier' | 'smooth'
 
+/**
+ * Endpoint marker shape for an edge end. `none` = no marker.
+ * Legacy saves stored a boolean (`true` = filled arrow) — coerced via
+ * `normalizeMarker` in utils/edgeMarkers.
+ */
+export type MarkerShape = 'none' | 'arrow' | 'arrow-open' | 'circle' | 'diamond' | 'square'
+
 export interface Waypoint {
   x: number
   y: number
@@ -169,10 +176,10 @@ export interface EdgeData extends Record<string, unknown> {
   custom_color?: string
   path_style?: EdgePathStyle
   animated?: boolean | 'snake' | 'flow' | 'basic' | 'none'
-  /** Filled arrowhead at the source end. */
-  marker_start?: boolean
-  /** Filled arrowhead at the target end. */
-  marker_end?: boolean
+  /** Marker shape at the source end. Legacy boolean (`true`=arrow) coerced on read. */
+  marker_start?: MarkerShape | boolean
+  /** Marker shape at the target end. Legacy boolean (`true`=arrow) coerced on read. */
+  marker_end?: MarkerShape | boolean
   waypoints?: Waypoint[]
 }
 
@@ -261,10 +268,10 @@ export interface EdgeTypeStyle {
   opacity: number
   pathStyle: EdgePathStyle
   animated: 'none' | 'snake' | 'flow' | 'basic'
-  /** Default filled arrowhead at the source end for new edges of this type. */
-  arrowStart: boolean
-  /** Default filled arrowhead at the target end for new edges of this type. */
-  arrowEnd: boolean
+  /** Default marker shape at the source end for new edges of this type. */
+  arrowStart: MarkerShape
+  /** Default marker shape at the target end for new edges of this type. */
+  arrowEnd: MarkerShape
 }
 
 export interface CustomStyleDef {

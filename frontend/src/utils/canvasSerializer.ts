@@ -1,6 +1,7 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData, Waypoint } from '@/types'
 import { normalizeHandle, clampHandles, handleId, handleCountField, type Side } from '@/utils/handleUtils'
+import { normalizeMarker } from '@/utils/edgeMarkers'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,8 +50,8 @@ export interface ApiEdge {
   custom_color?: string | null
   path_style?: string | null
   animated?: boolean | 'snake' | 'flow' | 'basic' | 'none'
-  marker_start?: boolean | null
-  marker_end?: boolean | null
+  marker_start?: string | boolean | null
+  marker_end?: string | boolean | null
   source_handle?: string | null
   target_handle?: string | null
   waypoints?: Waypoint[] | null
@@ -144,8 +145,8 @@ export function serializeEdge(e: Edge<EdgeData>): Record<string, unknown> {
     custom_color: e.data?.custom_color ?? null,
     path_style: e.data?.path_style ?? null,
     animated: e.data?.animated ?? false,
-    marker_start: e.data?.marker_start ?? false,
-    marker_end: e.data?.marker_end ?? false,
+    marker_start: normalizeMarker(e.data?.marker_start),
+    marker_end: normalizeMarker(e.data?.marker_end),
     source_handle: normalizeHandle(e.sourceHandle),
     target_handle: normalizeHandle(e.targetHandle),
     waypoints: e.data?.waypoints?.length ? e.data.waypoints : null,
