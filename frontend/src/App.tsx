@@ -25,6 +25,7 @@ import { ScanConfigModal } from '@/components/modals/ScanConfigModal'
 import { SettingsModal } from '@/components/modals/SettingsModal'
 import { ZigbeeImportModal } from '@/components/zigbee/ZigbeeImportModal'
 import { ZwaveImportModal } from '@/components/zwave/ZwaveImportModal'
+import { ProxmoxImportModal } from '@/components/proxmox/ProxmoxImportModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
 import { TextModal, type TextFormData } from '@/components/modals/TextModal'
 import { ThemeModal } from '@/components/modals/ThemeModal'
@@ -45,6 +46,7 @@ import { useStatusPolling } from '@/hooks/useStatusPolling'
 import type { NodeData, EdgeData, CustomStyleDef, FloorMapConfig, NodeType } from '@/types'
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 import type { ZwaveNode, ZwaveEdge } from '@/components/zwave/types'
+import type { ProxmoxNode, ProxmoxEdge } from '@/components/proxmox/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -84,6 +86,7 @@ export default function App() {
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [zigbeeImportOpen, setZigbeeImportOpen] = useState(false)
   const [zwaveImportOpen, setZwaveImportOpen] = useState(false)
+  const [proxmoxImportOpen, setProxmoxImportOpen] = useState(false)
 
   // Declare handleSave before the Ctrl+S effect so it is in scope.
   // Returns true on success, false on failure — the design-switch effect relies
@@ -639,6 +642,52 @@ export default function App() {
     markUnsaved()
   }, [addNode, onConnect, snapshotHistory, markUnsaved])
 
+  const handleProxmoxAddToCanvas = useCallback((pmNodes: ProxmoxNode[], pmEdges: ProxmoxEdge[]) => {
+    snapshotHistory()
+    const COLS = 4
+    const SPACING_X = 190
+    const SPACING_Y = 110
+    const cols = Math.min(COLS, pmNodes.length)
+    const rows = Math.ceil(pmNodes.length / COLS)
+    const origin = getCenteredPosition(cols * SPACING_X, rows * SPACING_Y)
+    pmNodes.forEach((pn, i) => {
+      const col = i % COLS
+      const row = Math.floor(i / COLS)
+      const position = { x: origin.x + col * SPACING_X, y: origin.y + row * SPACING_Y }
+      const newNode: import('@xyflow/react').Node<NodeData> = {
+        id: pn.id,
+        type: pn.type,
+        position,
+        data: {
+          label: pn.label,
+          type: pn.type as NodeData['type'],
+          status: (pn.status === 'online' ? 'online' : 'unknown') as NodeData['status'],
+          services: [],
+          ...(pn.ip ? { ip: pn.ip } : {}),
+          ...(pn.hostname ? { hostname: pn.hostname } : {}),
+        },
+      }
+      addNode(newNode)
+    })
+    // Host → guest links render as 'virtual' edges (VM/LXC ↔ host).
+    pmEdges.forEach((pe) => {
+      onConnect({
+        source: pe.source,
+        sourceHandle: 'bottom',
+        target: pe.target,
+        targetHandle: 'top-t',
+        type: 'virtual',
+      } as unknown as import('@xyflow/react').Connection)
+    })
+    const importedIds = new Set(pmNodes.map((pn) => pn.id))
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((n) => ({ ...n, selected: importedIds.has(n.id) })),
+      selectedNodeIds: Array.from(importedIds),
+      selectedNodeId: importedIds.size === 1 ? Array.from(importedIds)[0] : null,
+    }))
+    markUnsaved()
+  }, [addNode, onConnect, snapshotHistory, markUnsaved])
+
   const handleEdgeConnect = useCallback((connection: Connection) => {
     setPendingConnection(connection)
   }, [])
@@ -714,6 +763,7 @@ export default function App() {
             onScan={() => setScanConfigOpen(true)}
             onZigbeeImport={() => setZigbeeImportOpen(true)}
             onZwaveImport={() => setZwaveImportOpen(true)}
+            onProxmoxImport={() => setProxmoxImportOpen(true)}
             onSave={handleSave}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenHistory={() => setScanHistoryOpen(true)}
@@ -836,6 +886,17 @@ export default function App() {
             onAddToCanvas={handleZwaveAddToCanvas}
             onPendingImported={() => {
               toast.success('Z-Wave import started — check Scan History for results')
+            }}
+          />
+        )}
+
+        {!STANDALONE && (
+          <ProxmoxImportModal
+            open={proxmoxImportOpen}
+            onClose={() => setProxmoxImportOpen(false)}
+            onAddToCanvas={handleProxmoxAddToCanvas}
+            onPendingImported={() => {
+              toast.success('Proxmox import started — check Scan History for results')
             }}
           />
         )}

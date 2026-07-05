@@ -367,7 +367,7 @@ async def bulk_approve_devices(
             ieee_address=device.ieee_address,
             properties=_wireless_properties(
                 node_type, device.ieee_address, device.vendor, device.model, device.lqi
-            ) if is_wireless else build_mac_property(device.mac),
+            ) if is_wireless else merge_mac_property(list(device.properties or []), device.mac),
             # Default to ping so the status checker actually polls the new node.
             # Without this the scheduler skips it (check_method NULL → no check).
             check_method="none" if is_wireless else ("ping" if device.ip else None),
@@ -519,7 +519,10 @@ async def approve_device(
         ieee_address=device.ieee_address,
         properties=_wireless_properties(
             node_data.type, device.ieee_address, device.vendor, device.model, device.lqi
-        ) if wireless else merge_mac_property(node_data.properties, _mac),
+        ) if wireless else merge_mac_property(
+            merge_zigbee_properties(list(device.properties or []), node_data.properties or []),
+            _mac,
+        ),
         check_method="none" if wireless else (node_data.check_method or ("ping" if node_data.ip else None)),
         check_target=None if wireless else node_data.check_target,
         design_id=node_design_id,
@@ -609,10 +612,13 @@ async def _resolve_pending_links_for_ieee(
         if edge_design_id is None:
             first = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
             edge_design_id = first.id if first else None
+        # Proxmox host→guest links render as 'virtual' (VM/LXC ↔ host); mesh
+        # links stay 'iot'. Default to iot for any legacy/other source.
+        edge_type = "virtual" if link.discovery_source == "proxmox" else "iot"
         edge = Edge(
             source=src_id,
             target=tgt_id,
-            type="iot",
+            type=edge_type,
             source_handle="bottom",
             target_handle="top-t",
             design_id=edge_design_id,

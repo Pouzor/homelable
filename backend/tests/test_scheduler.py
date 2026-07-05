@@ -6,8 +6,11 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.scheduler import (
+    _run_proxmox_sync,
     _run_service_checks,
     _run_status_checks,
+    reschedule_proxmox_sync,
+    set_proxmox_sync_enabled,
     set_service_checks_enabled,
     start_scheduler,
     stop_scheduler,
@@ -148,6 +151,7 @@ def test_scheduler_uses_settings_interval():
          patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
         mock_settings.status_checker_interval = 45
         mock_settings.service_check_enabled = False
+        mock_settings.proxmox_sync_enabled = False
         start_scheduler()
         _, kwargs = mock_sched.add_job.call_args
         assert kwargs["seconds"] == 45
@@ -156,7 +160,11 @@ def test_scheduler_uses_settings_interval():
 def test_start_and_stop_scheduler():
     """Scheduler can be started and stopped without errors."""
     mock_sched = MagicMock()
-    with patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
+    with patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched), \
+         patch("app.core.scheduler.settings") as mock_settings:
+        mock_settings.status_checker_interval = 60
+        mock_settings.service_check_enabled = False
+        mock_settings.proxmox_sync_enabled = False
         start_scheduler()
         stop_scheduler()
         mock_sched.add_job.assert_called_once()
@@ -245,7 +253,49 @@ def test_start_scheduler_adds_service_job_when_enabled():
         mock_settings.status_checker_interval = 60
         mock_settings.service_check_enabled = True
         mock_settings.service_check_interval = 300
+        mock_settings.proxmox_sync_enabled = False
         start_scheduler()
     job_ids = [kw.get("id") for _, kw in mock_sched.add_job.call_args_list]
     assert "status_checks" in job_ids
     assert "service_checks" in job_ids
+
+
+# ---------------------------------------------------------------------------
+# Proxmox auto-sync job
+# ---------------------------------------------------------------------------
+
+def test_set_proxmox_sync_enabled_adds_and_removes_job():
+    mock_sched = MagicMock()
+    mock_sched.running = True
+    with patch("app.core.scheduler.scheduler", mock_sched), \
+         patch("app.core.scheduler.settings") as mock_settings:
+        mock_settings.proxmox_sync_interval = 3600
+        mock_sched.get_job.return_value = None
+        set_proxmox_sync_enabled(True)
+        mock_sched.add_job.assert_called_once()
+        mock_sched.get_job.return_value = MagicMock()
+        set_proxmox_sync_enabled(False)
+        mock_sched.remove_job.assert_called_once_with("proxmox_sync")
+
+
+def test_reschedule_proxmox_sync_rejects_short_interval():
+    with pytest.raises(ValueError):
+        reschedule_proxmox_sync(60)
+
+
+@pytest.mark.asyncio
+async def test_run_proxmox_sync_skips_when_disabled():
+    with patch("app.core.scheduler.settings") as mock_settings:
+        mock_settings.proxmox_sync_enabled = False
+        # Must return before importing/fetching anything.
+        await _run_proxmox_sync()
+
+
+@pytest.mark.asyncio
+async def test_run_proxmox_sync_skips_when_no_token():
+    with patch("app.core.scheduler.settings") as mock_settings:
+        mock_settings.proxmox_sync_enabled = True
+        mock_settings.proxmox_host = "pve"
+        mock_settings.proxmox_token_id = ""
+        mock_settings.proxmox_token_secret = ""
+        await _run_proxmox_sync()  # no exception, no fetch

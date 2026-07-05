@@ -73,13 +73,15 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   generic: Circle,
 }
 
-type SourceFilter = 'all' | 'ip' | 'zigbee' | 'zwave'
+type SourceFilter = 'all' | 'ip' | 'zigbee' | 'zwave' | 'proxmox'
 type StatusFilter = 'pending' | 'hidden'
 
-function inferSource(d: PendingDevice): 'zigbee' | 'zwave' | 'ip' {
+function inferSource(d: PendingDevice): 'zigbee' | 'zwave' | 'proxmox' | 'ip' {
   if (d.discovery_source === 'zwave') return 'zwave'
   if (d.discovery_source === 'zigbee') return 'zigbee'
-  if (d.ieee_address) return 'zigbee'
+  if (d.discovery_source === 'proxmox') return 'proxmox'
+  // Proxmox devices carry a synthetic 'pve-' ieee but are IP hosts, not mesh.
+  if (d.ieee_address && !d.ieee_address.startsWith('pve-')) return 'zigbee'
   return 'ip'
 }
 
@@ -279,7 +281,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
         ? buildZwaveProperties(device)
         : isZigbeeType(type)
           ? buildZigbeeProperties(device)
-          : buildMacProperty(device.mac)
+          : [...(device.properties ?? []), ...buildMacProperty(device.mac)]
       const nodeData = {
         label: fallbackLabel,
         type,
@@ -364,7 +366,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
               ? buildZwaveProperties(d)
               : isZigbeeType(type)
                 ? buildZigbeeProperties(d)
-                : buildMacProperty(d.mac),
+                : [...(d.properties ?? []), ...buildMacProperty(d.mac)],
           },
         })
       })
@@ -502,6 +504,12 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
                 className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'zwave' ? 'bg-[#ff6e00]/20 text-[#ff6e00]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
               >
                 Z-Wave
+              </button>
+              <button
+                onClick={() => setSourceFilter('proxmox')}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'proxmox' ? 'bg-[#e57000]/20 text-[#e57000]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+              >
+                Proxmox
               </button>
             </div>
             <select
@@ -666,10 +674,15 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
   // (from the active theme / style section), instead of a flat grey.
   const roleColor = resolveNodeColors({ type: roleType, custom_colors: undefined }, activeTheme).border
   const label = deviceLabel(device)
-  const sourceColor = source === 'zigbee' ? '#00d4ff' : source === 'zwave' ? '#ff6e00' : '#a855f7'
+  const sourceColor =
+    source === 'zigbee' ? '#00d4ff'
+    : source === 'zwave' ? '#ff6e00'
+    : source === 'proxmox' ? '#e57000'
+    : '#a855f7'
   const sourceLabel =
     source === 'zigbee' ? 'ZIGBEE'
     : source === 'zwave' ? 'Z-WAVE'
+    : source === 'proxmox' ? 'PROXMOX'
     : (device.discovery_source ?? 'IP').toUpperCase()
   const services = device.services ?? []
   const visibleServices = services.slice(0, 4)

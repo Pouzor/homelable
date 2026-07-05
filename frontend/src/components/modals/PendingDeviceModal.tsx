@@ -1,6 +1,7 @@
 import { Globe, Router, Server, Layers, Box, Container, HardDrive, Cpu, Wifi, Circle, Network } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import type { NodeProperty } from '@/types'
 
 interface Service {
   port: number
@@ -26,6 +27,8 @@ export interface PendingDevice {
   model?: string | null
   vendor?: string | null
   lqi?: number | null
+  // Display properties carried from discovery (e.g. Proxmox specs).
+  properties?: NodeProperty[]
   discovered_at: string
   // How many canvases (designs) this device already appears on. Computed server-side.
   canvas_count?: number

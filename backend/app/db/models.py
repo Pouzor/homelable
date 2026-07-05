@@ -126,6 +126,10 @@ class PendingDevice(Base):
     model: Mapped[str | None] = mapped_column(String, nullable=True)
     vendor: Mapped[str | None] = mapped_column(String, nullable=True)
     lqi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Display properties carried from discovery (e.g. Proxmox specs: CPU/RAM/Disk,
+    # VMID). Generic NodeProperty shape {key,value,icon,visible}; merged into the
+    # Node's properties on approve. Empty for scan/mesh sources that don't set it.
+    properties: Mapped[list[Any]] = mapped_column(JSON, default=list)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     # Transient (not persisted): populated per-request by the scan routes to report

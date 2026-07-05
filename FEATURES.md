@@ -21,13 +21,14 @@ Here's what Homelable can do. One line on what each feature is, then how to swit
 7. [Network Scanner (IP import)](#7-network-scanner-ip-import-)
 8. [Zigbee Import](#8-zigbee-import-)
 9. [Z-Wave Import](#9-z-wave-import-)
-10. [Device Inventory](#10-device-inventory-)
-11. [Live Status Monitoring](#11-live-status-monitoring-)
-12. [Export (PNG / SVG / YAML / Markdown)](#12-export)
-13. [Live View (read-only public canvas)](#13-live-view-)
-14. [Gethomepage Widget](#14-gethomepage-widget-)
-15. [MCP Server (AI integration)](#15-mcp-server-)
-16. [Settings & Shortcuts](#16-settings--shortcuts)
+10. [Proxmox VE Import](#10-proxmox-ve-import-)
+11. [Device Inventory](#11-device-inventory-)
+12. [Live Status Monitoring](#12-live-status-monitoring-)
+13. [Export (PNG / SVG / YAML / Markdown)](#13-export)
+14. [Live View (read-only public canvas)](#14-live-view-)
+15. [Gethomepage Widget](#15-gethomepage-widget-)
+16. [MCP Server (AI integration)](#16-mcp-server-)
+17. [Settings & Shortcuts](#17-settings--shortcuts)
 
 ---
 
@@ -140,7 +141,21 @@ Nodes: `zwave_coordinator` / `zwave_router` / `zwave_enddevice`. The hierarchy c
 
 ---
 
-## 10. Device Inventory 🔒
+## 10. Proxmox VE Import 🔒
+
+**What:** Pull your **Proxmox VE** inventory (hosts, VMs, LXC) in over the Proxmox REST API — typed, named nodes with run state and hardware specs. Optional scheduled **auto-sync**; guest IPs already found by a scan are merged, not duplicated.
+
+**Use:**
+1. Create a read-only API token in Proxmox (Datacenter → Permissions → API Tokens, role `PVEAuditor`).
+2. Sidebar → **Proxmox Import**.
+3. Enter host, port (default `8006`), and the token (`user@realm!tokenid` + secret) — or leave blank to use the server token.
+4. **Test Connection** → send to **Pending** or the **Canvas** → import → pick devices → **Add N to Canvas**.
+
+Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge. The token is env-only, never stored on disk, never returned by the API. Enable auto-sync from **Settings** once `PROXMOX_TOKEN_ID` / `PROXMOX_TOKEN_SECRET` are set. More: [docs/proxmox-import.md](./docs/proxmox-import.md).
+
+---
+
+## 11. Device Inventory 🔒
 
 **What:** The holding pen for everything found by a scan or import that isn't on the canvas yet, plus a separate **Hidden Devices** list.
 
@@ -151,7 +166,7 @@ Nodes: `zwave_coordinator` / `zwave_router` / `zwave_enddevice`. The hierarchy c
 
 ---
 
-## 11. Live Status Monitoring 🔒
+## 12. Live Status Monitoring 🔒
 
 **What:** Keeps checking each node and shows its status (🟢 online / 🔴 offline / ⚫ unknown) right on the canvas.
 
@@ -172,7 +187,7 @@ Nodes: `zwave_coordinator` / `zwave_router` / `zwave_enddevice`. The hierarchy c
 
 ---
 
-## 12. Export
+## 13. Export
 
 **What:** Get your canvas out as a picture or as structured data.
 
@@ -184,7 +199,7 @@ Nodes: `zwave_coordinator` / `zwave_router` / `zwave_enddevice`. The hierarchy c
 
 ---
 
-## 13. Live View 🔒
+## 14. Live View 🔒
 
 **What:** A read-only, no-login snapshot of a canvas you can share on your LAN. Off by default.
 
@@ -196,7 +211,7 @@ Pan and zoom only, no editing. Click a node with an IP and it opens in a new tab
 
 ---
 
-## 14. Gethomepage Widget 🔒
+## 15. Gethomepage Widget 🔒
 
 **What:** A tiny JSON stats endpoint for [gethomepage](https://gethomepage.dev)'s `customapi` widget. Off by default.
 
@@ -208,7 +223,7 @@ Widget snippet lives in the [README](./README.md#gethomepage-widget-read-only-st
 
 ---
 
-## 15. MCP Server 🔒
+## 16. MCP Server 🔒
 
 **What:** A [Model Context Protocol](https://modelcontextprotocol.io) server so an MCP client (Claude Code, Claude Desktop, Open WebUI…) can read and change your topology. Optional, runs as its own service.
 
@@ -226,7 +241,7 @@ The AI can list nodes/edges/canvas/pending/scans, add/update/delete nodes and ed
 
 ---
 
-## 16. Settings & Shortcuts
+## 17. Settings & Shortcuts
 
 **What:** App config and keyboard shortcuts.
 

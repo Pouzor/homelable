@@ -229,4 +229,22 @@ describe('api/client', () => {
     mod.zwaveApi.importToPending(cfg)
     expect(api.post).toHaveBeenCalledWith('/zwave/import-pending', cfg)
   })
+
+  it('proxmoxApi.testConnection/importNetwork/importToPending', () => {
+    const cfg = { host: 'pve', port: 8006, token_id: 'u@pam!t', token_secret: 's', verify_tls: true }
+    mod.proxmoxApi.testConnection(cfg)
+    expect(api.post).toHaveBeenCalledWith('/proxmox/test-connection', cfg)
+    mod.proxmoxApi.importNetwork(cfg)
+    expect(api.post).toHaveBeenCalledWith('/proxmox/import', cfg)
+    mod.proxmoxApi.importToPending(cfg)
+    expect(api.post).toHaveBeenCalledWith('/proxmox/import-pending', cfg)
+  })
+
+  it('proxmoxApi.getConfig/saveConfig hit /proxmox/config', () => {
+    mod.proxmoxApi.getConfig()
+    expect(api.get).toHaveBeenCalledWith('/proxmox/config')
+    const conf = { host: 'pve', port: 8006, verify_tls: true, sync_enabled: false, sync_interval: 3600 }
+    mod.proxmoxApi.saveConfig(conf)
+    expect(api.post).toHaveBeenCalledWith('/proxmox/config', conf)
+  })
 })

@@ -80,6 +80,19 @@ class Settings(BaseSettings):
     # Leave empty to keep the feature disabled (default).
     homepage_api_key: str = ""
 
+    # Proxmox VE import.
+    # Token = a real credential → env/.env ONLY, never persisted by the app to
+    # scan_config.json and never returned by the API. token_id is
+    # 'user@realm!tokenname'; use a read-only PVEAuditor role.
+    proxmox_token_id: str = ""
+    proxmox_token_secret: str = ""
+    # Non-secret connection + auto-sync config (persisted via save_overrides).
+    proxmox_host: str = ""
+    proxmox_port: int = 8006
+    proxmox_verify_tls: bool = True
+    proxmox_sync_enabled: bool = False
+    proxmox_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"
 
@@ -108,6 +121,17 @@ class Settings(BaseSettings):
                 self.scanner_http_probe_enabled = bool(data["scanner_http_probe_enabled"])
             if "scanner_http_verify_tls" in data:
                 self.scanner_http_verify_tls = bool(data["scanner_http_verify_tls"])
+            # Proxmox non-secret config (token stays env-only, never here).
+            if "proxmox_host" in data:
+                self.proxmox_host = str(data["proxmox_host"])
+            if "proxmox_port" in data:
+                self.proxmox_port = int(data["proxmox_port"])
+            if "proxmox_verify_tls" in data:
+                self.proxmox_verify_tls = bool(data["proxmox_verify_tls"])
+            if "proxmox_sync_enabled" in data:
+                self.proxmox_sync_enabled = bool(data["proxmox_sync_enabled"])
+            if "proxmox_sync_interval" in data:
+                self.proxmox_sync_interval = int(data["proxmox_sync_interval"])
         except Exception:
             pass
 
@@ -122,6 +146,13 @@ class Settings(BaseSettings):
             "scanner_http_ranges": self.scanner_http_ranges,
             "scanner_http_probe_enabled": self.scanner_http_probe_enabled,
             "scanner_http_verify_tls": self.scanner_http_verify_tls,
+            # Proxmox: only non-secret config. Token fields are intentionally
+            # excluded — they must never be written to disk by the app.
+            "proxmox_host": self.proxmox_host,
+            "proxmox_port": self.proxmox_port,
+            "proxmox_verify_tls": self.proxmox_verify_tls,
+            "proxmox_sync_enabled": self.proxmox_sync_enabled,
+            "proxmox_sync_interval": self.proxmox_sync_interval,
         }))
 
 

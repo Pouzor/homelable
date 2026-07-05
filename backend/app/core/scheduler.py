@@ -106,12 +106,52 @@ async def _run_service_checks() -> None:
             logger.error("Service checks failed for node %s: %s", node_id, exc)
 
 
+async def _run_proxmox_sync() -> None:
+    """Fetch the Proxmox inventory and upsert it into pending (auto-sync)."""
+    if not settings.proxmox_sync_enabled:
+        return
+    if not (settings.proxmox_host and settings.proxmox_token_id and settings.proxmox_token_secret):
+        logger.warning("Proxmox auto-sync enabled but host/token not configured — skipping")
+        return
+    # Lazy import to avoid a circular import at module load.
+    from app.api.routes.proxmox import _persist_pending_import
+    from app.services.proxmox_service import fetch_proxmox_inventory
+
+    try:
+        nodes_raw, edges_raw = await fetch_proxmox_inventory(
+            host=settings.proxmox_host,
+            port=settings.proxmox_port,
+            token_id=settings.proxmox_token_id,
+            token_secret=settings.proxmox_token_secret,
+            verify_tls=settings.proxmox_verify_tls,
+        )
+        async with AsyncSessionLocal() as db:
+            result = await _persist_pending_import(db, nodes_raw, edges_raw)
+        logger.info(
+            "Proxmox auto-sync: %d devices (%d new, %d updated)",
+            result.device_count, result.pending_created, result.pending_updated,
+        )
+    except Exception as exc:
+        logger.error("Proxmox auto-sync failed: %s", exc)
+
+
 def _add_service_check_job() -> None:
     scheduler.add_job(
         _run_service_checks,
         "interval",
         seconds=settings.service_check_interval,
         id="service_checks",
+        max_instances=1,
+        coalesce=True,
+    )
+
+
+def _add_proxmox_sync_job() -> None:
+    scheduler.add_job(
+        _run_proxmox_sync,
+        "interval",
+        seconds=settings.proxmox_sync_interval,
+        id="proxmox_sync",
         max_instances=1,
         coalesce=True,
     )
@@ -135,6 +175,8 @@ def start_scheduler() -> None:
     )
     if settings.service_check_enabled:
         _add_service_check_job()
+    if settings.proxmox_sync_enabled:
+        _add_proxmox_sync_job()
     scheduler.start()
     logger.info("Scheduler started — status checks every %ds", settings.status_checker_interval)
 
@@ -173,6 +215,31 @@ def set_service_checks_enabled(enabled: bool) -> None:
     elif not enabled and job:
         scheduler.remove_job("service_checks")
         logger.info("Service checks disabled")
+
+
+def reschedule_proxmox_sync(interval_seconds: int) -> None:
+    """Update the Proxmox auto-sync interval on the running scheduler (if enabled)."""
+    if interval_seconds < 300:
+        raise ValueError(f"interval_seconds must be >= 300, got {interval_seconds}")
+    if not scheduler.running:
+        logger.warning("Scheduler not running, skipping reschedule")
+        return
+    if scheduler.get_job("proxmox_sync"):
+        scheduler.reschedule_job("proxmox_sync", trigger="interval", seconds=interval_seconds)
+        logger.info("Proxmox auto-sync rescheduled to every %ds", interval_seconds)
+
+
+def set_proxmox_sync_enabled(enabled: bool) -> None:
+    """Add or remove the Proxmox auto-sync job on the running scheduler."""
+    if not scheduler.running:
+        return
+    job = scheduler.get_job("proxmox_sync")
+    if enabled and not job:
+        _add_proxmox_sync_job()
+        logger.info("Proxmox auto-sync enabled — every %ds", settings.proxmox_sync_interval)
+    elif not enabled and job:
+        scheduler.remove_job("proxmox_sync")
+        logger.info("Proxmox auto-sync disabled")
 
 
 def stop_scheduler() -> None:

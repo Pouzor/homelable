@@ -8,9 +8,13 @@ vi.mock('@/api/client', () => ({
     get: vi.fn(),
     save: vi.fn(),
   },
+  proxmoxApi: {
+    getConfig: vi.fn(),
+    saveConfig: vi.fn(),
+  },
 }))
 
-import { settingsApi } from '@/api/client'
+import { settingsApi, proxmoxApi } from '@/api/client'
 import { toast } from 'sonner'
 import { useCanvasStore } from '@/stores/canvasStore'
 
@@ -19,6 +23,8 @@ describe('SettingsModal', () => {
     vi.clearAllMocks()
     vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: false, service_check_interval: 300 } } as never)
     vi.mocked(settingsApi.save).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: false, service_check_interval: 300 } } as never)
+    vi.mocked(proxmoxApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(proxmoxApi.saveConfig).mockResolvedValue({ data: {} } as never)
     vi.mocked(toast.success).mockReset()
     vi.mocked(toast.error).mockReset()
   })

@@ -20,6 +20,9 @@ class PendingDeviceResponse(BaseModel):
     model: str | None = None
     vendor: str | None = None
     lqi: int | None = None
+    # Display properties carried from discovery (e.g. Proxmox specs). Merged into
+    # the node on approve; empty for scan/mesh sources that don't set them.
+    properties: list[Any] = []
     discovered_at: datetime
     # Number of distinct canvases (designs) this device already appears on,
     # correlated by ip / ieee_address against existing nodes. Computed per-request.
