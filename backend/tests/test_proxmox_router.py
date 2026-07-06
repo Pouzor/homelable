@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.api.routes.proxmox import _guest_visibility_advisory, _persist_pending_import
+from app.api.routes.proxmox import (
+    _background_proxmox_import,
+    _guest_visibility_advisory,
+    _persist_pending_import,
+)
 from app.api.routes.scan import _is_proxmox_cluster_member, _resolve_pending_links_for_ieee
 from app.core.config import settings
 from app.db.models import Design, Edge, Node, PendingDevice, PendingDeviceLink
@@ -41,10 +46,11 @@ def _host_node() -> dict:
     }
 
 
-def _guest_node(vmid: int, ip: str | None, status: str = "online") -> dict:
+def _guest_node(vmid: int, ip: str | None, status: str = "online", mac: str | None = None) -> dict:
     return {
         "id": f"pve-pve1-{vmid}", "label": f"vm{vmid}", "type": "vm",
         "ieee_address": f"pve-pve1-{vmid}", "hostname": f"vm{vmid}", "ip": ip,
+        "mac": mac,
         "status": status, "cpu_count": 2, "ram_gb": 4.0, "disk_gb": 32.0,
         "vendor": "Proxmox VE", "model": "QEMU", "vmid": vmid,
         "parent_ieee": "pve-node-pve1",
@@ -116,6 +122,27 @@ async def test_enable_sync_without_token_rejected(client: AsyncClient, headers: 
     assert res.status_code == 400
 
 
+@pytest.mark.asyncio
+async def test_background_import_broadcasts_refresh() -> None:
+    """After persisting, the import emits a scan update so an open inventory
+    reloads without a manual refresh (same signal the IP scan uses)."""
+    fake_db = AsyncMock()
+    fake_db.get = AsyncMock(return_value=None)  # no ScanRun row → skip status update
+    cm = AsyncMock()
+    cm.__aenter__.return_value = fake_db
+    cm.__aexit__.return_value = False
+
+    with patch("app.api.routes.proxmox.AsyncSessionLocal", MagicMock(return_value=cm)), \
+         patch("app.api.routes.proxmox.fetch_proxmox_inventory", new=AsyncMock(return_value=([], []))), \
+         patch("app.api.routes.proxmox._persist_pending_import",
+               new=AsyncMock(return_value=SimpleNamespace(device_count=3))), \
+         patch("app.api.routes.status.broadcast_scan_update", new=AsyncMock()) as bcast:
+        await _background_proxmox_import("run1", "h", 8006, "u@pam!t", "s", True)
+
+    bcast.assert_awaited_once()
+    assert bcast.await_args.kwargs["devices_found"] == 3
+
+
 # --- guest-visibility advisory ---------------------------------------------
 
 def test_advisory_when_hosts_only() -> None:
@@ -170,6 +197,108 @@ async def test_persist_merges_existing_scanned_node_by_ip(db_session) -> None:
     # Inventory row exists as approved (already on canvas).
     inv = (await db_session.execute(select(PendingDevice).where(PendingDevice.ieee_address == "pve-pve1-101"))).scalar_one()
     assert inv.status == "approved"
+
+
+@pytest.mark.asyncio
+async def test_persist_merges_pending_scan_row_by_mac(db_session) -> None:
+    # Device previously found by an IP scan: arp source, MAC known, no ieee.
+    db_session.add(PendingDevice(
+        id=str(uuid.uuid4()), ip="10.0.0.5", mac="bc:24:11:aa:bb:cc",
+        suggested_type="generic", status="pending",
+        discovery_source="arp", discovery_sources=["arp"],
+    ))
+    await db_session.commit()
+
+    # Proxmox import of the same box (stopped VM → no IP) but same NIC MAC in a
+    # different casing. Must merge, not duplicate.
+    await _persist_pending_import(db_session, [_guest_node(101, None, mac="BC:24:11:AA:BB:CC")], [])
+
+    rows = (await db_session.execute(select(PendingDevice))).scalars().all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.ieee_address == "pve-pve1-101"          # adopted proxmox identity
+    assert row.suggested_type == "vm"                  # kept proxmox type
+    assert set(row.discovery_sources) == {"arp", "proxmox"}  # shows in both filters
+
+
+@pytest.mark.asyncio
+async def test_persist_preserves_ip_tag_for_legacy_null_source_row(db_session) -> None:
+    # Legacy inventory row from an old IP scan, before discovery_source(s) were
+    # recorded: scalar NULL, sources empty — but it has an IP + MAC.
+    db_session.add(PendingDevice(
+        id=str(uuid.uuid4()), ip="192.168.1.108", mac="bc:24:11:6c:96:52",
+        suggested_type="lxc", status="pending",
+        discovery_source=None, discovery_sources=[],
+    ))
+    await db_session.commit()
+
+    await _persist_pending_import(
+        db_session, [_guest_node(108, "192.168.1.108", mac="BC:24:11:6C:96:52")], []
+    )
+
+    rows = (await db_session.execute(select(PendingDevice))).scalars().all()
+    assert len(rows) == 1
+    # The IP tag must survive the proxmox merge even with no recorded origin.
+    assert set(rows[0].discovery_sources) == {"arp", "proxmox"}
+
+
+@pytest.mark.asyncio
+async def test_persist_preserves_ip_tag_on_canvas_merge_legacy_row(db_session) -> None:
+    # The immich case: an on-canvas node from an old scan, with a legacy
+    # inventory row (NULL source). Merge must keep the IP tag on the row.
+    node = Node(
+        id=str(uuid.uuid4()), type="lxc", label="immich",
+        ip="192.168.1.108", mac="bc:24:11:6c:96:52",
+        status="online", pos_x=0, pos_y=0,
+    )
+    inv = PendingDevice(
+        id=str(uuid.uuid4()), ip="192.168.1.108", mac="bc:24:11:6c:96:52",
+        suggested_type="lxc", status="approved",
+        discovery_source=None, discovery_sources=[],
+    )
+    db_session.add_all([node, inv])
+    await db_session.commit()
+
+    await _persist_pending_import(
+        db_session, [_guest_node(108, "192.168.1.108", mac="BC:24:11:6C:96:52")], []
+    )
+
+    inv_row = (await db_session.execute(
+        select(PendingDevice).where(PendingDevice.mac == "bc:24:11:6c:96:52")
+    )).scalar_one()
+    assert set(inv_row.discovery_sources) == {"arp", "proxmox"}
+
+
+@pytest.mark.asyncio
+async def test_persist_does_not_add_ip_tag_to_pure_proxmox_guest(db_session) -> None:
+    # A guest first seen via Proxmox (agent IP, pve ieee) must NOT gain a spurious
+    # IP tag on re-sync — it was never IP-scanned.
+    await _persist_pending_import(db_session, [_guest_node(101, "10.0.0.5")], [])
+    await _persist_pending_import(db_session, [_guest_node(101, "10.0.0.5")], [])  # re-sync
+    row = (await db_session.execute(
+        select(PendingDevice).where(PendingDevice.ieee_address == "pve-pve1-101")
+    )).scalar_one()
+    assert set(row.discovery_sources) == {"proxmox"}
+
+
+@pytest.mark.asyncio
+async def test_persist_merges_canvas_node_by_mac(db_session) -> None:
+    # A scanned canvas node with a MAC but no IP recorded for the guest.
+    scanned = Node(
+        id=str(uuid.uuid4()), type="generic", label="box",
+        mac="bc:24:11:aa:bb:cc", status="online", pos_x=0, pos_y=0,
+    )
+    db_session.add(scanned)
+    await db_session.commit()
+
+    await _persist_pending_import(db_session, [_guest_node(101, None, mac="BC:24:11:AA:BB:CC")], [])
+
+    nodes = (await db_session.execute(select(Node))).scalars().all()
+    assert len(nodes) == 1                              # no duplicate node
+    merged = nodes[0]
+    assert merged.ieee_address == "pve-pve1-101"
+    assert merged.mac == "bc:24:11:aa:bb:cc"
+    assert merged.cpu_count == 2                        # specs backfilled
 
 
 @pytest.mark.asyncio

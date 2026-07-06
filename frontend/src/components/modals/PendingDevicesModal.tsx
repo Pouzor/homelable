@@ -18,6 +18,7 @@ import { buildZwaveProperties, isZwaveType } from '@/utils/zwaveProperties'
 import { buildMacProperty } from '@/utils/macProperty'
 import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
 import { getCenteredPosition } from '@/utils/viewportCenter'
+import { sourceBuckets, orderedSources, SOURCE_META, type SourceBucket } from '@/utils/pendingSources'
 
 interface PendingDevicesModalProps {
   open: boolean
@@ -74,17 +75,8 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   generic: Circle,
 }
 
-type SourceFilter = 'all' | 'ip' | 'zigbee' | 'zwave' | 'proxmox'
+type SourceFilter = 'all' | SourceBucket
 type StatusFilter = 'pending' | 'hidden'
-
-function inferSource(d: PendingDevice): 'zigbee' | 'zwave' | 'proxmox' | 'ip' {
-  if (d.discovery_source === 'zwave') return 'zwave'
-  if (d.discovery_source === 'zigbee') return 'zigbee'
-  if (d.discovery_source === 'proxmox') return 'proxmox'
-  // Proxmox devices carry a synthetic 'pve-' ieee but are IP hosts, not mesh.
-  if (d.ieee_address && !d.ieee_address.startsWith('pve-')) return 'zigbee'
-  return 'ip'
-}
 
 const COMMON_PORTS = new Set([22, 80, 443])
 
@@ -162,7 +154,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return devices.filter((d) => {
-      if (sourceFilter !== 'all' && inferSource(d) !== sourceFilter) return false
+      if (sourceFilter !== 'all' && !sourceBuckets(d).has(sourceFilter)) return false
       if (typeFilter !== 'all' && d.suggested_type !== typeFilter) return false
       // Inventory-only: optionally hide devices already placed on a canvas.
       if (statusFilter === 'pending' && !showOnCanvas && (d.canvas_count ?? 0) > 0) return false
@@ -656,7 +648,7 @@ interface DeviceCardProps {
 }
 
 function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRef }: DeviceCardProps) {
-  const source = inferSource(device)
+  const sources = orderedSources(device)
   const roleType = (device.suggested_type ?? 'generic') as NodeType
   const Icon = TYPE_ICONS[roleType] ?? Circle
   const activeTheme = useThemeStore((s) => s.activeTheme)
@@ -664,16 +656,6 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
   // (from the active theme / style section), instead of a flat grey.
   const roleColor = resolveNodeColors({ type: roleType, custom_colors: undefined }, activeTheme).border
   const label = deviceLabel(device)
-  const sourceColor =
-    source === 'zigbee' ? '#00d4ff'
-    : source === 'zwave' ? '#ff6e00'
-    : source === 'proxmox' ? '#e57000'
-    : '#a855f7'
-  const sourceLabel =
-    source === 'zigbee' ? 'ZIGBEE'
-    : source === 'zwave' ? 'Z-WAVE'
-    : source === 'proxmox' ? 'PROXMOX'
-    : (device.discovery_source ?? 'IP').toUpperCase()
   const services = device.services ?? []
   const visibleServices = services.slice(0, 4)
   const moreServices = services.length - visibleServices.length
@@ -737,12 +719,15 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-foreground break-all leading-snug">{label}</div>
           <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-            <span
-              className="text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider"
-              style={{ background: `${sourceColor}22`, color: sourceColor }}
-            >
-              {sourceLabel}
-            </span>
+            {sources.map((s) => (
+              <span
+                key={s}
+                className="text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider"
+                style={{ background: `${SOURCE_META[s].color}22`, color: SOURCE_META[s].color }}
+              >
+                {SOURCE_META[s].label}
+              </span>
+            ))}
             {device.suggested_type && (
               <span
                 className="text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider"

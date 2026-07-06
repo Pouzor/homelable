@@ -321,6 +321,37 @@ async def init_db() -> None:
         with suppress(OperationalError):
             sql = "UPDATE edges SET animated = 'none' WHERE animated = '0' OR animated = 0 OR animated IS NULL"
             await conn.exec_driver_sql(sql)
+        # Multi-source discovery tags: a device found by both an IP scan and a
+        # Proxmox import carries every source. Backfill from the legacy single
+        # discovery_source so existing rows show under their filter.
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN discovery_sources JSON")
+        with suppress(OperationalError):
+            await conn.exec_driver_sql(
+                "UPDATE pending_devices SET discovery_sources = json_array(discovery_source) "
+                "WHERE discovery_sources IS NULL AND discovery_source IS NOT NULL"
+            )
+        # Legacy IP-scanned rows predating discovery_source have a NULL scalar
+        # but a real IP — treat them as an ARP scan so they keep the IP tag.
+        with suppress(OperationalError):
+            await conn.exec_driver_sql(
+                "UPDATE pending_devices SET discovery_sources = json_array('arp') "
+                "WHERE discovery_sources IS NULL AND discovery_source IS NULL AND ip IS NOT NULL"
+            )
+        with suppress(OperationalError):
+            await conn.exec_driver_sql(
+                "UPDATE pending_devices SET discovery_sources = '[]' WHERE discovery_sources IS NULL"
+            )
+        # Canonicalize stored MACs (lowercase, ':' separators) so cross-source
+        # dedup can match a Proxmox NIC MAC against an ARP-scanned one by equality.
+        with suppress(OperationalError):
+            await conn.exec_driver_sql(
+                "UPDATE pending_devices SET mac = lower(replace(mac, '-', ':')) WHERE mac IS NOT NULL"
+            )
+        with suppress(OperationalError):
+            await conn.exec_driver_sql(
+                "UPDATE nodes SET mac = lower(replace(mac, '-', ':')) WHERE mac IS NOT NULL"
+            )
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

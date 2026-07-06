@@ -32,6 +32,8 @@ from app.schemas.proxmox import (
     ProxmoxTestConnectionResponse,
 )
 from app.schemas.scan import ScanRunResponse
+from app.services.discovery_sources import add_source
+from app.services.mac_utils import normalize_mac
 from app.services.node_dedupe import dedupe_nodes_by_ieee
 from app.services.proxmox_service import (
     build_proxmox_cluster_links,
@@ -164,6 +166,10 @@ async def _background_proxmox_import(
                 run.finished_at = datetime.now(timezone.utc)
                 run.error = _guest_visibility_advisory(nodes_raw)
                 await db.commit()
+            # Nudge the frontend to reload the inventory (same signal the IP scan
+            # emits) so imported/merged devices appear without a manual refresh.
+            from app.api.routes.status import broadcast_scan_update
+            await broadcast_scan_update(run_id=run_id, devices_found=result.device_count)
         except Exception as exc:
             logger.exception("Proxmox import %s failed", run_id)
             await db.rollback()
@@ -223,14 +229,19 @@ async def _persist_pending_import(
         if not ieee:
             continue
         ip = n.get("ip")
+        mac = normalize_mac(n.get("mac"))
         props = build_proxmox_properties(n)
 
-        # 1) Already on a canvas? Match by ieee OR (ip when known). Refresh in
-        # place: merge properties, adopt the pve identity onto a scanned node,
-        # backfill blank specs/hostname. Do NOT stomp user-set type/status.
+        # 1) Already on a canvas? Match by ieee OR ip OR mac (the cross-source
+        # dedup key — a stopped VM has no IP but its configured NIC MAC still
+        # matches an ARP-scanned node). Refresh in place: merge properties, adopt
+        # the pve identity onto a scanned node, backfill blank specs/hostname/mac.
+        # Do NOT stomp user-set type/status.
         node_filter = [Node.ieee_address == ieee]
         if ip:
             node_filter.append(Node.ip == ip)
+        if mac:
+            node_filter.append(Node.mac == mac)
         existing_nodes = (
             await db.execute(select(Node).where(or_(*node_filter)).order_by(Node.id))
         ).scalars().all()
@@ -242,6 +253,8 @@ async def _persist_pending_import(
                     en.ieee_address = ieee
                 if ip and not en.ip:
                     en.ip = ip
+                if mac and not en.mac:
+                    en.mac = mac
                 en.hostname = en.hostname or n.get("hostname")
                 en.cpu_count = en.cpu_count or n.get("cpu_count")
                 en.ram_gb = en.ram_gb or n.get("ram_gb")
@@ -251,17 +264,17 @@ async def _persist_pending_import(
                 if ieee in cluster_members:
                     en.left_handles = max(en.left_handles or 0, 1)
                     en.right_handles = max(en.right_handles or 0, 1)
-            await _ensure_inventory_row(db, ieee, ip, n, props, approved=True)
+            await _ensure_inventory_row(db, ieee, ip, mac, n, props, approved=True)
             pending_updated += 1
             continue
 
         # 2) Not on canvas — upsert the pending inventory row.
-        pending = await _find_pending(db, ieee, ip)
+        pending = await _find_pending(db, ieee, ip, mac)
         if pending is None:
-            db.add(_new_pending(ieee, ip, n, props, status="pending"))
+            db.add(_new_pending(ieee, ip, mac, n, props, status="pending"))
             pending_created += 1
         else:
-            _refresh_pending(pending, ieee, ip, n, props)
+            _refresh_pending(pending, ieee, ip, mac, n, props)
             pending_updated += 1
 
     links_recorded = await _replace_links(db, edges_raw, cluster_pairs)
@@ -276,22 +289,30 @@ async def _persist_pending_import(
 
 
 async def _find_pending(
-    db: AsyncSession, ieee: str, ip: str | None
+    db: AsyncSession, ieee: str, ip: str | None, mac: str | None
 ) -> PendingDevice | None:
     filters = [PendingDevice.ieee_address == ieee]
     if ip:
         filters.append(PendingDevice.ip == ip)
+    if mac:
+        filters.append(PendingDevice.mac == mac)
     return (
         await db.execute(select(PendingDevice).where(or_(*filters)))
     ).scalars().first()
 
 
 def _new_pending(
-    ieee: str, ip: str | None, n: dict[str, Any], props: list[dict[str, Any]], status: str
+    ieee: str,
+    ip: str | None,
+    mac: str | None,
+    n: dict[str, Any],
+    props: list[dict[str, Any]],
+    status: str,
 ) -> PendingDevice:
     return PendingDevice(
         ieee_address=ieee,
         ip=ip,
+        mac=mac,
         hostname=n.get("hostname"),
         friendly_name=n.get("label"),
         suggested_type=n.get("type"),
@@ -299,19 +320,41 @@ def _new_pending(
         model=n.get("model"),
         properties=props,
         status=status,
-        discovery_source="proxmox",
+        discovery_source=_PROXMOX_GUEST_SOURCE,
+        discovery_sources=[_PROXMOX_GUEST_SOURCE],
     )
+
+
+def _sources_after_merge(row: PendingDevice) -> list[str]:
+    """Discovery sources for an inventory row after a Proxmox import merges in.
+
+    Must run BEFORE the ``pve-`` ieee is adopted onto the row, so it can tell
+    whether the row was originally a scanned device. Preserves the prior scan
+    origin — including legacy rows created before ``discovery_sources`` existed
+    (empty list) and possibly with a NULL ``discovery_source`` — so the IP tag
+    survives the merge. A row that carries an IP but was not itself a Proxmox
+    device (no ``pve-`` ieee) was found by a scan; keep an IP-scan source.
+    """
+    sources = add_source(row.discovery_sources, row.discovery_source)
+    was_scanned = not (row.ieee_address or "").startswith("pve-")
+    if was_scanned and row.ip and not any(s in ("arp", "mdns") for s in sources):
+        sources = add_source(sources, "arp")
+    return add_source(sources, _PROXMOX_GUEST_SOURCE)
 
 
 def _refresh_pending(
     pending: PendingDevice,
     ieee: str,
     ip: str | None,
+    mac: str | None,
     n: dict[str, Any],
     props: list[dict[str, Any]],
 ) -> None:
+    # Compute sources before adopting the pve ieee (needs the pre-merge origin).
+    pending.discovery_sources = _sources_after_merge(pending)
     pending.ieee_address = pending.ieee_address or ieee
     pending.ip = ip or pending.ip
+    pending.mac = pending.mac or mac
     pending.hostname = n.get("hostname") or pending.hostname
     pending.friendly_name = n.get("label") or pending.friendly_name
     pending.suggested_type = n.get("type") or pending.suggested_type
@@ -328,18 +371,22 @@ async def _ensure_inventory_row(
     db: AsyncSession,
     ieee: str,
     ip: str | None,
+    mac: str | None,
     n: dict[str, Any],
     props: list[dict[str, Any]],
     approved: bool,
 ) -> None:
     """Ensure an inventory row exists for a device already on a canvas, so it
     shows in the inventory with an 'In N canvas' badge. Never changes status."""
-    inv = await _find_pending(db, ieee, ip)
+    inv = await _find_pending(db, ieee, ip, mac)
     if inv is None:
-        db.add(_new_pending(ieee, ip, n, props, status="approved" if approved else "pending"))
+        db.add(_new_pending(ieee, ip, mac, n, props, status="approved" if approved else "pending"))
     else:
+        # Compute sources before adopting the pve ieee (needs the pre-merge origin).
+        inv.discovery_sources = _sources_after_merge(inv)
         inv.ieee_address = inv.ieee_address or ieee
         inv.ip = ip or inv.ip
+        inv.mac = inv.mac or mac
         inv.hostname = n.get("hostname") or inv.hostname
         inv.suggested_type = n.get("type") or inv.suggested_type
         inv.properties = merge_proxmox_properties(list(inv.properties or []), props)

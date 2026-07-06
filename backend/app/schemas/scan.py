@@ -14,6 +14,9 @@ class PendingDeviceResponse(BaseModel):
     suggested_type: str | None
     status: str
     discovery_source: str | None
+    # All sources that have observed this device (e.g. ["arp", "proxmox"]). Drives
+    # the inventory source filter + badges; falls back to [discovery_source].
+    discovery_sources: list[str] = []
     ieee_address: str | None = None
     friendly_name: str | None = None
     device_subtype: str | None = None
@@ -35,10 +38,10 @@ class PendingDeviceResponse(BaseModel):
     node_last_modified: datetime | None = None
     node_last_seen: datetime | None = None
 
-    @field_validator("properties", mode="before")
+    @field_validator("properties", "discovery_sources", mode="before")
     @classmethod
-    def _coerce_properties(cls, v: Any) -> list[Any]:
-        # Legacy rows (column added by migration) have properties = NULL.
+    def _coerce_list(cls, v: Any) -> list[Any]:
+        # Legacy rows (columns added by migration) have these = NULL.
         return v if isinstance(v, list) else []
 
     model_config = {"from_attributes": True}

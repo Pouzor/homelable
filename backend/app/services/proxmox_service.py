@@ -18,6 +18,7 @@ from typing import Any
 
 import httpx
 
+from app.services.mac_utils import normalize_mac
 from app.services.zigbee_service import merge_zigbee_properties
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,9 @@ _BYTES_PER_GB = 1024 ** 3
 
 # net0 config line: "name=eth0,bridge=vmbr0,ip=192.168.1.5/24,gw=..."
 _LXC_IP_RE = re.compile(r"(?:^|,)ip=([0-9]{1,3}(?:\.[0-9]{1,3}){3})(?:/\d+)?")
+# NIC MAC inside a net0 string — qemu "virtio=BC:24:11:..,bridge=.." or lxc
+# "..,hwaddr=BC:24:11:..,..". A bare 6-octet MAC match works for both forms.
+_NET_MAC_RE = re.compile(r"([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})")
 
 
 def _sanitize_proxmox_error(exc: BaseException) -> str:
@@ -121,6 +125,21 @@ def _extract_lxc_ip(config_payload: dict[str, Any] | None) -> str | None:
     return match.group(1) if match else None
 
 
+def _extract_net_mac(config_payload: dict[str, Any] | None) -> str | None:
+    """Parse the NIC MAC from a qemu/lxc ``net0`` config string (normalized).
+
+    Works agent-free for both guest kinds and for stopped guests — the sole
+    identity we can reliably cross-match against an ARP-scanned device.
+    """
+    if not config_payload:
+        return None
+    net0 = config_payload.get("net0")
+    if not isinstance(net0, str):
+        return None
+    match = _NET_MAC_RE.search(net0)
+    return normalize_mac(match.group(1)) if match else None
+
+
 def _host_node(raw: dict[str, Any]) -> dict[str, Any] | None:
     """Build a homelable ``proxmox`` host node from a ``/nodes`` entry."""
     name = raw.get("node")
@@ -144,7 +163,9 @@ def _host_node(raw: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _guest_node(raw: dict[str, Any], host_name: str, kind: str, ip: str | None) -> dict[str, Any] | None:
+def _guest_node(
+    raw: dict[str, Any], host_name: str, kind: str, ip: str | None, mac: str | None = None
+) -> dict[str, Any] | None:
     """Build a homelable vm/lxc node from a ``/qemu`` or ``/lxc`` list entry."""
     vmid = raw.get("vmid")
     if vmid is None:
@@ -159,6 +180,7 @@ def _guest_node(raw: dict[str, Any], host_name: str, kind: str, ip: str | None) 
         "ieee_address": ieee,
         "hostname": name,
         "ip": ip,
+        "mac": mac,
         "status": "online" if raw.get("status") == "running" else "offline",
         "cpu_count": _int_or_none(raw.get("maxcpu") or raw.get("cpus")),
         "ram_gb": _gb(raw.get("maxmem")),
@@ -320,34 +342,48 @@ async def _fetch_host_guests(
         if not isinstance(entries, list):
             continue
         for raw in entries:
-            ip = await _resolve_guest_ip(client, host_name, kind, raw)
-            node = _guest_node(raw, host_name, kind, ip)
+            ip, mac = await _resolve_guest_net(client, host_name, kind, raw)
+            node = _guest_node(raw, host_name, kind, ip, mac)
             if node:
                 guests.append(node)
 
     return guests
 
 
-async def _resolve_guest_ip(
+async def _resolve_guest_net(
     client: httpx.AsyncClient, host_name: str, kind: str, raw: dict[str, Any]
-) -> str | None:
-    """Best-effort guest IP. qemu → guest agent, lxc → net0 config. Never raises."""
+) -> tuple[str | None, str | None]:
+    """Best-effort (ip, mac) for a guest. Never raises.
+
+    - MAC comes from the guest ``/config`` net0 line for both kinds (agent-free,
+      works for stopped guests) — the cross-source dedup key.
+    - IP: qemu → guest agent (running only); lxc → static net0 config.
+    Partial results are returned even if a later call fails (e.g. config MAC is
+    kept when the qemu agent call errors).
+    """
     vmid = raw.get("vmid")
     if vmid is None:
-        return None
+        return None, None
+    ip: str | None = None
+    mac: str | None = None
     try:
         if kind == "qemu":
-            if raw.get("status") != "running":
-                return None
-            data = await _get_json(
-                client, f"/nodes/{host_name}/qemu/{vmid}/agent/network-get-interfaces"
-            )
-            return _extract_qemu_ip(data)
-        data = await _get_json(client, f"/nodes/{host_name}/lxc/{vmid}/config")
-        return _extract_lxc_ip(data)
+            config = await _get_json(client, f"/nodes/{host_name}/qemu/{vmid}/config")
+            mac = _extract_net_mac(config)
+            if raw.get("status") == "running":
+                data = await _get_json(
+                    client, f"/nodes/{host_name}/qemu/{vmid}/agent/network-get-interfaces"
+                )
+                ip = _extract_qemu_ip(data)
+        else:
+            config = await _get_json(client, f"/nodes/{host_name}/lxc/{vmid}/config")
+            ip = _extract_lxc_ip(config)
+            mac = _extract_net_mac(config)
     except httpx.HTTPError:
-        # Guest agent not installed / container stopped / no perms → no IP. Fine.
-        return None
+        # Guest agent not installed / container stopped / no perms. Keep whatever
+        # was resolved before the failure.
+        pass
+    return ip, mac
 
 
 async def test_proxmox_connection(

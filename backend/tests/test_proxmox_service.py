@@ -38,6 +38,47 @@ def test_extract_lxc_ip_parses_net0_static() -> None:
     assert svc._extract_lxc_ip(None) is None
 
 
+def test_extract_net_mac_parses_qemu_and_lxc_forms() -> None:
+    # qemu: "virtio=<MAC>,bridge=.."
+    assert svc._extract_net_mac({"net0": "virtio=BC:24:11:AA:BB:CC,bridge=vmbr0"}) == "bc:24:11:aa:bb:cc"
+    # lxc: "..,hwaddr=<MAC>,.."
+    assert (
+        svc._extract_net_mac({"net0": "name=eth0,bridge=vmbr0,hwaddr=BC:24:11:11:22:33,ip=dhcp"})
+        == "bc:24:11:11:22:33"
+    )
+    # No MAC / missing net0 / None → None
+    assert svc._extract_net_mac({"net0": "name=eth0,ip=dhcp"}) is None
+    assert svc._extract_net_mac({}) is None
+    assert svc._extract_net_mac(None) is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_inventory_captures_guest_mac_from_config() -> None:
+    """Guests carry a normalized NIC MAC read agent-free from their config."""
+    async def fake_get_json(client, path: str):
+        if path == "/nodes":
+            return [{"node": "pve1", "status": "online", "maxcpu": 8}]
+        if path == "/nodes/pve1/qemu":
+            return [{"vmid": 101, "name": "web", "status": "stopped"}]  # stopped: no agent IP
+        if path == "/nodes/pve1/lxc":
+            return [{"vmid": 200, "name": "db", "status": "running"}]
+        if path == "/nodes/pve1/qemu/101/config":
+            return {"net0": "virtio=AA:BB:CC:DD:EE:FF,bridge=vmbr0"}
+        if path == "/nodes/pve1/lxc/200/config":
+            return {"net0": "name=eth0,bridge=vmbr0,hwaddr=11:22:33:44:55:66,ip=10.0.0.6/24"}
+        return None
+
+    with patch.object(svc, "_get_json", new=AsyncMock(side_effect=fake_get_json)):
+        nodes, _ = await svc.fetch_proxmox_inventory("h", 8006, "u@pam!t", "sec")
+
+    vm = next(n for n in nodes if n["type"] == "vm")
+    assert vm["mac"] == "aa:bb:cc:dd:ee:ff"  # captured even though VM is stopped (no IP)
+    assert vm["ip"] is None
+    ct = next(n for n in nodes if n["type"] == "lxc")
+    assert ct["mac"] == "11:22:33:44:55:66"
+    assert ct["ip"] == "10.0.0.6"
+
+
 def test_host_and_guest_node_mapping() -> None:
     host = svc._host_node({"node": "pve1", "status": "online", "maxcpu": 8, "maxmem": 16 * 1024 ** 3, "maxdisk": 500 * 1024 ** 3})
     assert host["type"] == "proxmox"

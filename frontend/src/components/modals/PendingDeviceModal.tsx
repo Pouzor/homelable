@@ -21,6 +21,10 @@ export interface PendingDevice {
   suggested_type: string | null
   status: string
   discovery_source: string | null
+  // All sources that have observed this device (e.g. ["arp", "proxmox"]). A
+  // merged device shows under every matching filter. Falls back to
+  // [discovery_source] when absent (older rows).
+  discovery_sources?: string[]
   ieee_address?: string | null
   friendly_name?: string | null
   device_subtype?: string | null
