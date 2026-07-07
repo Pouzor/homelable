@@ -389,7 +389,7 @@ async def test_cluster_link_resolves_to_cluster_edge(db_session) -> None:
     ))
     await db_session.commit()
 
-    await _resolve_pending_links_for_ieee(db_session, "pve-node-a")
+    await _resolve_pending_links_for_ieee(db_session, "pve-node-a", design.id)
 
     edge = (await db_session.execute(select(Edge))).scalars().one()
     assert edge.type == "cluster"
@@ -397,6 +397,42 @@ async def test_cluster_link_resolves_to_cluster_edge(db_session) -> None:
     # Bare side name (canonical) so React Flow resolves it to the left side;
     # a '-t' target would fall back to the top handle.
     assert edge.target_handle == "left"
+
+
+@pytest.mark.asyncio
+async def test_link_survives_and_resolves_onto_second_design(db_session) -> None:
+    # Regression: approving the same mesh devices onto a second canvas must also
+    # get their edges. The link row is topology, not one-shot — resolving it on
+    # design A must not consume it, so design B resolves too.
+    da = Design(id=str(uuid.uuid4()), name="a")
+    db_ = Design(id=str(uuid.uuid4()), name="b")
+    db_session.add_all([da, db_])
+    # Same two devices placed on BOTH designs (one Node per canvas).
+    for d in (da, db_):
+        db_session.add_all([
+            Node(id=str(uuid.uuid4()), type="iot", label="x", ieee_address="0xAAAA",
+                 status="online", pos_x=0, pos_y=0, design_id=d.id),
+            Node(id=str(uuid.uuid4()), type="iot", label="y", ieee_address="0xBBBB",
+                 status="online", pos_x=0, pos_y=0, design_id=d.id),
+        ])
+    db_session.add(PendingDeviceLink(
+        id=str(uuid.uuid4()), source_ieee="0xAAAA", target_ieee="0xBBBB",
+        discovery_source="zigbee",
+    ))
+    await db_session.commit()
+
+    first = await _resolve_pending_links_for_ieee(db_session, "0xAAAA", da.id)
+    second = await _resolve_pending_links_for_ieee(db_session, "0xAAAA", db_.id)
+
+    assert len(first) == 1
+    assert len(second) == 1  # would be 0 if the link were consumed on design A
+    # One iot edge per design, each between that design's own nodes.
+    edges = (await db_session.execute(select(Edge))).scalars().all()
+    assert len(edges) == 2
+    assert {e.design_id for e in edges} == {da.id, db_.id}
+    assert all(e.type == "iot" for e in edges)
+    # The link row is still present for any further design.
+    assert (await db_session.execute(select(PendingDeviceLink))).scalars().one()
 
 
 @pytest.mark.asyncio

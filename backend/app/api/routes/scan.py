@@ -393,7 +393,9 @@ async def bulk_approve_devices(
 
     all_edges: list[dict[str, str]] = []
     for device in approved_devices:
-        all_edges.extend(await _resolve_pending_links_for_ieee(db, device.ieee_address))
+        all_edges.extend(
+            await _resolve_pending_links_for_ieee(db, device.ieee_address, default_design_id)
+        )
 
     await db.commit()
     return {
@@ -500,7 +502,9 @@ async def approve_device(
                     device.vendor, device.model, device.lqi,
                 ) if wireless else [],
             )
-            edges = await _resolve_pending_links_for_ieee(db, device.ieee_address)
+            edges = await _resolve_pending_links_for_ieee(
+                db, device.ieee_address, node_design_id
+            )
             await db.commit()
             return {
                 "approved": True,
@@ -539,7 +543,7 @@ async def approve_device(
     await db.flush()
     node_id = node.id
 
-    edges = await _resolve_pending_links_for_ieee(db, device.ieee_address)
+    edges = await _resolve_pending_links_for_ieee(db, device.ieee_address, node_design_id)
 
     await db.commit()
     return {
@@ -573,14 +577,17 @@ async def _is_proxmox_cluster_member(db: AsyncSession, ieee: str | None) -> bool
 
 
 async def _resolve_pending_links_for_ieee(
-    db: AsyncSession, ieee: str | None
+    db: AsyncSession, ieee: str | None, design_id: str | None
 ) -> list[dict[str, str]]:
-    """Materialize edges for any pending_device_links involving ``ieee``.
+    """Materialize edges for any pending_device_links involving ``ieee`` on the
+    canvas identified by ``design_id``.
 
-    For each link where the other endpoint already exists as a canvas Node
-    (matched by ``Node.ieee_address``), create the Edge and drop the link
-    row. Links where the other endpoint is still pending are kept so they
-    can resolve when that endpoint is approved later.
+    For each link where the other endpoint already exists as a Node *on this
+    design* (matched by ``Node.ieee_address`` + ``Node.design_id``), create the
+    Edge. Links are **never** deleted here: they describe the discovered mesh /
+    cluster topology and are wiped+reinserted wholesale on the next import
+    (zigbee/zwave/proxmox). Keeping them lets the same devices be re-approved
+    onto a second canvas with their edges intact.
     """
     if not ieee:
         return []
@@ -595,14 +602,19 @@ async def _resolve_pending_links_for_ieee(
     if not links:
         return []
 
-    # Map every relevant ieee → Node (single query).
+    # Map every relevant ieee → Node *on the target design* (single query).
+    # Scoping by design is what makes a re-approve onto a second canvas link the
+    # nodes of THAT canvas, not stale nodes left on another one.
     other_ieees = {
         link.target_ieee if link.source_ieee == ieee else link.source_ieee
         for link in links
     }
     other_ieees.add(ieee)
     nodes_q = await db.execute(
-        select(Node).where(Node.ieee_address.in_(other_ieees))
+        select(Node).where(
+            Node.ieee_address.in_(other_ieees),
+            Node.design_id == design_id,
+        )
     )
     by_ieee = {n.ieee_address: n for n in nodes_q.scalars().all() if n.ieee_address}
 
@@ -633,15 +645,13 @@ async def _resolve_pending_links_for_ieee(
             src_id, tgt_id = self_node.id, other_node.id
         else:
             src_id, tgt_id = other_node.id, self_node.id
-        # Skip if either direction already exists.
+        # Skip if either direction already exists on this design (re-approve or
+        # a manually drawn link). The link row is kept for other designs.
         if (src_id, tgt_id) in existing_pairs or (tgt_id, src_id) in existing_pairs:
-            await db.delete(link)
             continue
-        # Use the source node's design_id for the edge
-        edge_design_id = self_node.design_id if self_node else None
-        if edge_design_id is None:
-            first = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
-            edge_design_id = first.id if first else None
+        # Edge lands on the design we're approving into (the nodes above are
+        # already scoped to it).
+        edge_design_id = design_id or (self_node.design_id if self_node else None)
         # Edge shape by link source. Handle IDs are the *bare* slot-0 side names
         # (the canonical stored form — the save path normalizes '<side>-t' → the
         # bare source id, and React Flow resolves the bare id to that side). A
@@ -677,7 +687,6 @@ async def _resolve_pending_links_for_ieee(
             "source_handle": src_handle,
             "target_handle": tgt_handle,
         })
-        await db.delete(link)
 
     return created
 

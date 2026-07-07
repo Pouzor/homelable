@@ -1375,7 +1375,9 @@ async def test_approve_zigbee_skips_when_other_endpoint_still_pending(
 async def test_approve_zigbee_resolves_link_after_second_approval(
     client: AsyncClient, headers, db_session
 ):
-    """First approval keeps link; second approval creates the edge."""
+    """First approval keeps link (other endpoint pending); second approval
+    creates the edge. The link row is retained afterwards so the same pair can
+    be re-approved onto another canvas — it's topology, wiped only on reimport."""
     from sqlalchemy import select
 
     from app.db.models import Edge, PendingDevice, PendingDeviceLink
@@ -1408,7 +1410,7 @@ async def test_approve_zigbee_resolves_link_after_second_approval(
     edges = (await db_session.execute(select(Edge))).scalars().all()
     assert len(edges) == 1
     links = (await db_session.execute(select(PendingDeviceLink))).scalars().all()
-    assert links == []  # consumed
+    assert len(links) == 1  # retained for re-approval onto other canvases
 
 
 # --- Deep scan: trigger overrides + config persistence ---
