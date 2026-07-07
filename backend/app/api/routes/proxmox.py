@@ -29,6 +29,7 @@ from app.schemas.proxmox import (
     ProxmoxImportPendingResponse,
     ProxmoxImportResponse,
     ProxmoxNodeOut,
+    ProxmoxSyncConfig,
     ProxmoxTestConnectionResponse,
 )
 from app.schemas.scan import ScanRunResponse
@@ -137,6 +138,43 @@ async def import_proxmox_to_pending(
         token_id,
         token_secret,
         payload.verify_tls,
+    )
+    return run
+
+
+@router.post("/sync-now", response_model=ScanRunResponse)
+async def sync_proxmox_now(
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> ScanRun:
+    """Trigger an immediate Proxmox inventory sync using the server env config.
+
+    Same background flow as ``/import-pending`` but sources host + token from
+    ``settings`` (env) rather than the request body — the manual counterpart to
+    the scheduled auto-sync job. Requires the env token to be configured.
+    """
+    if not (settings.proxmox_host and settings.proxmox_token_id and settings.proxmox_token_secret):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot sync: no Proxmox host/token configured on the server.",
+        )
+    run = ScanRun(
+        status="running",
+        kind="proxmox",
+        ranges=[f"{settings.proxmox_host}:{settings.proxmox_port}"],
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+    background_tasks.add_task(
+        _background_proxmox_import,
+        run.id,
+        settings.proxmox_host,
+        settings.proxmox_port,
+        settings.proxmox_token_id,
+        settings.proxmox_token_secret,
+        settings.proxmox_verify_tls,
     )
     return run
 
@@ -442,22 +480,24 @@ async def get_proxmox_config(_: str = Depends(get_current_user)) -> ProxmoxConfi
 
 @router.post("/config", response_model=ProxmoxConfig)
 async def save_proxmox_config(
-    payload: ProxmoxConfig,
+    payload: ProxmoxSyncConfig,
     _: str = Depends(get_current_user),
 ) -> ProxmoxConfig:
-    """Persist non-secret Proxmox config and apply the auto-sync schedule live.
+    """Persist the auto-sync activation (enabled + interval) and apply it live.
 
-    The token is NOT accepted here — it is env-only by design.
+    This is the ONLY Proxmox config the app writes. Connection settings
+    (host, port, token, verify_tls) are env-only and are never accepted or
+    persisted here — enabling auto-sync requires host + token already set in the
+    server env, since the scheduled job reads them from there.
     """
-    if payload.sync_enabled and not (settings.proxmox_token_id and settings.proxmox_token_secret):
+    if payload.sync_enabled and not (
+        settings.proxmox_host and settings.proxmox_token_id and settings.proxmox_token_secret
+    ):
         raise HTTPException(
             status_code=400,
-            detail="Cannot enable auto-sync: no Proxmox API token configured on the server.",
+            detail="Cannot enable auto-sync: no Proxmox host/token configured in the server env.",
         )
     try:
-        settings.proxmox_host = payload.host
-        settings.proxmox_port = payload.port
-        settings.proxmox_verify_tls = payload.verify_tls
         settings.proxmox_sync_enabled = payload.sync_enabled
         settings.proxmox_sync_interval = payload.sync_interval
         settings.save_overrides()

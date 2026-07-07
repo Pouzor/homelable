@@ -121,13 +121,10 @@ class Settings(BaseSettings):
                 self.scanner_http_probe_enabled = bool(data["scanner_http_probe_enabled"])
             if "scanner_http_verify_tls" in data:
                 self.scanner_http_verify_tls = bool(data["scanner_http_verify_tls"])
-            # Proxmox non-secret config (token stays env-only, never here).
-            if "proxmox_host" in data:
-                self.proxmox_host = str(data["proxmox_host"])
-            if "proxmox_port" in data:
-                self.proxmox_port = int(data["proxmox_port"])
-            if "proxmox_verify_tls" in data:
-                self.proxmox_verify_tls = bool(data["proxmox_verify_tls"])
+            # Proxmox auto-sync activation only. Connection config (host, port,
+            # token, verify_tls) is env-only by design — never read from or
+            # written to this file. Persisting host here previously created a
+            # dual source of truth that silently clobbered PROXMOX_HOST.
             if "proxmox_sync_enabled" in data:
                 self.proxmox_sync_enabled = bool(data["proxmox_sync_enabled"])
             if "proxmox_sync_interval" in data:
@@ -146,11 +143,9 @@ class Settings(BaseSettings):
             "scanner_http_ranges": self.scanner_http_ranges,
             "scanner_http_probe_enabled": self.scanner_http_probe_enabled,
             "scanner_http_verify_tls": self.scanner_http_verify_tls,
-            # Proxmox: only non-secret config. Token fields are intentionally
-            # excluded — they must never be written to disk by the app.
-            "proxmox_host": self.proxmox_host,
-            "proxmox_port": self.proxmox_port,
-            "proxmox_verify_tls": self.proxmox_verify_tls,
+            # Proxmox: only the auto-sync activation is persisted. Connection
+            # config (host, port, token, verify_tls) is env-only and must never
+            # be written to disk — that is the single source of truth.
             "proxmox_sync_enabled": self.proxmox_sync_enabled,
             "proxmox_sync_interval": self.proxmox_sync_interval,
         }))

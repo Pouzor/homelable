@@ -161,8 +161,22 @@ export const proxmoxApi = {
     }>('/proxmox/import-pending', data),
 
   getConfig: () => api.get<ProxmoxConfigData>('/proxmox/config'),
-  saveConfig: (data: Omit<ProxmoxConfigData, 'token_configured'>) =>
+  // Only the auto-sync activation is persisted. Connection config
+  // (host/port/token/verify_tls) is env-only and never sent.
+  saveConfig: (data: { sync_enabled: boolean; sync_interval: number }) =>
     api.post<ProxmoxConfigData>('/proxmox/config', data),
+
+  syncNow: () =>
+    api.post<{
+      id: string
+      status: string
+      kind: string
+      ranges: string[]
+      devices_found: number
+      started_at: string
+      finished_at: string | null
+      error: string | null
+    }>('/proxmox/sync-now'),
 }
 
 export const designsApi = {

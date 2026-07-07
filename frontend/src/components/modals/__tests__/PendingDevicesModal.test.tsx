@@ -263,6 +263,27 @@ describe('PendingDevicesModal', () => {
     await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-a', 'dev-b'], null))
   })
 
+  it('keeps approved devices listed after bulk approve (reloads, not strips)', async () => {
+    // After approve, pending() still returns the rows (now on-canvas w/ badge).
+    mockPending
+      .mockResolvedValueOnce({ data: [DEVICE_IP, DEVICE_ZIGBEE] })
+      .mockResolvedValue({ data: [
+        { ...DEVICE_IP, canvas_count: 1 },
+        { ...DEVICE_ZIGBEE, canvas_count: 1 },
+      ] })
+    render(<PendingDevicesModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
+    fireEvent.click(screen.getByTestId('pending-card-dev-a'))
+    fireEvent.click(screen.getByTestId('pending-card-dev-b'))
+    fireEvent.click(screen.getByRole('button', { name: /Approve \(2\)/ }))
+    await waitFor(() => expect(mockBulkApprove).toHaveBeenCalled())
+    // Reloaded, so rows remain visible instead of the list going empty.
+    await waitFor(() => expect(mockPending).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument()
+    expect(screen.getByTestId('pending-card-dev-b')).toBeInTheDocument()
+  })
+
   it('bulk approve carries the scanned MAC onto the canvas node (#168)', async () => {
     render(<PendingDevicesModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())

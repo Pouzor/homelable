@@ -96,6 +96,33 @@ async def test_import_pending_creates_scan_run(client: AsyncClient, headers: dic
 
 
 @pytest.mark.asyncio
+async def test_sync_now_creates_scan_run(client: AsyncClient, headers: dict) -> None:
+    settings.proxmox_host = "pve"
+    settings.proxmox_token_id = "u@pam!t"
+    settings.proxmox_token_secret = "s"
+    with patch("app.api.routes.proxmox._background_proxmox_import", new_callable=AsyncMock):
+        res = await client.post("/api/v1/proxmox/sync-now", headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["kind"] == "proxmox"
+    assert data["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_sync_now_rejected_without_token(client: AsyncClient, headers: dict) -> None:
+    settings.proxmox_host = "pve"
+    # _clear_env_token leaves token empty
+    res = await client.post("/api/v1/proxmox/sync-now", headers=headers)
+    assert res.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_sync_now_requires_auth(client: AsyncClient) -> None:
+    res = await client.post("/api/v1/proxmox/sync-now")
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_requires_auth(client: AsyncClient) -> None:
     res = await client.post("/api/v1/proxmox/import-pending", json={"host": "pve"})
     assert res.status_code == 401
@@ -114,12 +141,36 @@ async def test_config_omits_token(client: AsyncClient, headers: dict) -> None:
 
 @pytest.mark.asyncio
 async def test_enable_sync_without_token_rejected(client: AsyncClient, headers: dict) -> None:
+    # _clear_env_token leaves token empty → enabling auto-sync is rejected.
     res = await client.post(
         "/api/v1/proxmox/config",
-        json={"host": "pve", "port": 8006, "verify_tls": True, "sync_enabled": True, "sync_interval": 600},
+        json={"sync_enabled": True, "sync_interval": 600},
         headers=headers,
     )
     assert res.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_save_config_persists_only_sync_fields(client: AsyncClient, headers: dict) -> None:
+    """Connection config is env-only: even if a client sends host/port/verify,
+    the endpoint ignores them and persists only the sync activation."""
+    settings.proxmox_host = "pve"
+    settings.proxmox_token_id = "u@pam!t"
+    settings.proxmox_token_secret = "s"
+    saved: dict = {}
+    with patch.object(type(settings), "save_overrides", lambda self: saved.update(
+        host=self.proxmox_host, enabled=self.proxmox_sync_enabled, interval=self.proxmox_sync_interval
+    )), patch("app.api.routes.proxmox.set_proxmox_sync_enabled"), \
+            patch("app.api.routes.proxmox.reschedule_proxmox_sync"):
+        res = await client.post(
+            "/api/v1/proxmox/config",
+            json={"host": "attacker", "port": 1, "verify_tls": False, "sync_enabled": True, "sync_interval": 900},
+            headers=headers,
+        )
+    assert res.status_code == 200
+    # host untouched by the request body; sync activation applied.
+    assert settings.proxmox_host == "pve"
+    assert saved == {"host": "pve", "enabled": True, "interval": 900}
 
 
 @pytest.mark.asyncio

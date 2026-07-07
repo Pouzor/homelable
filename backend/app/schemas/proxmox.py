@@ -64,8 +64,11 @@ class ProxmoxImportPendingResponse(BaseModel):
 
 
 class ProxmoxConfig(BaseModel):
-    """Non-secret Proxmox connection + auto-sync config. Never carries a token —
-    ``token_configured`` reflects whether a server-side token is present."""
+    """Non-secret Proxmox connection + auto-sync config (GET response).
+
+    Connection fields (host/port/verify_tls) are env-only and read-only here —
+    surfaced for display. ``token_configured`` reflects whether a server-side
+    token is present. Never carries the token itself."""
 
     host: str = ""
     port: int = Field(8006, ge=1, le=65535)
@@ -73,3 +76,12 @@ class ProxmoxConfig(BaseModel):
     sync_enabled: bool = False
     sync_interval: int = Field(3600, ge=300)
     token_configured: bool = False
+
+
+class ProxmoxSyncConfig(BaseModel):
+    """User-editable auto-sync config (POST body). The ONLY persisted Proxmox
+    settings. Connection fields (host/port/token/verify_tls) are env-only and
+    are deliberately not accepted here."""
+
+    sync_enabled: bool = False
+    sync_interval: int = Field(3600, ge=300)

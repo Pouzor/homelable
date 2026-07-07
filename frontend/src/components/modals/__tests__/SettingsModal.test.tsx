@@ -11,6 +11,7 @@ vi.mock('@/api/client', () => ({
   proxmoxApi: {
     getConfig: vi.fn(),
     saveConfig: vi.fn(),
+    syncNow: vi.fn(),
   },
 }))
 
@@ -96,6 +97,51 @@ describe('SettingsModal', () => {
     await waitFor(() => {
       expect(settingsApi.save).toHaveBeenCalledWith({ interval_seconds: 60, service_check_enabled: false, service_check_interval: 600 })
     })
+  })
+
+  it('persists only sync fields (not connection config) on Save', async () => {
+    vi.mocked(proxmoxApi.getConfig).mockResolvedValue({
+      data: { host: 'pve', port: 8006, verify_tls: true, sync_enabled: true, sync_interval: 3600, token_configured: true },
+    } as never)
+    vi.mocked(proxmoxApi.saveConfig).mockResolvedValue({ data: {} } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await screen.findByDisplayValue('60')
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(proxmoxApi.saveConfig).toHaveBeenCalledWith({ sync_enabled: true, sync_interval: 3600 })
+    })
+  })
+
+  it('triggers an immediate Proxmox sync from the Re-sync now button', async () => {
+    vi.mocked(proxmoxApi.getConfig).mockResolvedValue({
+      data: { host: 'pve', port: 8006, verify_tls: true, sync_enabled: false, sync_interval: 3600, token_configured: true },
+    } as never)
+    vi.mocked(proxmoxApi.syncNow).mockResolvedValue({ data: { status: 'running' } } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const btn = await screen.findByRole('button', { name: 'Re-sync now' })
+    fireEvent.click(btn)
+    await waitFor(() => {
+      expect(proxmoxApi.syncNow).toHaveBeenCalledOnce()
+      expect(toast.success).toHaveBeenCalledWith('Proxmox sync started')
+    })
+  })
+
+  it('shows a PROXMOX_HOST hint instead of the button when host is unset', async () => {
+    vi.mocked(proxmoxApi.getConfig).mockResolvedValue({
+      data: { host: '', port: 8006, verify_tls: true, sync_enabled: false, sync_interval: 3600, token_configured: true },
+    } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await screen.findByText('PROXMOX_HOST')
+    expect(screen.queryByRole('button', { name: 'Re-sync now' })).toBeNull()
+  })
+
+  it('hides Re-sync now when no Proxmox token is configured', async () => {
+    vi.mocked(proxmoxApi.getConfig).mockResolvedValue({
+      data: { host: 'pve', port: 8006, verify_tls: true, sync_enabled: false, sync_interval: 3600, token_configured: false },
+    } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await screen.findByDisplayValue('60')
+    expect(screen.queryByRole('button', { name: 'Re-sync now' })).toBeNull()
   })
 
   it('calls onClose on Cancel', async () => {

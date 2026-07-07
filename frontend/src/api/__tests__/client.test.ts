@@ -243,7 +243,7 @@ describe('api/client', () => {
   it('proxmoxApi.getConfig/saveConfig hit /proxmox/config', () => {
     mod.proxmoxApi.getConfig()
     expect(api.get).toHaveBeenCalledWith('/proxmox/config')
-    const conf = { host: 'pve', port: 8006, verify_tls: true, sync_enabled: false, sync_interval: 3600 }
+    const conf = { sync_enabled: false, sync_interval: 3600 }
     mod.proxmoxApi.saveConfig(conf)
     expect(api.post).toHaveBeenCalledWith('/proxmox/config', conf)
   })

@@ -1,8 +1,11 @@
 """Tests for GET/POST /api/v1/settings."""
+import json
 from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
+
+from app.core.config import Settings
 
 
 @pytest.fixture
@@ -84,3 +87,46 @@ async def test_update_settings_rejects_too_short_service_interval(client: AsyncC
         headers=headers,
     )
     assert res.status_code == 422
+
+
+def test_proxmox_connection_config_is_env_only_never_from_overrides(tmp_path):
+    """Connection config (host/port/verify_tls) is env-only: a stale value in
+    scan_config.json must be ignored so it can never clobber the env. Only the
+    auto-sync activation is read back."""
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    s.proxmox_host = "pve.local"  # as if set from env
+    s.proxmox_port = 8006
+    s.proxmox_verify_tls = True
+    (tmp_path / "scan_config.json").write_text(json.dumps({
+        "proxmox_host": "stale-host",
+        "proxmox_port": 9999,
+        "proxmox_verify_tls": False,
+        "proxmox_sync_enabled": True,
+        "proxmox_sync_interval": 600,
+    }))
+    s.load_overrides()
+    # Connection config untouched by the file (env values survive).
+    assert s.proxmox_host == "pve.local"
+    assert s.proxmox_port == 8006
+    assert s.proxmox_verify_tls is True
+    # Auto-sync activation is the only thing loaded.
+    assert s.proxmox_sync_enabled is True
+    assert s.proxmox_sync_interval == 600
+
+
+def test_save_overrides_omits_proxmox_connection_config(tmp_path):
+    """save_overrides must never write host/port/verify_tls (nor the token) —
+    only the sync activation. This is what prevents the dual source of truth."""
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    s.proxmox_host = "pve.local"
+    s.proxmox_sync_enabled = True
+    s.proxmox_sync_interval = 900
+    s.save_overrides()
+    written = json.loads((tmp_path / "scan_config.json").read_text())
+    assert "proxmox_host" not in written
+    assert "proxmox_port" not in written
+    assert "proxmox_verify_tls" not in written
+    assert "proxmox_token_id" not in written
+    assert "proxmox_token_secret" not in written
+    assert written["proxmox_sync_enabled"] is True
+    assert written["proxmox_sync_interval"] == 900

@@ -26,6 +26,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [pmConfig, setPmConfig] = useState<ProxmoxConfigData | null>(null)
   const [pmSyncEnabled, setPmSyncEnabled] = useState(false)
   const [pmInterval, setPmInterval] = useState(3600)
+  const [pmSyncing, setPmSyncing] = useState(false)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
   const hideIp = useCanvasStore((s) => s.hideIp)
   const setHideIp = useCanvasStore((s) => s.setHideIp)
@@ -56,6 +57,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     writeAlignmentSettings(next)
   }
 
+  const handleSyncNow = async () => {
+    setPmSyncing(true)
+    try {
+      await proxmoxApi.syncNow()
+      toast.success('Proxmox sync started')
+    } catch {
+      toast.error('Failed to start Proxmox sync')
+    } finally {
+      setPmSyncing(false)
+    }
+  }
+
   const handleSave = async () => {
     // Canvas prefs (alignment, hide-IP) persist on change; only the backend
     // status-check interval needs an API round-trip.
@@ -71,10 +84,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         service_check_interval: serviceInterval,
       })
       if (pmConfig) {
+        // Connection config (host/port/token/verify) is env-only; only the
+        // auto-sync activation is persisted.
         await proxmoxApi.saveConfig({
-          host: pmConfig.host,
-          port: pmConfig.port,
-          verify_tls: pmConfig.verify_tls,
           sync_enabled: pmSyncEnabled,
           sync_interval: pmInterval,
         })
@@ -186,6 +198,25 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     Re-imports hosts/VMs/LXC into the pending inventory. Min 300s (5 min).
                   </p>
                 </div>
+                {pmConfig.host ? (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      onClick={handleSyncNow}
+                      disabled={pmSyncing}
+                      className="h-7 text-xs border-[#e57000] text-[#e57000] hover:bg-[#e57000]/10"
+                    >
+                      {pmSyncing ? 'Syncing…' : 'Re-sync now'}
+                    </Button>
+                    <span className="text-[10px] text-muted-foreground leading-tight">
+                      Runs one import immediately using the server .env config.
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
+                    Set <span className="font-mono">PROXMOX_HOST</span> in the server .env to enable manual re-sync.
+                  </p>
+                )}
               </>
             )}
           </div>
