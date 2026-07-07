@@ -181,4 +181,31 @@ describe('exportCanvasToYaml', () => {
     expect(yamlStr).toContain('4000')
     expect(yamlStr).toContain('star')
   })
+
+  // Regression for issue #208: connection points were dropped on export, so
+  // every edge collapsed onto slot 0 after import.
+  it('preserves edge connection points (source/target handles) in links', () => {
+    const sw = makeNode({ label: 'Switch', type: 'switch', bottom_handles: 3 }, 'sw')
+    const s1 = makeNode({ label: 'Server1', type: 'server' }, 's1')
+    const edge: Edge<EdgeData> = {
+      ...makeEdge('e1', 'sw', 's1', { type: 'ethernet' }),
+      sourceHandle: 'bottom-3',
+      targetHandle: 'top-t',
+    }
+    const result = yaml.load(exportCanvasToYaml([sw, s1], [edge])) as Record<string, unknown>[]
+    const swEntry = result.find((e) => e.label === 'Switch')!
+    const link = (swEntry.links as Record<string, unknown>[])[0]
+    expect(link.sourceHandle).toBe('bottom-3')
+    expect(link.targetHandle).toBe('top-t')
+  })
+
+  it('exports per-side handle counts only when above the side default', () => {
+    const nodes = [makeNode({ label: 'N', type: 'server', bottom_handles: 4, right_handles: 2, top_handles: 1, left_handles: 0 })]
+    const entry = (yaml.load(exportCanvasToYaml(nodes, [])) as Record<string, unknown>[])[0]
+    expect(entry.bottomHandles).toBe(4)
+    expect(entry.rightHandles).toBe(2)
+    // top default is 1, left default is 0 → omitted.
+    expect(entry).not.toHaveProperty('topHandles')
+    expect(entry).not.toHaveProperty('leftHandles')
+  })
 })

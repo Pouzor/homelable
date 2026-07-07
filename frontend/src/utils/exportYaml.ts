@@ -1,6 +1,7 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData, EdgeType } from '@/types'
 import type { YamlNode, YamlNodeConnection } from '@/types/yaml'
+import { SIDES, sideDefault, sideHandleCount } from '@/utils/handleUtils'
 import yaml from 'js-yaml'
 
 /** Build a map of node id → label for edge resolution */
@@ -10,11 +11,31 @@ function buildIdToLabel(nodes: Node<NodeData>[]): Map<string, string> {
   return m
 }
 
-function makeConnection(targetLabel: string, edgeType: EdgeType, edgeLabel: string | undefined): YamlNodeConnection {
-  return {
+function makeConnection(
+  targetLabel: string,
+  edgeType: EdgeType,
+  edgeLabel: string | undefined,
+  edge?: Edge<EdgeData>,
+): YamlNodeConnection {
+  const conn: YamlNodeConnection = {
     label: targetLabel,
     linkType: edgeType,
     linkLabel: edgeLabel ?? '',
+  }
+  // Preserve the exact connection points so the layout round-trips.
+  if (edge?.sourceHandle) conn.sourceHandle = edge.sourceHandle
+  if (edge?.targetHandle) conn.targetHandle = edge.targetHandle
+  return conn
+}
+
+/** Write each side's handle count onto the entry when it exceeds the side default. */
+function attachHandleCounts(entry: YamlNode, data: NodeData): void {
+  for (const side of SIDES) {
+    const count = sideHandleCount(data, side)
+    if (count > sideDefault(side)) {
+      entry[`${side}Handles` as 'topHandles' | 'bottomHandles' | 'leftHandles' | 'rightHandles'] =
+        count
+    }
   }
 }
 
@@ -68,6 +89,9 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
     if (d.ram_gb && d.ram_gb > 0) entry.ram = d.ram_gb
     if (d.disk_gb && d.disk_gb > 0) entry.disk = d.disk_gb
 
+    // Custom connection-point counts, so imported edges land on real slots.
+    attachHandleCounts(entry, d)
+
     // Parent relationship: if this node has a parentId in React Flow,
     // encode it as a 'parent' connection using any virtual edge between them.
     if (node.parentId) {
@@ -81,7 +105,16 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
       const linkType: EdgeType = (pEdge?.data?.type as EdgeType) ?? 'virtual'
       const linkLabel = pEdge?.data?.label ?? ''
       entry.parent = { label: parentLabel, linkType, linkLabel: linkLabel as string }
-      if (pEdge) serializedEdges.add(pEdge.id)
+      // Import always rebuilds this edge parent→child, so orient the handles the
+      // same way (swap when the stored edge runs child→parent).
+      if (pEdge) {
+        const parentToChild = pEdge.source === node.parentId
+        const srcH = parentToChild ? pEdge.sourceHandle : pEdge.targetHandle
+        const tgtH = parentToChild ? pEdge.targetHandle : pEdge.sourceHandle
+        if (srcH) entry.parent.sourceHandle = srcH
+        if (tgtH) entry.parent.targetHandle = tgtH
+        serializedEdges.add(pEdge.id)
+      }
     }
 
     // Outgoing edges (this node is the source):
@@ -95,7 +128,7 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
       if (!targetLabel) continue
       const edgeType: EdgeType = (e.data?.type as EdgeType) ?? 'ethernet'
       const edgeLabel = e.data?.label as string | undefined
-      const conn = makeConnection(targetLabel, edgeType, edgeLabel)
+      const conn = makeConnection(targetLabel, edgeType, edgeLabel, e)
       if (edgeType === 'cluster') {
         if (!entry.clusterR) entry.clusterR = conn
       } else {
@@ -112,7 +145,7 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
       const sourceLabel = idToLabel.get(e.source)
       if (!sourceLabel) continue
       const edgeLabel = e.data?.label as string | undefined
-      if (!entry.clusterL) entry.clusterL = makeConnection(sourceLabel, 'cluster', edgeLabel)
+      if (!entry.clusterL) entry.clusterL = makeConnection(sourceLabel, 'cluster', edgeLabel, e)
       serializedEdges.add(e.id)
     }
 

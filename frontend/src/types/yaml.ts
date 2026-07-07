@@ -4,6 +4,10 @@ export interface YamlNodeConnection {
   label: string
   linkType?: EdgeType
   linkLabel?: string
+  // Connection points (React Flow handle IDs) the edge attaches to. Preserved so
+  // a manual layout round-trips instead of collapsing every edge onto slot 0.
+  sourceHandle?: string
+  targetHandle?: string
 }
 
 export interface YamlNode {
@@ -23,4 +27,11 @@ export interface YamlNode {
   cpuCore?: number
   ram?: number
   disk?: number
+  // Per-side connection-point counts. Only written when a side has more than its
+  // default (top/bottom 1, left/right 0) so the referenced handle slot exists on
+  // re-import — without it React Flow falls back to slot 0.
+  topHandles?: number
+  bottomHandles?: number
+  leftHandles?: number
+  rightHandles?: number
 }

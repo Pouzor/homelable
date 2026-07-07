@@ -73,6 +73,12 @@ export function parseYamlToCanvas(
       ...(yn.ram ? { ram_gb: yn.ram } : {}),
       ...(yn.disk ? { disk_gb: yn.disk } : {}),
       ...(hasHardware ? { show_hardware: true } : {}),
+      // Restore custom connection-point counts so the edges below attach to the
+      // slots they were exported on instead of collapsing onto slot 0.
+      ...(yn.topHandles ? { top_handles: yn.topHandles } : {}),
+      ...(yn.bottomHandles ? { bottom_handles: yn.bottomHandles } : {}),
+      ...(yn.leftHandles ? { left_handles: yn.leftHandles } : {}),
+      ...(yn.rightHandles ? { right_handles: yn.rightHandles } : {}),
     }
 
     newNodes.push({
@@ -104,12 +110,14 @@ export function parseYamlToCanvas(
     if (edgePairs.has(key) || edgePairs.has(reverseKey)) return
     edgePairs.add(key)
     const edgeType = conn.linkType ?? 'ethernet'
+    // Prefer the exported connection points; fall back to the legacy defaults for
+    // YAML written before handles were persisted.
     newEdges.push({
       id: generateUUID(),
       source: sourceId,
       target: targetId,
-      sourceHandle,
-      targetHandle,
+      sourceHandle: conn.sourceHandle ?? sourceHandle,
+      targetHandle: conn.targetHandle ?? targetHandle,
       type: edgeType,
       data: {
         type: edgeType,

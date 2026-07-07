@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { parseYamlToCanvas } from '../importYaml'
+import { exportCanvasToYaml } from '../exportYaml'
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData } from '@/types'
 
@@ -305,5 +306,66 @@ describe('parseYamlToCanvas', () => {
     expect(edges).toHaveLength(0)
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('NonexistentHost'))
     warnSpy.mockRestore()
+  })
+
+  // Regression for issue #208.
+  it('restores edge connection points from the YAML link', () => {
+    const yaml = `
+- nodeType: switch
+  label: "Switch"
+  bottomHandles: 3
+  links:
+    - label: "Server1"
+      linkType: ethernet
+      sourceHandle: bottom-3
+      targetHandle: top-2-t
+- nodeType: server
+  label: "Server1"
+`
+    const { nodes, edges } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    expect(edges).toHaveLength(1)
+    expect(edges[0].sourceHandle).toBe('bottom-3')
+    expect(edges[0].targetHandle).toBe('top-2-t')
+    const sw = nodes.find((n) => n.data.label === 'Switch')!
+    expect(sw.data.bottom_handles).toBe(3)
+  })
+
+  it('falls back to legacy handles when the YAML link omits them', () => {
+    const yaml = `
+- nodeType: switch
+  label: "Switch"
+  links:
+    - label: "Server1"
+      linkType: ethernet
+- nodeType: server
+  label: "Server1"
+`
+    const { edges } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    expect(edges[0].sourceHandle).toBe('bottom')
+    expect(edges[0].targetHandle).toBe('top-t')
+  })
+
+  it('round-trips connection points through export → import (issue #208)', () => {
+    const sw: Node<NodeData> = {
+      id: 'sw', type: 'switch', position: { x: 0, y: 0 },
+      data: { label: 'Switch', type: 'switch', status: 'online', services: [], bottom_handles: 3 },
+    }
+    const s1: Node<NodeData> = {
+      id: 's1', type: 'server', position: { x: 0, y: 0 },
+      data: { label: 'Server1', type: 'server', status: 'online', services: [] },
+    }
+    const edge: Edge<EdgeData> = {
+      id: 'e1', source: 'sw', target: 's1',
+      sourceHandle: 'bottom-3', targetHandle: 'top-t',
+      data: { type: 'ethernet' } as EdgeData,
+    }
+
+    const yamlStr = exportCanvasToYaml([sw, s1], [edge])
+    const { nodes, edges } = parseYamlToCanvas(yamlStr, empty, emptyEdges)
+
+    expect(edges).toHaveLength(1)
+    expect(edges[0].sourceHandle).toBe('bottom-3')
+    expect(edges[0].targetHandle).toBe('top-t')
+    expect(nodes.find((n) => n.data.label === 'Switch')!.data.bottom_handles).toBe(3)
   })
 })
