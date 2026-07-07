@@ -7,7 +7,21 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, canvas, designs, edges, liveview, media, nodes, scan, stats, status, zigbee, zwave
+from app.api.routes import (
+    auth,
+    canvas,
+    designs,
+    edges,
+    liveview,
+    media,
+    nodes,
+    proxmox,
+    scan,
+    stats,
+    status,
+    zigbee,
+    zwave,
+)
 from app.api.routes import settings as settings_routes
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
@@ -58,6 +72,7 @@ app.include_router(settings_routes.router, prefix="/api/v1/settings", tags=["set
 app.include_router(liveview.router, prefix="/api/v1/liveview", tags=["liveview"])
 app.include_router(zigbee.router, prefix="/api/v1/zigbee", tags=["zigbee"])
 app.include_router(zwave.router, prefix="/api/v1/zwave", tags=["zwave"])
+app.include_router(proxmox.router, prefix="/api/v1/proxmox", tags=["proxmox"])
 app.include_router(stats.router, prefix="/api/v1/stats", tags=["stats"])
 app.include_router(media.router, prefix="/api/v1/media", tags=["media"])
 

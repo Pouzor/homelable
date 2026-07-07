@@ -1,6 +1,7 @@
 import { Globe, Router, Server, Layers, Box, Container, HardDrive, Cpu, Wifi, Circle, Network } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import type { NodeProperty } from '@/types'
 
 interface Service {
   port: number
@@ -20,12 +21,18 @@ export interface PendingDevice {
   suggested_type: string | null
   status: string
   discovery_source: string | null
+  // All sources that have observed this device (e.g. ["arp", "proxmox"]). A
+  // merged device shows under every matching filter. Falls back to
+  // [discovery_source] when absent (older rows).
+  discovery_sources?: string[]
   ieee_address?: string | null
   friendly_name?: string | null
   device_subtype?: string | null
   model?: string | null
   vendor?: string | null
   lqi?: number | null
+  // Display properties carried from discovery (e.g. Proxmox specs).
+  properties?: NodeProperty[]
   discovered_at: string
   // How many canvases (designs) this device already appears on. Computed server-side.
   canvas_count?: number

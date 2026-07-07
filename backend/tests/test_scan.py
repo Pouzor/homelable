@@ -1281,7 +1281,8 @@ async def test_approve_zigbee_creates_edge_when_other_endpoint_is_node(
     assert edges[0].source == coord.id
     assert edges[0].target == data["node_id"]
     assert edges[0].source_handle == "bottom"
-    assert edges[0].target_handle == "top-t"
+    # Bare side name (canonical stored form); renders at the top like before.
+    assert edges[0].target_handle == "top"
     assert edges[0].type == "iot"
 
 

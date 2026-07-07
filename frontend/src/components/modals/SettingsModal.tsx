@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { settingsApi } from '@/api/client'
+import { settingsApi, proxmoxApi, type ProxmoxConfigData } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { toast } from 'sonner'
 import {
@@ -23,6 +23,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [serviceCheckEnabled, setServiceCheckEnabled] = useState(false)
   const [serviceInterval, setServiceInterval] = useState(300)
   const [saving, setSaving] = useState(false)
+  const [pmConfig, setPmConfig] = useState<ProxmoxConfigData | null>(null)
+  const [pmSyncEnabled, setPmSyncEnabled] = useState(false)
+  const [pmInterval, setPmInterval] = useState(3600)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
   const hideIp = useCanvasStore((s) => s.hideIp)
   const setHideIp = useCanvasStore((s) => s.setHideIp)
@@ -36,6 +39,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setServiceInterval(res.data.service_check_interval)
       })
       .catch(() => {/* use default */})
+    proxmoxApi.getConfig()
+      .then((res) => {
+        setPmConfig(res.data)
+        setPmSyncEnabled(res.data.sync_enabled)
+        setPmInterval(res.data.sync_interval)
+      })
+      .catch(() => {/* proxmox not configured */})
   }, [open])
 
   useEffect(() => subscribeAlignmentSettings(setAlignment), [])
@@ -60,6 +70,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         service_check_enabled: serviceCheckEnabled,
         service_check_interval: serviceInterval,
       })
+      if (pmConfig) {
+        await proxmoxApi.saveConfig({
+          host: pmConfig.host,
+          port: pmConfig.port,
+          verify_tls: pmConfig.verify_tls,
+          sync_enabled: pmSyncEnabled,
+          sync_interval: pmInterval,
+        })
+      }
       toast.success('Settings saved')
       onClose()
     } catch {
@@ -125,6 +144,50 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 Probes each service port. Offline services turn red. Default 300s (5 min).
               </p>
             </div>
+          </div>
+          )}
+
+          {/* Proxmox auto-sync */}
+          {!STANDALONE && pmConfig && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Proxmox auto-sync</span>
+            {!pmConfig.token_configured ? (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                No API token configured. Set <span className="font-mono">PROXMOX_TOKEN_ID</span> and{' '}
+                <span className="font-mono">PROXMOX_TOKEN_SECRET</span> in the server .env to enable auto-sync.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Auto-sync Proxmox inventory</span>
+                  <input
+                    type="checkbox"
+                    checked={pmSyncEnabled}
+                    onChange={(e) => setPmSyncEnabled(e.target.checked)}
+                    className="cursor-pointer accent-[#e57000]"
+                    aria-label="Toggle Proxmox auto-sync"
+                  />
+                </label>
+                <div className={pmSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={300}
+                      max={86400}
+                      value={pmInterval}
+                      onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setPmInterval(v) }}
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#e57000]"
+                      aria-label="Proxmox sync interval"
+                    />
+                    <span className="text-xs text-muted-foreground">seconds</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    Re-imports hosts/VMs/LXC into the pending inventory. Min 300s (5 min).
+                  </p>
+                </div>
+              </>
+            )}
           </div>
           )}
 

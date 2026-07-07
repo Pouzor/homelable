@@ -23,9 +23,12 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
   const theme = THEMES[activeTheme]
   const colors = resolveNodeColors(data, activeTheme)
 
-  // Render as a regular node when container mode is disabled. Cluster links now
+  // Container mode is opt-in — a proxmox node renders as a regular card unless
+  // it is explicitly a container (matches the rest of the codebase, which gates
+  // nesting on `container_mode === true`; see App.tsx). Imported nodes leave the
+  // flag unset and so render like a manually-created proxmox node. Cluster links
   // use the configurable per-side connection points (see BaseNode / SideHandles).
-  if (data.container_mode === false) {
+  if (data.container_mode !== true) {
     return <BaseNode {...props} icon={Layers} />
   }
 

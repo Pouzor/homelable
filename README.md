@@ -160,6 +160,37 @@ Hierarchy is set automatically: controller → routers → end devices (`parent_
 
 ---
 
+## Proxmox VE Import
+
+Homelable can import your **Proxmox VE** inventory over the Proxmox REST API — hosts, VMs and LXC containers arrive as typed, named nodes with run state and hardware specs, and can auto-sync on a schedule. Guest IPs that were already found by a network scan are merged in place (no duplicates).
+
+### Prerequisites
+
+- A reachable **Proxmox VE** host (default API port `8006`)
+- A **Proxmox API token** with the read-only **`PVEAuditor`** role (Datacenter → Permissions → API Tokens)
+
+### Usage
+
+1. Click **Proxmox Import** in the left sidebar (below "Z-Wave Import")
+2. Enter the host, port (default `8006`), and API token (`user@realm!tokenid` + secret) — or leave the token blank to use the server-configured one
+3. Click **Test Connection** to verify reachability + token
+4. Choose a target — **Pending section** or **Canvas directly** — then **Import to Pending** / **Fetch Inventory**
+5. Select the devices from the grouped list (Hosts / Virtual Machines / LXC Containers) and click **Add N to Canvas**
+
+### Node Types
+
+| Type | Proxmox object | Icon |
+|------|----------------|------|
+| `proxmox` | Host / cluster member | Layers |
+| `vm` | QEMU virtual machine | Box |
+| `lxc` | LXC container | Container |
+
+Each host is linked to its guests with a `virtual` edge. vCPU / RAM / disk are imported as node properties (hidden by default). Enable **auto-sync** from Settings once a server token is configured (`PROXMOX_TOKEN_ID` / `PROXMOX_TOKEN_SECRET`).
+
+> **Full documentation:** [docs/proxmox-import.md](./docs/proxmox-import.md)
+
+---
+
 ## Live View (read-only public canvas)
 
 Live View lets you share a read-only snapshot of your canvas with anyone on your network — no login required. It is disabled by default.

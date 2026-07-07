@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Square, Settings, LogOut, Network, RadioTower, Type, PlusCircle, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -27,13 +27,14 @@ interface SidebarProps {
   onScan: () => void
   onZigbeeImport: () => void
   onZwaveImport: () => void
+  onProxmoxImport: () => void
   onSave: () => void
   onOpenSettings: () => void
   onOpenHistory: () => void
   onOpenPending: (deviceId?: string, status?: 'pending' | 'hidden') => void
 }
 
-export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onZwaveImport, onSave, onOpenSettings, onOpenHistory, onOpenPending }: SidebarProps) {
+export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onZwaveImport, onProxmoxImport, onSave, onOpenSettings, onOpenHistory, onOpenPending }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const logout = useAuthStore((s) => s.logout)
   const { designs, activeDesignId, setActiveDesign, addDesign, updateDesign, removeDesign } = useDesignStore()
@@ -265,6 +266,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
         {!STANDALONE && <SidebarItem icon={ScanLine} label="Scan Network" collapsed={collapsed} onClick={handleScan} />}
         {!STANDALONE && <SidebarItem icon={Network} label="Zigbee Import" collapsed={collapsed} onClick={onZigbeeImport} />}
         {!STANDALONE && <SidebarItem icon={RadioTower} label="Z-Wave Import" collapsed={collapsed} onClick={onZwaveImport} />}
+        {!STANDALONE && <SidebarItem icon={Server} label="Proxmox Import" collapsed={collapsed} onClick={onProxmoxImport} />}
         <SidebarItem
           icon={Save}
           label="Save Canvas"

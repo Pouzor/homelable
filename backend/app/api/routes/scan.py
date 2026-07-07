@@ -356,6 +356,7 @@ async def bulk_approve_devices(
         device.status = "approved"
         node_type = device.suggested_type or "generic"
         is_wireless = _is_wireless(node_type)
+        cluster_host = await _is_proxmox_cluster_member(db, device.ieee_address)
         node = Node(
             label=device.hostname or device.friendly_name or device.ip or "device",
             type=node_type,
@@ -367,10 +368,13 @@ async def bulk_approve_devices(
             ieee_address=device.ieee_address,
             properties=_wireless_properties(
                 node_type, device.ieee_address, device.vendor, device.model, device.lqi
-            ) if is_wireless else build_mac_property(device.mac),
+            ) if is_wireless else merge_mac_property(list(device.properties or []), device.mac),
             # Default to ping so the status checker actually polls the new node.
             # Without this the scheduler skips it (check_method NULL → no check).
             check_method="none" if is_wireless else ("ping" if device.ip else None),
+            # Cluster hosts get side handles for their host↔host cluster edge.
+            left_handles=1 if cluster_host else 0,
+            right_handles=1 if cluster_host else 0,
             design_id=default_design_id,
         )
         db.add(node)
@@ -508,6 +512,7 @@ async def approve_device(
     # Prefer the MAC discovered during the scan (stored on the pending device);
     # fall back to whatever the approve payload carried.
     _mac = device.mac or node_data.mac
+    cluster_host = await _is_proxmox_cluster_member(db, device.ieee_address)
     node = Node(
         label=node_data.label,
         type=node_data.type,
@@ -519,9 +524,15 @@ async def approve_device(
         ieee_address=device.ieee_address,
         properties=_wireless_properties(
             node_data.type, device.ieee_address, device.vendor, device.model, device.lqi
-        ) if wireless else merge_mac_property(node_data.properties, _mac),
+        ) if wireless else merge_mac_property(
+            merge_zigbee_properties(list(device.properties or []), node_data.properties or []),
+            _mac,
+        ),
         check_method="none" if wireless else (node_data.check_method or ("ping" if node_data.ip else None)),
         check_target=None if wireless else node_data.check_target,
+        # Cluster hosts get side handles for their host↔host cluster edge.
+        left_handles=1 if cluster_host else 0,
+        right_handles=1 if cluster_host else 0,
         design_id=node_design_id,
     )
     db.add(node)
@@ -537,6 +548,28 @@ async def approve_device(
         "edges_created": len(edges),
         "edges": edges,
     }
+
+
+async def _is_proxmox_cluster_member(db: AsyncSession, ieee: str | None) -> bool:
+    """True if ``ieee`` participates in a proxmox_cluster link (host↔host).
+
+    Such a host needs one left + one right handle for the cluster edge endpoints
+    (both default to 0). Checked at approve time, before the link is consumed by
+    ``_resolve_pending_links_for_ieee``.
+    """
+    if not ieee:
+        return False
+    found = (
+        await db.execute(
+            select(PendingDeviceLink.id)
+            .where(
+                PendingDeviceLink.discovery_source == "proxmox_cluster",
+                (PendingDeviceLink.source_ieee == ieee) | (PendingDeviceLink.target_ieee == ieee),
+            )
+            .limit(1)
+        )
+    ).scalar()
+    return found is not None
 
 
 async def _resolve_pending_links_for_ieee(
@@ -609,18 +642,41 @@ async def _resolve_pending_links_for_ieee(
         if edge_design_id is None:
             first = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
             edge_design_id = first.id if first else None
+        # Edge shape by link source. Handle IDs are the *bare* slot-0 side names
+        # (the canonical stored form — the save path normalizes '<side>-t' → the
+        # bare source id, and React Flow resolves the bare id to that side). A
+        # '-t' target id does not resolve here and RF falls back to the top
+        # handle, so never emit one.
+        #   proxmox         → 'virtual' host→guest, vertical (bottom → top)
+        #   proxmox_cluster → 'cluster' host↔host, horizontal (right → left)
+        #   anything else   → 'iot' mesh link, vertical
+        if link.discovery_source == "proxmox":
+            edge_type, src_handle, tgt_handle = "virtual", "bottom", "top"
+        elif link.discovery_source == "proxmox_cluster":
+            edge_type, src_handle, tgt_handle = "cluster", "right", "left"
+        else:
+            edge_type, src_handle, tgt_handle = "iot", "bottom", "top"
         edge = Edge(
             source=src_id,
             target=tgt_id,
-            type="iot",
-            source_handle="bottom",
-            target_handle="top-t",
+            type=edge_type,
+            source_handle=src_handle,
+            target_handle=tgt_handle,
             design_id=edge_design_id,
         )
         db.add(edge)
         await db.flush()
         existing_pairs.add((src_id, tgt_id))
-        created.append({"id": edge.id, "source": src_id, "target": tgt_id})
+        # Return the edge's type + handles so the client injects it faithfully
+        # (a cluster edge must keep its right→left handles, not the iot default).
+        created.append({
+            "id": edge.id,
+            "source": src_id,
+            "target": tgt_id,
+            "type": edge_type,
+            "source_handle": src_handle,
+            "target_handle": tgt_handle,
+        })
         await db.delete(link)
 
     return created

@@ -13,6 +13,9 @@ function renderNode(data: Partial<NodeData> = {}, selected = false) {
     type: 'proxmox',
     status: 'online',
     services: [],
+    // Default tests to the container/group path (the branch this file covers);
+    // individual tests override with container_mode: false / unset as needed.
+    container_mode: true,
     ...data,
   }
   const props = {
@@ -51,7 +54,7 @@ describe('ProxmoxGroupNode', () => {
   })
 
   it('renders the node label', () => {
-    const { getByText } = renderNode({ label: 'My Proxmox' })
+    const { getByText } = renderNode({ label: 'My Proxmox', container_mode: true })
     expect(getByText('My Proxmox')).toBeDefined()
   })
 
@@ -90,14 +93,21 @@ describe('ProxmoxGroupNode', () => {
     expect(dot).not.toBeNull()
   })
 
-  it('container_mode === false renders as BaseNode (no resizer group border)', () => {
+  it('container_mode === false renders as BaseNode (no group border)', () => {
     const { container } = renderNode({ container_mode: false })
-    // NodeResizer should not be present when not group-rendered
-    expect(container.querySelector('.react-flow__resize-control')).toBeNull()
+    // The group container uses rounded-xl border-2; BaseNode does not.
+    expect(container.querySelector('.rounded-xl.border-2')).toBeNull()
   })
 
-  it('container_mode default renders the group border container', () => {
-    const { container } = renderNode({})
+  it('container mode is opt-in: default (unset) renders as a regular BaseNode', () => {
+    // Imported proxmox nodes leave container_mode unset and must look like a
+    // manually-created node (BaseNode), not an empty group container.
+    const { container } = renderNode({ container_mode: undefined })
+    expect(container.querySelector('.rounded-xl.border-2')).toBeNull()
+  })
+
+  it('container_mode === true renders the group border container', () => {
+    const { container } = renderNode({ container_mode: true })
     // Group border div has rounded-xl border-2 classes
     expect(container.querySelector('.rounded-xl.border-2')).not.toBeNull()
   })

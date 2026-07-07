@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ScanHistoryModal } from '../ScanHistoryModal'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }))
 vi.mock('@/stores/canvasStore', () => ({
   useCanvasStore: { getState: () => ({ notifyScanDeviceFound: vi.fn() }) },
 }))
@@ -72,6 +72,17 @@ const ZWAVE_RUN = {
   error: null,
 }
 
+const PROXMOX_RUN = {
+  id: 'run-6',
+  status: 'done',
+  kind: 'proxmox',
+  ranges: ['pve:8006'],
+  devices_found: 9,
+  started_at: new Date().toISOString(),
+  finished_at: new Date().toISOString(),
+  error: null,
+}
+
 function renderModal() {
   return render(
     <TooltipProvider>
@@ -84,6 +95,7 @@ describe('ScanHistoryModal', () => {
   beforeEach(() => {
     vi.mocked(toast.success).mockReset()
     vi.mocked(toast.error).mockReset()
+    vi.mocked(toast.warning).mockReset()
     vi.mocked(scanApi.stop).mockReset()
     vi.mocked(scanApi.runs).mockResolvedValue({ data: [] } as never)
   })
@@ -174,6 +186,33 @@ describe('ScanHistoryModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Z-Wave' }))
     // Only the zwave run (5 found) remains
     expect(screen.getByText('5 found')).toBeDefined()
+    expect(screen.queryByText('3 found')).toBeNull()
+  })
+
+  it('renders a done proxmox run with an advisory as info, not a failure', async () => {
+    const ADVISORY_RUN = {
+      ...PROXMOX_RUN,
+      id: 'run-7',
+      devices_found: 3,
+      error: 'Imported 3 host(s) but no VMs or LXC were visible to the API token. Grant PVEAuditor…',
+    }
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [ADVISORY_RUN] } as never)
+    renderModal()
+    // Status stays "done" (success), yet the advisory text is surfaced.
+    await waitFor(() => expect(screen.getByText('done')).toBeDefined())
+    expect(screen.getByText(/no VMs or LXC were visible/)).toBeDefined()
+  })
+
+  it('shows a proxmox run under its own kind, not IP', async () => {
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [DONE_RUN, PROXMOX_RUN] } as never)
+    renderModal()
+    await waitFor(() => expect(screen.getAllByText('done').length).toBe(2))
+    // A dedicated Proxmox badge is rendered on the run (would be mislabeled "IP"
+    // before the fix). Both the filter chip and the run badge carry the label.
+    expect(screen.getAllByText('Proxmox').length).toBeGreaterThanOrEqual(2)
+    // Filtering to Proxmox keeps only the proxmox run (9 found), drops the IP run.
+    fireEvent.click(screen.getByRole('button', { name: 'Proxmox' }))
+    expect(screen.getByText('9 found')).toBeDefined()
     expect(screen.queryByText('3 found')).toBeNull()
   })
 })

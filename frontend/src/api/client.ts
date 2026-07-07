@@ -88,7 +88,7 @@ export const scanApi = {
       approved: boolean
       node_id: string
       edges_created: number
-      edges: { id: string; source: string; target: string }[]
+      edges: { id: string; source: string; target: string; type?: string; source_handle?: string | null; target_handle?: string | null }[]
     }>(`/scan/pending/${id}/approve`, nodeData),
   hide: (id: string) => api.post(`/scan/pending/${id}/hide`),
   ignore: (id: string) => api.post(`/scan/pending/${id}/ignore`),
@@ -98,7 +98,7 @@ export const scanApi = {
       node_ids: string[]
       device_ids: string[]
       edges_created: number
-      edges: { id: string; source: string; target: string }[]
+      edges: { id: string; source: string; target: string; type?: string; source_handle?: string | null; target_handle?: string | null }[]
       skipped: number
     }>('/scan/pending/bulk-approve', { device_ids: ids, design_id: designId ?? undefined }),
   bulkHide: (ids: string[]) => api.post<{ hidden: number; skipped: number }>('/scan/pending/bulk-hide', { device_ids: ids }),
@@ -118,6 +118,51 @@ export interface AppSettings {
 export const settingsApi = {
   get: () => api.get<AppSettings>('/settings'),
   save: (data: AppSettings) => api.post<AppSettings>('/settings', data),
+}
+
+export interface ProxmoxConnection {
+  host: string
+  port: number
+  token_id?: string
+  token_secret?: string
+  verify_tls?: boolean
+}
+
+export interface ProxmoxConfigData {
+  host: string
+  port: number
+  verify_tls: boolean
+  sync_enabled: boolean
+  sync_interval: number
+  token_configured: boolean
+}
+
+export const proxmoxApi = {
+  testConnection: (data: ProxmoxConnection) =>
+    api.post<{ connected: boolean; message: string }>('/proxmox/test-connection', data),
+
+  importNetwork: (data: ProxmoxConnection) =>
+    api.post<{
+      nodes: import('@/components/proxmox/types').ProxmoxNode[]
+      edges: import('@/components/proxmox/types').ProxmoxEdge[]
+      device_count: number
+    }>('/proxmox/import', data),
+
+  importToPending: (data: ProxmoxConnection) =>
+    api.post<{
+      id: string
+      status: string
+      kind: string
+      ranges: string[]
+      devices_found: number
+      started_at: string
+      finished_at: string | null
+      error: string | null
+    }>('/proxmox/import-pending', data),
+
+  getConfig: () => api.get<ProxmoxConfigData>('/proxmox/config'),
+  saveConfig: (data: Omit<ProxmoxConfigData, 'token_configured'>) =>
+    api.post<ProxmoxConfigData>('/proxmox/config', data),
 }
 
 export const designsApi = {

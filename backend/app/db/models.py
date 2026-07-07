@@ -119,13 +119,23 @@ class PendingDevice(Base):
     services: Mapped[list[Any]] = mapped_column(JSON, default=list)
     suggested_type: Mapped[str | None] = mapped_column(String)
     status: Mapped[str] = mapped_column(String, default="pending")
+    # Origin/primary source (first discovery): "arp"/"mdns"/"zigbee"/"zwave"/
+    # "proxmox". Kept for back-compat; `discovery_sources` is the full set.
     discovery_source: Mapped[str | None] = mapped_column(String)
+    # All sources that have observed this device. A device found by both an IP
+    # scan and a Proxmox import carries e.g. ["arp", "proxmox"] and shows under
+    # both inventory filters. Source of truth for the frontend source badges.
+    discovery_sources: Mapped[list[Any]] = mapped_column(JSON, default=list)
     ieee_address: Mapped[str | None] = mapped_column(String, index=True, nullable=True, unique=True)
     friendly_name: Mapped[str | None] = mapped_column(String, nullable=True)
     device_subtype: Mapped[str | None] = mapped_column(String, nullable=True)
     model: Mapped[str | None] = mapped_column(String, nullable=True)
     vendor: Mapped[str | None] = mapped_column(String, nullable=True)
     lqi: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Display properties carried from discovery (e.g. Proxmox specs: CPU/RAM/Disk,
+    # VMID). Generic NodeProperty shape {key,value,icon,visible}; merged into the
+    # Node's properties on approve. Empty for scan/mesh sources that don't set it.
+    properties: Mapped[list[Any]] = mapped_column(JSON, default=list)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     # Transient (not persisted): populated per-request by the scan routes to report

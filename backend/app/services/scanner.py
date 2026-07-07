@@ -15,8 +15,10 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Node, PendingDevice, ScanRun
+from app.services.discovery_sources import add_source
 from app.services.fingerprint import fingerprint_ports, suggest_node_type
 from app.services.http_probe import probe_open_ports
+from app.services.mac_utils import normalize_mac
 
 logger = logging.getLogger(__name__)
 
@@ -522,16 +524,21 @@ async def run_scan(
                     ip, open_ports, verify_tls=deep_scan.verify_tls
                 )
 
+            norm_mac = normalize_mac(host.get("mac"))
             services = fingerprint_ports(open_ports)
-            suggested_type = suggest_node_type(open_ports, host.get("mac"))
+            suggested_type = suggest_node_type(open_ports, norm_mac)
 
-            # One inventory row per device (by IP). Match across pending AND
-            # approved so a re-scan of an already-approved device refreshes its
-            # row instead of spawning a fresh "pending" duplicate. Hidden rows
-            # are already skipped above.
+            # One inventory row per device. Match by IP OR MAC across pending AND
+            # approved so a re-scan refreshes the existing row instead of spawning
+            # a duplicate — and so a device previously imported from Proxmox (which
+            # may have no IP but a known NIC MAC) reconciles with this scan instead
+            # of doubling up. Hidden rows are already skipped above.
+            match_cond = [PendingDevice.ip == ip]
+            if norm_mac:
+                match_cond.append(PendingDevice.mac == norm_mac)
             existing_rows = (await db.execute(
                 select(PendingDevice)
-                .where(PendingDevice.ip == ip, PendingDevice.status != "hidden")
+                .where(or_(*match_cond), PendingDevice.status != "hidden")
                 .order_by(PendingDevice.discovered_at)
             )).scalars().all()
 
@@ -543,32 +550,41 @@ async def run_scan(
                 for dup in existing_rows:
                     if dup is not keep:
                         await db.delete(dup)
-                keep.mac = host.get("mac") or keep.mac
+                keep.ip = keep.ip or ip  # fill an IP a Proxmox import lacked
+                keep.mac = norm_mac or keep.mac
                 keep.hostname = host.get("hostname") or keep.hostname
                 keep.os = host.get("os") or keep.os
                 keep.services = services
-                keep.suggested_type = suggested_type
+                # Don't downgrade a Proxmox-typed guest (vm/lxc) to the generic
+                # scan guess; the importer knows the true type.
+                if not (keep.ieee_address or "").startswith("pve-"):
+                    keep.suggested_type = suggested_type
+                # Merged row carries both sources (e.g. ["proxmox", "arp"]).
+                keep.discovery_sources = add_source(keep.discovery_sources, discovery_source)
                 # status preserved — an approved device stays approved.
             else:
                 db.add(PendingDevice(
                     ip=ip,
-                    mac=host.get("mac"),
+                    mac=norm_mac,
                     hostname=host.get("hostname"),
                     os=host.get("os"),
                     services=services,
                     suggested_type=suggested_type,
                     status="pending",
                     discovery_source=discovery_source,
+                    discovery_sources=[discovery_source],
                 ))
                 devices_found += 1
 
             # Stamp last_scan on any canvas node that matches this device by IP
             # (or MAC, when known) so the inventory shows when the scanner last
-            # observed it. Matches across designs.
-            host_mac = host.get("mac")
+            # observed it. Match both the normalized and raw MAC so a legacy
+            # canvas node whose mac predates normalization still matches. Across
+            # designs.
             node_match = [Node.ip == ip]
-            if host_mac:
-                node_match.append(Node.mac == host_mac)
+            for m in {norm_mac, host.get("mac")}:
+                if m:
+                    node_match.append(Node.mac == m)
             matching_nodes = (await db.execute(
                 select(Node).where(or_(*node_match))
             )).scalars().all()

@@ -84,6 +84,24 @@ const DEVICE_ZWAVE = {
   discovered_at: '2026-01-03T00:00:00Z',
 }
 
+const DEVICE_PROXMOX = {
+  id: 'dev-d',
+  ip: '10.0.0.5',
+  hostname: 'web',
+  mac: null,
+  os: null,
+  services: [],
+  suggested_type: 'vm',
+  status: 'pending',
+  discovery_source: 'proxmox',
+  ieee_address: 'pve-pve1-101',
+  friendly_name: 'web',
+  vendor: 'Proxmox VE',
+  model: 'QEMU',
+  properties: [{ key: 'CPU Cores', value: '2', icon: 'Cpu', visible: false }],
+  discovered_at: '2026-01-04T00:00:00Z',
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(useCanvasStore).mockReturnValue({
@@ -172,6 +190,23 @@ describe('PendingDevicesModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Z-Wave' }))
     expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
     expect(screen.getByTestId('pending-card-dev-c')).toBeInTheDocument()
+  })
+
+  it('shows source chip PROXMOX for a proxmox device (not zigbee despite ieee)', async () => {
+    mockPending.mockResolvedValue({ data: [DEVICE_PROXMOX] })
+    render(<PendingDevicesModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-d')).toBeInTheDocument())
+    expect(screen.getByText('PROXMOX')).toBeInTheDocument()
+    expect(screen.queryByText('ZIGBEE')).not.toBeInTheDocument()
+  })
+
+  it('filters by source (proxmox only)', async () => {
+    mockPending.mockResolvedValue({ data: [DEVICE_IP, DEVICE_PROXMOX] })
+    render(<PendingDevicesModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Proxmox' }))
+    expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
+    expect(screen.getByTestId('pending-card-dev-d')).toBeInTheDocument()
   })
 
   it('filters by suggested type', async () => {

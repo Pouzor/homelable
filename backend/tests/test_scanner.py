@@ -578,6 +578,44 @@ async def test_run_scan_mdns_only_device_added(mem_db):
 
 
 @pytest.mark.asyncio
+async def test_run_scan_merges_proxmox_row_by_mac(mem_db):
+    """A scan reconciles a prior Proxmox-imported row by MAC: fills the IP,
+    unions the source, keeps the vm type, and does not duplicate."""
+    from app.services.scanner import run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        # Previously imported from Proxmox: no IP, known NIC MAC, vm type.
+        session.add(PendingDevice(
+            id="pve-row", ieee_address="pve-pve1-101", ip=None,
+            mac="bc:24:11:aa:bb:cc", suggested_type="vm", status="pending",
+            discovery_source="proxmox", discovery_sources=["proxmox"],
+        ))
+        await session.commit()
+
+    # Scan sees the same box (same MAC, different casing) with a live IP.
+    nmap_hosts = [{"ip": "192.168.1.50", "hostname": "web.lan",
+                   "mac": "BC:24:11:AA:BB:CC", "os": None, "open_ports": []}]
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", return_value=nmap_hosts), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(["192.168.1.0/24"], session, run_id)
+
+    async with mem_db() as session:
+        rows = (await session.execute(sa_select(PendingDevice))).scalars().all()
+
+    assert len(rows) == 1                                  # merged, not duplicated
+    row = rows[0]
+    assert row.ip == "192.168.1.50"                        # scan filled the IP
+    assert row.mac == "bc:24:11:aa:bb:cc"                  # normalized
+    assert row.suggested_type == "vm"                      # kept proxmox type
+    assert set(row.discovery_sources) == {"proxmox", "arp"}  # both filters
+
+
+@pytest.mark.asyncio
 async def test_run_scan_mdns_skipped_if_already_in_nmap(mem_db):
     """If nmap and mDNS both find the same IP, it should not be double-counted."""
     from app.services.scanner import run_scan
