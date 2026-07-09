@@ -4,12 +4,25 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services.status_checker import (
+    _http_get,
     _ping,
     _tcp_connect,
     check_node,
     check_service,
     check_services,
 )
+
+
+def _mock_httpx_client(status_code):
+    """Build a stand-in for httpx.AsyncClient whose GET returns status_code."""
+    resp = MagicMock()
+    resp.status_code = status_code
+    client = MagicMock()
+    client.get = AsyncMock(return_value=resp)
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=client)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    return MagicMock(return_value=ctx)
 
 # --- check_node dispatcher ---
 
@@ -462,3 +475,35 @@ async def test_check_services_returns_status_per_service():
 @pytest.mark.asyncio
 async def test_check_services_empty_list():
     assert await check_services("10.0.0.1", []) == []
+
+
+# --- _http_get status-code interpretation (real primitive, mocked transport) ---
+
+@pytest.mark.asyncio
+async def test_http_get_true_on_2xx():
+    with patch("app.services.status_checker.httpx.AsyncClient", _mock_httpx_client(200)):
+        assert await _http_get("http://host") is True
+
+
+@pytest.mark.asyncio
+async def test_http_get_true_on_4xx():
+    # A 4xx means the server is up and answering — still "online".
+    with patch("app.services.status_checker.httpx.AsyncClient", _mock_httpx_client(404)):
+        assert await _http_get("http://host") is True
+
+
+@pytest.mark.asyncio
+async def test_http_get_false_on_5xx():
+    with patch("app.services.status_checker.httpx.AsyncClient", _mock_httpx_client(503)):
+        assert await _http_get("http://host") is False
+
+
+@pytest.mark.asyncio
+async def test_check_service_http_exception_returns_offline():
+    svc = {"port": 80, "protocol": "tcp", "service_name": "http"}
+    with patch(
+        "app.services.status_checker._http_get",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("connection refused"),
+    ):
+        assert await check_service(svc, "10.0.0.1") == "offline"

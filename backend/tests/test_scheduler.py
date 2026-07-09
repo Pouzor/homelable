@@ -10,6 +10,8 @@ from app.core.scheduler import (
     _run_service_checks,
     _run_status_checks,
     reschedule_proxmox_sync,
+    reschedule_service_checks,
+    reschedule_status_checks,
     set_proxmox_sync_enabled,
     set_service_checks_enabled,
     start_scheduler,
@@ -299,3 +301,102 @@ async def test_run_proxmox_sync_skips_when_no_token():
         mock_settings.proxmox_token_id = ""
         mock_settings.proxmox_token_secret = ""
         await _run_proxmox_sync()  # no exception, no fetch
+
+
+def _proxmox_settings(mock_settings):
+    mock_settings.proxmox_sync_enabled = True
+    mock_settings.proxmox_host = "pve"
+    mock_settings.proxmox_port = 8006
+    mock_settings.proxmox_token_id = "root@pam!tok"
+    mock_settings.proxmox_token_secret = "secret"
+    mock_settings.proxmox_verify_tls = False
+
+
+@pytest.mark.asyncio
+async def test_run_proxmox_sync_persists_inventory():
+    db = MagicMock()
+    session_ctx = MagicMock()
+    session_ctx.__aenter__ = AsyncMock(return_value=db)
+    session_ctx.__aexit__ = AsyncMock(return_value=False)
+    result = MagicMock(device_count=3, pending_created=2, pending_updated=1)
+    with (
+        patch("app.core.scheduler.settings") as mock_settings,
+        patch("app.core.scheduler.AsyncSessionLocal", MagicMock(return_value=session_ctx)),
+        patch(
+            "app.services.proxmox_service.fetch_proxmox_inventory",
+            new_callable=AsyncMock,
+            return_value=(["node-raw"], ["edge-raw"]),
+        ) as mock_fetch,
+        patch(
+            "app.api.routes.proxmox._persist_pending_import",
+            new_callable=AsyncMock,
+            return_value=result,
+        ) as mock_persist,
+    ):
+        _proxmox_settings(mock_settings)
+        await _run_proxmox_sync()
+    mock_fetch.assert_awaited_once()
+    mock_persist.assert_awaited_once_with(db, ["node-raw"], ["edge-raw"])
+
+
+@pytest.mark.asyncio
+async def test_run_proxmox_sync_logs_and_swallows_errors():
+    with (
+        patch("app.core.scheduler.settings") as mock_settings,
+        patch(
+            "app.services.proxmox_service.fetch_proxmox_inventory",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("proxmox api down"),
+        ),
+    ):
+        _proxmox_settings(mock_settings)
+        await _run_proxmox_sync()  # exception is logged, never propagated
+
+
+# --- reschedule_* validation and not-running guards ---
+
+def test_reschedule_status_checks_rejects_short_interval():
+    with pytest.raises(ValueError):
+        reschedule_status_checks(5)
+
+
+def test_reschedule_status_checks_noop_when_not_running():
+    mock_sched = MagicMock()
+    mock_sched.running = False
+    with patch("app.core.scheduler.scheduler", mock_sched):
+        reschedule_status_checks(60)
+    mock_sched.reschedule_job.assert_not_called()
+
+
+def test_reschedule_status_checks_updates_running_job():
+    mock_sched = MagicMock()
+    mock_sched.running = True
+    with patch("app.core.scheduler.scheduler", mock_sched):
+        reschedule_status_checks(60)
+    mock_sched.reschedule_job.assert_called_once_with(
+        "status_checks", trigger="interval", seconds=60,
+    )
+
+
+def test_reschedule_service_checks_rejects_short_interval():
+    with pytest.raises(ValueError):
+        reschedule_service_checks(10)
+
+
+def test_reschedule_service_checks_updates_when_job_exists():
+    mock_sched = MagicMock()
+    mock_sched.running = True
+    mock_sched.get_job.return_value = MagicMock()
+    with patch("app.core.scheduler.scheduler", mock_sched):
+        reschedule_service_checks(60)
+    mock_sched.reschedule_job.assert_called_once_with(
+        "service_checks", trigger="interval", seconds=60,
+    )
+
+
+def test_reschedule_proxmox_sync_noop_when_not_running():
+    mock_sched = MagicMock()
+    mock_sched.running = False
+    with patch("app.core.scheduler.scheduler", mock_sched):
+        reschedule_proxmox_sync(600)
+    mock_sched.reschedule_job.assert_not_called()
