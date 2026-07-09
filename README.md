@@ -8,9 +8,9 @@ You can also select some pre-built design styles, or personalize each device in 
 
 If you just like the design, you can only run the frontend and export your design as PNG.
 
-If you are running  <img width="35" height="35" align="middle" alt="New_Home_Assistant_logo" src="https://github.com/user-attachments/assets/3bb17686-c706-40ce-a2d3-57e02378f37c" />  Homeassistant, check the [Homelable HA version](https://github.com/Pouzor/homelable-hacs) (via HACS)
+If you are running  <img width="22" height="22" align="top" alt="New_Home_Assistant_logo" src="https://github.com/user-attachments/assets/3bb17686-c706-40ce-a2d3-57e02378f37c" />  Homeassistant, check the [Homelable HA version](https://github.com/Pouzor/homelable-hacs) (via HACS)
 
-
+<a href="https://trendshift.io/repositories/24461?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-24461" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/24461/daily?language=TypeScript" alt="Pouzor%2Fhomelable | Trendshift" width="250" height="55"/></a>
 ---
 
 ## Screenshots
