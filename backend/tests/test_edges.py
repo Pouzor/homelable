@@ -220,3 +220,113 @@ async def test_source_and_target_handle_persist_through_update(client: AsyncClie
     assert data["source_handle"] == "cluster-right"
     assert data["target_handle"] == "cluster-left"
     assert data["label"] == "corosync"
+
+
+# ---------------------------------------------------------------------------
+# Auto edge handles (issue #265): omitting source_handle/target_handle lets
+# the backend infer up/downstream sides from the nodes' absolute canvas Y.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def stacked_nodes(client: AsyncClient, headers: dict):
+    """Two root nodes at known, distinct Y positions (top at y=0, bottom at y=300)."""
+    top = (
+        await client.post(
+            "/api/v1/nodes",
+            json={"type": "router", "label": "Top", "status": "online", "pos_x": 0, "pos_y": 0},
+            headers=headers,
+        )
+    ).json()
+    bottom = (
+        await client.post(
+            "/api/v1/nodes",
+            json={"type": "switch", "label": "Bottom", "status": "online", "pos_x": 0, "pos_y": 300},
+            headers=headers,
+        )
+    ).json()
+    return top["id"], bottom["id"]
+
+
+async def test_create_edge_auto_handles_source_above_target(client: AsyncClient, headers: dict, stacked_nodes):
+    """Source above target -> downstream flow: exit bottom, enter top-t."""
+    top, bottom = stacked_nodes
+    res = await client.post(
+        "/api/v1/edges", json={"source": top, "target": bottom, "type": "ethernet"}, headers=headers
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["source_handle"] == "bottom"
+    assert data["target_handle"] == "top-t"
+
+
+async def test_create_edge_auto_handles_source_below_target(client: AsyncClient, headers: dict, stacked_nodes):
+    """Source below target -> upstream flow: exit top, enter bottom-t."""
+    top, bottom = stacked_nodes
+    res = await client.post(
+        "/api/v1/edges", json={"source": bottom, "target": top, "type": "ethernet"}, headers=headers
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["source_handle"] == "top"
+    assert data["target_handle"] == "bottom-t"
+
+
+async def test_create_edge_auto_handles_equal_y_defaults_downstream(client: AsyncClient, headers: dict, two_nodes):
+    """Same Y (auto-placed side by side) falls back to the default bottom/top-t."""
+    src, tgt = two_nodes
+    res = await client.post(
+        "/api/v1/edges", json={"source": src, "target": tgt, "type": "ethernet"}, headers=headers
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["source_handle"] == "bottom"
+    assert data["target_handle"] == "top-t"
+
+
+async def test_create_edge_partial_handle_auto_fills_the_other(client: AsyncClient, headers: dict, stacked_nodes):
+    """An explicit source_handle is kept; the omitted target_handle is inferred."""
+    top, bottom = stacked_nodes
+    res = await client.post(
+        "/api/v1/edges",
+        json={"source": top, "target": bottom, "type": "ethernet", "source_handle": "cluster-right"},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["source_handle"] == "cluster-right"
+    assert data["target_handle"] == "top-t"
+
+
+async def test_create_edge_child_node_abs_y_resolved_through_parent(client: AsyncClient, headers: dict):
+    """A child's absolute Y = parent Y + its own pos_y, so a VM low inside a high
+    container still resolves as downstream of a node above the container."""
+    parent = (
+        await client.post(
+            "/api/v1/nodes",
+            json={"type": "proxmox", "label": "PVE", "status": "online", "container_mode": True, "pos_x": 0, "pos_y": 0},
+            headers=headers,
+        )
+    ).json()
+    child = (
+        await client.post(
+            "/api/v1/nodes",
+            json={"type": "vm", "label": "VM", "status": "online", "parent_id": parent["id"], "pos_x": 0, "pos_y": 50},
+            headers=headers,
+        )
+    ).json()
+    below = (
+        await client.post(
+            "/api/v1/nodes",
+            json={"type": "server", "label": "Below", "status": "online", "pos_x": 0, "pos_y": 500},
+            headers=headers,
+        )
+    ).json()
+    # child abs Y = 0 + 50 = 50, below at 500 -> child is upstream.
+    res = await client.post(
+        "/api/v1/edges", json={"source": child["id"], "target": below["id"], "type": "virtual"}, headers=headers
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["source_handle"] == "bottom"
+    assert data["target_handle"] == "top-t"

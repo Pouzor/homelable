@@ -286,3 +286,80 @@ async def test_properties_icon_can_be_null(client: AsyncClient, headers: dict):
     )
     assert create.status_code == 201
     assert create.json()["properties"] == props
+
+
+# ---------------------------------------------------------------------------
+# Auto-positioning (issue #265): omitting pos_x/pos_y snaps the node to the
+# first free 200x100 grid slot instead of stacking everything at (0, 0).
+# ---------------------------------------------------------------------------
+
+
+async def test_create_node_auto_positions_first_at_origin(client: AsyncClient, headers: dict):
+    """First root node with no coordinates lands at (0, 0)."""
+    res = await client.post(
+        "/api/v1/nodes", json={"type": "server", "label": "A", "status": "unknown"}, headers=headers
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert (data["pos_x"], data["pos_y"]) == (0.0, 0.0)
+
+
+async def test_create_node_auto_position_avoids_collision(client: AsyncClient, headers: dict):
+    """A second auto-placed root node takes the next free grid cell, not (0, 0)."""
+    first = await client.post(
+        "/api/v1/nodes", json={"type": "server", "label": "A", "status": "unknown"}, headers=headers
+    )
+    assert (first.json()["pos_x"], first.json()["pos_y"]) == (0.0, 0.0)
+
+    second = await client.post(
+        "/api/v1/nodes", json={"type": "server", "label": "B", "status": "unknown"}, headers=headers
+    )
+    assert second.status_code == 201
+    # Next free cell in row 0 is column 1 -> x = 1 * 200.
+    assert (second.json()["pos_x"], second.json()["pos_y"]) == (200.0, 0.0)
+
+
+async def test_create_node_child_defaults_to_parent_origin(client: AsyncClient, headers: dict):
+    """A child node (parent_id set) with no coordinates defaults to (0, 0) relative to its parent."""
+    parent = (
+        await client.post(
+            "/api/v1/nodes",
+            json={"type": "proxmox", "label": "PVE", "status": "online", "container_mode": True},
+            headers=headers,
+        )
+    ).json()
+    res = await client.post(
+        "/api/v1/nodes",
+        json={"type": "vm", "label": "VM1", "status": "online", "parent_id": parent["id"]},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert (data["pos_x"], data["pos_y"]) == (0.0, 0.0)
+
+
+async def test_create_node_explicit_position_preserved(client: AsyncClient, headers: dict):
+    """Explicit coordinates are honored, never auto-placed."""
+    res = await client.post(
+        "/api/v1/nodes",
+        json={"type": "server", "label": "A", "status": "unknown", "pos_x": 512.0, "pos_y": 384.0},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert (data["pos_x"], data["pos_y"]) == (512.0, 384.0)
+
+
+async def test_create_node_explicit_zero_position_preserved(client: AsyncClient, headers: dict):
+    """pos=0 is an explicit value, not 'omitted' — auto-position must not treat 0 as None."""
+    await client.post(
+        "/api/v1/nodes", json={"type": "server", "label": "A", "status": "unknown"}, headers=headers
+    )
+    # Second node explicitly pinned to (0, 0) even though the cell is taken.
+    res = await client.post(
+        "/api/v1/nodes",
+        json={"type": "server", "label": "B", "status": "unknown", "pos_x": 0, "pos_y": 0},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    assert (res.json()["pos_x"], res.json()["pos_y"]) == (0.0, 0.0)

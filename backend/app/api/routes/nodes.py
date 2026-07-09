@@ -37,10 +37,13 @@ async def _find_free_position(db: AsyncSession, design_id: str | None) -> tuple[
     if not positions:
         return 0.0, 0.0
 
+    # Snap each existing node to its true grid cell (negatives kept as-is). The
+    # search below only visits col >= 0 / row >= 0, so nodes parked in negative
+    # space never falsely block — or falsely free — a positive slot.
     occupied: set[tuple[int, int]] = set()
     for (px, py) in positions:
-        col = max(0, round(px / _SLOT_W))
-        row = max(0, round(py / _SLOT_H))
+        col = round(px / _SLOT_W)
+        row = round(py / _SLOT_H)
         occupied.add((col, row))
 
     for row in range(10_000):
