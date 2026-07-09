@@ -82,10 +82,9 @@ async def test_liveview_does_not_require_jwt(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_liveview_returns_saved_canvas(client: AsyncClient, auth_headers):
+async def test_liveview_returns_saved_canvas(client: AsyncClient, headers):
     """Canvas saved via POST /canvas/save appears in liveview response."""
     settings.liveview_key = "test-key"
-    headers = await auth_headers()
 
     # Save a canvas with one node
     payload = {
@@ -115,10 +114,9 @@ async def test_liveview_returns_saved_canvas(client: AsyncClient, auth_headers):
 # ── custom_style + theme propagation ─────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_liveview_returns_custom_style_and_theme(client: AsyncClient, auth_headers):
+async def test_liveview_returns_custom_style_and_theme(client: AsyncClient, headers):
     """custom_style and viewport.theme_id from a saved canvas surface in liveview."""
     settings.liveview_key = "test-key"
-    headers = await auth_headers()
     payload = {
         "nodes": [],
         "edges": [],
@@ -159,9 +157,8 @@ async def test_liveview_config_requires_auth(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_liveview_config_returns_key_when_enabled(client: AsyncClient, auth_headers):
+async def test_liveview_config_returns_key_when_enabled(client: AsyncClient, headers):
     settings.liveview_key = "share-me"
-    headers = await auth_headers()
     res = await client.get("/api/v1/liveview/config", headers=headers)
     assert res.status_code == 200
     body = res.json()
@@ -169,18 +166,16 @@ async def test_liveview_config_returns_key_when_enabled(client: AsyncClient, aut
 
 
 @pytest.mark.asyncio
-async def test_liveview_config_disabled_hides_key(client: AsyncClient, auth_headers):
+async def test_liveview_config_disabled_hides_key(client: AsyncClient, headers):
     settings.liveview_key = None
-    headers = await auth_headers()
     res = await client.get("/api/v1/liveview/config", headers=headers)
     assert res.status_code == 200
     assert res.json() == {"enabled": False, "key": None}
 
 
 @pytest.mark.asyncio
-async def test_liveview_config_empty_key_disabled(client: AsyncClient, auth_headers):
+async def test_liveview_config_empty_key_disabled(client: AsyncClient, headers):
     settings.liveview_key = ""
-    headers = await auth_headers()
     res = await client.get("/api/v1/liveview/config", headers=headers)
     assert res.status_code == 200
     assert res.json() == {"enabled": False, "key": None}
@@ -189,10 +184,9 @@ async def test_liveview_config_empty_key_disabled(client: AsyncClient, auth_head
 # ── design_id selects which canvas is rendered ───────────────────────────────
 
 @pytest.mark.asyncio
-async def test_liveview_design_id_selects_canvas(client: AsyncClient, auth_headers):
+async def test_liveview_design_id_selects_canvas(client: AsyncClient, headers):
     """?design_id=<id> renders that design's canvas, not the first one."""
     settings.liveview_key = "test-key"
-    headers = await auth_headers()
 
     # Create two designs
     d1 = (await client.post("/api/v1/designs", json={"name": "Network"}, headers=headers)).json()

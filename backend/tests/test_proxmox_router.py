@@ -20,13 +20,6 @@ from app.core.config import settings
 from app.db.models import Design, Edge, Node, PendingDevice, PendingDeviceLink
 
 
-@pytest.fixture
-async def headers(client: AsyncClient):
-    res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
-    token = res.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
 @pytest.fixture(autouse=True)
 def _clear_env_token():
     """Ensure a clean token state per test; restore afterwards."""

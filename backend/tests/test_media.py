@@ -30,8 +30,7 @@ async def test_upload_requires_auth(client, media_dir):
 
 
 @pytest.mark.asyncio
-async def test_upload_stores_file_and_returns_url(client, auth_headers, media_dir):
-    headers = await auth_headers()
+async def test_upload_stores_file_and_returns_url(client, headers, media_dir):
     res = await _upload(client, headers)
     assert res.status_code == 200
     body = res.json()
@@ -42,31 +41,27 @@ async def test_upload_stores_file_and_returns_url(client, auth_headers, media_di
 
 
 @pytest.mark.asyncio
-async def test_upload_rejects_unsupported_type(client, auth_headers, media_dir):
-    headers = await auth_headers()
+async def test_upload_rejects_unsupported_type(client, headers, media_dir):
     res = await _upload(client, headers, name="a.txt", data=b"hello", content_type="text/plain")
     assert res.status_code == 415
 
 
 @pytest.mark.asyncio
-async def test_upload_rejects_content_type_magic_mismatch(client, auth_headers, media_dir):
-    headers = await auth_headers()
+async def test_upload_rejects_content_type_magic_mismatch(client, headers, media_dir):
     # Claims PNG but bytes are not a PNG.
     res = await _upload(client, headers, data=b"not-a-real-png", content_type="image/png")
     assert res.status_code == 415
 
 
 @pytest.mark.asyncio
-async def test_upload_rejects_oversize(client, auth_headers, media_dir, monkeypatch):
+async def test_upload_rejects_oversize(client, headers, media_dir, monkeypatch):
     monkeypatch.setattr(media, "MAX_BYTES", 8)
-    headers = await auth_headers()
     res = await _upload(client, headers, data=PNG_BYTES)  # > 8 bytes
     assert res.status_code == 413
 
 
 @pytest.mark.asyncio
-async def test_get_serves_uploaded_file(client, auth_headers, media_dir):
-    headers = await auth_headers()
+async def test_get_serves_uploaded_file(client, headers, media_dir):
     up = await _upload(client, headers)
     res = await client.get(up.json()["url"])  # public, no auth
     assert res.status_code == 200
@@ -80,15 +75,13 @@ async def test_get_rejects_bad_filename(client, media_dir):
 
 
 @pytest.mark.asyncio
-async def test_delete_rejects_bad_filename(client, auth_headers, media_dir):
-    headers = await auth_headers()
+async def test_delete_rejects_bad_filename(client, headers, media_dir):
     res = await client.delete("/api/v1/media/..%2f..%2fetc%2fpasswd", headers=headers)
     assert res.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_delete_requires_auth_and_removes_file(client, auth_headers, media_dir):
-    headers = await auth_headers()
+async def test_delete_requires_auth_and_removes_file(client, headers, media_dir):
     up = await _upload(client, headers)
     filename = up.json()["filename"]
 

@@ -1,13 +1,6 @@
 import uuid
 
-import pytest
 from httpx import AsyncClient
-
-
-@pytest.fixture
-async def headers(client: AsyncClient):
-    res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
-    return {"Authorization": f"Bearer {res.json()['access_token']}"}
 
 
 def node_payload(**kwargs):

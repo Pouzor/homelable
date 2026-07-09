@@ -1,12 +1,4 @@
-import pytest
 from httpx import AsyncClient
-
-
-@pytest.fixture
-async def headers(client: AsyncClient):
-    res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
-    token = res.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
 
 
 async def test_list_nodes_empty(client: AsyncClient, headers: dict):

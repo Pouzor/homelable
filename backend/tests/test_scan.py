@@ -13,13 +13,6 @@ from app.services.scanner import _cancelled_runs, request_cancel, run_scan
 
 
 @pytest.fixture
-async def headers(client: AsyncClient):
-    res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
-    token = res.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
-@pytest.fixture
 async def pending_device(db_session):
     import uuid
     device = PendingDevice(

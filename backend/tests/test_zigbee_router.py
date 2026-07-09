@@ -11,13 +11,6 @@ from httpx import AsyncClient
 # Fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-async def headers(client: AsyncClient):
-    res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
-    token = res.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
 # ---------------------------------------------------------------------------
 # /api/v1/zigbee/test-connection
 # ---------------------------------------------------------------------------

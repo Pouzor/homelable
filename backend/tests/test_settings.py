@@ -8,13 +8,6 @@ from httpx import AsyncClient
 from app.core.config import Settings
 
 
-@pytest.fixture
-async def headers(client: AsyncClient):
-    res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
-    token = res.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
 @pytest.mark.asyncio
 async def test_get_settings_requires_auth(client: AsyncClient):
     res = await client.get("/api/v1/settings")

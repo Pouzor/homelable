@@ -44,10 +44,7 @@ async def client(db_session: AsyncSession):
 
 
 @pytest.fixture
-def auth_headers(client):
-    """Returns a coroutine that logs in and returns auth headers."""
-    async def _get():
-        res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
-        token = res.json()["access_token"]
-        return {"Authorization": f"Bearer {token}"}
-    return _get
+async def headers(client: AsyncClient):
+    """Authenticated Bearer headers for the default admin test user."""
+    res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
+    return {"Authorization": f"Bearer {res.json()['access_token']}"}
