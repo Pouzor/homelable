@@ -8,6 +8,7 @@ import { getCenteredPosition } from '@/utils/viewportCenter'
 import { resolveVirtualEdgeParent } from '@/utils/virtualEdgeParent'
 import { generateMarkdownTable } from '@/utils/exportMarkdown'
 import { copyToClipboard } from '@/utils/clipboard'
+import { getDesignIdFromUrl, setDesignIdInUrl } from '@/utils/designUrl'
 import { ExportModal } from '@/components/modals/ExportModal'
 import { exportCanvasToYaml, downloadYaml } from '@/utils/exportYaml'
 import { parseYamlToCanvas } from '@/utils/importYaml'
@@ -171,10 +172,15 @@ export default function App() {
   }, [loadCanvas, setTheme, setCustomStyle, setFloorMap])
 
   const loadDesignsAndCanvas = useCallback(async () => {
+    // Prefer a design id explicitly requested via the URL (?design=<id>), so a
+    // refresh or shared link opens that design. Ignore it when it doesn't match
+    // a known design and fall back to the current/default one.
+    const urlDesignId = getDesignIdFromUrl()
     if (STANDALONE) {
       const designs = standaloneStorage.ensureSeed()
       setDesigns(designs)
-      const targetId = activeDesignId ?? designs[0]?.id
+      const fromUrl = urlDesignId && designs.some((d) => d.id === urlDesignId) ? urlDesignId : null
+      const targetId = fromUrl ?? activeDesignId ?? designs[0]?.id
       if (targetId) {
         setActiveDesign(targetId)
         loadStandaloneCanvas(targetId)
@@ -185,7 +191,8 @@ export default function App() {
       const res = await designsApi.list()
       const loadedDesigns = res.data
       setDesigns(loadedDesigns)
-      const targetId = activeDesignId ?? loadedDesigns[0]?.id
+      const fromUrl = urlDesignId && loadedDesigns.some((d) => d.id === urlDesignId) ? urlDesignId : null
+      const targetId = fromUrl ?? activeDesignId ?? loadedDesigns[0]?.id
       if (targetId) {
         setActiveDesign(targetId)
         await loadCanvasFromApi(targetId)
@@ -258,6 +265,11 @@ export default function App() {
       prevDesignRef.current = activeDesignId
       initialLoadDone.current = true
     }
+  }, [activeDesignId])
+
+  // Reflect the active design into the URL so refresh/share reopens it.
+  useEffect(() => {
+    if (activeDesignId) setDesignIdInUrl(activeDesignId)
   }, [activeDesignId])
 
   // Keep refs for store actions so keydown handler is always up-to-date without re-registering
