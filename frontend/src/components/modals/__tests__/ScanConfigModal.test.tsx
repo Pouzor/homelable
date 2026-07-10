@@ -9,7 +9,7 @@ vi.mock('@/api/client', () => ({
     trigger: vi.fn(),
   },
 }))
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
+vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 
 import { scanApi } from '@/api/client'
 import { toast } from 'sonner'

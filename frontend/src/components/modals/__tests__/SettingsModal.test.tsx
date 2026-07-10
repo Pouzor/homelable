@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { SettingsModal } from '../SettingsModal'
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 vi.mock('@/api/client', () => ({
   settingsApi: {
     get: vi.fn(),

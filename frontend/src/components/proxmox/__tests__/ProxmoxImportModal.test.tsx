@@ -9,7 +9,7 @@ vi.mock('@/api/client', () => ({
     importToPending: vi.fn(),
   },
 }))
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
+vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 
 import { proxmoxApi } from '@/api/client'
 import { toast } from 'sonner'

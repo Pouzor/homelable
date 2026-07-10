@@ -22,7 +22,7 @@ vi.mock('@/api/client', () => ({
   },
 }))
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 vi.mock('@/components/ui/Logo', () => ({ Logo: () => null }))
 vi.mock('@/components/ui/tooltip', () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,

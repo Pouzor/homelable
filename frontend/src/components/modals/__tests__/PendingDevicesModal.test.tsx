@@ -31,7 +31,7 @@ vi.mock('@/api/client', () => ({
   },
 }))
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
+vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 
 vi.mock('@/components/modals/PendingDeviceModal', () => ({
   PendingDeviceModal: ({ device, onApprove }: { device: unknown; onApprove: (d: unknown) => void }) =>

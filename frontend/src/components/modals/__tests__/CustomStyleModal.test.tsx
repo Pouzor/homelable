@@ -4,7 +4,7 @@ import { CustomStyleModal } from '../CustomStyleModal'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
+vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 import { toast } from 'sonner'
 
 describe('CustomStyleModal', () => {
