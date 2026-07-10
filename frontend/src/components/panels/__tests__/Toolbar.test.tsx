@@ -61,6 +61,39 @@ describe('Toolbar', () => {
     render(<Toolbar {...defaultProps} />)
     expect(screen.getByText('View')).toBeInTheDocument()
   })
+
+  // These cover the store→UI wiring the seam mock would otherwise hide: the
+  // undo/redo disabled state and the unsaved dot are driven purely by store
+  // state, so assert them against the mocked slices.
+  it('disables Undo when the history stack is empty and Redo when the future is empty', () => {
+    mockStore({ past: [], future: [] })
+    render(<Toolbar {...defaultProps} />)
+    expect(screen.getByTitle('Undo (Ctrl+Z)')).toBeDisabled()
+    expect(screen.getByTitle('Redo (Ctrl+Y)')).toBeDisabled()
+  })
+
+  it('enables Undo/Redo when history/future have entries and forwards the clicks', () => {
+    mockStore({ past: [{}], future: [{}] } as Partial<ReturnType<typeof useCanvasStore>>)
+    render(<Toolbar {...defaultProps} />)
+    const undo = screen.getByTitle('Undo (Ctrl+Z)')
+    const redo = screen.getByTitle('Redo (Ctrl+Y)')
+    expect(undo).toBeEnabled()
+    expect(redo).toBeEnabled()
+    fireEvent.click(undo)
+    fireEvent.click(redo)
+    expect(defaultProps.onUndo).toHaveBeenCalledOnce()
+    expect(defaultProps.onRedo).toHaveBeenCalledOnce()
+  })
+
+  it('renders the unsaved-changes dot only when hasUnsavedChanges is true', () => {
+    const { rerender } = render(<Toolbar {...defaultProps} />)
+    // Save button is the last button; the dot is a sibling span with bg-[#e3b341].
+    expect(document.querySelector('.bg-\\[\\#e3b341\\]')).toBeNull()
+
+    mockStore({ hasUnsavedChanges: true })
+    rerender(<Toolbar {...defaultProps} />)
+    expect(document.querySelector('.bg-\\[\\#e3b341\\]')).not.toBeNull()
+  })
 })
 
 // ── Standalone mode ────────────────────────────────────────────────────────────

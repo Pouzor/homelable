@@ -5,7 +5,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { THEME_ORDER } from '@/utils/themes'
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
+vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 import { toast } from 'sonner'
 
 describe('ThemeModal', () => {

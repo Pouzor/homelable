@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ScanHistoryModal } from '../ScanHistoryModal'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }))
+vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 vi.mock('@/stores/canvasStore', () => ({
   useCanvasStore: { getState: () => ({ notifyScanDeviceFound: vi.fn() }) },
 }))
