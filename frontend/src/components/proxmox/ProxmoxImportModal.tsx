@@ -11,7 +11,7 @@ import type { ProxmoxNode, ProxmoxEdge, ProxmoxNodeType } from './types'
 interface ProxmoxImportModalProps {
   open: boolean
   onClose: () => void
-  onAddToCanvas: (nodes: ProxmoxNode[], edges: ProxmoxEdge[]) => void
+  onAddToCanvas: (nodes: ProxmoxNode[], edges: ProxmoxEdge[], containerMode: boolean) => void
   onPendingImported?: () => void
 }
 
@@ -62,6 +62,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onPendingImpo
   const [edges, setEdges] = useState<ProxmoxEdge[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [importMode, setImportMode] = useState<ImportMode>('pending')
+  const [containerMode, setContainerMode] = useState(false)
 
   const updateField = (field: keyof ConnectionForm, value: string) =>
     setForm((f) => ({ ...f, [field]: value }))
@@ -136,7 +137,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onPendingImpo
     const selectedDevices = devices.filter((d) => checked.has(d.id))
     const selectedIds = new Set(selectedDevices.map((d) => d.id))
     const selectedEdges = edges.filter((e) => selectedIds.has(e.source) && selectedIds.has(e.target))
-    onAddToCanvas(selectedDevices, selectedEdges)
+    onAddToCanvas(selectedDevices, selectedEdges, containerMode)
     toast.success(`Added ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''} to canvas`)
     onClose()
   }
@@ -148,6 +149,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onPendingImpo
     setConnectionStatus('idle')
     setConnectionMsg('')
     setImportMode('pending')
+    setContainerMode(false)
     onClose()
   }
 
@@ -263,6 +265,18 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onPendingImpo
                 Canvas directly
               </label>
             </div>
+            {importMode === 'canvas' && (
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={containerMode}
+                  onChange={(e) => setContainerMode(e.target.checked)}
+                  className="w-3 h-3 cursor-pointer"
+                  style={{ accentColor: ACCENT }}
+                />
+                Nest VMs &amp; LXCs within host containers
+              </label>
+            )}
             <div className="flex gap-2">
               <Button
                 size="sm"

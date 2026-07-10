@@ -655,51 +655,127 @@ export default function App() {
     markUnsaved()
   }, [addNode, onConnect, snapshotHistory, markUnsaved])
 
-  const handleProxmoxAddToCanvas = useCallback((pmNodes: ProxmoxNode[], pmEdges: ProxmoxEdge[]) => {
+  const handleProxmoxAddToCanvas = useCallback((pmNodes: ProxmoxNode[], pmEdges: ProxmoxEdge[], containerMode: boolean) => {
     snapshotHistory()
-    const COLS = 4
-    const SPACING_X = 190
-    const SPACING_Y = 110
-    const cols = Math.min(COLS, pmNodes.length)
-    const rows = Math.ceil(pmNodes.length / COLS)
-    const origin = getCenteredPosition(cols * SPACING_X, rows * SPACING_Y)
-    // Multiple hosts from one import = a cluster → chain them via left/right
-    // 'cluster' edges. Those endpoints need one left + one right handle each
-    // (both default to 0), so grant them to the host nodes up front.
     const clusterEdges = buildProxmoxClusterEdges(pmNodes)
     const cluster = clusterEdges.length > 0
-    pmNodes.forEach((pn, i) => {
-      const col = i % COLS
-      const row = Math.floor(i / COLS)
-      const position = { x: origin.x + col * SPACING_X, y: origin.y + row * SPACING_Y }
-      const isClusterHost = cluster && pn.type === 'proxmox'
-      const newNode: import('@xyflow/react').Node<NodeData> = {
-        id: pn.id,
-        type: pn.type,
-        position,
-        data: {
-          label: pn.label,
-          type: pn.type as NodeData['type'],
-          status: (pn.status === 'online' ? 'online' : 'unknown') as NodeData['status'],
-          services: [],
-          ...(pn.ip ? { ip: pn.ip } : {}),
-          ...(pn.hostname ? { hostname: pn.hostname } : {}),
-          ...(isClusterHost ? { left_handles: 1, right_handles: 1 } : {}),
-        },
-      }
-      addNode(newNode)
-    })
-    // Host → guest links render as 'virtual' edges (VM/LXC ↔ host).
-    pmEdges.forEach((pe) => {
-      onConnect({
-        source: pe.source,
-        sourceHandle: 'bottom',
-        target: pe.target,
-        targetHandle: 'top-t',
-        type: 'virtual',
-      } as unknown as import('@xyflow/react').Connection)
-    })
-    // Host ↔ host links render as 'cluster' edges (left → right chain).
+
+    if (!containerMode) {
+      // Flat grid layout — original behaviour
+      const COLS = 4
+      const SPACING_X = 190
+      const SPACING_Y = 110
+      const cols = Math.min(COLS, pmNodes.length)
+      const rows = Math.ceil(pmNodes.length / COLS)
+      const origin = getCenteredPosition(cols * SPACING_X, rows * SPACING_Y)
+      pmNodes.forEach((pn, i) => {
+        const col = i % COLS
+        const row = Math.floor(i / COLS)
+        const position = { x: origin.x + col * SPACING_X, y: origin.y + row * SPACING_Y }
+        const isClusterHost = cluster && pn.type === 'proxmox'
+        const newNode: import('@xyflow/react').Node<NodeData> = {
+          id: pn.id,
+          type: pn.type,
+          position,
+          data: {
+            label: pn.label,
+            type: pn.type as NodeData['type'],
+            status: (pn.status === 'online' ? 'online' : 'unknown') as NodeData['status'],
+            services: [],
+            ...(pn.ip ? { ip: pn.ip } : {}),
+            ...(pn.hostname ? { hostname: pn.hostname } : {}),
+            ...(isClusterHost ? { left_handles: 1, right_handles: 1 } : {}),
+          },
+        }
+        addNode(newNode)
+      })
+      // Host → guest links
+      pmEdges.forEach((pe) => {
+        onConnect({
+          source: pe.source,
+          sourceHandle: 'bottom',
+          target: pe.target,
+          targetHandle: 'top-t',
+          type: 'virtual',
+        } as unknown as import('@xyflow/react').Connection)
+      })
+    } else {
+      // Container mode — nest each VM/LXC inside its host container
+      const CONTAINER_W = 300
+      const CHILD_H = 70
+      const HEADER_H = 60
+      const CONTAINER_GAP = 50
+
+      const hostNodes = pmNodes.filter((pn) => pn.type === 'proxmox')
+      const guestsByHost = new Map<string, ProxmoxNode[]>()
+      hostNodes.forEach((h) => guestsByHost.set(h.id, []))
+      pmNodes
+        .filter((pn) => pn.type !== 'proxmox')
+        .forEach((pn) => {
+          if (pn.parent_ieee && guestsByHost.has(pn.parent_ieee)) {
+            guestsByHost.get(pn.parent_ieee)!.push(pn)
+          }
+        })
+
+      const totalWidth =
+        hostNodes.length * CONTAINER_W + Math.max(0, hostNodes.length - 1) * CONTAINER_GAP
+      const maxContainerH = hostNodes.reduce((max, h) => {
+        const childCount = (guestsByHost.get(h.id) ?? []).length
+        return Math.max(max, HEADER_H + childCount * CHILD_H + 10)
+      }, 200)
+      const origin = getCenteredPosition(totalWidth, maxContainerH)
+
+      let cursorX = origin.x
+      hostNodes.forEach((hostNode) => {
+        const children = guestsByHost.get(hostNode.id) ?? []
+        const containerH = Math.max(200, HEADER_H + children.length * CHILD_H + 10)
+        const containerPos = { x: cursorX, y: origin.y }
+
+        // Add host as a container node
+        addNode({
+          id: hostNode.id,
+          type: hostNode.type,
+          position: containerPos,
+          width: CONTAINER_W,
+          height: containerH,
+          data: {
+            label: hostNode.label,
+            type: hostNode.type as NodeData['type'],
+            status: (hostNode.status === 'online' ? 'online' : 'unknown') as NodeData['status'],
+            services: [],
+            container_mode: true,
+            ...(hostNode.ip ? { ip: hostNode.ip } : {}),
+            ...(hostNode.hostname ? { hostname: hostNode.hostname } : {}),
+            ...(cluster ? { left_handles: 1, right_handles: 1 } : {}),
+          },
+        } as import('@xyflow/react').Node<NodeData>)
+
+        // Add children with absolute canvas positions; store converts to parent-relative
+        children.forEach((child, i) => {
+          addNode({
+            id: child.id,
+            type: child.type,
+            position: {
+              x: containerPos.x + 20,
+              y: containerPos.y + HEADER_H + i * CHILD_H,
+            },
+            data: {
+              label: child.label,
+              type: child.type as NodeData['type'],
+              status: (child.status === 'online' ? 'online' : 'unknown') as NodeData['status'],
+              services: [],
+              parent_id: hostNode.id,
+              ...(child.ip ? { ip: child.ip } : {}),
+              ...(child.hostname ? { hostname: child.hostname } : {}),
+            },
+          } as import('@xyflow/react').Node<NodeData>)
+        })
+
+        cursorX += CONTAINER_W + CONTAINER_GAP
+      })
+    }
+
+    // Host ↔ host cluster edges (both layout modes)
     clusterEdges.forEach((ce) => {
       onConnect({
         source: ce.source,
