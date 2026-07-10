@@ -13,8 +13,6 @@ import { THEMES } from '@/utils/themes'
 import { BaseNode } from './BaseNode'
 import { SideHandles } from './SideHandles'
 
-const COLUMN_OPTIONS = [1, 2, 3, 4] as const
-
 export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
   const { id, data, selected } = props
   const updateNodeInternals = useUpdateNodeInternals()
@@ -100,34 +98,27 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
               </span>
             ))}
           </div>
-          {/* Column selector — nodrag so clicks don't start a canvas drag */}
+          {/* Column spinner — nodrag so clicks don't start a canvas drag */}
           {selected && (
             <div
-              className="nodrag flex items-center gap-0.5 ml-1 shrink-0"
+              className="nodrag flex items-center gap-1 ml-1 shrink-0"
               onPointerDown={(e) => e.stopPropagation()}
               title="Reflow children into N columns"
             >
-              {COLUMN_OPTIONS.map((n) => {
-                const active = (data.container_columns ?? 1) === n
-                return (
-                  <button
-                    key={n}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      snapshotHistory()
-                      reflowContainerChildren(id, n)
-                    }}
-                    className="nodrag w-4 h-4 rounded text-[9px] font-bold leading-none flex items-center justify-center transition-colors"
-                    style={{
-                      background: active ? glow : `${glow}22`,
-                      color: active ? theme.colors.nodeCardBackground : glow,
-                      border: `1px solid ${glow}55`,
-                    }}
-                  >
-                    {n}
-                  </button>
-                )
-              })}
+              <span className="text-[9px]" style={{ color: theme.colors.nodeSubtextColor }}>cols</span>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={data.container_columns ?? 1}
+                onChange={(e) => {
+                  const n = Math.max(1, Math.min(10, Number(e.target.value) || 1))
+                  snapshotHistory()
+                  reflowContainerChildren(id, n)
+                }}
+                className="nodrag w-8 h-4 rounded text-[9px] text-center font-mono bg-transparent border leading-none"
+                style={{ borderColor: `${glow}55`, color: glow, colorScheme: 'dark' }}
+              />
             </div>
           )}
           {/* Status dot */}

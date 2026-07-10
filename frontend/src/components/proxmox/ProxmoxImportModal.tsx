@@ -282,23 +282,15 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onPendingImpo
                 {containerMode && (
                   <label className="flex items-center gap-2 text-xs text-muted-foreground pl-4">
                     Columns per host:
-                    <div className="flex items-center gap-1">
-                      {([1, 2, 3, 4] as const).map((n) => (
-                        <button
-                          key={n}
-                          type="button"
-                          onClick={() => setColumns(n)}
-                          className="w-5 h-5 rounded text-[10px] font-bold leading-none flex items-center justify-center transition-colors border"
-                          style={{
-                            background: columns === n ? ACCENT : 'transparent',
-                            color: columns === n ? '#0d1117' : ACCENT,
-                            borderColor: `${ACCENT}66`,
-                          }}
-                        >
-                          {n}
-                        </button>
-                      ))}
-                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={columns}
+                      onChange={(e) => setColumns(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                      className="w-14 h-6 rounded px-1.5 text-xs font-mono bg-[#0d1117] border border-border text-foreground"
+                      style={{ accentColor: ACCENT }}
+                    />
                   </label>
                 )}
               </div>
