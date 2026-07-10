@@ -49,6 +49,7 @@ import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 import type { ZwaveNode, ZwaveEdge } from '@/components/zwave/types'
 import type { ProxmoxNode, ProxmoxEdge } from '@/components/proxmox/types'
 import { buildProxmoxClusterEdges } from '@/components/proxmox/clusterEdges'
+import { containerDims, childRelPos } from '@/utils/proxmoxLayout'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -655,7 +656,7 @@ export default function App() {
     markUnsaved()
   }, [addNode, onConnect, snapshotHistory, markUnsaved])
 
-  const handleProxmoxAddToCanvas = useCallback((pmNodes: ProxmoxNode[], pmEdges: ProxmoxEdge[], containerMode: boolean) => {
+  const handleProxmoxAddToCanvas = useCallback((pmNodes: ProxmoxNode[], pmEdges: ProxmoxEdge[], containerMode: boolean, columns: number) => {
     snapshotHistory()
     const clusterEdges = buildProxmoxClusterEdges(pmNodes)
     const cluster = clusterEdges.length > 0
@@ -701,9 +702,6 @@ export default function App() {
       })
     } else {
       // Container mode — nest each VM/LXC inside its host container
-      const CONTAINER_W = 300
-      const CHILD_H = 70
-      const HEADER_H = 60
       const CONTAINER_GAP = 50
 
       const hostNodes = pmNodes.filter((pn) => pn.type === 'proxmox')
@@ -717,18 +715,23 @@ export default function App() {
           }
         })
 
-      const totalWidth =
-        hostNodes.length * CONTAINER_W + Math.max(0, hostNodes.length - 1) * CONTAINER_GAP
+      const safeCols = Math.max(1, Math.min(columns, 6))
       const maxContainerH = hostNodes.reduce((max, h) => {
         const childCount = (guestsByHost.get(h.id) ?? []).length
-        return Math.max(max, HEADER_H + childCount * CHILD_H + 10)
+        const { height } = containerDims(childCount, safeCols)
+        return Math.max(max, height)
       }, 200)
+      const totalWidth = hostNodes.reduce((sum, h) => {
+        const childCount = (guestsByHost.get(h.id) ?? []).length
+        const { width } = containerDims(childCount, safeCols)
+        return sum + width
+      }, 0) + Math.max(0, hostNodes.length - 1) * CONTAINER_GAP
       const origin = getCenteredPosition(totalWidth, maxContainerH)
 
       let cursorX = origin.x
       hostNodes.forEach((hostNode) => {
         const children = guestsByHost.get(hostNode.id) ?? []
-        const containerH = Math.max(200, HEADER_H + children.length * CHILD_H + 10)
+        const { width: containerW, height: containerH } = containerDims(children.length, safeCols)
         const containerPos = { x: cursorX, y: origin.y }
 
         // Add host as a container node
@@ -736,7 +739,7 @@ export default function App() {
           id: hostNode.id,
           type: hostNode.type,
           position: containerPos,
-          width: CONTAINER_W,
+          width: containerW,
           height: containerH,
           data: {
             label: hostNode.label,
@@ -744,20 +747,22 @@ export default function App() {
             status: (hostNode.status === 'online' ? 'online' : 'unknown') as NodeData['status'],
             services: [],
             container_mode: true,
+            container_columns: safeCols,
             ...(hostNode.ip ? { ip: hostNode.ip } : {}),
             ...(hostNode.hostname ? { hostname: hostNode.hostname } : {}),
             ...(cluster ? { left_handles: 1, right_handles: 1 } : {}),
           },
         } as import('@xyflow/react').Node<NodeData>)
 
-        // Add children with absolute canvas positions; store converts to parent-relative
+        // Add children using absolute canvas positions; store converts to parent-relative
         children.forEach((child, i) => {
+          const rel = childRelPos(i, safeCols)
           addNode({
             id: child.id,
             type: child.type,
             position: {
-              x: containerPos.x + 20,
-              y: containerPos.y + HEADER_H + i * CHILD_H,
+              x: containerPos.x + rel.x,
+              y: containerPos.y + rel.y,
             },
             data: {
               label: child.label,
@@ -771,7 +776,7 @@ export default function App() {
           } as import('@xyflow/react').Node<NodeData>)
         })
 
-        cursorX += CONTAINER_W + CONTAINER_GAP
+        cursorX += containerW + CONTAINER_GAP
       })
     }
 

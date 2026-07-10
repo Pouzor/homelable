@@ -119,6 +119,7 @@ export interface NodeData extends Record<string, unknown> {
   properties?: NodeProperty[]
   parent_id?: string
   container_mode?: boolean
+  container_columns?: number
   custom_colors?: {
     border?: string
     background?: string

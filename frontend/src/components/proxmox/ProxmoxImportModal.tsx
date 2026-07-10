@@ -11,7 +11,7 @@ import type { ProxmoxNode, ProxmoxEdge, ProxmoxNodeType } from './types'
 interface ProxmoxImportModalProps {
   open: boolean
   onClose: () => void
-  onAddToCanvas: (nodes: ProxmoxNode[], edges: ProxmoxEdge[], containerMode: boolean) => void
+  onAddToCanvas: (nodes: ProxmoxNode[], edges: ProxmoxEdge[], containerMode: boolean, columns: number) => void
   onPendingImported?: () => void
 }
 
@@ -63,6 +63,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onPendingImpo
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [importMode, setImportMode] = useState<ImportMode>('pending')
   const [containerMode, setContainerMode] = useState(false)
+  const [columns, setColumns] = useState(2)
 
   const updateField = (field: keyof ConnectionForm, value: string) =>
     setForm((f) => ({ ...f, [field]: value }))
@@ -137,7 +138,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onPendingImpo
     const selectedDevices = devices.filter((d) => checked.has(d.id))
     const selectedIds = new Set(selectedDevices.map((d) => d.id))
     const selectedEdges = edges.filter((e) => selectedIds.has(e.source) && selectedIds.has(e.target))
-    onAddToCanvas(selectedDevices, selectedEdges, containerMode)
+    onAddToCanvas(selectedDevices, selectedEdges, containerMode, columns)
     toast.success(`Added ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''} to canvas`)
     onClose()
   }
@@ -150,6 +151,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onPendingImpo
     setConnectionMsg('')
     setImportMode('pending')
     setContainerMode(false)
+    setColumns(2)
     onClose()
   }
 
@@ -266,16 +268,40 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onPendingImpo
               </label>
             </div>
             {importMode === 'canvas' && (
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={containerMode}
-                  onChange={(e) => setContainerMode(e.target.checked)}
-                  className="w-3 h-3 cursor-pointer"
-                  style={{ accentColor: ACCENT }}
-                />
-                Nest VMs &amp; LXCs within host containers
-              </label>
+              <div className="flex flex-col gap-1.5">
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={containerMode}
+                    onChange={(e) => setContainerMode(e.target.checked)}
+                    className="w-3 h-3 cursor-pointer"
+                    style={{ accentColor: ACCENT }}
+                  />
+                  Nest VMs &amp; LXCs within host containers
+                </label>
+                {containerMode && (
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground pl-4">
+                    Columns per host:
+                    <div className="flex items-center gap-1">
+                      {([1, 2, 3, 4] as const).map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setColumns(n)}
+                          className="w-5 h-5 rounded text-[10px] font-bold leading-none flex items-center justify-center transition-colors border"
+                          style={{
+                            background: columns === n ? ACCENT : 'transparent',
+                            color: columns === n ? '#0d1117' : ACCENT,
+                            borderColor: `${ACCENT}66`,
+                          }}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </label>
+                )}
+              </div>
             )}
             <div className="flex gap-2">
               <Button
