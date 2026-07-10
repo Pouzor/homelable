@@ -107,32 +107,41 @@ async def _run_service_checks() -> None:
 
 
 async def _run_proxmox_sync() -> None:
-    """Fetch the Proxmox inventory and upsert it into pending (auto-sync)."""
+    """Fetch the Proxmox inventory and upsert it into pending (auto-sync).
+
+    Records a ScanRun (kind=proxmox) so the scheduled sync shows in Scan
+    history, exactly like the manual /sync-now and /import-pending paths.
+    """
     if not settings.proxmox_sync_enabled:
         return
     if not (settings.proxmox_host and settings.proxmox_token_id and settings.proxmox_token_secret):
         logger.warning("Proxmox auto-sync enabled but host/token not configured — skipping")
         return
     # Lazy import to avoid a circular import at module load.
-    from app.api.routes.proxmox import _persist_pending_import
-    from app.services.proxmox_service import fetch_proxmox_inventory
+    from app.api.routes.proxmox import _background_proxmox_import
+    from app.db.models import ScanRun
 
-    try:
-        nodes_raw, edges_raw = await fetch_proxmox_inventory(
-            host=settings.proxmox_host,
-            port=settings.proxmox_port,
-            token_id=settings.proxmox_token_id,
-            token_secret=settings.proxmox_token_secret,
-            verify_tls=settings.proxmox_verify_tls,
+    async with AsyncSessionLocal() as db:
+        run = ScanRun(
+            status="running",
+            kind="proxmox",
+            ranges=[f"{settings.proxmox_host}:{settings.proxmox_port}"],
         )
-        async with AsyncSessionLocal() as db:
-            result = await _persist_pending_import(db, nodes_raw, edges_raw)
-        logger.info(
-            "Proxmox auto-sync: %d devices (%d new, %d updated)",
-            result.device_count, result.pending_created, result.pending_updated,
-        )
-    except Exception as exc:
-        logger.error("Proxmox auto-sync failed: %s", exc)
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    # Shares the manual-sync flow: fetch + persist + mark the run done/error +
+    # broadcast the inventory-reload signal.
+    await _background_proxmox_import(
+        run_id,
+        settings.proxmox_host,
+        settings.proxmox_port,
+        settings.proxmox_token_id,
+        settings.proxmox_token_secret,
+        settings.proxmox_verify_tls,
+    )
 
 
 def _add_service_check_job() -> None:

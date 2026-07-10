@@ -313,44 +313,34 @@ def _proxmox_settings(mock_settings):
 
 
 @pytest.mark.asyncio
-async def test_run_proxmox_sync_persists_inventory():
-    db = MagicMock()
-    session_ctx = MagicMock()
-    session_ctx.__aenter__ = AsyncMock(return_value=db)
-    session_ctx.__aexit__ = AsyncMock(return_value=False)
-    result = MagicMock(device_count=3, pending_created=2, pending_updated=1)
+async def test_run_proxmox_sync_records_scan_run(mem_db):
+    """Auto-sync must create a ScanRun (kind=proxmox) so it shows in Scan
+    history, then delegate to the shared background import with the run id."""
+    from app.db.models import ScanRun
+
     with (
         patch("app.core.scheduler.settings") as mock_settings,
-        patch("app.core.scheduler.AsyncSessionLocal", MagicMock(return_value=session_ctx)),
+        patch("app.core.scheduler.AsyncSessionLocal", mem_db),
         patch(
-            "app.services.proxmox_service.fetch_proxmox_inventory",
+            "app.api.routes.proxmox._background_proxmox_import",
             new_callable=AsyncMock,
-            return_value=(["node-raw"], ["edge-raw"]),
-        ) as mock_fetch,
-        patch(
-            "app.api.routes.proxmox._persist_pending_import",
-            new_callable=AsyncMock,
-            return_value=result,
-        ) as mock_persist,
+        ) as mock_bg,
     ):
         _proxmox_settings(mock_settings)
         await _run_proxmox_sync()
-    mock_fetch.assert_awaited_once()
-    mock_persist.assert_awaited_once_with(db, ["node-raw"], ["edge-raw"])
 
+    # A ScanRun row exists — the missing scan-history trace.
+    async with mem_db() as db:
+        from sqlalchemy import select
+        run = (await db.execute(select(ScanRun))).scalars().one()
+    assert run.kind == "proxmox"
+    assert run.ranges == ["pve:8006"]
 
-@pytest.mark.asyncio
-async def test_run_proxmox_sync_logs_and_swallows_errors():
-    with (
-        patch("app.core.scheduler.settings") as mock_settings,
-        patch(
-            "app.services.proxmox_service.fetch_proxmox_inventory",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("proxmox api down"),
-        ),
-    ):
-        _proxmox_settings(mock_settings)
-        await _run_proxmox_sync()  # exception is logged, never propagated
+    # Delegated to the same background flow the manual /sync-now uses, passing
+    # the run id + env connection settings.
+    mock_bg.assert_awaited_once_with(
+        run.id, "pve", 8006, "root@pam!tok", "secret", False,
+    )
 
 
 # --- reschedule_* validation and not-running guards ---
