@@ -317,7 +317,7 @@ docker compose up -d mcp
 
 **Claude Code** — run this command in your terminal:
 ```bash
-claude mcp add --transport sse homelable http://<your-homelab-ip>:8001/mcp \
+claude mcp add --transport http homelable http://<your-homelab-ip>:8001/mcp/ \
   --header "X-API-Key: mcp_sk_yourkey"
 ```
 
@@ -326,8 +326,8 @@ Or add it manually to `~/.claude.json`:
 {
   "mcpServers": {
     "homelable": {
-      "type": "sse",
-      "url": "http://<your-homelab-ip>:8001/mcp",
+      "type": "http",
+      "url": "http://<your-homelab-ip>:8001/mcp/",
       "headers": {
         "X-API-Key": "mcp_sk_yourkey"
       }
@@ -341,8 +341,8 @@ Or add it manually to `~/.claude.json`:
 {
   "mcpServers": {
     "homelable": {
-      "type": "sse",
-      "url": "http://<your-homelab-ip>:8001/mcp",
+      "type": "http",
+      "url": "http://<your-homelab-ip>:8001/mcp/",
       "headers": {
         "X-API-Key": "mcp_sk_yourkey"
       }
