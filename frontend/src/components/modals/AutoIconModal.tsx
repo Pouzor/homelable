@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
-import { X, Wand2 } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown, X, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { brandIconUrl, BRAND_ICON_PREFIX } from '@/utils/nodeIcons'
 import { matchBrandIcon, shouldSkipNode, type IconMatch } from '@/utils/brandIconMatch'
+import { BrandIconPicker } from './BrandIconPicker'
 import dashboardIcons from '@/data/dashboardIcons.json'
 import type { Node } from '@xyflow/react'
 import type { NodeData } from '@/types'
@@ -14,8 +15,6 @@ interface RowData {
   nodeId: string
   label: string
   match: IconMatch
-  /** Override slug picked interactively by the user */
-  overrideSlug?: string
 }
 
 interface AutoIconModalProps {
@@ -57,26 +56,24 @@ export function AutoIconModal({ open, nodes, onClose, onApply }: AutoIconModalPr
     return { rows: matched, skippedCount: skipped, noMatchCount: noMatch }
   }, [nodes])
 
-  // Initialise checked state when rows change (open / node list change)
+  // Initialise checked state when rows change
   const initialChecked = useMemo(() => {
     const init: Record<string, boolean> = {}
     for (const row of rows) {
-      // Auto-check exact + high confidence; leave partial unchecked
       init[row.nodeId] = row.match.confidence !== 'partial'
     }
     return init
   }, [rows])
 
-  // Merge initialChecked with user changes
   const effectiveChecked = useMemo(() => ({ ...initialChecked, ...checked }), [initialChecked, checked])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return rows
     return rows.filter(
-      (r) => r.label.toLowerCase().includes(q) || r.match.slug.includes(q),
+      (r) => r.label.toLowerCase().includes(q) || (overrides[r.nodeId] ?? r.match.slug).includes(q),
     )
-  }, [rows, search])
+  }, [rows, search, overrides])
 
   if (!open) return null
 
@@ -89,15 +86,13 @@ export function AutoIconModal({ open, nodes, onClose, onApply }: AutoIconModalPr
   const handleApply = () => {
     const assignments = rows
       .filter((r) => effectiveChecked[r.nodeId])
-      .map((r) => ({
-        nodeId: r.nodeId,
-        slug: overrides[r.nodeId] ?? r.match.slug,
-      }))
+      .map((r) => ({ nodeId: r.nodeId, slug: overrides[r.nodeId] ?? r.match.slug }))
     onApply(assignments)
     onClose()
   }
 
-  const checkedCount = filtered.filter((r) => effectiveChecked[r.nodeId]).length
+  // Count across ALL rows (not just filtered) so the footer reflects total applied
+  const checkedCount = rows.filter((r) => effectiveChecked[r.nodeId]).length
   const allFilteredChecked = filtered.length > 0 && filtered.every((r) => effectiveChecked[r.nodeId])
 
   return (
@@ -122,7 +117,7 @@ export function AutoIconModal({ open, nodes, onClose, onApply }: AutoIconModalPr
           <span><span className="text-foreground font-medium">{rows.length}</span> matched</span>
           {noMatchCount > 0 && <span><span className="text-foreground font-medium">{noMatchCount}</span> no match</span>}
           {skippedCount > 0 && <span><span className="text-foreground font-medium">{skippedCount}</span> skipped (already set / structural)</span>}
-          <span className="ml-auto">Icons via <span className="text-[#00d4ff]">jsDelivr CDN</span></span>
+          <span className="ml-auto text-[10px]">Icons via <span className="text-[#00d4ff]">jsDelivr CDN</span></span>
         </div>
 
         {/* Search + select-all */}
@@ -150,9 +145,7 @@ export function AutoIconModal({ open, nodes, onClose, onApply }: AutoIconModalPr
         <div className="flex-1 overflow-y-auto">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 gap-2 text-muted-foreground text-sm">
-              {rows.length === 0
-                ? 'No nodes matched any brand icon.'
-                : 'No results for that filter.'}
+              {rows.length === 0 ? 'No nodes matched any brand icon.' : 'No results for that filter.'}
             </div>
           ) : (
             <table className="w-full text-xs">
@@ -160,7 +153,7 @@ export function AutoIconModal({ open, nodes, onClose, onApply }: AutoIconModalPr
                 <tr>
                   <th className="w-8 px-4 py-2 text-left" />
                   <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Node</th>
-                  <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Suggested Icon</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Brand Icon</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Confidence</th>
                 </tr>
               </thead>
@@ -175,8 +168,7 @@ export function AutoIconModal({ open, nodes, onClose, onApply }: AutoIconModalPr
                       key={row.nodeId}
                       className="border-b border-border/50 hover:bg-[#21262d]/60 transition-colors"
                     >
-                      {/* Checkbox */}
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2">
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -187,36 +179,21 @@ export function AutoIconModal({ open, nodes, onClose, onApply }: AutoIconModalPr
                         />
                       </td>
 
-                      {/* Node name */}
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-2">
                         <span className="font-medium text-foreground">{row.label}</span>
                       </td>
 
-                      {/* Icon preview + slug selector */}
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <img
-                            src={brandIconUrl(activeSlug)}
-                            alt={activeSlug}
-                            width={22}
-                            height={22}
-                            loading="lazy"
-                            style={{ width: 22, height: 22, objectFit: 'contain' }}
-                          />
-                          <SlugSelector
-                            value={activeSlug}
-                            onChange={(slug) =>
-                              setOverrides((prev) => ({ ...prev, [row.nodeId]: slug }))
-                            }
-                          />
-                        </div>
+                      <td className="px-3 py-2">
+                        <SlugPickerButton
+                          slug={activeSlug}
+                          onSelect={(slug) =>
+                            setOverrides((prev) => ({ ...prev, [row.nodeId]: slug }))
+                          }
+                        />
                       </td>
 
-                      {/* Confidence badge */}
-                      <td className="px-3 py-2.5">
-                        <span
-                          className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${badge.className}`}
-                        >
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium ${badge.className}`}>
                           {badge.label}
                         </span>
                       </td>
@@ -252,49 +229,93 @@ export function AutoIconModal({ open, nodes, onClose, onApply }: AutoIconModalPr
   )
 }
 
-/** Inline slug input with live icon preview. */
-function SlugSelector({ value, onChange }: { value: string; onChange: (slug: string) => void }) {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(value)
+/**
+ * Clickable pill showing the current icon + slug. Clicking opens the full
+ * BrandIconPicker as a fixed-position dropdown (escapes table overflow).
+ */
+function SlugPickerButton({ slug, onSelect }: { slug: string; onSelect: (slug: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [pickerStyle, setPickerStyle] = useState<React.CSSProperties>({})
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const pickerRef = useRef<HTMLDivElement>(null)
 
-  if (!editing) {
-    return (
-      <button
-        type="button"
-        onClick={() => { setDraft(value); setEditing(true) }}
-        className="font-mono text-[11px] text-muted-foreground hover:text-[#00d4ff] transition-colors cursor-pointer truncate max-w-[160px]"
-        title="Click to override slug"
-      >
-        {value}
-      </button>
-    )
+  const handleOpen = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      const pickerWidth = 296
+      // Flip left if the picker would overflow the right edge of the viewport
+      const left = rect.left + pickerWidth > window.innerWidth
+        ? rect.right - pickerWidth
+        : rect.left
+      // Flip up if the picker would overflow below the viewport
+      const spaceBelow = window.innerHeight - rect.bottom
+      const pickerHeight = 320
+      const top = spaceBelow < pickerHeight ? rect.top - pickerHeight - 4 : rect.bottom + 4
+      setPickerStyle({ position: 'fixed', top, left, width: pickerWidth, zIndex: 60 })
+    }
+    setOpen((v) => !v)
   }
 
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (
+        !btnRef.current?.contains(e.target as Node) &&
+        !pickerRef.current?.contains(e.target as Node)
+      ) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
   return (
-    <div className="flex items-center gap-1">
-      <Input
-        autoFocus
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') { onChange(draft); setEditing(false) }
-          if (e.key === 'Escape') setEditing(false)
-        }}
-        onBlur={() => { onChange(draft); setEditing(false) }}
-        className="h-6 text-[11px] font-mono bg-[#0d1117] border-[#30363d] w-36 px-1.5"
-        placeholder="slug"
-      />
-      {draft && (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={handleOpen}
+        title="Click to change icon"
+        className={`flex items-center gap-1.5 px-2 py-1 rounded border transition-colors cursor-pointer ${
+          open
+            ? 'border-[#00d4ff]/60 bg-[#00d4ff]/5'
+            : 'border-[#30363d] bg-[#0d1117] hover:border-[#484f58]'
+        }`}
+      >
         <img
-          src={brandIconUrl(draft)}
-          alt={draft}
-          width={18}
-          height={18}
+          src={brandIconUrl(slug)}
+          alt={slug}
+          width={16}
+          height={16}
           loading="lazy"
-          style={{ width: 18, height: 18, objectFit: 'contain' }}
+          style={{ width: 16, height: 16, objectFit: 'contain' }}
         />
+        <span className="font-mono text-[11px] text-muted-foreground max-w-[140px] truncate">{slug}</span>
+        <ChevronDown size={10} className={`text-muted-foreground shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div
+          ref={pickerRef}
+          style={pickerStyle}
+          className="bg-[#161b22] border border-border rounded-lg shadow-2xl p-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <BrandIconPicker
+            value={`${BRAND_ICON_PREFIX}${slug}`}
+            onSelect={(key) => {
+              const newSlug = key.startsWith(BRAND_ICON_PREFIX)
+                ? key.slice(BRAND_ICON_PREFIX.length)
+                : key
+              onSelect(newSlug)
+              setOpen(false)
+            }}
+          />
+        </div>
       )}
-    </div>
+    </>
   )
 }
 
