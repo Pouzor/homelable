@@ -260,10 +260,8 @@ function SlugPickerButton({ slug, onSelect }: { slug: string; onSelect: (slug: s
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (
-        !btnRef.current?.contains(e.target as Node) &&
-        !pickerRef.current?.contains(e.target as Node)
-      ) {
+      const t = e.target as Element
+      if (!btnRef.current?.contains(t) && !pickerRef.current?.contains(t)) {
         setOpen(false)
       }
     }
