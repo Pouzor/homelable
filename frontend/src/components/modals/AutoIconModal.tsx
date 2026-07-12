@@ -3,7 +3,7 @@ import { ChevronDown, X, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  brandIconUrl, BRAND_ICON_PREFIX,
+  BRAND_ICON_PREFIX,
   ICON_REGISTRY, ICON_CATEGORIES, resolveCustomIcon,
 } from '@/utils/nodeIcons'
 import { matchBrandIcon, shouldSkipNode, type IconMatch } from '@/utils/brandIconMatch'
@@ -310,7 +310,7 @@ function IconPickerDropdown({ value, onSelect }: { value: string; onSelect: (key
       type="button"
       role="tab"
       aria-selected={tab === id}
-      onClick={() => setIconSearch('') || setTab(id)}
+      onClick={() => { setIconSearch(''); setTab(id) }}
       className={`text-[11px] px-2 py-1 rounded transition-colors cursor-pointer ${
         tab === id
           ? 'bg-[#21262d] text-foreground border border-[#30363d]'
