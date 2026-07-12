@@ -100,9 +100,11 @@ export function matchBrandIcon(label: string, slugs: string[]): IconMatch | null
 /** Node types that are structural (not real devices) — skip these. */
 const SKIP_TYPES = new Set(['group', 'groupRect', 'text'])
 
+const ICON_PREFIXES = ['brand:', 'mdi:', 'si:', 'sh:', 'https://', 'http://', '/icons/']
+
 export function shouldSkipNode(type: string, customIcon?: string): boolean {
   if (SKIP_TYPES.has(type)) return true
-  // Already has a brand icon — don't clobber it
-  if (customIcon?.startsWith('brand:')) return true
+  // Already has any icon assigned — don't clobber it
+  if (customIcon && ICON_PREFIXES.some((p) => customIcon.startsWith(p))) return true
   return false
 }

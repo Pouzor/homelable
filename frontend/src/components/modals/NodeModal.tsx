@@ -10,8 +10,17 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod, type NodeTypeStyle } from '@/types'
 import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
-import { ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
+import {
+  ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS,
+  isBrandIconKey, brandIconSlug, brandIconUrl,
+  isMdiIconKey, parseMdiKey, mdiIconUrl,
+  isSimpleIconKey, parseSimpleIconKey, simpleIconUrl,
+  isSelfhstIconKey, parseSelfhstKey, selfhstIconUrl,
+  isRemoteUrl, isLocalIcon,
+} from '@/utils/nodeIcons'
 import { BrandIconPicker } from './BrandIconPicker'
+import { SimpleIconPicker } from './SimpleIconPicker'
+import { SelfhstIconPicker } from './SelfhstIconPicker'
 import { MAX_HANDLES, clampHandles, sideDefault, handleCountField, type Side } from '@/utils/handleUtils'
 import { getValidParentTypes } from '@/utils/virtualEdgeParent'
 
@@ -144,7 +153,30 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
   const [form, setForm] = useState<Partial<NodeData>>(merged)
   const [iconSearch, setIconSearch] = useState('')
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
-  const [iconTab, setIconTab] = useState<'generic' | 'brand'>(isBrandIconKey(initial?.custom_icon) ? 'brand' : 'generic')
+  const [iconColor, setIconColor] = useState<string>(() => {
+    const k = initial?.custom_icon ?? ''
+    if (isMdiIconKey(k)) return parseMdiKey(k).color ?? ''
+    if (isSimpleIconKey(k)) return parseSimpleIconKey(k).color ?? ''
+    return ''
+  })
+  const [mdiInput, setMdiInput] = useState<string>(() => {
+    const k = initial?.custom_icon ?? ''
+    return isMdiIconKey(k) ? parseMdiKey(k).name : ''
+  })
+  const [urlInput, setUrlInput] = useState<string>(() => {
+    const k = initial?.custom_icon ?? ''
+    return (isRemoteUrl(k) || isLocalIcon(k)) ? k : ''
+  })
+  type IconTab = 'generic' | 'brand' | 'mdi' | 'si' | 'sh' | 'url'
+  const [iconTab, setIconTab] = useState<IconTab>(() => {
+    const k = initial?.custom_icon
+    if (isBrandIconKey(k)) return 'brand'
+    if (isMdiIconKey(k)) return 'mdi'
+    if (isSimpleIconKey(k)) return 'si'
+    if (isSelfhstIconKey(k)) return 'sh'
+    if (isRemoteUrl(k) || isLocalIcon(k)) return 'url'
+    return 'generic'
+  })
   const [labelError, setLabelError] = useState(false)
   const resolvedNodeColors = resolveNodeColors({ type: form.type ?? 'generic', custom_colors: form.custom_colors })
   const showServicesEnabled = form.custom_colors?.show_services === true
@@ -279,11 +311,27 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               >
                 <span className="flex items-center gap-2 min-w-0">
                   {(() => {
-                    if (isBrandIconKey(form.custom_icon)) {
-                      const slug = brandIconSlug(form.custom_icon!)
+                    const k = form.custom_icon
+                    if (isBrandIconKey(k)) {
+                      const slug = brandIconSlug(k!)
                       return <><img src={brandIconUrl(slug)} alt={slug} width={13} height={13} className="shrink-0" style={{ width: 13, height: 13, objectFit: 'contain' }} /><span className="text-foreground truncate">{slug}</span></>
                     }
-                    const entry = ICON_REGISTRY.find((e) => e.key === form.custom_icon)
+                    if (isMdiIconKey(k)) {
+                      const { name, color } = parseMdiKey(k!)
+                      return <><img src={mdiIconUrl(name)} alt={name} width={13} height={13} className="shrink-0" style={{ width: 13, height: 13, objectFit: 'contain', filter: color ? undefined : 'invert(1)' }} /><span className="text-foreground truncate">mdi:{name}</span></>
+                    }
+                    if (isSimpleIconKey(k)) {
+                      const { name } = parseSimpleIconKey(k!)
+                      return <><img src={simpleIconUrl(name)} alt={name} width={13} height={13} className="shrink-0" style={{ width: 13, height: 13, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} /><span className="text-foreground truncate">si:{name}</span></>
+                    }
+                    if (isSelfhstIconKey(k)) {
+                      const { name, ext } = parseSelfhstKey(k!)
+                      return <><img src={selfhstIconUrl(name, ext)} alt={name} width={13} height={13} className="shrink-0" style={{ width: 13, height: 13, objectFit: 'contain' }} /><span className="text-foreground truncate">sh:{name}</span></>
+                    }
+                    if (isRemoteUrl(k) || isLocalIcon(k)) {
+                      return <><img src={k} alt="icon" width={13} height={13} className="shrink-0" style={{ width: 13, height: 13, objectFit: 'contain' }} /><span className="text-foreground truncate">{k!.length > 30 ? k!.slice(0, 27) + '…' : k}</span></>
+                    }
+                    const entry = ICON_REGISTRY.find((e) => e.key === k)
                     if (entry) {
                       return <>{createElement(entry.icon, { size: 13, className: 'text-[#00d4ff] shrink-0' })}<span className="text-foreground truncate">{entry.label}</span></>
                     }
@@ -299,83 +347,219 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {/* Inline icon picker - full width, shown below the type+icon row */}
             {iconPickerOpen && (
               <div className="flex flex-col gap-2 p-2.5 rounded-md bg-[#0d1117] border border-[#30363d] col-span-2">
-                <div className="flex gap-1 mb-1" role="tablist" aria-label="Icon source">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={iconTab === 'generic'}
-                    onClick={() => setIconTab('generic')}
-                    className={`text-[11px] px-2 py-1 rounded transition-colors cursor-pointer ${
-                      iconTab === 'generic' ? 'bg-[#21262d] text-foreground border border-[#30363d]' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Generic
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={iconTab === 'brand'}
-                    onClick={() => setIconTab('brand')}
-                    className={`text-[11px] px-2 py-1 rounded transition-colors cursor-pointer ${
-                      iconTab === 'brand' ? 'bg-[#21262d] text-foreground border border-[#30363d]' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Brand
-                  </button>
+                {/* Tab bar */}
+                <div className="flex flex-wrap gap-1 mb-1" role="tablist" aria-label="Icon source">
+                  {(['generic', 'brand', 'mdi', 'si', 'sh', 'url'] as const).map((tab) => {
+                    const labels: Record<string, string> = {
+                      generic: 'Generic', brand: 'Brand', mdi: 'MDI', si: 'Simple', sh: 'selfh.st', url: 'URL',
+                    }
+                    return (
+                      <button
+                        key={tab}
+                        type="button"
+                        role="tab"
+                        aria-selected={iconTab === tab}
+                        onClick={() => setIconTab(tab)}
+                        className={`text-[11px] px-2 py-1 rounded transition-colors cursor-pointer ${
+                          iconTab === tab ? 'bg-[#21262d] text-foreground border border-[#30363d]' : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {labels[tab]}
+                      </button>
+                    )
+                  })}
                 </div>
-                {iconTab === 'brand' ? (
+
+                {/* Generic (Lucide) tab */}
+                {iconTab === 'generic' && (
+                  <>
+                    <Input
+                      value={iconSearch}
+                      onChange={(e) => setIconSearch(e.target.value)}
+                      placeholder="Search icons…"
+                      className={`bg-[#21262d] border-[#30363d] text-xs h-7 ${modalStyles['modal-radius']}`}
+                      autoFocus
+                    />
+                    <div className="flex flex-col gap-2 max-h-52 overflow-y-auto">
+                      {ICON_CATEGORIES.map((cat) => {
+                        const entries = ICON_REGISTRY.filter(
+                          (e) => e.category === cat &&
+                            (iconSearch === '' || e.label.toLowerCase().includes(iconSearch.toLowerCase()) || e.key.includes(iconSearch.toLowerCase()))
+                        )
+                        if (entries.length === 0) return null
+                        return (
+                          <div key={cat}>
+                            <p className="text-[9px] font-semibold text-muted-foreground/50 uppercase tracking-wider mb-1">{cat}</p>
+                            <div className="grid grid-cols-7 gap-1">
+                              {entries.map((entry) => {
+                                const isSelected = form.custom_icon === entry.key
+                                return (
+                                  <button
+                                    key={entry.key}
+                                    type="button"
+                                    title={entry.label}
+                                    onClick={() => { set('custom_icon', isSelected ? undefined : entry.key); setIconPickerOpen(false) }}
+                                    className={`flex items-center justify-center w-7 h-7 rounded transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
+                                    aria-label={`Select icon ${entry.label}`}
+                                    style={{
+                                      background: isSelected ? '#00d4ff22' : 'transparent',
+                                      border: isSelected ? '1px solid #00d4ff88' : '1px solid transparent',
+                                      color: isSelected ? '#00d4ff' : '#8b949e',
+                                    }}
+                                    onMouseEnter={(e) => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = '#21262d' }}
+                                    onMouseLeave={(e) => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+                                  >
+                                    {createElement(entry.icon, { size: 13 })}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+
+                {/* Brand (homarr-labs/dashboard-icons) tab */}
+                {iconTab === 'brand' && (
                   <BrandIconPicker
                     value={form.custom_icon}
                     onSelect={(key) => { set('custom_icon', key); setIconPickerOpen(false) }}
                   />
-                ) : (
-                <>
-                <Input
-                  value={iconSearch}
-                  onChange={(e) => setIconSearch(e.target.value)}
-                  placeholder="Search icons…"
-                  className={`bg-[#21262d] border-[#30363d] text-xs h-7 ${modalStyles['modal-radius']}`}
-                  autoFocus
-                />
-                <div className="flex flex-col gap-2 max-h-52 overflow-y-auto">
-                  {ICON_CATEGORIES.map((cat) => {
-                    const entries = ICON_REGISTRY.filter(
-                      (e) => e.category === cat &&
-                        (iconSearch === '' || e.label.toLowerCase().includes(iconSearch.toLowerCase()) || e.key.includes(iconSearch.toLowerCase()))
-                    )
-                    if (entries.length === 0) return null
-                    return (
-                      <div key={cat}>
-                        <p className="text-[9px] font-semibold text-muted-foreground/50 uppercase tracking-wider mb-1">{cat}</p>
-                        <div className="grid grid-cols-7 gap-1">
-                          {entries.map((entry) => {
-                            const isSelected = form.custom_icon === entry.key
-                            return (
-                              <button
-                                key={entry.key}
-                                type="button"
-                                title={entry.label}
-                                onClick={() => { set('custom_icon', isSelected ? undefined : entry.key); setIconPickerOpen(false) }}
-                                className={`flex items-center justify-center w-7 h-7 rounded transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
-                                aria-label={`Select icon ${entry.label}`}
-                                style={{
-                                  background: isSelected ? '#00d4ff22' : 'transparent',
-                                  border: isSelected ? '1px solid #00d4ff88' : '1px solid transparent',
-                                  color: isSelected ? '#00d4ff' : '#8b949e',
-                                }}
-                                onMouseEnter={(e) => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = '#21262d' }}
-                                onMouseLeave={(e) => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
-                              >
-                                {createElement(entry.icon, { size: 13 })}
-                              </button>
-                            )
-                          })}
-                        </div>
+                )}
+
+                {/* Material Design Icons tab */}
+                {iconTab === 'mdi' && (
+                  <div className="flex flex-col gap-2">
+                    <div className="text-[10px] text-muted-foreground/60">
+                      Enter any <a href="https://pictogrammers.com/library/mdi/" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">MDI icon name</a> (kebab-case, e.g. <code className="text-[#00d4ff]">home-assistant</code>)
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        value={mdiInput}
+                        onChange={(e) => {
+                          const name = e.target.value.trim().toLowerCase().replace(/\s+/g, '-')
+                          setMdiInput(e.target.value)
+                          if (name) {
+                            const key = iconColor ? `mdi:${name}:${iconColor}` : `mdi:${name}`
+                            set('custom_icon', key)
+                          } else {
+                            set('custom_icon', undefined)
+                          }
+                        }}
+                        placeholder="e.g. home-assistant"
+                        className="bg-[#21262d] border-[#30363d] text-xs h-7 flex-1 font-mono"
+                        autoFocus
+                      />
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="color"
+                          value={iconColor || '#ffffff'}
+                          onChange={(e) => {
+                            const col = e.target.value
+                            setIconColor(col)
+                            const name = mdiInput.trim().toLowerCase().replace(/\s+/g, '-')
+                            if (name) set('custom_icon', `mdi:${name}:${col}`)
+                          }}
+                          title="Icon color"
+                          className="w-6 h-6 rounded border border-[#30363d] bg-transparent cursor-pointer p-0"
+                          style={{ padding: 0 }}
+                        />
+                        {iconColor && (
+                          <button type="button" onClick={() => { setIconColor(''); const name = mdiInput.trim(); if (name) set('custom_icon', `mdi:${name}`) }} className="text-[10px] text-muted-foreground/60 hover:text-foreground">×</button>
+                        )}
                       </div>
-                    )
-                  })}
-                </div>
-                </>
+                    </div>
+                    {mdiInput && (
+                      <div className="flex items-center gap-2 p-2 bg-[#0d1117] rounded border border-[#30363d]">
+                        <img src={mdiIconUrl(mdiInput.trim().toLowerCase().replace(/\s+/g, '-'))} alt="preview" width={20} height={20} style={{ width: 20, height: 20, objectFit: 'contain', filter: iconColor ? undefined : 'invert(1)' }} />
+                        <span className="text-[11px] text-muted-foreground font-mono">mdi:{mdiInput.trim()}{iconColor && `:${iconColor}`}</span>
+                        <button type="button" onClick={() => { setIconPickerOpen(false) }} className="ml-auto text-[11px] text-[#00d4ff] hover:text-foreground">Apply</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Simple Icons tab */}
+                {iconTab === 'si' && (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="text-[10px] text-muted-foreground/60 flex-1">
+                        Color override (optional — leave blank for native brand color):
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="color"
+                          value={iconColor || '#ffffff'}
+                          onChange={(e) => {
+                            const col = e.target.value
+                            setIconColor(col)
+                            if (isSimpleIconKey(form.custom_icon)) {
+                              const { name } = parseSimpleIconKey(form.custom_icon!)
+                              set('custom_icon', `si:${name}:${col}`)
+                            }
+                          }}
+                          title="Color override"
+                          className="w-6 h-6 rounded border border-[#30363d] bg-transparent cursor-pointer"
+                          style={{ padding: 0 }}
+                        />
+                        {iconColor && (
+                          <button type="button" onClick={() => {
+                            setIconColor('')
+                            if (isSimpleIconKey(form.custom_icon)) {
+                              const { name } = parseSimpleIconKey(form.custom_icon!)
+                              set('custom_icon', `si:${name}`)
+                            }
+                          }} className="text-[10px] text-muted-foreground/60 hover:text-foreground">×</button>
+                        )}
+                      </div>
+                    </div>
+                    <SimpleIconPicker
+                      value={form.custom_icon}
+                      color={iconColor || undefined}
+                      onSelect={(key) => { set('custom_icon', key); setIconPickerOpen(false) }}
+                    />
+                  </div>
+                )}
+
+                {/* selfh.st Icons tab */}
+                {iconTab === 'sh' && (
+                  <SelfhstIconPicker
+                    value={form.custom_icon}
+                    onSelect={(key) => { set('custom_icon', key); setIconPickerOpen(false) }}
+                  />
+                )}
+
+                {/* URL tab (remote https:// or local /icons/) */}
+                {iconTab === 'url' && (
+                  <div className="flex flex-col gap-2">
+                    <div className="text-[10px] text-muted-foreground/60">
+                      Remote URL (<code className="text-[#00d4ff]">https://…</code>) or local path (<code className="text-[#00d4ff]">/icons/myicon.png</code> — requires Docker volume mount at <code>/app/public/icons</code>)
+                    </div>
+                    <Input
+                      value={urlInput}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setUrlInput(val)
+                        if (val && (val.startsWith('https://') || val.startsWith('http://') || val.startsWith('/icons/'))) {
+                          set('custom_icon', val)
+                        } else if (!val) {
+                          set('custom_icon', undefined)
+                        }
+                      }}
+                      placeholder="https://example.com/icon.png or /icons/myapp.png"
+                      className="bg-[#21262d] border-[#30363d] text-xs h-7 font-mono"
+                      autoFocus
+                    />
+                    {(isRemoteUrl(urlInput) || isLocalIcon(urlInput)) && urlInput && (
+                      <div className="flex items-center gap-2 p-2 bg-[#0d1117] rounded border border-[#30363d]">
+                        <img src={urlInput} alt="preview" width={20} height={20} style={{ width: 20, height: 20, objectFit: 'contain' }} />
+                        <span className="text-[11px] text-muted-foreground truncate">{urlInput.length > 40 ? urlInput.slice(0, 37) + '…' : urlInput}</span>
+                        <button type="button" onClick={() => setIconPickerOpen(false)} className="ml-auto text-[11px] text-[#00d4ff] hover:text-foreground">Apply</button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
