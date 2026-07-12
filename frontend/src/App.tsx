@@ -35,7 +35,7 @@ import { SearchModal } from '@/components/modals/SearchModal'
 import { PendingDevicesModal } from '@/components/modals/PendingDevicesModal'
 import { ScanHistoryModal } from '@/components/modals/ScanHistoryModal'
 import { ShortcutsModal } from '@/components/modals/ShortcutsModal'
-import { AutoIconModal, slugToIconKey } from '@/components/modals/AutoIconModal'
+import { AutoIconModal } from '@/components/modals/AutoIconModal'
 import { ConfirmAddToGroupModal } from '@/components/modals/ConfirmAddToGroupModal'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { readAutosaveSettings, subscribeAutosaveSettings, type AutosaveSettings } from '@/utils/autosaveSettings'
@@ -1197,8 +1197,8 @@ export default function App() {
           onClose={() => setAutoIconsOpen(false)}
           onApply={(assignments) => {
             snapshotHistory()
-            for (const { nodeId, slug } of assignments) {
-              updateNode(nodeId, { custom_icon: slugToIconKey(slug) })
+            for (const { nodeId, iconKey } of assignments) {
+              updateNode(nodeId, { custom_icon: iconKey })
             }
           }}
         />
