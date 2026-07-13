@@ -393,19 +393,20 @@ function IconPickerDropdown({ value, onSelect }: { value: string; onSelect: (key
 function IconPreview({ iconKey, size = 16 }: { iconKey: string; size?: number }) {
   const resolved = resolveCustomIcon(iconKey)
   if (!resolved) return null
-  if (resolved.kind === 'brand') {
-    return (
-      <img
-        src={resolved.url}
-        alt={resolved.slug}
-        width={size}
-        height={size}
-        loading="lazy"
-        style={{ width: size, height: size, objectFit: 'contain' }}
-      />
-    )
+  if (resolved.kind === 'lucide') {
+    return createElement(resolved.icon, { size, className: 'text-muted-foreground shrink-0' })
   }
-  return createElement(resolved.icon, { size, className: 'text-muted-foreground shrink-0' })
+  // brand, mdi, si, sh, url — all have a url property
+  return (
+    <img
+      src={resolved.url}
+      alt={'slug' in resolved ? resolved.slug : ('name' in resolved ? resolved.name : 'icon')}
+      width={size}
+      height={size}
+      loading="lazy"
+      style={{ width: size, height: size, objectFit: 'contain' }}
+    />
+  )
 }
 
 // ---------------------------------------------------------------------------
