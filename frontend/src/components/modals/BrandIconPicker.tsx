@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { brandIconUrl, BRAND_ICON_PREFIX } from '@/utils/nodeIcons'
 import dashboardIcons from '@/data/dashboardIcons.json'
+import { getCachedSlugs } from '@/utils/iconManifestCache'
 
-const SLUGS: string[] = dashboardIcons as string[]
+const SLUGS: string[] = getCachedSlugs('dashboard', dashboardIcons as string[])
 const PAGE = 120
 
 interface BrandIconPickerProps {

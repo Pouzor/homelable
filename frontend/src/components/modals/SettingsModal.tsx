@@ -25,6 +25,11 @@ import {
   writeAutosaveSettings,
   subscribeAutosaveSettings,
 } from '@/utils/autosaveSettings'
+import {
+  getLastUpdated,
+  refreshDashboardIcons,
+  refreshSelfhstIcons,
+} from '@/utils/iconManifestCache'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -134,6 +139,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
   const hideIp = useCanvasStore((s) => s.hideIp)
   const setHideIp = useCanvasStore((s) => s.setHideIp)
+  const [iconRefreshing, setIconRefreshing] = useState<'dashboard' | 'selfhst' | null>(null)
+  const [iconLastUpdated, setIconLastUpdated] = useState({
+    dashboard: getLastUpdated('dashboard'),
+    selfhst: getLastUpdated('selfhst'),
+  })
 
   useEffect(() => {
     if (!open || STANDALONE) return
@@ -215,6 +225,21 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       toast.error('Failed to start Z-Wave sync')
     } finally {
       setZwSyncing(false)
+    }
+  }
+
+  const handleIconRefresh = async (type: 'dashboard' | 'selfhst') => {
+    setIconRefreshing(type)
+    try {
+      const count = type === 'dashboard'
+        ? await refreshDashboardIcons()
+        : await refreshSelfhstIcons()
+      setIconLastUpdated((prev) => ({ ...prev, [type]: new Date() }))
+      toast.success(`Updated ${count.toLocaleString()} icons — reopen the icon picker to see changes`)
+    } catch (err) {
+      toast.error(`Refresh failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setIconRefreshing(null)
     }
   }
 
@@ -515,6 +540,41 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             )}
           </div>
           )}
+          </div>
+          {/* Icon sources */}
+          <div className="pt-3 border-t border-border space-y-3">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Icon sources</span>
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              Icon lists are bundled at build time and auto-refreshed monthly. Refresh manually to pick up icons added since the last build.
+            </p>
+            {(
+              [
+                { type: 'dashboard', label: 'Brand icons', sublabel: 'homarr-labs/dashboard-icons' },
+                { type: 'selfhst', label: 'selfh.st icons', sublabel: 'selfhst/icons' },
+              ] as const
+            ).map(({ type, label, sublabel }) => (
+              <div key={type} className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs text-foreground">{label}</p>
+                  <p className="text-[10px] text-muted-foreground font-mono truncate">{sublabel}</p>
+                  {iconLastUpdated[type] ? (
+                    <p className="text-[10px] text-muted-foreground">
+                      Last refreshed: {iconLastUpdated[type]!.toLocaleDateString()}
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground">Using bundled list</p>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => handleIconRefresh(type)}
+                  disabled={iconRefreshing !== null}
+                  className="h-7 text-xs shrink-0 border-[#00d4ff] text-[#00d4ff] hover:bg-[#00d4ff]/10"
+                >
+                  {iconRefreshing === type ? 'Refreshing…' : 'Refresh'}
+                </Button>
+              </div>
+            ))}
           </div>
         </div>
 

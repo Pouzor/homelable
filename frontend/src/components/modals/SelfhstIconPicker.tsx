@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { SH_ICON_PREFIX, selfhstIconUrl } from '@/utils/nodeIcons'
 import selfhstIcons from '@/data/selfhstIcons.json'
+import { getCachedSlugs } from '@/utils/iconManifestCache'
 
-const SLUGS: string[] = selfhstIcons as string[]
+const SLUGS: string[] = getCachedSlugs('selfhst', selfhstIcons as string[])
 const PAGE = 120
 
 interface SelfhstIconPickerProps {
