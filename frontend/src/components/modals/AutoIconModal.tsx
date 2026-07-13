@@ -5,9 +5,13 @@ import { Input } from '@/components/ui/input'
 import {
   BRAND_ICON_PREFIX,
   ICON_REGISTRY, ICON_CATEGORIES, resolveCustomIcon,
+  isBrandIconKey, isMdiIconKey, isSimpleIconKey, isSelfhstIconKey, isRemoteUrl, isLocalIcon,
+  parseMdiKey, parseSimpleIconKey, mdiIconUrl,
 } from '@/utils/nodeIcons'
 import { matchBrandIcon, shouldSkipNode, type IconMatch } from '@/utils/brandIconMatch'
 import { BrandIconPicker } from './BrandIconPicker'
+import { SimpleIconPicker } from './SimpleIconPicker'
+import { SelfhstIconPicker } from './SelfhstIconPicker'
 import dashboardIcons from '@/data/dashboardIcons.json'
 import type { Node } from '@xyflow/react'
 import type { NodeData } from '@/types'
@@ -296,15 +300,45 @@ function IconPickerButton({ iconKey, onSelect }: IconPickerButtonProps) {
 }
 
 // ---------------------------------------------------------------------------
-// IconPickerDropdown — two-tab picker (Generic lucide + Brand CDN)
+// IconPickerDropdown — six-tab picker (Generic · Brand · MDI · Simple · selfh.st · URL)
 // ---------------------------------------------------------------------------
 
-function IconPickerDropdown({ value, onSelect }: { value: string; onSelect: (key: string) => void }) {
-  const initialTab = value.startsWith(BRAND_ICON_PREFIX) ? 'brand' : 'generic'
-  const [tab, setTab] = useState<'generic' | 'brand'>(initialTab)
-  const [iconSearch, setIconSearch] = useState('')
+type IconTab = 'generic' | 'brand' | 'mdi' | 'si' | 'sh' | 'url'
 
-  const tabBtn = (id: 'generic' | 'brand', label: string) => (
+function IconPickerDropdown({ value, onSelect }: { value: string; onSelect: (key: string) => void }) {
+  const initialTab: IconTab = (() => {
+    if (isBrandIconKey(value)) return 'brand'
+    if (isMdiIconKey(value)) return 'mdi'
+    if (isSimpleIconKey(value)) return 'si'
+    if (isSelfhstIconKey(value)) return 'sh'
+    if (isRemoteUrl(value) || isLocalIcon(value)) return 'url'
+    return 'generic'
+  })()
+  const [tab, setTab] = useState<IconTab>(initialTab)
+  const [iconSearch, setIconSearch] = useState('')
+  const [mdiInput, setMdiInput] = useState<string>(() =>
+    isMdiIconKey(value) ? parseMdiKey(value).name : '',
+  )
+  const [mdiColor, setMdiColor] = useState<string>(() =>
+    isMdiIconKey(value) ? (parseMdiKey(value).color ?? '') : '',
+  )
+  const [siColor, setSiColor] = useState<string>(() =>
+    isSimpleIconKey(value) ? (parseSimpleIconKey(value).color ?? '') : '',
+  )
+  const [urlInput, setUrlInput] = useState<string>(() =>
+    (isRemoteUrl(value) || isLocalIcon(value)) ? value : '',
+  )
+
+  const TABS: { id: IconTab; label: string }[] = [
+    { id: 'generic', label: 'Generic' },
+    { id: 'brand',   label: 'Brand' },
+    { id: 'mdi',     label: 'MDI' },
+    { id: 'si',      label: 'Simple' },
+    { id: 'sh',      label: 'selfh.st' },
+    { id: 'url',     label: 'URL' },
+  ]
+
+  const tabBtn = ({ id, label }: { id: IconTab; label: string }) => (
     <button
       key={id}
       type="button"
@@ -324,14 +358,12 @@ function IconPickerDropdown({ value, onSelect }: { value: string; onSelect: (key
   return (
     <div className="flex flex-col gap-2">
       {/* Tabs */}
-      <div className="flex gap-1" role="tablist" aria-label="Icon source">
-        {tabBtn('generic', 'Generic')}
-        {tabBtn('brand', 'Brand')}
+      <div className="flex gap-1 flex-wrap" role="tablist" aria-label="Icon source">
+        {TABS.map(tabBtn)}
       </div>
 
-      {tab === 'brand' ? (
-        <BrandIconPicker value={value} onSelect={onSelect} />
-      ) : (
+      {/* Generic (Lucide) */}
+      {tab === 'generic' && (
         <>
           <Input
             autoFocus
@@ -346,9 +378,7 @@ function IconPickerDropdown({ value, onSelect }: { value: string; onSelect: (key
               const entries = ICON_REGISTRY.filter(
                 (e) =>
                   e.category === cat &&
-                  (q === '' ||
-                    e.label.toLowerCase().includes(q) ||
-                    e.key.includes(q)),
+                  (q === '' || e.label.toLowerCase().includes(q) || e.key.includes(q)),
               )
               if (entries.length === 0) return null
               return (
@@ -381,6 +411,165 @@ function IconPickerDropdown({ value, onSelect }: { value: string; onSelect: (key
             })}
           </div>
         </>
+      )}
+
+      {/* Brand (homarr-labs/dashboard-icons) */}
+      {tab === 'brand' && (
+        <BrandIconPicker value={value} onSelect={onSelect} />
+      )}
+
+      {/* Material Design Icons */}
+      {tab === 'mdi' && (
+        <div className="flex flex-col gap-2">
+          <div className="text-[10px] text-muted-foreground/60">
+            Enter any{' '}
+            <a href="https://pictogrammers.com/library/mdi/" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
+              MDI icon name
+            </a>{' '}
+            (kebab-case, e.g. <code className="text-[#00d4ff]">home-assistant</code>)
+          </div>
+          <div className="flex gap-2">
+            <Input
+              autoFocus
+              value={mdiInput}
+              onChange={(e) => {
+                const name = e.target.value.trim().toLowerCase().replace(/\s+/g, '-')
+                setMdiInput(e.target.value)
+                if (name) {
+                  onSelect(mdiColor ? `mdi:${name}:${mdiColor}` : `mdi:${name}`)
+                }
+              }}
+              placeholder="e.g. home-assistant"
+              className="bg-[#21262d] border-[#30363d] text-xs h-7 flex-1 font-mono"
+            />
+            <div className="flex items-center gap-1">
+              <input
+                type="color"
+                value={mdiColor || '#ffffff'}
+                onChange={(e) => {
+                  const col = e.target.value
+                  setMdiColor(col)
+                  const name = mdiInput.trim().toLowerCase().replace(/\s+/g, '-')
+                  if (name) onSelect(`mdi:${name}:${col}`)
+                }}
+                title="Icon color"
+                className="w-6 h-6 rounded border border-[#30363d] bg-transparent cursor-pointer p-0"
+                style={{ padding: 0 }}
+              />
+              {mdiColor && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMdiColor('')
+                    const name = mdiInput.trim()
+                    if (name) onSelect(`mdi:${name}`)
+                  }}
+                  className="text-[10px] text-muted-foreground/60 hover:text-foreground"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+          {mdiInput && (
+            <div className="flex items-center gap-2 p-2 bg-[#0d1117] rounded border border-[#30363d]">
+              <img
+                src={mdiIconUrl(mdiInput.trim().toLowerCase().replace(/\s+/g, '-'))}
+                alt="preview"
+                width={20}
+                height={20}
+                style={{ width: 20, height: 20, objectFit: 'contain', filter: mdiColor ? undefined : 'invert(1)' }}
+              />
+              <span className="text-[11px] text-muted-foreground font-mono">
+                mdi:{mdiInput.trim()}{mdiColor && `:${mdiColor}`}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Simple Icons */}
+      {tab === 'si' && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="text-[10px] text-muted-foreground/60 flex-1">
+              Color override (optional — leave blank for native brand color):
+            </div>
+            <div className="flex items-center gap-1">
+              <input
+                type="color"
+                value={siColor || '#ffffff'}
+                onChange={(e) => {
+                  const col = e.target.value
+                  setSiColor(col)
+                  if (isSimpleIconKey(value)) {
+                    const { name } = parseSimpleIconKey(value)
+                    onSelect(`si:${name}:${col}`)
+                  }
+                }}
+                title="Color override"
+                className="w-6 h-6 rounded border border-[#30363d] bg-transparent cursor-pointer"
+                style={{ padding: 0 }}
+              />
+              {siColor && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSiColor('')
+                    if (isSimpleIconKey(value)) {
+                      const { name } = parseSimpleIconKey(value)
+                      onSelect(`si:${name}`)
+                    }
+                  }}
+                  className="text-[10px] text-muted-foreground/60 hover:text-foreground"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          </div>
+          <SimpleIconPicker
+            value={value}
+            color={siColor || undefined}
+            onSelect={onSelect}
+          />
+        </div>
+      )}
+
+      {/* selfh.st Icons */}
+      {tab === 'sh' && (
+        <SelfhstIconPicker value={value} onSelect={onSelect} />
+      )}
+
+      {/* URL (remote https:// or local /icons/) */}
+      {tab === 'url' && (
+        <div className="flex flex-col gap-2">
+          <div className="text-[10px] text-muted-foreground/60">
+            Remote URL (<code className="text-[#00d4ff]">https://…</code>) or local path (
+            <code className="text-[#00d4ff]">/icons/myicon.png</code>)
+          </div>
+          <Input
+            autoFocus
+            value={urlInput}
+            onChange={(e) => {
+              const val = e.target.value
+              setUrlInput(val)
+              if (val && (val.startsWith('https://') || val.startsWith('http://') || val.startsWith('/icons/'))) {
+                onSelect(val)
+              }
+            }}
+            placeholder="https://example.com/icon.png or /icons/myapp.png"
+            className="bg-[#21262d] border-[#30363d] text-xs h-7 font-mono"
+          />
+          {(isRemoteUrl(urlInput) || isLocalIcon(urlInput)) && urlInput && (
+            <div className="flex items-center gap-2 p-2 bg-[#0d1117] rounded border border-[#30363d]">
+              <img src={urlInput} alt="preview" width={20} height={20} style={{ width: 20, height: 20, objectFit: 'contain' }} />
+              <span className="text-[11px] text-muted-foreground truncate">
+                {urlInput.length > 40 ? urlInput.slice(0, 37) + '…' : urlInput}
+              </span>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
