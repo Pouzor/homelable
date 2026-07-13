@@ -5,8 +5,8 @@
  *
  *   node scripts/fetch-selfhst-icons.mjs
  *
- * Uses the jsDelivr CDN's resolve API to enumerate available SVG files
- * in the selfhst/icons GitHub repository.
+ * Primary: jsDelivr CDN resolve API (no auth required).
+ * Fallback: GitHub contents API (1000-item limit per page).
  */
 
 import { writeFileSync } from 'fs'
@@ -15,22 +15,22 @@ import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// jsDelivr resolve API lists all files in the package (no auth required)
-const API_URL = 'https://data.jsdelivr.com/v1/packages/gh/selfhst/icons@main/flat'
-
-const res = await fetch(API_URL)
-const data = await res.json()
+// jsDelivr v1 flat API
+const JSDELIVR_URL = 'https://data.jsdelivr.com/v1/packages/gh/selfhst/icons@main/flat'
 
 let slugs
 
+const res = await fetch(JSDELIVR_URL)
+const data = await res.json()
+
 if (Array.isArray(data?.files)) {
-  // Response has { files: ["/svg/foo.svg", ...] }
+  // v1 API: { files: ["/svg/foo.svg", ...] }
   slugs = data.files
     .filter((f) => f.startsWith('/svg/') && f.endsWith('.svg'))
     .map((f) => f.replace('/svg/', '').replace('.svg', ''))
     .sort()
 } else {
-  // Fallback: use GitHub contents API
+  // jsDelivr returned a non-array (API may have changed) — fall back to GitHub
   console.warn('jsDelivr API unavailable, trying GitHub contents API...')
   const ghRes = await fetch(
     'https://api.github.com/repos/selfhst/icons/contents/svg',
@@ -41,10 +41,17 @@ if (Array.isArray(data?.files)) {
     process.exit(0)
   }
   const files = await ghRes.json()
+  if (!Array.isArray(files)) {
+    console.error('GitHub API error:', JSON.stringify(files).slice(0, 200))
+    process.exit(1)
+  }
   slugs = files
     .filter((f) => f.type === 'file' && f.name.endsWith('.svg'))
     .map((f) => f.name.replace('.svg', ''))
     .sort()
+  if (slugs.length >= 1000) {
+    console.warn('Note: GitHub contents API caps at 1000 entries per page; result may be incomplete.')
+  }
 }
 
 const outPath = join(__dirname, '../src/data/selfhstIcons.json')
