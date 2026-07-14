@@ -1,4 +1,4 @@
-import { createElement, useEffect, useMemo, useRef, useState } from 'react'
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, X, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -66,8 +66,10 @@ export function AutoIconModal({ open, nodes, onClose, onApply }: AutoIconModalPr
   const effectiveChecked = useMemo(() => ({ ...initialChecked, ...checked }), [initialChecked, checked])
 
   /** Full icon key for a row — override takes priority, else the auto-matched brand slug */
-  const effectiveKey = (row: RowData) =>
-    overrides[row.nodeId] ?? `${BRAND_ICON_PREFIX}${row.match.slug}`
+  const effectiveKey = useCallback(
+    (row: RowData) => overrides[row.nodeId] ?? `${BRAND_ICON_PREFIX}${row.match.slug}`,
+    [overrides],
+  )
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -76,7 +78,7 @@ export function AutoIconModal({ open, nodes, onClose, onApply }: AutoIconModalPr
       const key = effectiveKey(r)
       return r.label.toLowerCase().includes(q) || key.includes(q)
     })
-  }, [rows, search, overrides]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows, search, effectiveKey])
 
   if (!open) return null
 
@@ -596,13 +598,4 @@ function IconPreview({ iconKey, size = 16 }: { iconKey: string; size?: number })
       style={{ width: size, height: size, objectFit: 'contain' }}
     />
   )
-}
-
-// ---------------------------------------------------------------------------
-// Exports
-// ---------------------------------------------------------------------------
-
-/** Compute `custom_icon` key from a brand slug. */
-export function slugToIconKey(slug: string): string {
-  return `${BRAND_ICON_PREFIX}${slug}`
 }
