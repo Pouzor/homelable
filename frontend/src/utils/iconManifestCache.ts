@@ -66,3 +66,55 @@ export async function refreshSelfhstIcons(): Promise<number> {
   writeCache(CACHE_KEYS.selfhst, slugs)
   return slugs.length
 }
+
+
+const AUTO_KEYS = {
+  dashboard: 'homelable.icons.autoRefresh.dashboard',
+  selfhst: 'homelable.icons.autoRefresh.selfhst',
+} as const
+
+const MONTH_MS = 30 * 24 * 60 * 60 * 1000
+
+const REFRESHERS: Record<ManifestType, () => Promise<number>> = {
+  dashboard: refreshDashboardIcons,
+  selfhst: refreshSelfhstIcons,
+}
+
+export function getAutoRefresh(type: ManifestType): boolean {
+  try {
+    return localStorage.getItem(AUTO_KEYS[type]) === 'true'
+  } catch {
+    return false
+  }
+}
+
+export function setAutoRefresh(type: ManifestType, enabled: boolean) {
+  try {
+    localStorage.setItem(AUTO_KEYS[type], enabled ? 'true' : 'false')
+  } catch {
+    // storage unavailable - ignore
+  }
+}
+
+function isStale(type: ManifestType): boolean {
+  const cache = readCache(CACHE_KEYS[type])
+  return !cache || Date.now() - cache.updatedAt >= MONTH_MS
+}
+
+// Refresh a manifest only when the user opted in and the cache is missing or
+// older than 30 days. Runs silently; failures are logged, never thrown.
+export async function maybeAutoRefresh(type: ManifestType): Promise<void> {
+  if (!getAutoRefresh(type) || !isStale(type)) return
+  try {
+    await REFRESHERS[type]()
+  } catch (err) {
+    console.warn(`iconManifestCache: auto-refresh of ${type} failed`, err)
+  }
+}
+
+// Called once on app startup: fire-and-forget monthly refresh for opted-in sources.
+export function initAutoRefreshIcons(): void {
+  ;(Object.keys(CACHE_KEYS) as ManifestType[]).forEach((type) => {
+    void maybeAutoRefresh(type)
+  })
+}

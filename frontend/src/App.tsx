@@ -40,6 +40,7 @@ import { ConfirmAddToGroupModal } from '@/components/modals/ConfirmAddToGroupMod
 import { useCanvasStore } from '@/stores/canvasStore'
 import { readAutosaveSettings, subscribeAutosaveSettings, type AutosaveSettings } from '@/utils/autosaveSettings'
 import { useAutosave } from '@/hooks/useAutosave'
+import { initAutoRefreshIcons } from '@/utils/iconManifestCache'
 import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
@@ -91,6 +92,10 @@ export default function App() {
   // data instead of hitting the backend.
   const [tourScanHistoryDemo, setTourScanHistoryDemo] = useState(false)
   const [tourInventoryDemo, setTourInventoryDemo] = useState(false)
+  useEffect(() => {
+    initAutoRefreshIcons()
+  }, [])
+
 
   const [themeModalOpen, setThemeModalOpen] = useState(false)
   const [styleEditorType, setStyleEditorType] = useState<NodeType | null>(null)

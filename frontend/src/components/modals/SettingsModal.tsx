@@ -27,6 +27,9 @@ import {
 } from '@/utils/autosaveSettings'
 import {
   getLastUpdated,
+  getAutoRefresh,
+  setAutoRefresh,
+  maybeAutoRefresh,
   refreshDashboardIcons,
   refreshSelfhstIcons,
 } from '@/utils/iconManifestCache'
@@ -144,6 +147,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     dashboard: getLastUpdated('dashboard'),
     selfhst: getLastUpdated('selfhst'),
   })
+  const [iconAutoRefresh, setIconAutoRefresh] = useState({
+    dashboard: getAutoRefresh('dashboard'),
+    selfhst: getAutoRefresh('selfhst'),
+  })
 
   useEffect(() => {
     if (!open || STANDALONE) return
@@ -240,6 +247,16 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       toast.error(`Refresh failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setIconRefreshing(null)
+    }
+  }
+
+  const handleIconAutoToggle = (type: 'dashboard' | 'selfhst', enabled: boolean) => {
+    setAutoRefresh(type, enabled)
+    setIconAutoRefresh((prev) => ({ ...prev, [type]: enabled }))
+    if (enabled) {
+      void maybeAutoRefresh(type).then(() => {
+        setIconLastUpdated((prev) => ({ ...prev, [type]: getLastUpdated(type) }))
+      })
     }
   }
 
@@ -545,7 +562,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <div className="pt-3 border-t border-border space-y-3">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Icon sources</span>
             <p className="text-[10px] text-muted-foreground leading-tight">
-              Icon lists are bundled at build time and auto-refreshed monthly. Refresh manually to pick up icons added since the last build.
+              Icon lists are bundled at build time. Refresh manually to pick up icons added since the last build, or enable monthly auto-refresh to keep them current.
             </p>
             {(
               [
@@ -565,14 +582,25 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     <p className="text-[10px] text-muted-foreground">Using bundled list</p>
                   )}
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() => handleIconRefresh(type)}
-                  disabled={iconRefreshing !== null}
-                  className="h-7 text-xs shrink-0 border-[#00d4ff] text-[#00d4ff] hover:bg-[#00d4ff]/10"
-                >
-                  {iconRefreshing === type ? 'Refreshing…' : 'Refresh'}
-                </Button>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <Button
+                    variant="outline"
+                    onClick={() => handleIconRefresh(type)}
+                    disabled={iconRefreshing !== null}
+                    className="h-7 text-xs border-[#00d4ff] text-[#00d4ff] hover:bg-[#00d4ff]/10"
+                  >
+                    {iconRefreshing === type ? 'Refreshing…' : 'Refresh'}
+                  </Button>
+                  <label className="flex items-center gap-1 text-[10px] text-muted-foreground cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={iconAutoRefresh[type]}
+                      onChange={(e) => handleIconAutoToggle(type, e.target.checked)}
+                      className="h-3 w-3 accent-[#00d4ff]"
+                    />
+                    Auto-refresh monthly
+                  </label>
+                </div>
               </div>
             ))}
           </div>
