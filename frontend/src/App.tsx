@@ -459,8 +459,13 @@ export default function App() {
     snapshotHistory()
     const existingNode = nodes.find((n) => n.id === editNodeId)
     updateNode(editNodeId, data)
-    // If container_mode changed, apply structural changes (children parentId, node dimensions)
-    if (typeof data.container_mode === 'boolean') {
+    // Only run the structural container transition when container_mode ACTUALLY
+    // changed. The modal always includes container_mode in its payload, so firing
+    // on presence alone re-ran the absolute<->relative child-position conversion on
+    // every edit (e.g. an icon change), corrupting nested child positions (they pile
+    // up in a corner). Gate on a real toggle instead.
+    const prevContainerMode = !!existingNode?.data.container_mode
+    if (typeof data.container_mode === 'boolean' && data.container_mode !== prevContainerMode) {
       setProxmoxContainerMode(editNodeId, data.container_mode)
     }
     // Sync virtual edge when parent_id changes on an LXC/VM node

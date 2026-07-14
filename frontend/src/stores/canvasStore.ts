@@ -448,7 +448,14 @@ export const useCanvasStore = create<CanvasState>((set) => ({
             : { ...withMode, width: undefined, height: undefined }
         }
         if (n.data.parent_id === proxmoxId) {
+          // Idempotency guard: only convert a child's position when its nesting
+          // state actually changes. A child that already matches the target mode
+          // keeps its position untouched -- re-running the absolute<->relative
+          // conversion on an already-relative child corrupts it (children pile
+          // into a corner). See handleUpdateNode in App.tsx.
+          const alreadyNested = n.parentId === proxmoxId && n.extent === 'parent'
           if (enabled && parentNode) {
+            if (alreadyNested) return n
             return {
               ...n,
               parentId: proxmoxId,
@@ -460,6 +467,7 @@ export const useCanvasStore = create<CanvasState>((set) => ({
             }
           }
           if (!enabled && parentNode) {
+            if (!n.parentId) return n
             return {
               ...n,
               parentId: undefined,

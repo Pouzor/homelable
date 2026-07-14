@@ -169,6 +169,23 @@ describe('canvasStore — containers & nesting', () => {
     expect(updatedChild?.extent).toBeUndefined()
   })
 
+  // Regression: editing any field on a container host (e.g. its icon) used to
+  // re-fire setProxmoxContainerMode(true) because the modal always re-sends
+  // container_mode. Re-running the ON transition re-applied the
+  // absolute->relative conversion to children that were ALREADY relative,
+  // collapsing them into a corner. A redundant ON call must now be a no-op for
+  // already-nested children.
+  it('setProxmoxContainerMode ON is idempotent for already-nested children', () => {
+    const proxmox: Node<NodeData> = { id: 'px', type: 'proxmox', position: { x: 500, y: -300 }, width: 852, height: 212, data: { label: 'px', type: 'proxmox', status: 'unknown', services: [], container_mode: true } }
+    const child: Node<NodeData> = { id: 'vm1', type: 'vm', position: { x: 10, y: 62 }, data: { label: 'vm1', type: 'vm', status: 'unknown', services: [], parent_id: 'px' }, parentId: 'px', extent: 'parent' }
+    useCanvasStore.setState({ nodes: [proxmox, child] })
+    useCanvasStore.getState().setProxmoxContainerMode('px', true)
+    const c = useCanvasStore.getState().nodes.find((n) => n.id === 'vm1')
+    expect(c?.position).toEqual({ x: 10, y: 62 })
+    expect(c?.parentId).toBe('px')
+    expect(c?.extent).toBe('parent')
+  })
+
   it('loadCanvas sorts parents before children', () => {
     const parent = makeNode('p1')
     const child: Node<NodeData> = { ...makeNode('c1', { parent_id: 'p1' }), parentId: 'p1', extent: 'parent' }
