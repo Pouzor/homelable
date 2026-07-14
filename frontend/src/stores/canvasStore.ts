@@ -13,6 +13,7 @@ import { generateUUID } from '@/utils/uuid'
 import { normalizeHandle, removedHandleIds, handleCountField, sideDefault, handleId, SIDES } from '@/utils/handleUtils'
 import { applyOpacity } from '@/utils/colorUtils'
 import { readHideIp, writeHideIp } from '@/utils/ipDisplay'
+import { containerDims, childRelPos } from '@/utils/proxmoxLayout'
 
 type HistoryEntry = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
 type Clipboard = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
@@ -67,6 +68,7 @@ interface CanvasState {
   reconnectEdge: (id: string, connection: Connection) => void
   deleteEdge: (id: string) => void
   setProxmoxContainerMode: (proxmoxId: string, enabled: boolean) => void
+  reflowContainerChildren: (containerId: string, columns: number) => void
   setNodeZIndex: (id: string, zIndex: number) => void
   setNodeSize: (id: string, size: { width?: number; height?: number }) => void
   editingGroupRectId: string | null
@@ -481,6 +483,34 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         const children = nodes.filter((n) => !!n.parentId)
         nodes = [...parents, ...children]
       }
+      return { nodes, hasUnsavedChanges: true }
+    }),
+
+  reflowContainerChildren: (containerId, columns) =>
+    set((state) => {
+      const container = state.nodes.find((n) => n.id === containerId)
+      if (!container || container.data.container_mode !== true) return state
+      const children = state.nodes.filter((n) => n.parentId === containerId)
+      if (children.length === 0) return state
+
+      const safeCols = Math.max(1, Math.min(columns, children.length))
+      const { width, height } = containerDims(children.length, safeCols)
+
+      const nodes = state.nodes.map((n) => {
+        if (n.id === containerId) {
+          return {
+            ...n,
+            width,
+            height,
+            data: { ...n.data, container_columns: safeCols },
+          }
+        }
+        const idx = children.findIndex((c) => c.id === n.id)
+        if (idx >= 0) {
+          return { ...n, position: childRelPos(idx, safeCols) }
+        }
+        return n
+      })
       return { nodes, hasUnsavedChanges: true }
     }),
 

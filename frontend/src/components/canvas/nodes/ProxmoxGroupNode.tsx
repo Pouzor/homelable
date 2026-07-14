@@ -20,6 +20,8 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
 
   const activeTheme = useThemeStore((s) => s.activeTheme)
   const hideIp = useCanvasStore((s) => s.hideIp)
+  const reflowContainerChildren = useCanvasStore((s) => s.reflowContainerChildren)
+  const snapshotHistory = useCanvasStore((s) => s.snapshotHistory)
   const theme = THEMES[activeTheme]
   const colors = resolveNodeColors(data, activeTheme)
 
@@ -96,9 +98,32 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
               </span>
             ))}
           </div>
+          {/* Column spinner — nodrag so clicks don't start a canvas drag */}
+          {selected && (
+            <div
+              className="nodrag flex items-center gap-1 ml-1 shrink-0"
+              onPointerDown={(e) => e.stopPropagation()}
+              title="Reflow children into N columns"
+            >
+              <span className="text-[9px]" style={{ color: theme.colors.nodeSubtextColor }}>cols</span>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={data.container_columns ?? 1}
+                onChange={(e) => {
+                  const n = Math.max(1, Math.min(10, Number(e.target.value) || 1))
+                  snapshotHistory()
+                  reflowContainerChildren(id, n)
+                }}
+                className="nodrag w-8 h-4 rounded text-[9px] text-center font-mono bg-transparent border leading-none"
+                style={{ borderColor: `${glow}55`, color: glow, colorScheme: 'dark' }}
+              />
+            </div>
+          )}
           {/* Status dot */}
           <div
-            className="ml-auto w-1.5 h-1.5 rounded-full shrink-0"
+            className="w-1.5 h-1.5 rounded-full shrink-0"
             style={{ backgroundColor: statusColor }}
             title={data.status}
           />
