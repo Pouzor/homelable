@@ -62,9 +62,16 @@ export function matchBrandIcon(label: string, slugs: string[]): IconMatch | null
     }
   }
 
-  // 1. Exact match
+  // 1. Exact match (also space-insensitive, so acronym camelCase like
+  //    "TrueNAS" -> "truenas" still resolves despite the camelCase split)
   const exactSlug = baseIndex.get(normLabel)
   if (exactSlug) return { slug: exactSlug, confidence: 'exact' }
+  const normLabelCompact = normLabel.replace(/ /g, '')
+  for (const [normBase, slug] of baseIndex) {
+    if (normBase.replace(/ /g, '') === normLabelCompact) {
+      return { slug, confidence: 'exact' }
+    }
+  }
 
   // 2. Prefix / contains match — label is prefix of slug base or vice versa
   for (const [normBase, slug] of baseIndex) {

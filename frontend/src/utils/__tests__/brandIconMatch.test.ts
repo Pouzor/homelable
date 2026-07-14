@@ -66,13 +66,13 @@ describe('matchBrandIcon — high (prefix / token)', () => {
   it('matches camelCase Home Assistant', () => {
     const m = matchBrandIcon('HomeAssistant', SLUGS)
     expect(m?.slug).toBe('home-assistant')
-    expect(m?.confidence).toBe('high')
+    expect(m?.confidence).toBe('exact')
   })
 
   it('matches spaced "Home Assistant"', () => {
     const m = matchBrandIcon('Home Assistant', SLUGS)
     expect(m?.slug).toBe('home-assistant')
-    expect(m?.confidence).toBe('high')
+    expect(m?.confidence).toBe('exact')
   })
 
   it('matches adguard-home via tokens', () => {
