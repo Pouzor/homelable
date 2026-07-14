@@ -125,6 +125,7 @@ describe('ProxmoxImportModal', () => {
       expect.any(Array),
       expect.any(Array),
       false,
+      expect.any(Number),
     )
   })
 
@@ -143,6 +144,7 @@ describe('ProxmoxImportModal', () => {
       expect.any(Array),
       expect.any(Array),
       true,
+      expect.any(Number),
     )
   })
 
