@@ -13,6 +13,7 @@ import { generateUUID } from '@/utils/uuid'
 import { normalizeHandle, removedHandleIds, handleCountField, sideDefault, handleId, SIDES } from '@/utils/handleUtils'
 import { applyOpacity } from '@/utils/colorUtils'
 import { readHideIp, writeHideIp } from '@/utils/ipDisplay'
+import { CONTAINER_MODE_TYPES } from '@/utils/virtualEdgeParent'
 
 type HistoryEntry = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
 type Clipboard = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
@@ -325,8 +326,13 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       let nodes = state.nodes.map((n) => {
         if (n.id !== id) return n
         const updated: Node<NodeData> = { ...n, data: { ...n.data, ...data } }
-        // When properties change, clear stored height so the node auto-sizes to fit new content
-        if ('properties' in data && n.data.type !== 'proxmox' && n.data.type !== 'groupRect' && n.data.type !== 'group') {
+        // When properties change, clear stored height so the node auto-sizes to fit new content.
+        // A container-mode host (vm/lxc/docker_host) keeps a manually-set height: resetting it
+        // snaps the container back to auto-fit size and scrambles its nested children (#278).
+        // proxmox is always excluded (legacy behavior); the other container types are excluded
+        // only while actually in container mode.
+        const isContainerHost = CONTAINER_MODE_TYPES.has(n.data.type) && !!n.data.container_mode
+        if ('properties' in data && n.data.type !== 'proxmox' && n.data.type !== 'groupRect' && n.data.type !== 'group' && !isContainerHost) {
           updated.height = undefined
         }
         if ('parent_id' in data) {

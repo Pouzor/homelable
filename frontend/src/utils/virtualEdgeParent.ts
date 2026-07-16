@@ -2,7 +2,7 @@ import type { NodeData } from '@/types'
 
 export type NodeType = NodeData['type']
 
-const CONTAINER_MODE_TYPES = new Set<NodeType>(['proxmox', 'vm', 'lxc', 'docker_host'])
+export const CONTAINER_MODE_TYPES = new Set<NodeType>(['proxmox', 'vm', 'lxc', 'docker_host'])
 const DOCKER_CONTAINER_PARENT_TYPES = new Set<NodeType>(['docker_host', 'lxc', 'vm', 'proxmox'])
 
 export interface VirtualEdgeEndpoint {

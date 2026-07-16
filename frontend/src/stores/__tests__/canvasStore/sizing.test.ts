@@ -118,4 +118,53 @@ describe('canvasStore — sizing & z-order', () => {
     useCanvasStore.getState().updateNode('r1', { properties: [] })
     expect(useCanvasStore.getState().nodes.find((n) => n.id === 'r1')?.height).toBe(240)
   })
+
+  // Regression (#278): editing any field on a container-mode vm/lxc/docker_host host used to
+  // reset its manually-set height to undefined, snapping it back to auto-fit size and
+  // scrambling nested children. Only proxmox was excluded. Keep the manual height for every
+  // container-mode host type.
+  it.each(['vm', 'lxc', 'docker_host'] as const)(
+    'updateNode preserves manual height for a container-mode %s when properties change',
+    (type) => {
+      const host: Node<NodeData> = {
+        id: 'h1',
+        type,
+        position: { x: 0, y: 0 },
+        width: 400,
+        height: 300,
+        data: { label: type, type, status: 'unknown', services: [], container_mode: true },
+      }
+      useCanvasStore.setState({ nodes: [host], edges: [] })
+      useCanvasStore.getState().updateNode('h1', { properties: [], label: 'renamed' })
+      expect(useCanvasStore.getState().nodes.find((n) => n.id === 'h1')?.height).toBe(300)
+    }
+  )
+
+  it('updateNode still resets height for a vm NOT in container mode when properties change', () => {
+    const leaf: Node<NodeData> = {
+      id: 'v1',
+      type: 'vm',
+      position: { x: 0, y: 0 },
+      width: 200,
+      height: 120,
+      data: { label: 'vm', type: 'vm', status: 'unknown', services: [], container_mode: false },
+    }
+    useCanvasStore.setState({ nodes: [leaf], edges: [] })
+    useCanvasStore.getState().updateNode('v1', { properties: [] })
+    expect(useCanvasStore.getState().nodes.find((n) => n.id === 'v1')?.height).toBeUndefined()
+  })
+
+  it('updateNode preserves height for a proxmox host when properties change', () => {
+    const px: Node<NodeData> = {
+      id: 'px1',
+      type: 'proxmox',
+      position: { x: 0, y: 0 },
+      width: 500,
+      height: 350,
+      data: { label: 'px', type: 'proxmox', status: 'unknown', services: [], container_mode: true },
+    }
+    useCanvasStore.setState({ nodes: [px], edges: [] })
+    useCanvasStore.getState().updateNode('px1', { properties: [] })
+    expect(useCanvasStore.getState().nodes.find((n) => n.id === 'px1')?.height).toBe(350)
+  })
 })
