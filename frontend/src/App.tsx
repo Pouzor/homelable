@@ -53,7 +53,7 @@ import { buildProxmoxClusterEdges } from '@/components/proxmox/clusterEdges'
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 export default function App() {
-  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addToGroup, addToContainer, floorMap, setFloorMap } = useCanvasStore()
+  const { loadCanvas, applyLayout, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addToGroup, addToContainer, floorMap, setFloorMap } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated } = useAuthStore()
   const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
@@ -498,9 +498,11 @@ export default function App() {
 
   const handleAutoLayout = useCallback(() => {
     const laid = applyDagreLayout(nodes, edges)
-    loadCanvas(laid, edges)
+    // applyLayout keeps undo history so the user can revert an accidental
+    // Auto Layout (#280); loadCanvas would wipe it.
+    applyLayout(laid, edges)
     toast.success('Canvas auto-arranged')
-  }, [nodes, edges, loadCanvas])
+  }, [nodes, edges, applyLayout])
 
   const handleExportMd = useCallback(async () => {
     const md = generateMarkdownTable(nodes)
@@ -522,14 +524,14 @@ export default function App() {
   const handleImportYaml = useCallback((content: string) => {
     try {
       const { nodes: merged, edges: mergedEdges, imported } = parseYamlToCanvas(content, nodes, edges)
-      snapshotHistory()
-      loadCanvas(merged, mergedEdges)
-      markUnsaved()
+      // applyLayout keeps undo history so an import can be reverted; loadCanvas
+      // would wipe it (#280).
+      applyLayout(merged, mergedEdges)
       toast.success(`Imported ${imported} node${imported !== 1 ? 's' : ''}`)
     } catch (err) {
       toast.error(`Import failed: ${err instanceof Error ? err.message : String(err)}`)
     }
-  }, [nodes, edges, snapshotHistory, loadCanvas, markUnsaved])
+  }, [nodes, edges, applyLayout])
 
   // Open the read-only live view of the currently active design in a new tab.
   // Standalone has no backend/key — it reads localStorage, so just open /view.
