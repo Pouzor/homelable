@@ -3,6 +3,7 @@ import {
   type Node,
   type Edge,
   type NodeChange,
+  type NodePositionChange,
   type EdgeChange,
   type Connection,
   applyNodeChanges,
@@ -20,6 +21,69 @@ type Clipboard = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
 
 /** Resolve a node's effective parent id from either the RF field or domain data. */
 const parentIdOf = (n: Node<NodeData>): string | undefined => n.parentId ?? n.data.parent_id ?? undefined
+
+/**
+ * Keep manually-routed edge waypoints attached to their nodes on drag (#279).
+ *
+ * Waypoints live in absolute canvas coords, so they don't move when a connected
+ * node is dragged. For every node that moved on screen we translate the
+ * waypoints of edges touching it by the same delta. A dragged container moves
+ * its children on screen too — their stored (parent-relative) position is
+ * unchanged, so we propagate the container's delta down to every descendant.
+ */
+function translateWaypointsForMovedNodes(
+  changes: NodeChange<Node<NodeData>>[],
+  prevNodes: Node<NodeData>[],
+  nextNodes: Node<NodeData>[],
+  edges: Edge<EdgeData>[],
+): Edge<EdgeData>[] {
+  const positionChanges = changes.filter(
+    (c): c is NodePositionChange => c.type === 'position' && !!c.position,
+  )
+  if (positionChanges.length === 0) return edges
+
+  const prevById = new Map(prevNodes.map((n) => [n.id, n]))
+  // node id -> absolute screen delta it moved by
+  const deltaById = new Map<string, { dx: number; dy: number }>()
+  for (const ch of positionChanges) {
+    const prev = prevById.get(ch.id)
+    if (!prev) continue
+    const dx = ch.position!.x - prev.position.x
+    const dy = ch.position!.y - prev.position.y
+    if (dx === 0 && dy === 0) continue
+    deltaById.set(ch.id, { dx, dy })
+  }
+  if (deltaById.size === 0) return edges
+
+  const childrenByParent = new Map<string, string[]>()
+  for (const n of nextNodes) {
+    const pid = parentIdOf(n)
+    if (!pid) continue
+    const arr = childrenByParent.get(pid) ?? []
+    arr.push(n.id)
+    childrenByParent.set(pid, arr)
+  }
+  const propagate = (id: string, d: { dx: number; dy: number }) => {
+    for (const childId of childrenByParent.get(id) ?? []) {
+      // A directly-dragged child keeps its own delta; don't overwrite it.
+      if (!deltaById.has(childId)) deltaById.set(childId, d)
+      propagate(childId, d)
+    }
+  }
+  for (const [id, d] of [...deltaById.entries()]) propagate(id, d)
+
+  return edges.map((e) => {
+    const data = e.data
+    if (!data?.waypoints?.length) return e
+    // Both endpoints may have moved (container drag): translate once.
+    const d = deltaById.get(e.source) ?? deltaById.get(e.target)
+    if (!d) return e
+    return {
+      ...e,
+      data: { ...data, waypoints: data.waypoints.map((wp) => ({ x: wp.x + d.dx, y: wp.y + d.dy })) },
+    }
+  })
+}
 
 /** Key for the live per-service status overlay. */
 export const serviceStatusKey = (nodeId: string, port?: number, protocol?: string): string =>
@@ -251,8 +315,13 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     set((state) => {
       const nodes = applyNodeChanges(changes, state.nodes)
       const selectedNodeIds = nodes.filter((n) => n.selected).map((n) => n.id)
+      // Manually-placed edge waypoints are stored as absolute canvas coords, so
+      // they don't follow a moved node on their own. Translate them by the same
+      // delta the node moved so a clean routing stays clean after a drag (#279).
+      const edges = translateWaypointsForMovedNodes(changes, state.nodes, nodes, state.edges)
       return {
         nodes,
+        edges,
         selectedNodeIds,
         hasUnsavedChanges: state.hasUnsavedChanges || changes.some((c) => c.type !== 'select'),
       }
