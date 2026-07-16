@@ -37,6 +37,7 @@ import { ScanHistoryModal } from '@/components/modals/ScanHistoryModal'
 import { ShortcutsModal } from '@/components/modals/ShortcutsModal'
 import { ConfirmAddToGroupModal } from '@/components/modals/ConfirmAddToGroupModal'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { readAutosaveSettings, subscribeAutosaveSettings, type AutosaveSettings } from '@/utils/autosaveSettings'
 import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
@@ -53,13 +54,16 @@ import { buildProxmoxClusterEdges } from '@/components/proxmox/clusterEdges'
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 export default function App() {
-  const { loadCanvas, markSaved, markUnsaved, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addToGroup, addToContainer, floorMap, setFloorMap } = useCanvasStore()
+  const { loadCanvas, markSaved, markUnsaved, hasUnsavedChanges, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addToGroup, addToContainer, floorMap, setFloorMap } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated } = useAuthStore()
   const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
   const { activeDesignId, setDesigns, setActiveDesign } = useDesignStore()
 
   useStatusPolling()
+
+  const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
+  useEffect(() => subscribeAutosaveSettings(setAutosave), [])
 
   const [themeModalOpen, setThemeModalOpen] = useState(false)
   const [styleEditorType, setStyleEditorType] = useState<NodeType | null>(null)
@@ -93,7 +97,7 @@ export default function App() {
   // Declare handleSave before the Ctrl+S effect so it is in scope.
   // Returns true on success, false on failure — the design-switch effect relies
   // on this to avoid loading (and clobbering) the canvas when a save fails.
-  const handleSave = useCallback(async (designIdOverride?: string): Promise<boolean> => {
+  const handleSave = useCallback(async (designIdOverride?: string, options?: { silent?: boolean }): Promise<boolean> => {
     try {
       const saveDesignId = designIdOverride ?? activeDesignId
       if (STANDALONE) {
@@ -101,7 +105,7 @@ export default function App() {
         // Floor plans are backend-only (upload/serve), so standalone never persists one.
         standaloneStorage.saveCanvas(saveDesignId, { nodes, edges, theme_id: activeTheme, custom_style: customStyle })
         markSaved()
-        toast.success('Canvas saved')
+        if (!options?.silent) toast.success('Canvas saved')
         return true
       }
       const nodesToSave = nodes.map(serializeNode)
@@ -110,7 +114,7 @@ export default function App() {
       if (floorMap) viewport.floor_map = floorMap
       await canvasApi.save({ nodes: nodesToSave, edges: edgesToSave, viewport, custom_style: customStyle, design_id: saveDesignId })
       markSaved()
-      toast.success('Canvas saved')
+      if (!options?.silent) toast.success('Canvas saved')
       return true
     } catch {
       toast.error('Save failed')
@@ -121,6 +125,14 @@ export default function App() {
   // Keep a ref so the keydown handler always calls the latest version
   const handleSaveRef = useRef(handleSave)
   useEffect(() => { handleSaveRef.current = handleSave }, [handleSave])
+
+  // Autosave: debounce — resets on every node/edge change, fires after `delay` seconds
+  // of inactivity if there are unsaved changes and autosave is enabled.
+  useEffect(() => {
+    if (!autosave.enabled || !hasUnsavedChanges) return
+    const t = setTimeout(() => { void handleSaveRef.current(undefined, { silent: true }) }, autosave.delay * 1000)
+    return () => clearTimeout(t)
+  }, [nodes, edges, autosave.enabled, autosave.delay, hasUnsavedChanges])
 
   const loadCanvasFromApi = useCallback(async (designId?: string) => {
     try {

@@ -18,6 +18,12 @@ import {
   writeAlignmentSettings,
   subscribeAlignmentSettings,
 } from '@/utils/alignmentSettings'
+import {
+  type AutosaveSettings,
+  readAutosaveSettings,
+  writeAutosaveSettings,
+  subscribeAutosaveSettings,
+} from '@/utils/autosaveSettings'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -124,6 +130,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [zwInterval, setZwInterval] = useState(3600)
   const [zwSyncing, setZwSyncing] = useState(false)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
+  const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
   const hideIp = useCanvasStore((s) => s.hideIp)
   const setHideIp = useCanvasStore((s) => s.setHideIp)
 
@@ -160,11 +167,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   }, [open])
 
   useEffect(() => subscribeAlignmentSettings(setAlignment), [])
+  useEffect(() => subscribeAutosaveSettings(setAutosave), [])
 
   const updateAlignment = (patch: Partial<AlignmentSettings>) => {
     const next = { ...alignment, ...patch }
     setAlignment(next)
     writeAlignmentSettings(next)
+  }
+
+  const updateAutosave = (patch: Partial<AutosaveSettings>) => {
+    const next = { ...autosave, ...patch }
+    setAutosave(next)
+    writeAutosaveSettings(next)
   }
 
   const handleSyncNow = async () => {
@@ -351,6 +365,40 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               </div>
               <p className="text-[10px] text-muted-foreground leading-tight">
                 Distance at which dragged nodes snap to neighbours. Hold Alt while dragging to disable.
+              </p>
+            </div>
+
+            <label className="flex items-center justify-between gap-2 cursor-pointer">
+              <span className="text-xs text-foreground">Autosave canvas</span>
+              <input
+                type="checkbox"
+                checked={autosave.enabled}
+                onChange={(e) => updateAutosave({ enabled: e.target.checked })}
+                className="cursor-pointer accent-[#00d4ff]"
+                aria-label="Toggle autosave"
+              />
+            </label>
+
+            <div className={autosave.enabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+              <label className="text-xs text-muted-foreground">Save after</label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={autosave.delay}
+                  onChange={(e) => updateAutosave({ delay: Number(e.target.value) })}
+                  disabled={!autosave.enabled}
+                  className="px-2 py-1 rounded-md text-xs bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
+                  aria-label="Autosave delay"
+                >
+                  <option value={3}>3 s</option>
+                  <option value={5}>5 s</option>
+                  <option value={10}>10 s</option>
+                  <option value={30}>30 s</option>
+                  <option value={60}>60 s</option>
+                </select>
+                <span className="text-xs text-muted-foreground">of inactivity</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground leading-tight">
+                Saves silently after this many seconds with no changes. Manual Ctrl+S still works.
               </p>
             </div>
           </div>
