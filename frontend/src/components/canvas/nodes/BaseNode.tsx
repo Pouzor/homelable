@@ -3,7 +3,7 @@ import { NodeResizer, useUpdateNodeInternals, useViewport, type NodeProps, type 
 import { Cpu, MemoryStick, HardDrive, ExternalLink, type LucideIcon } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
-import { resolveNodeIcon, isBrandIconKey } from '@/utils/nodeIcons'
+import { resolveNodeIcon } from '@/utils/nodeIcons'
 import { NodeIcon } from '@/components/ui/NodeIcon'
 import { resolvePropertyIcon } from '@/utils/propertyIcons'
 import { useThemeStore } from '@/stores/themeStore'
@@ -109,7 +109,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
             background: theme.colors.nodeIconBackground,
           }}
         >
-          {isBrandIconKey(data.custom_icon)
+          {data.custom_icon
             ? <NodeIcon typeIcon={typeIcon} customIconKey={data.custom_icon} size={15} />
             : createElement(resolvedIcon, { size: 15 })}
         </div>
