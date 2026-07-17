@@ -43,17 +43,45 @@ export function SearchBar({ onOpenPending }: SearchBarProps) {
   }, [open])
 
   const q = query.toLowerCase().trim()
+
   const nodeResults = q
-    ? nodes.filter((n) => {
-        if (n.data.type === 'groupRect') return false
-        return (
-          n.data.label?.toLowerCase().includes(q) ||
-          n.data.ip?.toLowerCase().includes(q) ||
-          n.data.hostname?.toLowerCase().includes(q) ||
-          (n.data.services ?? []).some((s) => s.service_name?.toLowerCase().includes(q))
-        )
-      })
-    : []
+  ? nodes.flatMap((n) => {
+      if (n.data.type === 'groupRect') return []
+
+      const contains = (v?: string | null) => v?.toLowerCase().includes(q)
+
+      const matches: Array<{ key: string; display_value: string }> = []
+
+      for (const [key, value] of [
+        ['label', n.data.label],
+        ['notes', n.data.notes],
+        ['ip', n.data.ip],
+        ['hostname', n.data.hostname],
+      ] as const) {
+        if (contains(value)) {
+          matches.push({ key, display_value: value ?? '' })
+        }
+      }
+
+      for (const s of n.data.services ?? []) {
+        if (contains(s.service_name)) {
+          matches.push({ key: 'services', display_value: s.service_name ?? '' })
+        }
+      }
+
+      for (const p of (n.data.properties ?? []).filter((p) => p.visible)) {
+        if (contains(p.key) || contains(p.value)) {
+          matches.push({
+            key: 'properties',
+            display_value: `${p.key ?? ''} = ${p.value ?? ''}`,
+          })
+        }
+      }
+
+      return matches.length > 0 ? [{ node: n, matches: matches }] : []
+    })
+  : [];
+    
 
   const pendingResults = q
     ? pendingDevices.filter((d) =>
@@ -142,10 +170,10 @@ export function SearchBar({ onOpenPending }: SearchBarProps) {
 
         {totalResults > 0 && (
           <div style={{ borderTop: '1px solid #30363d', maxHeight: 260, overflowY: 'auto' }}>
-            {nodeResults.map((n) => (
+            {nodeResults.map((n, idx) => (
               <button
-                key={n.id}
-                onClick={() => goToNode(n.id)}
+                key={`${n.node.id}-${idx}`}
+                onClick={() => goToNode(n.node.id)}
                 style={{
                   width: '100%',
                   display: 'flex',
@@ -161,15 +189,19 @@ export function SearchBar({ onOpenPending }: SearchBarProps) {
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
               >
                 <span style={{ fontSize: 12, fontWeight: 600, color: '#e6edf3', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {n.data.label}
+                  {n.node.data.label}
                 </span>
-                {n.data.ip && (
-                  <span style={{ fontSize: 11, color: '#8b949e', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 }}>
-                    {n.data.ip}
+                {n.matches.length > 0 && (
+                  <span style={{ maxWidth: "50%", display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {n.matches.map((m) => (
+                      <span key={m.display_value} style={{ fontSize: 11, color: '#8b949e', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0, display: 'inline-block' }}>
+                        {m.display_value}
+                      </span>
+                    ))}
                   </span>
                 )}
                 <span style={{ fontSize: 10, color: '#6e7681', flexShrink: 0 }}>
-                  {NODE_TYPE_LABELS[n.data.type] ?? n.data.type}
+                  {NODE_TYPE_LABELS[n.node.data.type] ?? n.node.data.type}
                 </span>
               </button>
             ))}
