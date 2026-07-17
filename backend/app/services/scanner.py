@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.models import Node, PendingDevice, ScanRun
 from app.services.discovery_sources import add_source
 from app.services.fingerprint import fingerprint_ports, suggest_node_type
@@ -240,6 +241,14 @@ def _nmap_scan_single(host_dict: dict[str, Any], port_spec: str = _EXTRA_PORTS) 
     """
     Phase 2 — single-IP port scan with service detection.
     Runs in a thread (blocking). Returns the host dict enriched with open_ports.
+
+    Two decoupled nmap passes (issue #277):
+      Pass A — port discovery only (``--open``, no ``-sV``). Fast and reliable;
+               its open ports are authoritative and are never discarded.
+      Pass B — version detection (``-sV``) scoped to the ports Pass A found,
+               bounded by ``--host-timeout``. Best-effort: if it times out or
+               fails (e.g. a TLS port stalls plaintext probes), the Pass A ports
+               are kept with empty banners instead of the whole host being lost.
     """
     ip = host_dict["ip"]
     logger.info("[Phase 2] Scanning %s ...", ip)
@@ -248,48 +257,76 @@ def _nmap_scan_single(host_dict: dict[str, Any], port_spec: str = _EXTRA_PORTS) 
         logger.warning("[Phase 2] nmap not available, skipping %s", ip)
         return host_dict
 
-    is_root = os.geteuid() == 0
-    if is_root:
-        # SYN scan + version detection (fastest, most accurate)
-        scan_args = f"-sS -sV --open -T4 -Pn --host-timeout 60s -p {port_spec}"
-    else:
-        # TCP connect scan (-sT) — no raw sockets needed, works without root.
-        # nmap auto-selects -sT without root but being explicit avoids edge cases.
-        scan_args = f"-sT -sV --open -T4 -Pn --host-timeout 60s -p {port_spec}"
+    # -sS (SYN) needs root; -sT (connect) works without it. nmap auto-selects
+    # -sT without root but being explicit avoids edge cases.
+    scan_type = "-sS" if os.geteuid() == 0 else "-sT"
 
-    logger.debug("[Phase 2] %s args: %s", ip, scan_args)
-    nm = nmap.PortScanner()
+    # --- Pass A: port discovery (no -sV, no host-timeout) ---
+    discovery_args = f"{scan_type} --open -T4 -Pn -p {port_spec}"
+    logger.debug("[Phase 2] %s discovery args: %s", ip, discovery_args)
+    nm_disc = nmap.PortScanner()
     try:
-        nm.scan(hosts=ip, arguments=scan_args)
+        nm_disc.scan(hosts=ip, arguments=discovery_args)
     except Exception as exc:
-        logger.warning("[Phase 2] nmap FAILED for %s (%s: %s) — skipping port scan", ip, type(exc).__name__, exc)
+        logger.warning("[Phase 2] nmap discovery FAILED for %s (%s: %s) — skipping port scan",
+                       ip, type(exc).__name__, exc)
         return host_dict
 
-    all_scanned = nm.all_hosts()
-    logger.debug("[Phase 2] %s — nmap returned %d host(s) in results", ip, len(all_scanned))
-    if ip not in all_scanned:
+    if ip not in nm_disc.all_hosts():
         logger.info("[Phase 2] %s — no open ports found (all closed/filtered or nmap had no results)", ip)
         return host_dict
 
     open_ports = []
-    for proto in nm[ip].all_protocols():
-        for port, info in nm[ip][proto].items():
+    for proto in nm_disc[ip].all_protocols():
+        for port, info in nm_disc[ip][proto].items():
             if info["state"] == "open":
-                banner = (info.get("product", "") + " " + info.get("version", "")).strip()
-                open_ports.append({"port": port, "protocol": proto, "banner": banner})
+                open_ports.append({"port": port, "protocol": proto, "banner": ""})
 
-    if open_ports:
-        port_summary = ", ".join(
-            f"{p['port']}/{p['protocol']} ({p['banner'] or 'unknown'})" for p in open_ports
-        )
-        logger.info("[Phase 2] %s — %d open port(s): %s", ip, len(open_ports), port_summary)
-    else:
+    if not open_ports:
         logger.info("[Phase 2] %s — 0 open ports detected", ip)
+        host_dict["open_ports"] = []
+        if not host_dict["mac"]:
+            host_dict["mac"] = nm_disc[ip].get("addresses", {}).get("mac")
+        return host_dict
+
+    # --- Pass B: version detection on the discovered ports (best-effort) ---
+    port_list = ",".join(str(p["port"]) for p in open_ports)
+    timeout = settings.scanner_version_host_timeout
+    version_args = f"{scan_type} -sV -T4 -Pn --host-timeout {timeout}s -p {port_list}"
+    logger.debug("[Phase 2] %s version args: %s", ip, version_args)
+    nm_ver = nmap.PortScanner()
+    banners: dict[tuple[str, int], str] = {}
+    ver_os = None
+    ver_mac = None
+    try:
+        nm_ver.scan(hosts=ip, arguments=version_args)
+        if ip in nm_ver.all_hosts():
+            for proto in nm_ver[ip].all_protocols():
+                for port, info in nm_ver[ip][proto].items():
+                    banner = (info.get("product", "") + " " + info.get("version", "")).strip()
+                    if banner:
+                        banners[(proto, port)] = banner
+            ver_os = _extract_os(nm_ver, ip)
+            ver_mac = nm_ver[ip].get("addresses", {}).get("mac")
+        else:
+            logger.info("[Phase 2] %s — version detection returned no results, keeping %d port(s) without banners",
+                        ip, len(open_ports))
+    except Exception as exc:
+        logger.info("[Phase 2] %s — version detection failed (%s: %s), keeping %d port(s) without banners",
+                    ip, type(exc).__name__, exc, len(open_ports))
+
+    for p in open_ports:
+        p["banner"] = banners.get((p["protocol"], p["port"]), "")
+
+    port_summary = ", ".join(
+        f"{p['port']}/{p['protocol']} ({p['banner'] or 'unknown'})" for p in open_ports
+    )
+    logger.info("[Phase 2] %s — %d open port(s): %s", ip, len(open_ports), port_summary)
 
     host_dict["open_ports"] = open_ports
     if not host_dict["mac"]:
-        host_dict["mac"] = nm[ip].get("addresses", {}).get("mac")
-    host_dict["os"] = _extract_os(nm, ip)
+        host_dict["mac"] = ver_mac or nm_disc[ip].get("addresses", {}).get("mac")
+    host_dict["os"] = ver_os
     return host_dict
 
 

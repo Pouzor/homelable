@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     # Scanner
     scanner_ranges: list[str] = ["192.168.1.0/24"]
 
+    # Phase-2 version-detection (-sV) host timeout, seconds. Bounds the version
+    # pass so a stalling TLS port (e.g. Proxmox 8006) can't hang it. Discovered
+    # ports survive a timeout regardless; raise this on slow/overlay networks.
+    scanner_version_host_timeout: int = 60
+
     # Deep scan — persisted defaults (overridable per-scan from the scan dialog).
     # http_ranges: extra nmap port ranges, opt-in, no default. Probe + TLS off by default.
     scanner_http_ranges: list[str] = []

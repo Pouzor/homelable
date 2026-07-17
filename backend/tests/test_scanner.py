@@ -254,6 +254,128 @@ def test_nmap_scan_single_returns_host_unchanged_when_no_results():
 
 
 # ---------------------------------------------------------------------------
+# _nmap_scan_single — two-pass discovery/version split (issue #277)
+# ---------------------------------------------------------------------------
+
+def _fake_scanner(ip, port_info, mac=None):
+    """Mock nmap.PortScanner whose results contain `ip` with tcp `port_info`."""
+    host = MagicMock()
+    host.all_protocols.return_value = ["tcp"]
+    host.__getitem__ = MagicMock(return_value=port_info)
+    host.get.return_value = {"mac": mac} if mac else {}
+    nm = MagicMock()
+    nm.all_hosts.return_value = [ip]
+    nm.__getitem__ = MagicMock(return_value=host)
+    return nm
+
+
+def _empty_scanner():
+    nm = MagicMock()
+    nm.all_hosts.return_value = []
+    return nm
+
+
+def _failing_scanner(exc=Exception("host timeout")):
+    nm = MagicMock()
+    nm.scan.side_effect = exc
+    return nm
+
+
+def test_nmap_scan_single_two_pass_merges_banners():
+    """Pass A discovers ports; Pass B enriches them with -sV banners."""
+    from app.services.scanner import _nmap_scan_single
+
+    host = {"ip": "192.168.1.10", "hostname": None, "mac": None, "os": None, "open_ports": []}
+    disc = _fake_scanner("192.168.1.10", {22: {"state": "open"}, 8006: {"state": "open"}})
+    ver = _fake_scanner("192.168.1.10", {
+        22: {"state": "open", "product": "OpenSSH", "version": "9.0"},
+        8006: {"state": "open", "product": "", "version": ""},
+    })
+
+    with patch("app.services.scanner.nmap.PortScanner", side_effect=[disc, ver]), \
+         patch("app.services.scanner.os.geteuid", return_value=0), \
+         patch("app.services.scanner._extract_os", return_value=None):
+        result = _nmap_scan_single(host)
+
+    banners = {p["port"]: p["banner"] for p in result["open_ports"]}
+    assert banners == {22: "OpenSSH 9.0", 8006: ""}
+
+    # Pass A: discovery only, no -sV / host-timeout. Pass B: -sV, bounded.
+    disc_args = disc.scan.call_args.kwargs["arguments"]
+    ver_args = ver.scan.call_args.kwargs["arguments"]
+    assert "-sV" not in disc_args and "--host-timeout" not in disc_args
+    assert "-sV" in ver_args and "--host-timeout 60s" in ver_args
+    assert ver_args.endswith("-p 22,8006")  # version pass scoped to found ports
+
+
+def test_nmap_scan_single_keeps_ports_when_version_pass_fails():
+    """Regression #277: a stalling version pass must not drop discovered ports."""
+    from app.services.scanner import _nmap_scan_single
+
+    host = {"ip": "192.168.100.3", "hostname": None, "mac": None, "os": None, "open_ports": []}
+    disc = _fake_scanner("192.168.100.3", {22: {"state": "open"}, 8006: {"state": "open"}})
+    ver = _failing_scanner()  # -sV blows past --host-timeout on the TLS port
+
+    with patch("app.services.scanner.nmap.PortScanner", side_effect=[disc, ver]), \
+         patch("app.services.scanner.os.geteuid", return_value=0):
+        result = _nmap_scan_single(host)
+
+    ports = {p["port"] for p in result["open_ports"]}
+    assert ports == {22, 8006}  # both survive despite the version failure
+    assert all(p["banner"] == "" for p in result["open_ports"])
+
+
+def test_nmap_scan_single_keeps_ports_when_version_pass_empty():
+    """Version pass returns no results for the host — keep the discovered ports."""
+    from app.services.scanner import _nmap_scan_single
+
+    host = {"ip": "192.168.1.11", "hostname": None, "mac": None, "os": None, "open_ports": []}
+    disc = _fake_scanner("192.168.1.11", {443: {"state": "open"}})
+    ver = _empty_scanner()
+
+    with patch("app.services.scanner.nmap.PortScanner", side_effect=[disc, ver]), \
+         patch("app.services.scanner.os.geteuid", return_value=0):
+        result = _nmap_scan_single(host)
+
+    assert [p["port"] for p in result["open_ports"]] == [443]
+    assert result["open_ports"][0]["banner"] == ""
+
+
+def test_nmap_scan_single_no_open_ports_skips_version_pass():
+    """Host reachable but nothing open — no version pass, empty ports."""
+    from app.services.scanner import _nmap_scan_single
+
+    host = {"ip": "192.168.1.12", "hostname": None, "mac": None, "os": None, "open_ports": []}
+    disc = _fake_scanner("192.168.1.12", {80: {"state": "filtered"}})
+
+    # Only one PortScanner instance may be created (Pass B must be skipped);
+    # a second would raise StopIteration from side_effect.
+    with patch("app.services.scanner.nmap.PortScanner", side_effect=[disc]), \
+         patch("app.services.scanner.os.geteuid", return_value=0):
+        result = _nmap_scan_single(host)
+
+    assert result["open_ports"] == []
+
+
+def test_nmap_scan_single_non_root_uses_connect_scan():
+    """Without root, both passes use -sT (connect) instead of -sS (SYN)."""
+    from app.services.scanner import _nmap_scan_single
+
+    host = {"ip": "192.168.1.13", "hostname": None, "mac": None, "os": None, "open_ports": []}
+    disc = _fake_scanner("192.168.1.13", {80: {"state": "open"}})
+    ver = _fake_scanner("192.168.1.13", {80: {"state": "open", "product": "nginx", "version": "1.24"}})
+
+    with patch("app.services.scanner.nmap.PortScanner", side_effect=[disc, ver]), \
+         patch("app.services.scanner.os.geteuid", return_value=1000), \
+         patch("app.services.scanner._extract_os", return_value=None):
+        result = _nmap_scan_single(host)
+
+    assert disc.scan.call_args.kwargs["arguments"].startswith("-sT")
+    assert ver.scan.call_args.kwargs["arguments"].startswith("-sT")
+    assert result["open_ports"][0]["banner"] == "nginx 1.24"
+
+
+# ---------------------------------------------------------------------------
 # _nmap_scan
 # ---------------------------------------------------------------------------
 
