@@ -46,6 +46,11 @@ describe('autosaveSettings', () => {
     expect(readAutosaveSettings().delay).toBe(DEFAULT_AUTOSAVE_SETTINGS.delay)
   })
 
+  it('rejects a non-boolean enabled and falls back to default', () => {
+    localStorage.setItem('homelable.autosave', JSON.stringify({ enabled: 'yes', delay: 10 }))
+    expect(readAutosaveSettings().enabled).toBe(DEFAULT_AUTOSAVE_SETTINGS.enabled)
+  })
+
   it('notifies subscribers on write and stops after unsubscribe', () => {
     const listener = vi.fn()
     const unsubscribe = subscribeAutosaveSettings(listener)

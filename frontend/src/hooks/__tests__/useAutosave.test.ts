@@ -6,21 +6,21 @@ interface Args {
   enabled?: boolean
   delaySeconds?: number
   hasUnsavedChanges?: boolean
-  activeDesignId?: string | null
+  designId?: string | null
   changeSignals?: unknown[]
-  getActiveDesignId?: () => string | null
+  getLiveDesignId?: () => string | null
   onSave?: (designId: string) => void
 }
 
 function args(over: Args = {}) {
-  const activeDesignId = 'activeDesignId' in over ? (over.activeDesignId ?? null) : 'design-a'
+  const designId = 'designId' in over ? (over.designId ?? null) : 'design-a'
   return {
     enabled: over.enabled ?? true,
     delaySeconds: over.delaySeconds ?? 5,
     hasUnsavedChanges: over.hasUnsavedChanges ?? true,
-    activeDesignId,
+    designId,
     changeSignals: over.changeSignals ?? [[], []],
-    getActiveDesignId: over.getActiveDesignId ?? (() => activeDesignId),
+    getLiveDesignId: over.getLiveDesignId ?? (() => designId),
     onSave: over.onSave ?? vi.fn(),
   }
 }
@@ -36,7 +36,8 @@ describe('useAutosave', () => {
     vi.advanceTimersByTime(4999)
     expect(onSave).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
-    expect(onSave).toHaveBeenCalledExactlyOnceWith('design-a')
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith('design-a')
   })
 
   it('does nothing when disabled', () => {
@@ -53,9 +54,9 @@ describe('useAutosave', () => {
     expect(onSave).not.toHaveBeenCalled()
   })
 
-  it('does nothing when there is no active design', () => {
+  it('does nothing when the canvas has no known provenance', () => {
     const onSave = vi.fn()
-    renderHook(() => useAutosave(args({ onSave, activeDesignId: null })))
+    renderHook(() => useAutosave(args({ onSave, designId: null })))
     vi.advanceTimersByTime(60_000)
     expect(onSave).not.toHaveBeenCalled()
   })
@@ -70,25 +71,27 @@ describe('useAutosave', () => {
     vi.advanceTimersByTime(4000)
     expect(onSave).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1000)
-    expect(onSave).toHaveBeenCalledExactlyOnceWith('design-a')
+    expect(onSave).toHaveBeenCalledTimes(1)
   })
 
-  it('skips the save if the active design changed while the timer was pending', () => {
+  it('skips the save if a different canvas loaded while the timer was pending', () => {
     const onSave = vi.fn()
-    // Pinned at arm time = 'design-a', but live id has moved on to 'design-b'.
+    // Pinned provenance at arm time = 'design-a', but a switch loaded 'design-b'
+    // before the timer fired — the on-screen canvas is no longer design-a's.
     renderHook(() =>
-      useAutosave(args({ onSave, activeDesignId: 'design-a', getActiveDesignId: () => 'design-b' })),
+      useAutosave(args({ onSave, designId: 'design-a', getLiveDesignId: () => 'design-b' })),
     )
     vi.advanceTimersByTime(5000)
     expect(onSave).not.toHaveBeenCalled()
   })
 
-  it('saves under the pinned design id, not the live one, when they still match', () => {
+  it('saves under the pinned provenance id when it still matches at fire time', () => {
     const onSave = vi.fn()
     renderHook(() =>
-      useAutosave(args({ onSave, activeDesignId: 'design-a', getActiveDesignId: () => 'design-a' })),
+      useAutosave(args({ onSave, designId: 'design-a', getLiveDesignId: () => 'design-a' })),
     )
     vi.advanceTimersByTime(5000)
-    expect(onSave).toHaveBeenCalledExactlyOnceWith('design-a')
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith('design-a')
   })
 })

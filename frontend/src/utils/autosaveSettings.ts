@@ -19,7 +19,7 @@ export function readAutosaveSettings(): AutosaveSettings {
     if (!raw) return DEFAULT_AUTOSAVE_SETTINGS
     const parsed = JSON.parse(raw) as Partial<AutosaveSettings>
     return {
-      enabled: parsed.enabled ?? DEFAULT_AUTOSAVE_SETTINGS.enabled,
+      enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : DEFAULT_AUTOSAVE_SETTINGS.enabled,
       delay: typeof parsed.delay === 'number' && parsed.delay > 0 ? parsed.delay : DEFAULT_AUTOSAVE_SETTINGS.delay,
     }
   } catch {

@@ -66,6 +66,14 @@ export default function App() {
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
   useEffect(() => subscribeAutosaveSettings(setAutosave), [])
 
+  // Provenance: which design the in-memory canvas was loaded as. Differs from
+  // activeDesignId (the selection) during a switch, so autosave gates on this to
+  // avoid writing one design's canvas under another's id. Ref mirror for the
+  // fire-time guard, which must read the live value without re-arming the timer.
+  const [loadedDesignId, setLoadedDesignId] = useState<string | null>(null)
+  const loadedDesignIdRef = useRef<string | null>(loadedDesignId)
+  useEffect(() => { loadedDesignIdRef.current = loadedDesignId }, [loadedDesignId])
+
   const [themeModalOpen, setThemeModalOpen] = useState(false)
   const [styleEditorType, setStyleEditorType] = useState<NodeType | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -133,9 +141,9 @@ export default function App() {
     enabled: autosave.enabled,
     delaySeconds: autosave.delay,
     hasUnsavedChanges,
-    activeDesignId,
+    designId: loadedDesignId,
     changeSignals: [nodes, edges],
-    getActiveDesignId: () => useDesignStore.getState().activeDesignId,
+    getLiveDesignId: () => loadedDesignIdRef.current,
     onSave: (designId) => { void handleSaveRef.current(designId, { silent: true }) },
   })
 
@@ -168,6 +176,9 @@ export default function App() {
     } catch {
       setFloorMap(null)
       loadCanvas(demoNodes, demoEdges)
+    } finally {
+      // Record provenance so autosave writes back under the design just loaded.
+      setLoadedDesignId(designId ?? null)
     }
   }, [loadCanvas, setTheme, setCustomStyle, setFloorMap])
 
@@ -186,6 +197,8 @@ export default function App() {
       setFloorMap(null)
       loadCanvas(demoNodes, demoEdges)
     }
+    // Record provenance so autosave writes back under the design just loaded.
+    setLoadedDesignId(designId)
   }, [loadCanvas, setTheme, setCustomStyle, setFloorMap])
 
   const loadDesignsAndCanvas = useCallback(async () => {
