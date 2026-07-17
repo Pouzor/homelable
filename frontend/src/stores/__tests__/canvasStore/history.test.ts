@@ -85,4 +85,31 @@ describe('canvasStore — history', () => {
     addNode(makeNode('n3'))
     expect(useCanvasStore.getState().future).toHaveLength(0)
   })
+
+  // --- Auto Layout keeps history so it can be undone (#280) ---
+
+  it('applyLayout snapshots history and can be undone', () => {
+    const { addNode, applyLayout, undo } = useCanvasStore.getState()
+    addNode(makeNode('n1'))
+    const before = useCanvasStore.getState().nodes
+    // simulate an auto-layout that moves the node
+    applyLayout([{ ...before[0], position: { x: 500, y: 500 } }], [])
+    expect(useCanvasStore.getState().nodes[0].position).toEqual({ x: 500, y: 500 })
+    expect(useCanvasStore.getState().past).toHaveLength(1)
+    undo()
+    expect(useCanvasStore.getState().nodes[0].position).toEqual({ x: 0, y: 0 })
+  })
+
+  it('applyLayout marks the canvas unsaved and clears future', () => {
+    const { addNode, snapshotHistory, undo, applyLayout } = useCanvasStore.getState()
+    addNode(makeNode('n1'))
+    snapshotHistory()
+    addNode(makeNode('n2'))
+    undo() // creates a future entry
+    expect(useCanvasStore.getState().future).toHaveLength(1)
+    applyLayout(useCanvasStore.getState().nodes, [])
+    const s = useCanvasStore.getState()
+    expect(s.hasUnsavedChanges).toBe(true)
+    expect(s.future).toHaveLength(0)
+  })
 })

@@ -147,6 +147,10 @@ interface CanvasState {
   markSaved: () => void
   markUnsaved: () => void
   loadCanvas: (nodes: Node<NodeData>[], edges: Edge<EdgeData>[]) => void
+  /** In-place canvas replacement (e.g. Auto Layout) that KEEPS undo history and
+   *  marks the canvas unsaved. Unlike loadCanvas, it does not wipe past/future —
+   *  loadCanvas is for switching designs, this is for transforming the current one. */
+  applyLayout: (nodes: Node<NodeData>[], edges: Edge<EdgeData>[]) => void
   fitViewPending: boolean
   clearFitViewPending: () => void
   notifyScanDeviceFound: () => void
@@ -869,6 +873,22 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     // design can be pasted after switching to another design.
     set({ nodes: [...parents, ...children], edges, hasUnsavedChanges: false, selectedNodeId: null, past: [], future: [], fitViewPending: true })
   },
+
+  applyLayout: (nodes, edges) =>
+    set((state) => {
+      // React Flow requires parents before children in the array
+      const parents = nodes.filter((n) => !n.parentId)
+      const children = nodes.filter((n) => !!n.parentId)
+      return {
+        nodes: [...parents, ...children],
+        edges,
+        past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
+        future: [],
+        hasUnsavedChanges: true,
+        selectedNodeId: null,
+        fitViewPending: true,
+      }
+    }),
 
   clearFitViewPending: () => set({ fitViewPending: false }),
 
