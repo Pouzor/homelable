@@ -103,6 +103,50 @@ describe('SearchBar', () => {
     expect(screen.queryByText('DB Server')).toBeNull()
   })
 
+  it('filters by notes', () => {
+    setupStore([
+      makeNode('n1', { data: { label: 'Server A', type: 'server', status: 'online', services: [], ip: null, hostname: null, notes: 'backup target every night' } }),
+      makeNode('n2', { data: { label: 'Server B', type: 'server', status: 'online', services: [], ip: null, hostname: null, notes: 'primary web host' } }),
+    ])
+    render(<SearchBar />)
+    openSearch()
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'backup' } })
+    expect(screen.getByText('Server A')).toBeDefined()
+    expect(screen.queryByText('Server B')).toBeNull()
+  })
+
+  it('filters by visible property key or value', () => {
+    setupStore([
+      makeNode('n1', { data: { label: 'Server A', type: 'server', status: 'online', services: [], ip: null, hostname: null, properties: [{ key: 'rack', value: 'B12', icon: null, visible: true }] } }),
+      makeNode('n2', { data: { label: 'Server B', type: 'server', status: 'online', services: [], ip: null, hostname: null, properties: [{ key: 'rack', value: 'A01', icon: null, visible: true }] } }),
+    ])
+    render(<SearchBar />)
+    openSearch()
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'b12' } })
+    expect(screen.getByText('Server A')).toBeDefined()
+    expect(screen.queryByText('Server B')).toBeNull()
+  })
+
+  it('ignores hidden properties', () => {
+    setupStore([
+      makeNode('n1', { data: { label: 'Server A', type: 'server', status: 'online', services: [], ip: null, hostname: null, properties: [{ key: 'secret', value: 'hidden-val', icon: null, visible: false }] } }),
+    ])
+    render(<SearchBar />)
+    openSearch()
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'hidden-val' } })
+    expect(screen.queryByText('Server A')).toBeNull()
+  })
+
+  it('shows the matched value alongside the node label', () => {
+    setupStore([
+      makeNode('n1', { data: { label: 'Server A', type: 'server', status: 'online', services: [], ip: null, hostname: null, properties: [{ key: 'rack', value: 'B12', icon: null, visible: true }] } }),
+    ])
+    render(<SearchBar />)
+    openSearch()
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: 'b12' } })
+    expect(screen.getByText('rack = B12')).toBeDefined()
+  })
+
   it('excludes groupRect nodes from results', () => {
     setupStore([
       makeNode('gr1', { data: { label: 'DMZ Zone', type: 'groupRect', status: 'unknown', services: [], ip: null, hostname: null } }),
