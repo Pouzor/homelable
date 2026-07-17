@@ -52,6 +52,51 @@ describe('canvasStore — nodes', () => {
     expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
   })
 
+  it('setNodeStatus updates node status fields', () => {
+    useCanvasStore.getState().addNode(makeNode('n1'))
+    useCanvasStore.getState().setNodeStatus('n1', {
+      status: 'online',
+      response_time_ms: 42,
+      last_seen: '2024-01-01T12:00:00Z',
+    })
+    const node = useCanvasStore.getState().nodes.find((n) => n.id === 'n1')
+    expect(node?.data.status).toBe('online')
+    expect(node?.data.response_time_ms).toBe(42)
+    expect(node?.data.last_seen).toBe('2024-01-01T12:00:00Z')
+  })
+
+  it('setNodeStatus does NOT mark the canvas unsaved (live status is not a user edit)', () => {
+    useCanvasStore.getState().addNode(makeNode('n1'))
+    useCanvasStore.setState({ hasUnsavedChanges: false })
+    useCanvasStore.getState().setNodeStatus('n1', { status: 'offline' })
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
+  })
+
+  it('onNodesChange does NOT dirty the canvas on an initial dimensions measure', () => {
+    useCanvasStore.getState().addNode(makeNode({ id: 'n1' }))
+    useCanvasStore.setState({ hasUnsavedChanges: false })
+    useCanvasStore.getState().onNodesChange([
+      { id: 'n1', type: 'dimensions', dimensions: { width: 120, height: 40 } },
+    ])
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
+  })
+
+  it('onNodesChange DOES dirty the canvas on a user resize (resizing: true)', () => {
+    useCanvasStore.getState().addNode(makeNode({ id: 'n1' }))
+    useCanvasStore.setState({ hasUnsavedChanges: false })
+    useCanvasStore.getState().onNodesChange([
+      { id: 'n1', type: 'dimensions', dimensions: { width: 200, height: 80 }, resizing: true },
+    ])
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  it('onNodesChange does NOT dirty the canvas on a select-only change', () => {
+    useCanvasStore.getState().addNode(makeNode({ id: 'n1' }))
+    useCanvasStore.setState({ hasUnsavedChanges: false })
+    useCanvasStore.getState().onNodesChange([{ id: 'n1', type: 'select', selected: true }])
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
+  })
+
   it('setEditingTextId sets and clears editing text id', () => {
     const { setEditingTextId } = useCanvasStore.getState()
     setEditingTextId('t1')

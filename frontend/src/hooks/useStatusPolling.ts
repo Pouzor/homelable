@@ -24,7 +24,7 @@ const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 export function useStatusPolling() {
   const wsRef = useRef<WebSocket | null>(null)
-  const { updateNode, notifyScanDeviceFound, setServiceStatuses } = useCanvasStore()
+  const { setNodeStatus, notifyScanDeviceFound, setServiceStatuses } = useCanvasStore()
   const { isAuthenticated, token } = useAuthStore()
 
   useEffect(() => {
@@ -50,7 +50,9 @@ export function useStatusPolling() {
         } else if (msg.type === 'service_status' && msg.node_id && msg.services) {
           setServiceStatuses(msg.node_id, msg.services)
         } else if (msg.node_id && msg.status) {
-          updateNode(msg.node_id, {
+          // Live status is monitoring data, not a user edit — must not dirty the
+          // canvas (otherwise autosave rewrites an untouched canvas every cycle).
+          setNodeStatus(msg.node_id, {
             status: msg.status,
             response_time_ms: msg.response_time_ms ?? undefined,
             last_seen: msg.status === 'online' ? msg.checked_at : undefined,
@@ -69,5 +71,5 @@ export function useStatusPolling() {
       ws.close()
       wsRef.current = null
     }
-  }, [isAuthenticated, token, updateNode, notifyScanDeviceFound, setServiceStatuses])
+  }, [isAuthenticated, token, setNodeStatus, notifyScanDeviceFound, setServiceStatuses])
 }

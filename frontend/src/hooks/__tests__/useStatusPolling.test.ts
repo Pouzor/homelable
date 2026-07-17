@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/authStore'
 vi.mock('@/stores/canvasStore')
 vi.mock('@/stores/authStore')
 
-const mockUpdateNode = vi.fn()
+const mockSetNodeStatus = vi.fn()
 const mockNotifyScanDeviceFound = vi.fn()
 const mockSetServiceStatuses = vi.fn()
 
@@ -32,7 +32,7 @@ describe('useStatusPolling', () => {
     vi.stubGlobal('WebSocket', MockWebSocket)
 
     vi.mocked(useCanvasStore).mockReturnValue({
-      updateNode: mockUpdateNode,
+      setNodeStatus: mockSetNodeStatus,
       notifyScanDeviceFound: mockNotifyScanDeviceFound,
       setServiceStatuses: mockSetServiceStatuses,
     } as ReturnType<typeof useCanvasStore>)
@@ -50,7 +50,7 @@ describe('useStatusPolling', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
-    mockUpdateNode.mockClear()
+    mockSetNodeStatus.mockClear()
     mockNotifyScanDeviceFound.mockClear()
     mockSetServiceStatuses.mockClear()
   })
@@ -95,7 +95,7 @@ describe('useStatusPolling', () => {
     expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ token: 'test-token' }))
   })
 
-  it('calls updateNode with correct data on status message', () => {
+  it('calls setNodeStatus with correct data on status message', () => {
     renderHook(() => useStatusPolling())
     const ws = MockWebSocket.instances[0]
     ws.onmessage?.({
@@ -106,7 +106,7 @@ describe('useStatusPolling', () => {
         response_time_ms: 42,
       }),
     })
-    expect(mockUpdateNode).toHaveBeenCalledWith('node-1', {
+    expect(mockSetNodeStatus).toHaveBeenCalledWith('node-1', {
       status: 'online',
       response_time_ms: 42,
       last_seen: '2024-01-01T12:00:00Z',
@@ -123,7 +123,7 @@ describe('useStatusPolling', () => {
         checked_at: '2024-01-01T12:00:00Z',
       }),
     })
-    expect(mockUpdateNode).toHaveBeenCalledWith('node-1', {
+    expect(mockSetNodeStatus).toHaveBeenCalledWith('node-1', {
       status: 'offline',
       response_time_ms: undefined,
       last_seen: undefined,
@@ -136,7 +136,7 @@ describe('useStatusPolling', () => {
     ws.onmessage?.({
       data: JSON.stringify({ node_id: 'node-1', status: 'online', response_time_ms: null }),
     })
-    expect(mockUpdateNode).toHaveBeenCalledWith(
+    expect(mockSetNodeStatus).toHaveBeenCalledWith(
       'node-1',
       expect.objectContaining({ response_time_ms: undefined }),
     )
@@ -147,7 +147,7 @@ describe('useStatusPolling', () => {
     const ws = MockWebSocket.instances[0]
     ws.onmessage?.({ data: JSON.stringify({ type: 'scan_device_found' }) })
     expect(mockNotifyScanDeviceFound).toHaveBeenCalledOnce()
-    expect(mockUpdateNode).not.toHaveBeenCalled()
+    expect(mockSetNodeStatus).not.toHaveBeenCalled()
   })
 
   it('routes service_status messages to setServiceStatuses', () => {
@@ -158,21 +158,21 @@ describe('useStatusPolling', () => {
       data: JSON.stringify({ type: 'service_status', node_id: 'node-9', services }),
     })
     expect(mockSetServiceStatuses).toHaveBeenCalledWith('node-9', services)
-    expect(mockUpdateNode).not.toHaveBeenCalled()
+    expect(mockSetNodeStatus).not.toHaveBeenCalled()
   })
 
   it('ignores malformed JSON without throwing', () => {
     renderHook(() => useStatusPolling())
     const ws = MockWebSocket.instances[0]
     expect(() => ws.onmessage?.({ data: 'not-valid-json{{' })).not.toThrow()
-    expect(mockUpdateNode).not.toHaveBeenCalled()
+    expect(mockSetNodeStatus).not.toHaveBeenCalled()
   })
 
   it('ignores messages with no node_id or status', () => {
     renderHook(() => useStatusPolling())
     const ws = MockWebSocket.instances[0]
     ws.onmessage?.({ data: JSON.stringify({ some: 'unknown-field' }) })
-    expect(mockUpdateNode).not.toHaveBeenCalled()
+    expect(mockSetNodeStatus).not.toHaveBeenCalled()
   })
 
   it('closes WebSocket on unmount', () => {
