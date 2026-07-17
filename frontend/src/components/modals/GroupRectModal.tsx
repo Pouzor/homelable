@@ -120,12 +120,17 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-sm">
+      <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+          {/* ── LEFT column: content & text ── */}
+          <div className="flex flex-col gap-4 min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 pb-1 border-b border-[#30363d]">Content</div>
+
           {/* Label */}
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Label</Label>
@@ -209,6 +214,38 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
             </div>
           </div>
 
+          {/* Text size */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Text Size</Label>
+            <div className="grid grid-cols-6 gap-1">
+              {TEXT_SIZES.map(({ value, label }) => {
+                const isSelected = form.text_size === value
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => set('text_size', value)}
+                    className={`flex items-center justify-center h-8 rounded transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
+                    aria-label={`Text size ${label}`}
+                    style={{
+                      background: isSelected ? '#00d4ff22' : '#21262d',
+                      border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
+                      color: isSelected ? '#00d4ff' : '#8b949e',
+                      fontSize: value,
+                    }}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          </div>{/* ── end LEFT column ── */}
+
+          {/* ── RIGHT column: style ── */}
+          <div className="flex flex-col gap-4 min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 pb-1 border-b border-[#30363d]">Style</div>
+
           {/* Colors */}
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Colors</Label>
@@ -240,33 +277,6 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
                     />
                     <span className="text-[9px] text-muted-foreground/60">{label} {alpha}%</span>
                   </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Text size */}
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Text Size</Label>
-            <div className="grid grid-cols-6 gap-1">
-              {TEXT_SIZES.map(({ value, label }) => {
-                const isSelected = form.text_size === value
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => set('text_size', value)}
-                    className={`flex items-center justify-center h-8 rounded transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
-                    aria-label={`Text size ${label}`}
-                    style={{
-                      background: isSelected ? '#00d4ff22' : '#21262d',
-                      border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
-                      color: isSelected ? '#00d4ff' : '#8b949e',
-                      fontSize: value,
-                    }}
-                  >
-                    {label}
-                  </button>
                 )
               })}
             </div>
@@ -342,6 +352,8 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
               </SelectContent>
             </Select>
           </div>
+          </div>{/* ── end RIGHT column ── */}
+          </div>{/* ── end 2-column grid ── */}
 
           <div className="flex justify-between gap-2 pt-1">
             {onDelete && (

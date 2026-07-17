@@ -19,6 +19,12 @@ describe('GroupRectModal', () => {
     expect(screen.getByText('Z-Order (1 = furthest back)')).toBeDefined()
   })
 
+  it('renders two-column Content and Style section headers', () => {
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} />)
+    expect(screen.getByText('Content')).toBeDefined()
+    expect(screen.getByText('Style')).toBeDefined()
+  })
+
   it('renders Edit Zone title when provided', () => {
     render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} title="Edit Zone" />)
     expect(screen.getByText('Edit Zone')).toBeDefined()
