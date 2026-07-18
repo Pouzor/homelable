@@ -1,5 +1,5 @@
 import { createElement, useRef, useState } from 'react'
-import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff } from 'lucide-react'
+import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff, GripVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -37,6 +37,8 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
   const [newProp, setNewProp] = useState<PropForm>(EMPTY_PROP)
   const [editingPropIndex, setEditingPropIndex] = useState<number | null>(null)
   const [editProp, setEditProp] = useState<PropForm>(EMPTY_PROP)
+  const [dragPropIndex, setDragPropIndex] = useState<number | null>(null)
+  const [dragOverPropIndex, setDragOverPropIndex] = useState<number | null>(null)
 
   // Multi-select panel
   const multiSelected = (selectedNodeIds ?? []).filter((id) => nodes.some((n) => n.id === id))
@@ -202,6 +204,15 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
     setEditingPropIndex(null)
   }
 
+  const handleReorderProp = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= properties.length || to >= properties.length) return
+    snapshotHistory()
+    const reordered = [...properties]
+    const [moved] = reordered.splice(from, 1)
+    reordered.splice(to, 0, moved)
+    updateNode(node.id, { properties: reordered })
+  }
+
   return (
     <aside className="w-72 shrink-0 flex flex-col border-l border-border bg-[#161b22] overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -302,6 +313,17 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
                 <PropertyBadge
                   key={`${prop.key}-${i}`}
                   prop={prop}
+                  draggable={properties.length > 1}
+                  isDragging={dragPropIndex === i}
+                  isDragOver={dragOverPropIndex === i && dragPropIndex !== i}
+                  onDragStart={() => setDragPropIndex(i)}
+                  onDragEnter={() => { if (dragPropIndex !== null) setDragOverPropIndex(i) }}
+                  onDragEnd={() => { setDragPropIndex(null); setDragOverPropIndex(null) }}
+                  onDrop={() => {
+                    if (dragPropIndex !== null) handleReorderProp(dragPropIndex, i)
+                    setDragPropIndex(null)
+                    setDragOverPropIndex(null)
+                  }}
                   onToggleVisible={() => handleTogglePropVisible(i)}
                   onEdit={() => handleStartEditProp(i)}
                   onRemove={() => handleRemoveProp(i)}
@@ -768,16 +790,41 @@ function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel }: {
   )
 }
 
-function PropertyBadge({ prop, onToggleVisible, onEdit, onRemove }: {
+function PropertyBadge({ prop, draggable, isDragging, isDragOver, onDragStart, onDragEnter, onDragEnd, onDrop, onToggleVisible, onEdit, onRemove }: {
   prop: NodeProperty
+  draggable: boolean
+  isDragging: boolean
+  isDragOver: boolean
+  onDragStart: () => void
+  onDragEnter: () => void
+  onDragEnd: () => void
+  onDrop: () => void
   onToggleVisible: () => void
   onEdit: () => void
   onRemove: () => void
 }) {
   const Icon = resolvePropertyIcon(prop.icon)
   return (
-    <div className="group flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border text-xs transition-colors" style={{ background: '#21262d', borderColor: '#30363d' }}>
+    <div
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnter={onDragEnter}
+      onDragOver={(e) => e.preventDefault()}
+      onDragEnd={onDragEnd}
+      onDrop={(e) => { e.preventDefault(); onDrop() }}
+      className="group flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border text-xs transition-colors"
+      style={{
+        background: '#21262d',
+        borderColor: isDragOver ? '#00d4ff' : '#30363d',
+        opacity: isDragging ? 0.4 : 1,
+      }}
+    >
       <div className="flex items-center gap-1.5 min-w-0">
+        {draggable && (
+          <span className="shrink-0 cursor-grab active:cursor-grabbing text-[#8b949e] hover:text-[#00d4ff]" title="Drag to reorder">
+            {createElement(GripVertical, { size: 11 })}
+          </span>
+        )}
         {Icon && createElement(Icon, { size: 11, className: 'shrink-0 text-muted-foreground' })}
         <span className="font-medium truncate text-foreground" title={prop.key}>{prop.key}</span>
         <span className="text-muted-foreground truncate" title={prop.value}>· {prop.value}</span>

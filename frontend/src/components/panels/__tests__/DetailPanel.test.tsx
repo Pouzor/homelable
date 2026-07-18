@@ -187,6 +187,44 @@ describe('DetailPanel', () => {
       expect(payload.properties).toHaveLength(0)
     })
 
+    it('reorders properties on drag and drop', () => {
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+        nodes: [makeNode({ properties: [
+          { key: 'A', value: '1', icon: null, visible: true },
+          { key: 'B', value: '2', icon: null, visible: true },
+          { key: 'C', value: '3', icon: null, visible: true },
+        ] })],
+        selectedNodeId: 'n1',
+        selectedNodeIds: [],
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode,
+        snapshotHistory: vi.fn(),
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
+      } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const rows = screen.getAllByTitle('Drag to reorder').map(
+        (g) => g.closest('[draggable="true"]') as HTMLElement,
+      )
+      // Drag last (C) onto first (A) position
+      fireEvent.dragStart(rows[2])
+      fireEvent.dragEnter(rows[0])
+      fireEvent.drop(rows[0])
+
+      expect(updateNode).toHaveBeenCalledOnce()
+      const [, payload] = updateNode.mock.calls[0]
+      expect(payload.properties.map((p: { key: string }) => p.key)).toEqual(['C', 'A', 'B'])
+    })
+
+    it('is not draggable with a single property', () => {
+      setupStore({ properties: [{ key: 'A', value: '1', icon: null, visible: true }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.queryByTitle('Drag to reorder')).toBeNull()
+    })
+
     it('does not submit add form when key is empty', () => {
       const updateNode = vi.fn()
       vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
