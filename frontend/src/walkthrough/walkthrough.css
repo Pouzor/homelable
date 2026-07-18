@@ -22,6 +22,16 @@
   50% { outline: 7px solid rgba(0, 212, 255, 0); }
 }
 
+/* While the tour runs, app modals must not add their own dim/blur — the overlay's
+   SVG spotlight is the single source of dimming, so a ringed sidebar/toolbar
+   control behind an open modal stays crisp instead of being double-dimmed and
+   blurred by the modal's own backdrop. */
+body.walkthrough-running [data-slot="dialog-overlay"] {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .walkthrough-invite-enter,
   .walkthrough-card-enter,

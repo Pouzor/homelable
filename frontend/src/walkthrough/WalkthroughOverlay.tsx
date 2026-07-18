@@ -36,6 +36,23 @@ function cardPosition(rect: DOMRect | null, placement: StepPlacement): { left: n
   }
 }
 
+/**
+ * Position the card relative to an OPEN MODAL (the step's real subject).
+ * Large modals (inventory, scan history at ~90vw) leave no room beside them, so
+ * the card drops into the empty bottom-right corner instead of covering content.
+ * Small modals get the card beside them, on whichever side has room.
+ */
+function dialogCardPosition(rect: DOMRect): { left: number; top: number } {
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const clampT = (t: number) => Math.max(8, Math.min(t, vh - CARD_H_EST - 8))
+  const isLarge = rect.width > vw * 0.6 || rect.height > vh * 0.7
+  if (isLarge) return { left: vw - CARD_W - 16, top: vh - CARD_H_EST - 16 }
+  if (rect.left >= CARD_W + GAP * 2) return { left: rect.left - GAP - CARD_W, top: clampT(rect.top) }
+  if (vw - rect.right >= CARD_W + GAP * 2) return { left: rect.right + GAP, top: clampT(rect.top) }
+  return { left: Math.max(8, Math.min(rect.left, vw - CARD_W - 8)), top: clampT(rect.bottom + GAP) }
+}
+
 export function WalkthroughOverlay() {
   const { isActive, stepIndex, total, setTotal, next, prev, skip } = useWalkthroughStore()
   const actions = useWalkthroughActions()
@@ -99,12 +116,24 @@ export function WalkthroughOverlay() {
     return () => window.removeEventListener('keydown', handleKey)
   }, [isActive, handleKey])
 
+  // Flag the tour so app-modal backdrops drop their own dim/blur (see
+  // walkthrough.css) — the spotlight then dims consistently everywhere.
+  useEffect(() => {
+    if (!isActive) return
+    document.body.classList.add('walkthrough-running')
+    return () => document.body.classList.remove('walkthrough-running')
+  }, [isActive])
+
   if (!isActive || !step) return null
 
   const isLast = stepIndex >= total - 1
-  // Ring / card follow the anchor if the step has one, else the open modal.
+  // Ring the step's anchor (sidebar/toolbar button) if it has one, else the modal.
   const ringRect = anchorRect ?? dialogRect
-  const pos = cardPosition(ringRect, step.placement ?? 'auto')
+  // The card follows the OPEN MODAL when there is one (that's what the user reads),
+  // otherwise the step's anchor. Keeps the card off the modal's content.
+  const pos = dialogRect
+    ? dialogCardPosition(dialogRect)
+    : cardPosition(anchorRect, step.placement ?? 'auto')
   // Cut-outs keep both the ringed control and any open modal lit.
   const holes = [anchorRect, dialogRect].filter((r): r is DOMRect => r !== null)
 
