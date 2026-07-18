@@ -1,4 +1,34 @@
-# Homelable
+<h1 align="center"><img src="docs/logo/icon-inline.svg" alt="Homelable" width="58" align="middle" />&nbsp;Homelable</h1>
+
+<p align="center">
+  <strong>Self-hosted homelab infrastructure visualization, scanning &amp; live monitoring</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/Pouzor/homelable/releases/latest"><img src="https://img.shields.io/github/v/release/Pouzor/homelable" alt="Latest release" /></a>
+  <a href="https://github.com/Pouzor/homelable/actions/workflows/docker-ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Pouzor/homelable/docker-ci.yml?branch=main&amp;label=build" alt="Build status" /></a>
+  <a href="https://github.com/Pouzor/homelable/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
+  <a href="https://github.com/Pouzor/homelable/issues"><img src="https://img.shields.io/github/issues/Pouzor/homelable" alt="Issues" /></a>
+  <a href="https://github.com/Pouzor/homelable/stargazers"><img src="https://img.shields.io/github/stars/Pouzor/homelable?style=social" alt="Stars" /></a>
+  <a href="https://github.com/Pouzor/homelable/network/members"><img src="https://img.shields.io/github/forks/Pouzor/homelable?style=social" alt="Forks" /></a>
+</p>
+
+<p align="center">
+  <a href="https://trendshift.io/repositories/24461?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-24461" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/24461/daily?language=TypeScript" alt="Pouzor%2Fhomelable | Trendshift" width="130" /></a>
+</p>
+
+<p align="center">
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#installation">Installation</a> ·
+  <a href="#network-scanner">Network Scanner</a> ·
+  <a href="#zigbee2mqtt-import">Zigbee / Z-Wave</a> ·
+  <a href="#proxmox-ve-import">Proxmox</a> ·
+  <a href="#live-view-read-only-public-canvas">Live View</a> ·
+  <a href="#mcp-server-ai-integration-optional">MCP Server</a>
+</p>
+
+## About
 
 Homelable is a self-hosted infrastructure visualization solution. It provides a network/zigbee scanning feature to accelerate the identification of machines, devices and services deployed on your local infrastructure.
 
@@ -10,7 +40,6 @@ If you just like the design, you can only run the frontend and export your desig
 
 If you are running  <img width="22" height="22" align="top" alt="New_Home_Assistant_logo" src="https://github.com/user-attachments/assets/3bb17686-c706-40ce-a2d3-57e02378f37c" />  Homeassistant, check the [Homelable HA version](https://github.com/Pouzor/homelable-hacs) (via HACS)
 
-<a href="https://trendshift.io/repositories/24461?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-24461" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/24461/daily?language=TypeScript" alt="Pouzor%2Fhomelable | Trendshift" width="250" height="55"/></a>
 ---
 
 ## Screenshots
