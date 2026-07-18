@@ -1,0 +1,29 @@
+/* Getting Started walkthrough animations. Kept in a shared stylesheet (imported
+   by both the invite bubble and the overlay) so keyframes exist regardless of
+   which component is mounted. */
+
+@keyframes wt-invite-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+.walkthrough-invite-enter { animation: wt-invite-enter 0.25s ease-out; }
+
+@keyframes wt-card-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.walkthrough-card-enter { animation: wt-card-enter 0.2s ease-out; }
+
+/* The dim surround is drawn by the overlay's SVG mask; this is just the pulsing
+   cyan ring around the primary target (outline so it sits outside the border). */
+.walkthrough-spotlight--pulse { animation: wt-pulse 1.8s ease-in-out infinite; }
+@keyframes wt-pulse {
+  0%, 100% { outline: 0px solid rgba(0, 212, 255, 0.55); }
+  50% { outline: 7px solid rgba(0, 212, 255, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .walkthrough-invite-enter,
+  .walkthrough-card-enter,
+  .walkthrough-spotlight--pulse { animation: none; }
+}

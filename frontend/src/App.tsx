@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef, useState } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
 import { ReactFlowProvider, type Connection, type Edge } from '@xyflow/react'
 import { type Node } from '@xyflow/react'
 import { applyDagreLayout } from '@/utils/layout'
@@ -46,6 +46,10 @@ import { canvasApi, designsApi, liveviewApi } from '@/api/client'
 import * as standaloneStorage from '@/utils/standaloneStorage'
 import { demoNodes, demoEdges } from '@/utils/demoData'
 import { decideCanvasLoad, isNewUserCanvas } from '@/utils/canvasLoadDecision'
+import { WalkthroughActionsProvider, type WalkthroughActionApi } from '@/walkthrough/actions'
+import { WalkthroughInvite } from '@/walkthrough/WalkthroughInvite'
+import { WalkthroughOverlay } from '@/walkthrough/WalkthroughOverlay'
+import { DEMO_SCAN_RUNS, DEMO_PENDING_DEVICES } from '@/walkthrough/demoTourData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
 import type { NodeData, EdgeData, CustomStyleDef, FloorMapConfig, NodeType } from '@/types'
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
@@ -81,6 +85,11 @@ export default function App() {
   // True when the loaded canvas is the demo (a brand-new user). Reserved as the
   // entry signal for the upcoming Getting Started walkthrough.
   const [isNewUser, setIsNewUser] = useState(false)
+
+  // Getting Started tour: when true, the corresponding modal renders injected demo
+  // data instead of hitting the backend.
+  const [tourScanHistoryDemo, setTourScanHistoryDemo] = useState(false)
+  const [tourInventoryDemo, setTourInventoryDemo] = useState(false)
 
   const [themeModalOpen, setThemeModalOpen] = useState(false)
   const [styleEditorType, setStyleEditorType] = useState<NodeType | null>(null)
@@ -284,6 +293,55 @@ export default function App() {
     setLoadError(false)
     void loadDesignsAndCanvasRef.current()
   }, [])
+
+  // Bridge the Getting Started tour steps to the App's modal controls. The overlay
+  // calls closeAll() before each step, then the step's action to open the target.
+  const walkthroughActions = useMemo<WalkthroughActionApi>(() => ({
+    closeAll: () => {
+      setScanConfigOpen(false)
+      setScanHistoryOpen(false)
+      setTourScanHistoryDemo(false)
+      setPendingModalOpen(false)
+      setTourInventoryDemo(false)
+      setEditNodeId(null)
+      setThemeModalOpen(false)
+      setZigbeeImportOpen(false)
+      // Clear any tour-driven multi-selection so the DetailPanel closes.
+      useCanvasStore.setState((s) => ({
+        nodes: s.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
+        selectedNodeIds: [],
+        selectedNodeId: null,
+      }))
+    },
+    openScanConfig: () => setScanConfigOpen(true),
+    openScanHistoryDemo: () => {
+      setTourScanHistoryDemo(true)
+      setScanHistoryOpen(true)
+    },
+    openInventoryDemo: () => {
+      setTourInventoryDemo(true)
+      openPendingModal(undefined, 'pending')
+    },
+    editFirstNode: () => {
+      const first = useCanvasStore.getState().nodes.find((n) => n.data.type !== 'groupRect' && n.data.type !== 'text')
+      if (first) setEditNodeId(first.id)
+    },
+    selectTwoNodes: () => {
+      const ids = useCanvasStore.getState().nodes
+        .filter((n) => n.data.type !== 'groupRect' && n.data.type !== 'text')
+        .slice(0, 2)
+        .map((n) => n.id)
+      if (ids.length < 2) return
+      const set = new Set(ids)
+      useCanvasStore.setState((s) => ({
+        nodes: s.nodes.map((n) => ({ ...n, selected: set.has(n.id) })),
+        selectedNodeIds: ids,
+        selectedNodeId: null,
+      }))
+    },
+    openStyle: () => setThemeModalOpen(true),
+    openZigbeeImport: () => setZigbeeImportOpen(true),
+  }), [openPendingModal])
 
   // Load designs + canvas on auth (or immediately in standalone mode, which has
   // no auth gate).
@@ -867,6 +925,7 @@ export default function App() {
   if (!STANDALONE && !isAuthenticated) return <LoginPage />
 
   return (
+    <WalkthroughActionsProvider value={walkthroughActions}>
     <TooltipProvider>
       <ReactFlowProvider>
         {/* data-new-user marks a first-time (demo) canvas — the hook the upcoming
@@ -1036,6 +1095,7 @@ export default function App() {
           <ScanHistoryModal
             open={scanHistoryOpen}
             onClose={() => setScanHistoryOpen(false)}
+            demoRuns={tourScanHistoryDemo ? DEMO_SCAN_RUNS : undefined}
           />
         )}
 
@@ -1160,6 +1220,7 @@ export default function App() {
           onClose={() => setPendingModalOpen(false)}
           highlightId={pendingHighlightId}
           initialStatus={pendingModalStatus}
+          demoDevices={tourInventoryDemo ? DEMO_PENDING_DEVICES : undefined}
         />
 
         <ExportModal
@@ -1169,7 +1230,10 @@ export default function App() {
         />
 
         <Toaster theme="dark" position="bottom-right" />
+        <WalkthroughInvite />
+        <WalkthroughOverlay />
       </ReactFlowProvider>
     </TooltipProvider>
+    </WalkthroughActionsProvider>
   )
 }

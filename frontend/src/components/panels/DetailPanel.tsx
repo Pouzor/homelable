@@ -516,6 +516,7 @@ function MultiSelectPanel({ nodeIds, nodes, groupName, setGroupName, creatingGro
           </>
         ) : (
           <Button
+            data-tour="create-group"
             size="sm"
             className="w-full gap-2 bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/30 hover:bg-[#00d4ff]/20"
             variant="ghost"

@@ -25,6 +25,8 @@ interface PendingDevicesModalProps {
   onClose: () => void
   highlightId?: string
   initialStatus?: 'pending' | 'hidden'
+  /** Getting Started tour: render these canned devices and skip the backend fetch. */
+  demoDevices?: PendingDevice[]
 }
 
 const PORT_COLORS: Record<number, string> = {
@@ -113,7 +115,7 @@ function injectAutoEdges(edges: AutoEdge[] | undefined) {
   }))
 }
 
-export function PendingDevicesModal({ open, onClose, highlightId, initialStatus = 'pending' }: PendingDevicesModalProps) {
+export function PendingDevicesModal({ open, onClose, highlightId, initialStatus = 'pending', demoDevices }: PendingDevicesModalProps) {
   const [devices, setDevices] = useState<PendingDevice[]>([])
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<PendingDevice | null>(null)
@@ -136,6 +138,8 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   const [dupPrompt, setDupPrompt] = useState<{ device: PendingDevice; conflict: DuplicateNodeConflict } | null>(null)
 
   const load = useCallback(async () => {
+    // Tour/demo mode: show injected devices, never touch the backend.
+    if (demoDevices) { setDevices(statusFilter === 'pending' ? demoDevices : []); return }
     setLoading(true)
     try {
       const res = statusFilter === 'pending' ? await scanApi.pending() : await scanApi.hidden()
@@ -145,7 +149,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     } finally {
       setLoading(false)
     }
-  }, [statusFilter])
+  }, [statusFilter, demoDevices])
 
   useEffect(() => { if (open) load() }, [open, load])
   useEffect(() => { if (open && scanEventTs > 0) load() }, [scanEventTs, open, load])

@@ -11,6 +11,7 @@ import {
   type ZwaveConfigData,
 } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { useWalkthroughStore } from '@/stores/walkthroughStore'
 import { toast } from 'sonner'
 import {
   type AlignmentSettings,
@@ -400,6 +401,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <p className="text-[10px] text-muted-foreground leading-tight">
                 Saves silently after this many seconds with no changes. Manual Ctrl+S still works.
               </p>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-foreground">Getting started tour</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => { useWalkthroughStore.getState().start(); onClose() }}
+              >
+                Restart walkthrough
+              </Button>
             </div>
           </div>
           </div>

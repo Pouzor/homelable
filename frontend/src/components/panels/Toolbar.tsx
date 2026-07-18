@@ -62,7 +62,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onAutoLayout}>
         <LayoutDashboard size={14} /> Auto Layout
       </Button>
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onChangeStyle}>
+      <Button data-tour="style" size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onChangeStyle}>
         <Palette size={14} /> Style
       </Button>
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={() => fileInputRef.current?.click()} title="Import from YAML">

@@ -268,13 +268,13 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
 
       {/* Actions */}
       <div className="flex flex-col gap-0.5 p-2 border-t border-border">
-        <SidebarItem icon={Plus} label="Add Node" collapsed={collapsed} onClick={onAddNode} />
-        <SidebarItem icon={Square} label="Add Zone" collapsed={collapsed} onClick={onAddGroupRect} />
-        <SidebarItem icon={Type} label="Add Text" collapsed={collapsed} onClick={onAddText} />
-        {!STANDALONE && <SidebarItem icon={ScanLine} label="Scan Network" collapsed={collapsed} onClick={handleScan} />}
-        {!STANDALONE && <SidebarItem icon={Network} label="Zigbee Import" collapsed={collapsed} onClick={onZigbeeImport} />}
-        {!STANDALONE && <SidebarItem icon={RadioTower} label="Z-Wave Import" collapsed={collapsed} onClick={onZwaveImport} />}
-        {!STANDALONE && <SidebarItem icon={Server} label="Proxmox Import" collapsed={collapsed} onClick={onProxmoxImport} />}
+        <SidebarItem icon={Plus} label="Add Node" collapsed={collapsed} onClick={onAddNode} dataTour="add-node" />
+        <SidebarItem icon={Square} label="Add Zone" collapsed={collapsed} onClick={onAddGroupRect} dataTour="add-zone" />
+        <SidebarItem icon={Type} label="Add Text" collapsed={collapsed} onClick={onAddText} dataTour="add-text" />
+        {!STANDALONE && <SidebarItem icon={ScanLine} label="Scan Network" collapsed={collapsed} onClick={handleScan} dataTour="scan-network" />}
+        {!STANDALONE && <SidebarItem icon={Network} label="Zigbee Import" collapsed={collapsed} onClick={onZigbeeImport} dataTour="zigbee-import" />}
+        {!STANDALONE && <SidebarItem icon={RadioTower} label="Z-Wave Import" collapsed={collapsed} onClick={onZwaveImport} dataTour="zwave-import" />}
+        {!STANDALONE && <SidebarItem icon={Server} label="Proxmox Import" collapsed={collapsed} onClick={onProxmoxImport} dataTour="proxmox-import" />}
         <SidebarItem
           icon={Save}
           label="Save Canvas"
@@ -360,12 +360,15 @@ interface SidebarItemProps {
   badge?: boolean
   accent?: boolean
   onClick?: () => void
+  /** Stable anchor for the Getting Started walkthrough spotlight. */
+  dataTour?: string
 }
 
-function SidebarItem({ icon: Icon, label, collapsed, active, badge, accent, onClick }: SidebarItemProps) {
+function SidebarItem({ icon: Icon, label, collapsed, active, badge, accent, onClick, dataTour }: SidebarItemProps) {
   const btn = (
     <button
       onClick={onClick}
+      data-tour={dataTour}
       className={`relative flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-sm transition-colors cursor-pointer ${
         active
           ? 'bg-[#00d4ff]/10 text-[#00d4ff]'

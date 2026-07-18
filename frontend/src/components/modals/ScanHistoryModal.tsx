@@ -20,6 +20,8 @@ export interface ScanRun {
 interface ScanHistoryModalProps {
   open: boolean
   onClose: () => void
+  /** Getting Started tour: render these canned runs and skip the backend fetch. */
+  demoRuns?: ScanRun[]
 }
 
 type KindFilter = 'all' | 'ip' | 'zigbee' | 'zwave' | 'proxmox'
@@ -85,7 +87,7 @@ function runDuration(r: ScanRun, now: number): string {
   return formatDuration(end - start)
 }
 
-export function ScanHistoryModal({ open, onClose }: ScanHistoryModalProps) {
+export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalProps) {
   const [runs, setRuns] = useState<ScanRun[]>([])
   const [loading, setLoading] = useState(false)
   const [stopping, setStopping] = useState<string | null>(null)
@@ -95,6 +97,8 @@ export function ScanHistoryModal({ open, onClose }: ScanHistoryModalProps) {
   const prevRunsRef = useRef<ScanRun[]>([])
 
   const load = useCallback(async () => {
+    // Tour/demo mode: show injected runs, never touch the backend.
+    if (demoRuns) { setRuns(demoRuns); prevRunsRef.current = demoRuns; return }
     setLoading(true)
     try {
       const res = await scanApi.runs()
@@ -127,7 +131,7 @@ export function ScanHistoryModal({ open, onClose }: ScanHistoryModalProps) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [demoRuns])
 
   // Load when opened; reset prior-state tracker so we don't replay old transitions
   useEffect(() => {
@@ -155,6 +159,7 @@ export function ScanHistoryModal({ open, onClose }: ScanHistoryModalProps) {
   }, [open, runs])
 
   const handleStop = async (runId: string) => {
+    if (demoRuns) return // tour mode — no backend
     setStopping(runId)
     try {
       await scanApi.stop(runId)
