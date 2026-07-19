@@ -5,6 +5,22 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.1.1] - 2026-07-19
+
+### Features
+
+- Drag to reorder services in the node detail panel. Thanks @Isilla. (#302)
+- Getting Started walkthrough tour with first-run canvas detection. (#300)
+
+### Fixes
+
+- Round-trip Show Port Numbers on YAML export/import. (#301)
+- Render error toasts on a red surface. (#300)
+
+### Docs
+
+- Rework README header with logo, badges, and nav links. (#300)
+
 ## [3.1.0] - 2026-07-18
 
 ### Features
