@@ -208,4 +208,12 @@ describe('exportCanvasToYaml', () => {
     expect(entry).not.toHaveProperty('topHandles')
     expect(entry).not.toHaveProperty('leftHandles')
   })
+
+  it('exports showPortNumbers only when enabled (issue #272)', () => {
+    const on = (yaml.load(exportCanvasToYaml([makeNode({ label: 'On', type: 'server', show_port_numbers: true })], [])) as Record<string, unknown>[])[0]
+    expect(on.showPortNumbers).toBe(true)
+
+    const off = (yaml.load(exportCanvasToYaml([makeNode({ label: 'Off', type: 'server', show_port_numbers: false })], [])) as Record<string, unknown>[])[0]
+    expect(off).not.toHaveProperty('showPortNumbers')
+  })
 })

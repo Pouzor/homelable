@@ -79,6 +79,8 @@ export function parseYamlToCanvas(
       ...(yn.bottomHandles ? { bottom_handles: yn.bottomHandles } : {}),
       ...(yn.leftHandles ? { left_handles: yn.leftHandles } : {}),
       ...(yn.rightHandles ? { right_handles: yn.rightHandles } : {}),
+      // Restore the port-number toggle (issue #272).
+      ...(yn.showPortNumbers ? { show_port_numbers: true } : {}),
     }
 
     newNodes.push({

@@ -92,6 +92,9 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
     // Custom connection-point counts, so imported edges land on real slots.
     attachHandleCounts(entry, d)
 
+    // Preserve the port-number toggle so it survives a round-trip (issue #272).
+    if (d.show_port_numbers) entry.showPortNumbers = true
+
     // Parent relationship: if this node has a parentId in React Flow,
     // encode it as a 'parent' connection using any virtual edge between them.
     if (node.parentId) {

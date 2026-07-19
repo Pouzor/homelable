@@ -368,4 +368,30 @@ describe('parseYamlToCanvas', () => {
     expect(edges[0].targetHandle).toBe('top-t')
     expect(nodes.find((n) => n.data.label === 'Switch')!.data.bottom_handles).toBe(3)
   })
+
+  // Regression for issue #272.
+  it('restores the show-port-numbers toggle from YAML', () => {
+    const yaml = `
+- nodeType: server
+  label: "Server"
+  showPortNumbers: true
+`
+    const { nodes } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    expect(nodes.find((n) => n.data.label === 'Server')!.data.show_port_numbers).toBe(true)
+  })
+
+  it('round-trips show-port-numbers through export → import (issue #272)', () => {
+    const on: Node<NodeData> = {
+      id: 'on', type: 'server', position: { x: 0, y: 0 },
+      data: { label: 'On', type: 'server', status: 'online', services: [], show_port_numbers: true },
+    }
+    const off: Node<NodeData> = {
+      id: 'off', type: 'server', position: { x: 0, y: 0 },
+      data: { label: 'Off', type: 'server', status: 'online', services: [] },
+    }
+    const yamlStr = exportCanvasToYaml([on, off], [])
+    const { nodes } = parseYamlToCanvas(yamlStr, empty, emptyEdges)
+    expect(nodes.find((n) => n.data.label === 'On')!.data.show_port_numbers).toBe(true)
+    expect(nodes.find((n) => n.data.label === 'Off')!.data.show_port_numbers).toBeUndefined()
+  })
 })

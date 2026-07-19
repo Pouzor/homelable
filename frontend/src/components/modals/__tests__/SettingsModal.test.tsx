@@ -131,6 +131,9 @@ describe('SettingsModal', () => {
     vi.mocked(proxmoxApi.saveConfig).mockResolvedValue({ data: {} } as never)
     render(<SettingsModal open onClose={vi.fn()} />)
     await screen.findByDisplayValue('60')
+    // Wait for the async proxmox getConfig to hydrate the toggle before saving —
+    // otherwise Save can fire with the default sync_enabled=false under CI load.
+    await waitFor(() => expect(screen.getByLabelText('Toggle Proxmox auto-sync')).toBeChecked())
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => {
       expect(proxmoxApi.saveConfig).toHaveBeenCalledWith({ sync_enabled: true, sync_interval: 3600 })
@@ -174,6 +177,9 @@ describe('SettingsModal', () => {
     render(<SettingsModal open onClose={vi.fn()} />)
     await screen.findByDisplayValue('60')
     await screen.findByText('Zigbee auto-sync')
+    // Wait for the async zigbee getConfig to hydrate the toggle before saving —
+    // otherwise Save can fire with the default sync_enabled=false under CI load.
+    await waitFor(() => expect(screen.getByLabelText('Toggle Zigbee auto-sync')).toBeChecked())
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => {
       expect(zigbeeApi.saveConfig).toHaveBeenCalledWith({ sync_enabled: true, sync_interval: 1800 })
