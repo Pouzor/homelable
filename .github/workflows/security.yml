@@ -36,6 +36,4 @@ jobs:
         with:
           python-version: '3.11'
       - name: Pip audit
-        # CVE-2024-23342 (ecdsa): timing attack on ECDSA — not exploitable (app uses HS256/HMAC only).
-        # python-jose forces ecdsa as a dependency with no fixed version available.
-        run: pip install pip-audit && pip-audit -r backend/requirements.txt --ignore-vuln CVE-2024-23342
+        run: pip install pip-audit && pip-audit -r backend/requirements.txt
