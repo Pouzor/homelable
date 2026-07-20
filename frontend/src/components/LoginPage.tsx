@@ -1,17 +1,18 @@
 import { useState } from 'react'
 import { Network, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authApi } from '@/api/client'
 import { useAuthStore } from '@/stores/authStore'
+import { cn } from '@/lib/utils'
 
 export function LoginPage() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const login = useAuthStore((s) => s.login)
+  const { authMode, oidcLoginUrl, login } = useAuthStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -51,53 +52,82 @@ export function LoginPage() {
           </div>
         </div>
 
-        {/* Form */}
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-col gap-4 bg-[#161b22] border border-[#30363d] rounded-xl p-6"
-        >
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="username" className="text-xs text-muted-foreground">Username</Label>
-            <Input
-              id="username"
-              autoComplete="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="bg-[#21262d] border-[#30363d] focus-visible:ring-[#00d4ff]/50 text-sm"
-              placeholder="admin"
-              required
-            />
+        {authMode === 'local' && (
+          <>
+            <form
+              onSubmit={handleSubmit}
+              className="flex flex-col gap-4 bg-[#161b22] border border-[#30363d] rounded-xl p-6"
+            >
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="username" className="text-xs text-muted-foreground">Username</Label>
+                <Input
+                  id="username"
+                  autoComplete="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="bg-[#21262d] border-[#30363d] focus-visible:ring-[#00d4ff]/50 text-sm"
+                  placeholder="admin"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="password" className="text-xs text-muted-foreground">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="bg-[#21262d] border-[#30363d] focus-visible:ring-[#00d4ff]/50 text-sm"
+                  required
+                />
+              </div>
+
+              {error && (
+                <p className="text-xs text-[#f85149] text-center">{error}</p>
+              )}
+
+              <Button
+                type="submit"
+                disabled={loading}
+                className="mt-1 bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 font-medium"
+              >
+                {loading ? <Loader2 size={15} className="animate-spin" /> : 'Sign in'}
+              </Button>
+            </form>
+
+            <p className="text-center text-[10px] text-muted-foreground/40 mt-4">
+              Credentials configured in <span className="font-mono">.env</span>
+            </p>
+          </>
+        )}
+
+        {authMode === 'oidc' && (
+          <div className="flex flex-col gap-4 bg-[#161b22] border border-[#30363d] rounded-xl p-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              Continue through the configured OpenID Connect provider.
+            </p>
+            <a
+              href={oidcLoginUrl ?? '/api/v1/auth/oidc/login'}
+              className={cn(
+                buttonVariants(),
+                'bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 font-medium',
+              )}
+            >
+              Sign in with OpenID Connect
+            </a>
           </div>
+        )}
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password" className="text-xs text-muted-foreground">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="bg-[#21262d] border-[#30363d] focus-visible:ring-[#00d4ff]/50 text-sm"
-              required
-            />
+        {authMode === null && (
+          <div className="flex flex-col gap-4 bg-[#161b22] border border-[#30363d] rounded-xl p-6 text-center">
+            <p className="text-sm text-[#f85149]">Could not load authentication configuration.</p>
+            <Button type="button" variant="outline" onClick={() => window.location.reload()}>
+              Retry
+            </Button>
           </div>
-
-          {error && (
-            <p className="text-xs text-[#f85149] text-center">{error}</p>
-          )}
-
-          <Button
-            type="submit"
-            disabled={loading}
-            className="mt-1 bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 font-medium"
-          >
-            {loading ? <Loader2 size={15} className="animate-spin" /> : 'Sign in'}
-          </Button>
-        </form>
-
-        <p className="text-center text-[10px] text-muted-foreground/40 mt-4">
-          Credentials configured in <span className="font-mono">.env</span>
-        </p>
+        )}
       </div>
     </div>
   )

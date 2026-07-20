@@ -39,6 +39,7 @@ describe('useStatusPolling', () => {
 
     vi.mocked(useAuthStore).mockReturnValue({
       isAuthenticated: true,
+      authMethod: 'local',
       token: 'test-token',
     } as ReturnType<typeof useAuthStore>)
 
@@ -58,6 +59,7 @@ describe('useStatusPolling', () => {
   it('does not open WebSocket when not authenticated', () => {
     vi.mocked(useAuthStore).mockReturnValue({
       isAuthenticated: false,
+      authMethod: null,
       token: null,
     } as ReturnType<typeof useAuthStore>)
     renderHook(() => useStatusPolling())
@@ -67,10 +69,26 @@ describe('useStatusPolling', () => {
   it('does not open WebSocket when token is missing', () => {
     vi.mocked(useAuthStore).mockReturnValue({
       isAuthenticated: true,
+      authMethod: 'local',
       token: null,
     } as ReturnType<typeof useAuthStore>)
     renderHook(() => useStatusPolling())
     expect(MockWebSocket.instances).toHaveLength(0)
+  })
+
+  it('uses the HttpOnly cookie and sends no credential in OIDC mode', () => {
+    vi.mocked(useAuthStore).mockReturnValue({
+      isAuthenticated: true,
+      authMethod: 'oidc',
+      token: null,
+    } as ReturnType<typeof useAuthStore>)
+
+    renderHook(() => useStatusPolling())
+
+    expect(MockWebSocket.instances).toHaveLength(1)
+    const ws = MockWebSocket.instances[0]
+    ws.onopen?.()
+    expect(ws.send).not.toHaveBeenCalled()
   })
 
   it('connects to correct ws:// URL', () => {
