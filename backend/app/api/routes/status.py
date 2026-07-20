@@ -3,7 +3,13 @@ import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.core.security import decode_token
+from app.core.config import settings
+from app.core.security import (
+    decode_oidc_session_token,
+    decode_token,
+    oidc_session_cookie_name,
+    origin_is_allowed,
+)
 
 router = APIRouter()
 
@@ -21,19 +27,29 @@ def _drop(websocket: WebSocket) -> None:
 async def ws_status(websocket: WebSocket) -> None:
     # Accept first so we can send a close frame with a reason code
     await websocket.accept()
-    try:
-        # Expect the first message to be a JSON auth payload: {"token": "<jwt>"}
-        raw = await websocket.receive_text()
-        try:
-            payload = json.loads(raw)
-            token = payload.get("token", "")
-        except (json.JSONDecodeError, AttributeError):
-            token = ""
-        if not token or not decode_token(token):
+    if not origin_is_allowed(websocket.headers.get("origin")):
+        await websocket.close(code=1008)  # Policy Violation
+        return
+
+    if settings.auth_mode == "oidc":
+        cookie_token = websocket.cookies.get(oidc_session_cookie_name(), "")
+        if not cookie_token or decode_oidc_session_token(cookie_token) is None:
             await websocket.close(code=1008)  # Policy Violation
             return
-    except WebSocketDisconnect:
-        return
+    else:
+        # Local mode keeps the existing first-message bearer protocol.
+        try:
+            raw = await websocket.receive_text()
+            try:
+                payload = json.loads(raw)
+                token = payload.get("token", "")
+            except (json.JSONDecodeError, AttributeError):
+                token = ""
+            if not token or not decode_token(token):
+                await websocket.close(code=1008)  # Policy Violation
+                return
+        except WebSocketDisconnect:
+            return
 
     _connections.append(websocket)
     try:
