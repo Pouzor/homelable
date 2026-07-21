@@ -31,7 +31,10 @@ jobs:
         with:
           node-version: '20'
       - name: NPM Audit
-        run: cd frontend && npm audit --audit-level=high
+        # --omit=dev: only ship-time deps gate the build. Dev-only tooling
+        # (shadcn CLI and its transitive tree: hono, fast-uri, …) is never
+        # bundled or served, so its advisories must not fail release CI.
+        run: cd frontend && npm audit --omit=dev --audit-level=high
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
