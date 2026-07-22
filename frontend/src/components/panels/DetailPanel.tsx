@@ -859,7 +859,7 @@ function PropertyBadge({ prop, draggable, isDragging, isDragOver, onDragStart, o
         <span className="font-medium truncate text-foreground" title={prop.key}>{prop.key}</span>
         <span className="text-muted-foreground truncate" title={prop.value}>· {prop.value}</span>
       </div>
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1.5 shrink-0">
         <button
           onClick={onToggleVisible}
           title={prop.visible ? 'Hide on node' : 'Show on node'}
@@ -982,7 +982,7 @@ function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, on
 
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5 cursor-pointer"
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] cursor-pointer"
           title="Edit service"
         >
           <Pencil size={10} />
@@ -990,7 +990,7 @@ function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, on
 
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }}
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5 cursor-pointer"
+          className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] cursor-pointer"
           title="Remove service"
         >
           <X size={10} />
