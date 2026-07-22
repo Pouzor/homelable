@@ -35,10 +35,12 @@ import { SearchModal } from '@/components/modals/SearchModal'
 import { PendingDevicesModal } from '@/components/modals/PendingDevicesModal'
 import { ScanHistoryModal } from '@/components/modals/ScanHistoryModal'
 import { ShortcutsModal } from '@/components/modals/ShortcutsModal'
+import { AutoIconModal } from '@/components/modals/AutoIconModal'
 import { ConfirmAddToGroupModal } from '@/components/modals/ConfirmAddToGroupModal'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { readAutosaveSettings, subscribeAutosaveSettings, type AutosaveSettings } from '@/utils/autosaveSettings'
 import { useAutosave } from '@/hooks/useAutosave'
+import { initAutoRefreshIcons } from '@/utils/iconManifestCache'
 import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
@@ -90,6 +92,10 @@ export default function App() {
   // data instead of hitting the backend.
   const [tourScanHistoryDemo, setTourScanHistoryDemo] = useState(false)
   const [tourInventoryDemo, setTourInventoryDemo] = useState(false)
+  useEffect(() => {
+    initAutoRefreshIcons()
+  }, [])
+
 
   const [themeModalOpen, setThemeModalOpen] = useState(false)
   const [styleEditorType, setStyleEditorType] = useState<NodeType | null>(null)
@@ -105,6 +111,7 @@ export default function App() {
     if (deviceId) setTimeout(() => setPendingHighlightId(deviceId), 0)
   }, [])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [autoIconsOpen, setAutoIconsOpen] = useState(false)
   const [addNodeOpen, setAddNodeOpen] = useState(false)
   const [addGroupRectOpen, setAddGroupRectOpen] = useState(false)
   const [addTextOpen, setAddTextOpen] = useState(false)
@@ -972,6 +979,7 @@ export default function App() {
               onExportYaml={handleExportYaml}
               onImportYaml={handleImportYaml}
               onViewOnly={handleViewOnly}
+              onAutoIcons={() => setAutoIconsOpen(true)}
             />
             <div className="flex flex-1 min-h-0">
               <div ref={canvasRef} className="flex-1 min-w-0 h-full">
@@ -1187,6 +1195,18 @@ export default function App() {
           onOpenPending={(deviceId) => openPendingModal(deviceId)}
         />
         <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+        <AutoIconModal
+          open={autoIconsOpen}
+          nodes={nodes}
+          onClose={() => setAutoIconsOpen(false)}
+          onApply={(assignments) => {
+            snapshotHistory()
+            for (const { nodeId, iconKey } of assignments) {
+              updateNode(nodeId, { custom_icon: iconKey })
+            }
+          }}
+        />
 
         <ConfirmAddToGroupModal
           open={!!pendingGroupAdd}

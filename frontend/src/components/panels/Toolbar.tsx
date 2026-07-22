@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Save, LayoutDashboard, Download, Palette, Undo2, Redo2, HelpCircle, Table2, FileDown, Upload, Eye } from 'lucide-react'
+import { Save, LayoutDashboard, Download, Palette, Undo2, Redo2, HelpCircle, Table2, FileDown, Upload, Eye, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/ui/Logo'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -18,9 +18,10 @@ interface ToolbarProps {
   onExportYaml: () => void
   onImportYaml: (content: string) => void
   onViewOnly: () => void
+  onAutoIcons: () => void
 }
 
-export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo, onRedo, onShortcuts, onExportMd, onExportYaml, onImportYaml, onViewOnly }: ToolbarProps) {
+export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo, onRedo, onShortcuts, onExportMd, onExportYaml, onImportYaml, onViewOnly, onAutoIcons }: ToolbarProps) {
   const { hasUnsavedChanges, past, future } = useCanvasStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -61,6 +62,9 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       <div className="w-px h-4 bg-border mx-1" />
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onAutoLayout}>
         <LayoutDashboard size={14} /> Auto Layout
+      </Button>
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onAutoIcons} title="Auto-assign brand icons from node names">
+        <Wand2 size={14} /> Auto Icons
       </Button>
       <Button data-tour="style" size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onChangeStyle}>
         <Palette size={14} /> Style

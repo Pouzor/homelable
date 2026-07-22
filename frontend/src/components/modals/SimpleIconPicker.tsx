@@ -1,29 +1,38 @@
 import { useMemo, useState } from 'react'
 import { Input } from '@/components/ui/input'
-import { brandIconUrl, BRAND_ICON_PREFIX } from '@/utils/nodeIcons'
-import dashboardIcons from '@/data/dashboardIcons.json'
-import { getCachedSlugs } from '@/utils/iconManifestCache'
+import { SI_ICON_PREFIX, simpleIconUrl } from '@/utils/nodeIcons'
+import simpleIconsData from '@/data/simpleIcons.json'
 
-const SLUGS: string[] = getCachedSlugs('dashboard', dashboardIcons as string[])
+interface SimpleIconEntry { slug: string; title: string; hex: string }
+const ICONS: SimpleIconEntry[] = simpleIconsData as SimpleIconEntry[]
 const PAGE = 120
 
-interface BrandIconPickerProps {
+interface SimpleIconPickerProps {
   value?: string
+  /** If set, append :#hex color to the emitted key */
+  color?: string
   onSelect: (key: string) => void
 }
 
-export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
+export function SimpleIconPicker({ value, color, onSelect }: SimpleIconPickerProps) {
   const [query, setQuery] = useState('')
   const [limit, setLimit] = useState(PAGE)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return SLUGS
-    return SLUGS.filter((s) => s.includes(q))
+    if (!q) return ICONS
+    return ICONS.filter((ic) => ic.slug.includes(q) || ic.title.toLowerCase().includes(q))
   }, [query])
 
   const visible = filtered.slice(0, limit)
-  const selectedSlug = value?.startsWith(BRAND_ICON_PREFIX) ? value.slice(BRAND_ICON_PREFIX.length) : null
+
+  const selectedSlug = value?.startsWith(SI_ICON_PREFIX)
+    ? value.slice(SI_ICON_PREFIX.length).split(':#')[0]
+    : null
+
+  function makeKey(slug: string) {
+    return color ? `${SI_ICON_PREFIX}${slug}:${color}` : `${SI_ICON_PREFIX}${slug}`
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -31,24 +40,24 @@ export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
         type="text"
         value={query}
         onChange={(e) => { setQuery(e.target.value); setLimit(PAGE) }}
-        placeholder={`Search ${SLUGS.length} brand icons...`}
+        placeholder={`Search ${ICONS.length} Simple Icons…`}
         className="bg-[#0d1117] border-[#30363d] text-xs h-7"
-        aria-label="Brand icon search"
+        aria-label="Simple Icons search"
       />
       <div className="text-[10px] text-muted-foreground/60">
-        {filtered.length} match{filtered.length === 1 ? '' : 'es'} · icons served via jsDelivr CDN
+        {filtered.length} match{filtered.length === 1 ? '' : 'es'} · brand SVGs from simpleicons.org
       </div>
       <div className="max-h-52 overflow-y-auto pr-1">
         <div className="grid grid-cols-7 gap-1">
-          {visible.map((slug) => {
-            const selected = slug === selectedSlug
+          {visible.map((ic) => {
+            const selected = ic.slug === selectedSlug
             return (
               <button
-                key={slug}
+                key={ic.slug}
                 type="button"
-                onClick={() => onSelect(`${BRAND_ICON_PREFIX}${slug}`)}
-                title={slug}
-                aria-label={slug}
+                onClick={() => onSelect(makeKey(ic.slug))}
+                title={`${ic.title} (#${ic.hex})`}
+                aria-label={ic.title}
                 aria-pressed={selected}
                 className={`flex items-center justify-center aspect-square rounded-md border transition-colors cursor-pointer ${
                   selected
@@ -57,12 +66,13 @@ export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
                 }`}
               >
                 <img
-                  src={brandIconUrl(slug)}
-                  alt={slug}
+                  src={simpleIconUrl(ic.slug)}
+                  alt={ic.title}
                   loading="lazy"
                   width={20}
                   height={20}
-                  style={{ width: 20, height: 20, objectFit: 'contain' }}
+                  // Force white so all brand SVGs are visible on the dark picker bg
+                  style={{ width: 20, height: 20, objectFit: 'contain', filter: 'brightness(0) invert(1)' }}
                 />
               </button>
             )

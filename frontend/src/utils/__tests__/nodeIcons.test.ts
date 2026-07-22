@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { Globe } from 'lucide-react'
-import { ICON_REGISTRY, ICON_CATEGORIES, ICON_MAP, resolveNodeIcon } from '../nodeIcons'
+import {
+  ICON_REGISTRY, ICON_CATEGORIES, ICON_MAP, resolveNodeIcon,
+  isMdiIconKey, parseMdiKey, mdiIconUrl,
+  isSimpleIconKey, parseSimpleIconKey, simpleIconUrl,
+  isSelfhstIconKey, parseSelfhstKey, selfhstIconUrl,
+  isRemoteUrl, isLocalIcon,
+  resolveCustomIcon,
+} from '../nodeIcons'
 
 describe('ICON_REGISTRY', () => {
   it('has entries', () => {
@@ -99,5 +106,177 @@ describe('resolveNodeIcon', () => {
     const result = resolveNodeIcon(Globe, 'play')
     expect(result).toBe(playEntry.icon)
     expect(result).not.toBe(Globe)
+  })
+
+  it('returns typeIcon for mdi: prefixed keys (not lucide)', () => {
+    expect(resolveNodeIcon(Globe, 'mdi:home-assistant')).toBe(Globe)
+  })
+
+  it('returns typeIcon for si: prefixed keys (not lucide)', () => {
+    expect(resolveNodeIcon(Globe, 'si:github')).toBe(Globe)
+  })
+
+  it('returns typeIcon for sh: prefixed keys (not lucide)', () => {
+    expect(resolveNodeIcon(Globe, 'sh:plex')).toBe(Globe)
+  })
+
+  it('returns typeIcon for https:// remote URLs', () => {
+    expect(resolveNodeIcon(Globe, 'https://example.com/icon.png')).toBe(Globe)
+  })
+})
+
+describe('MDI icon helpers', () => {
+  it('isMdiIconKey detects mdi: prefix', () => {
+    expect(isMdiIconKey('mdi:home-assistant')).toBe(true)
+    expect(isMdiIconKey('mdi:server')).toBe(true)
+    expect(isMdiIconKey('brand:plex')).toBe(false)
+    expect(isMdiIconKey(undefined)).toBe(false)
+    expect(isMdiIconKey(null)).toBe(false)
+    expect(isMdiIconKey('')).toBe(false)
+  })
+
+  it('parseMdiKey extracts name without color', () => {
+    expect(parseMdiKey('mdi:home-assistant')).toEqual({ name: 'home-assistant' })
+    expect(parseMdiKey('mdi:server')).toEqual({ name: 'server' })
+  })
+
+  it('parseMdiKey extracts name and color', () => {
+    expect(parseMdiKey('mdi:home-assistant:#ff0000')).toEqual({ name: 'home-assistant', color: '#ff0000' })
+    expect(parseMdiKey('mdi:server:#abc')).toEqual({ name: 'server', color: '#abc' })
+    expect(parseMdiKey('mdi:server:#aabbcc')).toEqual({ name: 'server', color: '#aabbcc' })
+  })
+
+  it('parseMdiKey ignores invalid color suffix', () => {
+    expect(parseMdiKey('mdi:server:#xyz')).toEqual({ name: 'server:#xyz' })
+  })
+
+  it('mdiIconUrl builds the jsDelivr CDN URL', () => {
+    expect(mdiIconUrl('home-assistant')).toContain('home-assistant.svg')
+    expect(mdiIconUrl('home-assistant')).toContain('mdi')
+  })
+})
+
+describe('Simple Icons helpers', () => {
+  it('isSimpleIconKey detects si: prefix', () => {
+    expect(isSimpleIconKey('si:github')).toBe(true)
+    expect(isSimpleIconKey('brand:github')).toBe(false)
+    expect(isSimpleIconKey(undefined)).toBe(false)
+  })
+
+  it('parseSimpleIconKey extracts name without color', () => {
+    expect(parseSimpleIconKey('si:github')).toEqual({ name: 'github' })
+  })
+
+  it('parseSimpleIconKey extracts name and color', () => {
+    expect(parseSimpleIconKey('si:github:#1da462')).toEqual({ name: 'github', color: '#1da462' })
+  })
+
+  it('simpleIconUrl builds the jsDelivr CDN URL', () => {
+    expect(simpleIconUrl('github')).toContain('github.svg')
+    expect(simpleIconUrl('github')).toContain('simple-icons')
+  })
+})
+
+describe('selfh.st icon helpers', () => {
+  it('isSelfhstIconKey detects sh: prefix', () => {
+    expect(isSelfhstIconKey('sh:plex')).toBe(true)
+    expect(isSelfhstIconKey('sh:plex.svg')).toBe(true)
+    expect(isSelfhstIconKey('brand:plex')).toBe(false)
+    expect(isSelfhstIconKey(undefined)).toBe(false)
+  })
+
+  it('parseSelfhstKey defaults to png extension', () => {
+    expect(parseSelfhstKey('sh:plex')).toEqual({ name: 'plex', ext: 'png' })
+  })
+
+  it('parseSelfhstKey detects svg and webp extensions', () => {
+    expect(parseSelfhstKey('sh:plex.svg')).toEqual({ name: 'plex', ext: 'svg' })
+    expect(parseSelfhstKey('sh:plex.webp')).toEqual({ name: 'plex', ext: 'webp' })
+    expect(parseSelfhstKey('sh:plex.png')).toEqual({ name: 'plex', ext: 'png' })
+  })
+
+  it('selfhstIconUrl builds CDN URL with correct folder and extension', () => {
+    expect(selfhstIconUrl('plex', 'png')).toContain('/png/plex.png')
+    expect(selfhstIconUrl('plex', 'svg')).toContain('/svg/plex.svg')
+    expect(selfhstIconUrl('plex')).toContain('/png/plex.png')
+  })
+})
+
+describe('Remote and local icon helpers', () => {
+  it('isRemoteUrl detects https and http', () => {
+    expect(isRemoteUrl('https://example.com/icon.png')).toBe(true)
+    expect(isRemoteUrl('http://example.com/icon.png')).toBe(true)
+    expect(isRemoteUrl('/icons/foo.png')).toBe(false)
+    expect(isRemoteUrl(undefined)).toBe(false)
+  })
+
+  it('isLocalIcon detects /icons/ prefix', () => {
+    expect(isLocalIcon('/icons/myapp.png')).toBe(true)
+    expect(isLocalIcon('/icons/foo.svg')).toBe(true)
+    expect(isLocalIcon('https://foo.com/x.png')).toBe(false)
+    expect(isLocalIcon(undefined)).toBe(false)
+  })
+})
+
+describe('resolveCustomIcon extended types', () => {
+  it('resolves mdi: key', () => {
+    const r = resolveCustomIcon('mdi:home-assistant')
+    expect(r?.kind).toBe('mdi')
+    if (r?.kind === 'mdi') {
+      expect(r.name).toBe('home-assistant')
+      expect(r.color).toBeUndefined()
+      expect(r.url).toContain('home-assistant.svg')
+    }
+  })
+
+  it('resolves mdi: key with color', () => {
+    const r = resolveCustomIcon('mdi:server:#ff0000')
+    expect(r?.kind).toBe('mdi')
+    if (r?.kind === 'mdi') {
+      expect(r.name).toBe('server')
+      expect(r.color).toBe('#ff0000')
+    }
+  })
+
+  it('resolves si: key', () => {
+    const r = resolveCustomIcon('si:github')
+    expect(r?.kind).toBe('si')
+    if (r?.kind === 'si') {
+      expect(r.name).toBe('github')
+      expect(r.url).toContain('github.svg')
+    }
+  })
+
+  it('resolves sh: key', () => {
+    const r = resolveCustomIcon('sh:plex')
+    expect(r?.kind).toBe('sh')
+    if (r?.kind === 'sh') {
+      expect(r.name).toBe('plex')
+      expect(r.url).toContain('/png/plex.png')
+    }
+  })
+
+  it('resolves sh:.svg key', () => {
+    const r = resolveCustomIcon('sh:plex.svg')
+    expect(r?.kind).toBe('sh')
+    if (r?.kind === 'sh') {
+      expect(r.url).toContain('/svg/plex.svg')
+    }
+  })
+
+  it('resolves remote URL', () => {
+    const r = resolveCustomIcon('https://example.com/icon.png')
+    expect(r?.kind).toBe('url')
+    if (r?.kind === 'url') {
+      expect(r.url).toBe('https://example.com/icon.png')
+    }
+  })
+
+  it('resolves local icon path', () => {
+    const r = resolveCustomIcon('/icons/myapp.png')
+    expect(r?.kind).toBe('url')
+    if (r?.kind === 'url') {
+      expect(r.url).toBe('/icons/myapp.png')
+    }
   })
 })

@@ -1,18 +1,20 @@
 import { useMemo, useState } from 'react'
 import { Input } from '@/components/ui/input'
-import { brandIconUrl, BRAND_ICON_PREFIX } from '@/utils/nodeIcons'
-import dashboardIcons from '@/data/dashboardIcons.json'
+import { SH_ICON_PREFIX, selfhstIconUrl } from '@/utils/nodeIcons'
+import selfhstIcons from '@/data/selfhstIcons.json'
 import { getCachedSlugs } from '@/utils/iconManifestCache'
 
-const SLUGS: string[] = getCachedSlugs('dashboard', dashboardIcons as string[])
+const SLUGS: string[] = getCachedSlugs('selfhst', selfhstIcons as string[])
 const PAGE = 120
 
-interface BrandIconPickerProps {
+interface SelfhstIconPickerProps {
   value?: string
+  /** ext suffix to append to key (default: none → PNG) */
+  ext?: 'svg' | 'png' | 'webp'
   onSelect: (key: string) => void
 }
 
-export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
+export function SelfhstIconPicker({ value, ext, onSelect }: SelfhstIconPickerProps) {
   const [query, setQuery] = useState('')
   const [limit, setLimit] = useState(PAGE)
 
@@ -23,7 +25,14 @@ export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
   }, [query])
 
   const visible = filtered.slice(0, limit)
-  const selectedSlug = value?.startsWith(BRAND_ICON_PREFIX) ? value.slice(BRAND_ICON_PREFIX.length) : null
+
+  const selectedSlug = value?.startsWith(SH_ICON_PREFIX)
+    ? value.slice(SH_ICON_PREFIX.length).replace(/\.(svg|png|webp)$/, '')
+    : null
+
+  function makeKey(slug: string) {
+    return ext ? `${SH_ICON_PREFIX}${slug}.${ext}` : `${SH_ICON_PREFIX}${slug}`
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -31,12 +40,12 @@ export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
         type="text"
         value={query}
         onChange={(e) => { setQuery(e.target.value); setLimit(PAGE) }}
-        placeholder={`Search ${SLUGS.length} brand icons...`}
+        placeholder={`Search ${SLUGS.length} selfh.st icons…`}
         className="bg-[#0d1117] border-[#30363d] text-xs h-7"
-        aria-label="Brand icon search"
+        aria-label="selfh.st icon search"
       />
       <div className="text-[10px] text-muted-foreground/60">
-        {filtered.length} match{filtered.length === 1 ? '' : 'es'} · icons served via jsDelivr CDN
+        {filtered.length} match{filtered.length === 1 ? '' : 'es'} · PNG default, SVG available
       </div>
       <div className="max-h-52 overflow-y-auto pr-1">
         <div className="grid grid-cols-7 gap-1">
@@ -46,7 +55,7 @@ export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
               <button
                 key={slug}
                 type="button"
-                onClick={() => onSelect(`${BRAND_ICON_PREFIX}${slug}`)}
+                onClick={() => onSelect(makeKey(slug))}
                 title={slug}
                 aria-label={slug}
                 aria-pressed={selected}
@@ -57,7 +66,7 @@ export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
                 }`}
               >
                 <img
-                  src={brandIconUrl(slug)}
+                  src={selfhstIconUrl(slug, ext ?? 'png')}
                   alt={slug}
                   loading="lazy"
                   width={20}

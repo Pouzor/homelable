@@ -201,13 +201,16 @@ export const NODE_TYPE_DEFAULT_ICONS: Record<NodeType, LucideIcon> = {
   load:              Circle,
 }
 
+/** Known non-Lucide key prefixes — these must go through `resolveCustomIcon`. */
+const NON_LUCIDE_PREFIXES = ['brand:', 'mdi:', 'si:', 'sh:', 'https://', 'http://', '/icons/']
+
 /** Resolve the display icon for a node — custom_icon takes priority over type default.
- *  Legacy: returns a LucideIcon component. Brand icons must use `resolveCustomIcon`. */
+ *  Legacy: returns a LucideIcon component. Non-Lucide icons must use `resolveCustomIcon`. */
 export function resolveNodeIcon(
   typeIcon: LucideIcon,
   customIconKey?: string,
 ): LucideIcon {
-  if (customIconKey && !customIconKey.startsWith('brand:') && ICON_MAP[customIconKey]) {
+  if (customIconKey && !NON_LUCIDE_PREFIXES.some((p) => customIconKey.startsWith(p)) && ICON_MAP[customIconKey]) {
     return ICON_MAP[customIconKey]
   }
   return typeIcon
@@ -227,18 +230,115 @@ export function brandIconUrl(slug: string): string {
   return `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/${slug}.svg`
 }
 
+// --- Material Design Icons (mdi:icon-name or mdi:icon-name:#hexcolor) ---
+export const MDI_ICON_PREFIX = 'mdi:'
+const MDI_CDN_BASE = 'https://cdn.jsdelivr.net/npm/@mdi/svg@latest/svg'
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{3,6}$/
+
+export function isMdiIconKey(key: string | undefined | null): boolean {
+  return !!key && key.startsWith(MDI_ICON_PREFIX)
+}
+
+/** Parse `mdi:icon-name` or `mdi:icon-name:#rrggbb` → { name, color? } */
+export function parseMdiKey(key: string): { name: string; color?: string } {
+  const rest = key.slice(MDI_ICON_PREFIX.length)
+  const sepIdx = rest.lastIndexOf(':#')
+  if (sepIdx >= 0) {
+    const maybeColor = rest.slice(sepIdx + 1)
+    if (HEX_COLOR_RE.test(maybeColor)) return { name: rest.slice(0, sepIdx), color: maybeColor }
+  }
+  return { name: rest }
+}
+
+export function mdiIconUrl(name: string): string {
+  return `${MDI_CDN_BASE}/${name}.svg`
+}
+
+// --- Simple Icons (si:icon-name or si:icon-name:#hexcolor) ---
+export const SI_ICON_PREFIX = 'si:'
+const SI_CDN_BASE = 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons'
+
+export function isSimpleIconKey(key: string | undefined | null): boolean {
+  return !!key && key.startsWith(SI_ICON_PREFIX)
+}
+
+/** Parse `si:github` or `si:github:#1da462` → { name, color? } */
+export function parseSimpleIconKey(key: string): { name: string; color?: string } {
+  const rest = key.slice(SI_ICON_PREFIX.length)
+  const sepIdx = rest.lastIndexOf(':#')
+  if (sepIdx >= 0) {
+    const maybeColor = rest.slice(sepIdx + 1)
+    if (HEX_COLOR_RE.test(maybeColor)) return { name: rest.slice(0, sepIdx), color: maybeColor }
+  }
+  return { name: rest }
+}
+
+export function simpleIconUrl(name: string): string {
+  return `${SI_CDN_BASE}/${name}.svg`
+}
+
+// --- selfh.st icons (sh:icon-name, sh:icon-name.svg, sh:icon-name.webp) ---
+export const SH_ICON_PREFIX = 'sh:'
+const SH_CDN_BASE = 'https://cdn.jsdelivr.net/gh/selfhst/icons'
+
+export function isSelfhstIconKey(key: string | undefined | null): boolean {
+  return !!key && key.startsWith(SH_ICON_PREFIX)
+}
+
+/** Parse `sh:plex` → { name:'plex', ext:'png' } or `sh:plex.svg` → { name:'plex', ext:'svg' } */
+export function parseSelfhstKey(key: string): { name: string; ext: 'svg' | 'png' | 'webp' } {
+  const rest = key.slice(SH_ICON_PREFIX.length)
+  if (rest.endsWith('.svg'))  return { name: rest.slice(0, -4), ext: 'svg' }
+  if (rest.endsWith('.webp')) return { name: rest.slice(0, -5), ext: 'webp' }
+  if (rest.endsWith('.png'))  return { name: rest.slice(0, -4), ext: 'png' }
+  return { name: rest, ext: 'png' }
+}
+
+export function selfhstIconUrl(name: string, ext: 'svg' | 'png' | 'webp' = 'png'): string {
+  return `${SH_CDN_BASE}/${ext}/${name}.${ext}`
+}
+
+// --- Remote URL (https:// or http://) ---
+export function isRemoteUrl(key: string | undefined | null): boolean {
+  return !!key && (key.startsWith('https://') || key.startsWith('http://'))
+}
+
+// --- Local icon (/icons/filename.ext served from the container) ---
+export function isLocalIcon(key: string | undefined | null): boolean {
+  return !!key && key.startsWith('/icons/')
+}
+
 export type ResolvedIcon =
   | { kind: 'lucide'; icon: LucideIcon }
   | { kind: 'brand'; slug: string; url: string }
+  | { kind: 'mdi'; name: string; url: string; color?: string }
+  | { kind: 'si'; name: string; url: string; color?: string }
+  | { kind: 'sh'; name: string; url: string }
+  | { kind: 'url'; url: string }
 
-/** Resolve a node's icon to either a lucide component or a brand CDN URL.
- *  Used by renderers that support brand icons. Backwards-compatible with legacy
- *  string keys (no prefix → lucide lookup). Returns null when key unknown. */
+/** Resolve a node's icon to either a lucide component or an image/SVG descriptor.
+ *  Backwards-compatible with legacy string keys (no prefix → lucide lookup).
+ *  Returns null when key is unknown. */
 export function resolveCustomIcon(customIconKey?: string): ResolvedIcon | null {
   if (!customIconKey) return null
   if (isBrandIconKey(customIconKey)) {
     const slug = brandIconSlug(customIconKey)
     return { kind: 'brand', slug, url: brandIconUrl(slug) }
+  }
+  if (isMdiIconKey(customIconKey)) {
+    const { name, color } = parseMdiKey(customIconKey)
+    return { kind: 'mdi', name, url: mdiIconUrl(name), color }
+  }
+  if (isSimpleIconKey(customIconKey)) {
+    const { name, color } = parseSimpleIconKey(customIconKey)
+    return { kind: 'si', name, url: simpleIconUrl(name), color }
+  }
+  if (isSelfhstIconKey(customIconKey)) {
+    const { name, ext } = parseSelfhstKey(customIconKey)
+    return { kind: 'sh', name, url: selfhstIconUrl(name, ext) }
+  }
+  if (isRemoteUrl(customIconKey) || isLocalIcon(customIconKey)) {
+    return { kind: 'url', url: customIconKey }
   }
   const icon = ICON_MAP[customIconKey] as LucideIcon | undefined
   return icon ? { kind: 'lucide', icon } : null
