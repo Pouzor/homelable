@@ -25,10 +25,10 @@ const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 export function useStatusPolling() {
   const wsRef = useRef<WebSocket | null>(null)
   const { setNodeStatus, notifyScanDeviceFound, setServiceStatuses } = useCanvasStore()
-  const { isAuthenticated, token } = useAuthStore()
+  const { isAuthenticated, authMethod, token } = useAuthStore()
 
   useEffect(() => {
-    if (STANDALONE || !isAuthenticated || !token) return
+    if (STANDALONE || !isAuthenticated || (authMethod !== 'oidc' && !token)) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = window.location.host  // includes port when non-standard
@@ -37,9 +37,13 @@ export function useStatusPolling() {
     const ws = new WebSocket(url)
     wsRef.current = ws
 
-    // Send token as first message (not in URL to avoid log/history exposure)
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ token }))
+    // Local mode sends the bearer token as the first message (not in the URL
+    // where proxies may log it). OIDC mode is authenticated during the upgrade
+    // with the backend's HttpOnly session cookie, so React sends no credential.
+    if (token) {
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ token }))
+      }
     }
 
     ws.onmessage = (event) => {
@@ -71,5 +75,5 @@ export function useStatusPolling() {
       ws.close()
       wsRef.current = null
     }
-  }, [isAuthenticated, token, setNodeStatus, notifyScanDeviceFound, setServiceStatuses])
+  }, [isAuthenticated, authMethod, token, setNodeStatus, notifyScanDeviceFound, setServiceStatuses])
 }

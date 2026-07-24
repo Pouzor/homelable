@@ -1,8 +1,9 @@
 import json
 import logging
 from pathlib import Path
+from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -35,11 +36,22 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 1440  # 24h
 
     # Auth — set AUTH_USERNAME and AUTH_PASSWORD_HASH in .env
+    auth_mode: Literal["local", "oidc"] = "local"
     auth_username: str = "admin"
     auth_password_hash: str = ""
 
+    # OpenID Connect — required only when AUTH_MODE=oidc.
+    oidc_discovery_url: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_redirect_uri: str = ""
+    oidc_scopes: str = "openid profile email"
+    oidc_cookie_secure: bool = True
+    oidc_session_expire_minutes: int = Field(default=480, ge=5, le=1440)
+    oidc_transaction_expire_seconds: int = Field(default=600, ge=60, le=3600)
+
     @model_validator(mode="after")
-    def check_password_hash(self) -> "Settings":
+    def validate_auth_settings(self) -> "Settings":
         h = self.auth_password_hash
         if h and not h.startswith("$2"):
             logger.error(
@@ -47,6 +59,35 @@ class Settings(BaseSettings):
                 "bcrypt hashes contain '$' signs — wrap the value in single quotes "
                 "in your .env file: AUTH_PASSWORD_HASH='$2b$12$...'"
             )
+        if self.auth_mode == "oidc":
+            required = {
+                "OIDC_DISCOVERY_URL": self.oidc_discovery_url,
+                "OIDC_CLIENT_ID": self.oidc_client_id,
+                "OIDC_CLIENT_SECRET": self.oidc_client_secret,
+                "OIDC_REDIRECT_URI": self.oidc_redirect_uri,
+            }
+            missing = [name for name, value in required.items() if not value]
+            if missing:
+                raise ValueError(f"AUTH_MODE=oidc requires: {', '.join(missing)}")
+            if len(self.secret_key.encode("utf-8")) < 32:
+                raise ValueError("SECRET_KEY must be at least 32 bytes when AUTH_MODE=oidc")
+            if "openid" not in self.oidc_scopes.split():
+                raise ValueError("OIDC_SCOPES must contain 'openid'")
+            for name, value in {
+                "OIDC_DISCOVERY_URL": self.oidc_discovery_url,
+                "OIDC_REDIRECT_URI": self.oidc_redirect_uri,
+            }.items():
+                if not value.startswith(("https://", "http://")):
+                    raise ValueError(f"{name} must be an HTTP(S) URL")
+            if self.oidc_cookie_secure:
+                for name, value in {
+                    "OIDC_DISCOVERY_URL": self.oidc_discovery_url,
+                    "OIDC_REDIRECT_URI": self.oidc_redirect_uri,
+                }.items():
+                    if not value.startswith("https://"):
+                        raise ValueError(f"{name} must use HTTPS when OIDC_COOKIE_SECURE=true")
+            if "*" in self.cors_origins:
+                raise ValueError("CORS_ORIGINS cannot contain '*' when AUTH_MODE=oidc")
         return self
 
     # Scanner

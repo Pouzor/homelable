@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { Sidebar } from '../Sidebar'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -13,6 +13,9 @@ vi.mock('@/stores/canvasStore')
 vi.mock('@/stores/authStore')
 
 vi.mock('@/api/client', () => ({
+  authApi: {
+    logout: vi.fn().mockResolvedValue({}),
+  },
   scanApi: {
     trigger: vi.fn().mockResolvedValue({}),
     runs: vi.fn().mockResolvedValue({ data: [] }),
@@ -272,10 +275,14 @@ describe('Sidebar', () => {
     expect(screen.getByText('Logout')).toBeInTheDocument()
   })
 
-  it('calls logout when Logout is clicked', () => {
+  it('ends the backend session before clearing local auth state', async () => {
+    const { authApi } = await import('@/api/client')
     render(<Sidebar {...defaultProps} />)
     fireEvent.click(screen.getByText('Logout'))
-    expect(mockLogout).toHaveBeenCalledOnce()
+    await waitFor(() => {
+      expect(authApi.logout).toHaveBeenCalledOnce()
+      expect(mockLogout).toHaveBeenCalledOnce()
+    })
   })
 })
 

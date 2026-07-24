@@ -167,3 +167,64 @@ def test_save_overrides_omits_mesh_credentials(tmp_path):
     assert written["zigbee_sync_enabled"] is True
     assert written["zigbee_sync_interval"] == 900
     assert written["zwave_sync_interval"] == 1200
+
+
+def _valid_oidc_settings(**overrides):
+    values = {
+        "secret_key": "test-secret-key-that-is-at-least-32-bytes",
+        "auth_mode": "oidc",
+        "oidc_discovery_url": "https://idp.example/application/o/homelable/.well-known/openid-configuration",
+        "oidc_client_id": "homelable",
+        "oidc_client_secret": "client-secret",
+        "oidc_redirect_uri": "https://homelable.example/api/v1/auth/oidc/callback",
+        "cors_origins": ["https://homelable.example"],
+    }
+    values.update(overrides)
+    return Settings(_env_file=None, **values)
+
+
+def test_oidc_mode_requires_complete_client_configuration():
+    with pytest.raises(ValueError, match="OIDC_DISCOVERY_URL.*OIDC_CLIENT_ID.*OIDC_CLIENT_SECRET.*OIDC_REDIRECT_URI"):
+        Settings(secret_key="test-secret", auth_mode="oidc", _env_file=None)
+
+
+def test_oidc_mode_requires_openid_scope():
+    with pytest.raises(ValueError, match="OIDC_SCOPES must contain 'openid'"):
+        _valid_oidc_settings(oidc_scopes="profile email")
+
+
+def test_oidc_mode_requires_strong_session_secret():
+    with pytest.raises(ValueError, match="SECRET_KEY must be at least 32 bytes"):
+        _valid_oidc_settings(secret_key="too-short")
+
+
+def test_oidc_secure_cookie_requires_https_callback():
+    with pytest.raises(ValueError, match="must use HTTPS"):
+        _valid_oidc_settings(oidc_redirect_uri="http://localhost/api/v1/auth/oidc/callback")
+
+
+def test_oidc_secure_cookie_requires_https_discovery():
+    with pytest.raises(ValueError, match="OIDC_DISCOVERY_URL must use HTTPS"):
+        _valid_oidc_settings(
+            oidc_discovery_url="http://idp.local/application/o/homelable/.well-known/openid-configuration"
+        )
+
+
+def test_oidc_insecure_dev_mode_allows_http_urls():
+    configured = _valid_oidc_settings(
+        oidc_cookie_secure=False,
+        oidc_discovery_url="http://idp.local/.well-known/openid-configuration",
+        oidc_redirect_uri="http://localhost/api/v1/auth/oidc/callback",
+    )
+    assert configured.oidc_cookie_secure is False
+
+
+def test_oidc_mode_rejects_wildcard_cors():
+    with pytest.raises(ValueError, match="CORS_ORIGINS cannot contain"):
+        _valid_oidc_settings(cors_origins=["*"])
+
+
+def test_valid_oidc_configuration_is_accepted():
+    configured = _valid_oidc_settings()
+    assert configured.auth_mode == "oidc"
+    assert configured.oidc_cookie_secure is True
