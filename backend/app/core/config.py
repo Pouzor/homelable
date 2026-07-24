@@ -79,8 +79,13 @@ class Settings(BaseSettings):
             }.items():
                 if not value.startswith(("https://", "http://")):
                     raise ValueError(f"{name} must be an HTTP(S) URL")
-            if self.oidc_cookie_secure and not self.oidc_redirect_uri.startswith("https://"):
-                raise ValueError("OIDC_REDIRECT_URI must use HTTPS when OIDC_COOKIE_SECURE=true")
+            if self.oidc_cookie_secure:
+                for name, value in {
+                    "OIDC_DISCOVERY_URL": self.oidc_discovery_url,
+                    "OIDC_REDIRECT_URI": self.oidc_redirect_uri,
+                }.items():
+                    if not value.startswith("https://"):
+                        raise ValueError(f"{name} must use HTTPS when OIDC_COOKIE_SECURE=true")
             if "*" in self.cors_origins:
                 raise ValueError("CORS_ORIGINS cannot contain '*' when AUTH_MODE=oidc")
         return self

@@ -4,6 +4,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from authlib.integrations.base_client.errors import OAuthError
+from authlib.jose.errors import ExpiredTokenError, JoseError
 from fastapi import WebSocketDisconnect
 from httpx import AsyncClient
 from starlette.responses import RedirectResponse
@@ -11,7 +12,7 @@ from starlette.testclient import TestClient
 
 
 class FakeOIDCClient:
-    def __init__(self, token=None, error: OAuthError | None = None):
+    def __init__(self, token=None, error: OAuthError | JoseError | None = None):
         self.token = token or {}
         self.error = error
         self.redirect_uri: str | None = None
@@ -288,6 +289,15 @@ async def test_oidc_callback_hides_protocol_error_details(client: AsyncClient, o
     assert res.status_code == 401
     assert res.json() == {"detail": "OIDC authentication failed"}
     assert "sensitive detail" not in res.text
+
+
+async def test_oidc_callback_hides_claim_validation_error_details(client: AsyncClient, oidc_settings):
+    fake_client = FakeOIDCClient(error=ExpiredTokenError())
+    with patch("app.api.routes.auth.get_oidc_client", return_value=fake_client):
+        res = await client.get("/api/v1/auth/oidc/callback")
+    assert res.status_code == 401
+    assert res.json() == {"detail": "OIDC authentication failed"}
+    assert "expired" not in res.text.lower()
 
 
 async def test_oidc_session_token_cannot_be_used_as_bearer(client: AsyncClient, oidc_settings):

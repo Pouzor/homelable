@@ -203,6 +203,22 @@ def test_oidc_secure_cookie_requires_https_callback():
         _valid_oidc_settings(oidc_redirect_uri="http://localhost/api/v1/auth/oidc/callback")
 
 
+def test_oidc_secure_cookie_requires_https_discovery():
+    with pytest.raises(ValueError, match="OIDC_DISCOVERY_URL must use HTTPS"):
+        _valid_oidc_settings(
+            oidc_discovery_url="http://idp.local/application/o/homelable/.well-known/openid-configuration"
+        )
+
+
+def test_oidc_insecure_dev_mode_allows_http_urls():
+    configured = _valid_oidc_settings(
+        oidc_cookie_secure=False,
+        oidc_discovery_url="http://idp.local/.well-known/openid-configuration",
+        oidc_redirect_uri="http://localhost/api/v1/auth/oidc/callback",
+    )
+    assert configured.oidc_cookie_secure is False
+
+
 def test_oidc_mode_rejects_wildcard_cors():
     with pytest.raises(ValueError, match="CORS_ORIGINS cannot contain"):
         _valid_oidc_settings(cors_origins=["*"])
