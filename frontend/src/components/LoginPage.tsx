@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Network, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Logo } from '@/components/ui/Logo'
 import { authApi } from '@/api/client'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
@@ -43,11 +44,12 @@ export function LoginPage() {
       <div className="relative w-full max-w-sm px-4">
         {/* Logo */}
         <div className="flex flex-col items-center gap-3 mb-8">
-          <div className="flex items-center justify-center w-14 h-14 rounded-xl bg-[#00d4ff]/10 border border-[#00d4ff]/20">
-            <Network size={28} className="text-[#00d4ff]" />
-          </div>
+          <Logo size={64} showText={false} />
           <div className="text-center">
-            <h1 className="text-xl font-semibold text-foreground tracking-wide">Homelable</h1>
+            <h1 className="text-xl font-semibold tracking-tight">
+              <span className="text-[#e6edf3]">Home</span>
+              <span className="text-[#00d4ff]">lable</span>
+            </h1>
             <p className="text-xs text-muted-foreground mt-0.5">HomeLab Visualizer</p>
           </div>
         </div>
