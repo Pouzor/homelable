@@ -6,8 +6,10 @@ aiosqlite==0.20.0
 alembic==1.13.3
 pydantic==2.9.2
 pydantic-settings==2.5.2
-python-jose[cryptography]==3.5.0
+PyJWT==2.13.0
 bcrypt==4.2.1
+authlib==1.7.2
+itsdangerous==2.2.0
 python-multipart==0.0.31
 apscheduler==3.10.4
 python-nmap==0.7.1

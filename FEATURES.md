@@ -29,6 +29,7 @@ Here's what Homelable can do. One line on what each feature is, then how to swit
 15. [Gethomepage Widget](#15-gethomepage-widget-)
 16. [MCP Server (AI integration)](#16-mcp-server-)
 17. [Settings & Shortcuts](#17-settings--shortcuts)
+18. [Authentication (Local / OpenID Connect)](#18-authentication-local--openid-connect-)
 
 ---
 
@@ -249,6 +250,23 @@ The AI can list nodes/edges/canvas/pending/scans, add/update/delete nodes and ed
 - Sidebar → **Settings** for app-level config.
 - **Search** to find nodes fast.
 - Open the **Shortcuts** modal for the full key list (Save `Ctrl/Cmd+S`, undo/redo, and the rest).
+
+---
+
+## 18. Authentication (Local / OpenID Connect) 🔒
+
+**What:** Homelable protects the app behind a login. Two exclusive modes, set once in `.env` with `AUTH_MODE`:
+- **`local`** (default) — a single username + bcrypt-hashed password. Nothing changes for existing installs.
+- **`oidc`** — sign in through your own identity provider (Authentik, Keycloak, Authelia, Google, …) via **Authorization Code + PKCE**. Good for SSO, per-user accounts at the IdP, MFA, and central account management.
+
+**Use (OIDC):**
+1. Register Homelable as a **confidential** client at your IdP and set the redirect URI to `https://<your-host>/api/v1/auth/oidc/callback`.
+2. In `.env` set `AUTH_MODE=oidc` and the `OIDC_*` values (discovery URL, client id/secret, redirect URI, scopes), keep `CORS_ORIGINS` pinned to your browser origin, and give `SECRET_KEY` at least 32 bytes.
+3. Restart the backend. The login screen now shows **Sign in with OpenID Connect**.
+
+**How it protects you:** provider tokens are exchanged server-side and never touch the browser — Homelable issues its own short-lived, `__Host-`, HttpOnly, `SameSite=Lax` session cookie. Discovery metadata, issuer, audience, signature, expiry, nonce, state and PKCE are all validated; cookie-authenticated writes require a CSRF token and an allowed `Origin`; the status WebSocket authenticates from the cookie and validates `Origin`. Local Bearer auth and the MCP service key keep working unchanged. Full config, provider examples and troubleshooting: [docs/oidc-auth.md](./docs/oidc-auth.md).
+
+> OIDC is Full-mode only — the no-backend standalone build has no login.
 
 ---
 

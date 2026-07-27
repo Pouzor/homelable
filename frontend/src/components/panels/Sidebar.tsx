@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
-import { designsApi, mediaApi } from '@/api/client'
+import { authApi, designsApi, mediaApi } from '@/api/client'
 import * as standaloneStorage from '@/utils/standaloneStorage'
 import { resolveDesignIcon, DEFAULT_DESIGN_ICON } from '@/utils/designIcons'
 import { DesignModal, type DesignFormData } from '@/components/modals/DesignModal'
@@ -46,6 +46,15 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
   const [openSeq, setOpenSeq] = useState(0)
   const { nodes, hasUnsavedChanges, floorMap, setFloorMap } = useCanvasStore()
   const floorMapEditNonce = useCanvasStore((s) => s.floorMapEditNonce)
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await authApi.logout()
+      logout()
+    } catch {
+      toast.error('Could not end the current session')
+    }
+  }, [logout])
 
   const openDesignModal = useCallback((m: { mode: 'create' | 'edit'; design?: Design }) => {
     setOpenSeq((s) => s + 1)
@@ -294,7 +303,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
             icon={LogOut}
             label="Logout"
             collapsed={collapsed}
-            onClick={logout}
+            onClick={() => void handleLogout()}
           />
         )}
       </div>

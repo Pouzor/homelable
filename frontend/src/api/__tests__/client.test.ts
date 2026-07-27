@@ -6,7 +6,7 @@ type Interceptor<T> = {
 }
 
 interface MockInstance {
-  defaults: { baseURL?: string }
+  defaults: { baseURL?: string; withCredentials?: boolean }
   interceptors: {
     request: { use: (f: Interceptor<unknown>['fulfilled'], r?: Interceptor<unknown>['rejected']) => void }
     response: { use: (f: Interceptor<unknown>['fulfilled'], r?: Interceptor<unknown>['rejected']) => void }
@@ -25,9 +25,9 @@ const instances = hoisted.instances as MockInstance[]
 vi.mock('axios', () => {
   return {
     default: {
-      create: (cfg: { baseURL?: string }) => {
+      create: (cfg: { baseURL?: string; withCredentials?: boolean }) => {
         const inst: MockInstance = {
-          defaults: { baseURL: cfg?.baseURL },
+          defaults: { baseURL: cfg?.baseURL, withCredentials: cfg?.withCredentials },
           interceptors: {
             request: { use: (f: unknown, r?: unknown) => { inst.__req = { fulfilled: f as never, rejected: r as never } } },
             response: { use: (f: unknown, r?: unknown) => { inst.__res = { fulfilled: f as never, rejected: r as never } } },
@@ -54,7 +54,7 @@ describe('api/client', () => {
   const [api, publicApi] = instances
 
   beforeEach(() => {
-    useAuthStore.setState({ token: null, isAuthenticated: false })
+    useAuthStore.setState({ token: null, csrfToken: null, isAuthenticated: false })
     api.get.mockClear()
     api.post.mockClear()
     api.patch.mockClear()
@@ -66,6 +66,7 @@ describe('api/client', () => {
   it('creates two axios instances with /api/v1 baseURL', () => {
     expect(instances).toHaveLength(2)
     expect(api.defaults.baseURL).toBe('/api/v1')
+    expect(api.defaults.withCredentials).toBe(true)
     expect(publicApi.defaults.baseURL).toBe('/api/v1')
   })
 
@@ -84,6 +85,18 @@ describe('api/client', () => {
     const cfg = { headers: {} as Record<string, string> }
     const out = api.__req.fulfilled!(cfg)
     expect((out as typeof cfg).headers.Authorization).toBeUndefined()
+  })
+
+  it('adds the in-memory OIDC CSRF token only to unsafe requests', () => {
+    useAuthStore.setState({ csrfToken: 'csrf-123' })
+    const post = { method: 'post', headers: {} as Record<string, string> }
+    const get = { method: 'get', headers: {} as Record<string, string> }
+
+    api.__req.fulfilled!(post)
+    api.__req.fulfilled!(get)
+
+    expect(post.headers['X-Homelable-CSRF']).toBe('csrf-123')
+    expect(get.headers['X-Homelable-CSRF']).toBeUndefined()
   })
 
   it('response interceptor passes through 2xx responses', () => {
@@ -123,6 +136,15 @@ describe('api/client', () => {
   it('authApi.login posts to /auth/login', () => {
     mod.authApi.login('u', 'p')
     expect(api.post).toHaveBeenCalledWith('/auth/login', { username: 'u', password: 'p' })
+  })
+
+  it('authApi discovers auth publicly and manages the current session', () => {
+    mod.authApi.config()
+    expect(publicApi.get).toHaveBeenCalledWith('/auth/config')
+    mod.authApi.me()
+    expect(api.get).toHaveBeenCalledWith('/auth/me')
+    mod.authApi.logout()
+    expect(api.post).toHaveBeenCalledWith('/auth/logout')
   })
 
   it('canvasApi.load GETs /canvas', () => {

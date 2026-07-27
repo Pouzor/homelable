@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { LoginPage } from '../LoginPage'
 import { useAuthStore } from '@/stores/authStore'
 
@@ -13,7 +13,12 @@ import { authApi } from '@/api/client'
 
 describe('LoginPage', () => {
   beforeEach(() => {
-    useAuthStore.setState({ token: null, isAuthenticated: false })
+    useAuthStore.setState({
+      token: null,
+      isAuthenticated: false,
+      authMode: 'local',
+      oidcLoginUrl: null,
+    })
     vi.mocked(authApi.login).mockReset()
   })
 
@@ -28,6 +33,41 @@ describe('LoginPage', () => {
   it('renders a Sign in button', () => {
     render(<LoginPage />)
     expect(screen.getByRole('button', { name: /sign in/i })).toBeDefined()
+  })
+
+  it('renders the official Homelable logo mark — not a generic lucide icon', () => {
+    render(<LoginPage />)
+    const svg = screen.getByTestId('logo-mark')
+    // The official mark from docs/logo/icon.svg, not lucide's Network glyph
+    expect(svg.querySelector('path')?.getAttribute('d'))
+      .toBe('M32 11 L53 30 L48 30 L48 53 L16 53 L16 30 L11 30 Z')
+    expect(svg.classList.contains('lucide')).toBe(false)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Homelable')
+    expect(screen.getByText('HomeLab Visualizer')).toBeDefined()
+  })
+
+  it('renders only the provider redirect in OIDC mode', () => {
+    useAuthStore.setState({
+      authMode: 'oidc',
+      oidcLoginUrl: '/api/v1/auth/oidc/login',
+    })
+
+    render(<LoginPage />)
+
+    expect(screen.queryByLabelText('Username')).toBeNull()
+    expect(screen.queryByLabelText('Password')).toBeNull()
+    expect(screen.getByRole('link', { name: 'Sign in with OpenID Connect' }))
+      .toHaveAttribute('href', '/api/v1/auth/oidc/login')
+  })
+
+  it('does not guess an auth mode when discovery failed', () => {
+    useAuthStore.setState({ authMode: null })
+
+    render(<LoginPage />)
+
+    expect(screen.getByText('Could not load authentication configuration.')).toBeDefined()
+    expect(screen.queryByLabelText('Username')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined()
   })
 
   // ── Security checks ──────────────────────────────────────────────────────
@@ -102,7 +142,9 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect((screen.getByRole('button', { name: '' }) as HTMLButtonElement).disabled).toBe(true)
     })
-    resolve({ data: { access_token: 'tok' } })
+    await act(async () => {
+      resolve({ data: { access_token: 'tok' } })
+    })
   })
 
   it('calls authApi.login with credentials via POST body (not URL params)', async () => {

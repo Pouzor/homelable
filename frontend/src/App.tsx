@@ -51,6 +51,7 @@ import { WalkthroughInvite } from '@/walkthrough/WalkthroughInvite'
 import { WalkthroughOverlay } from '@/walkthrough/WalkthroughOverlay'
 import { DEMO_SCAN_RUNS, DEMO_PENDING_DEVICES } from '@/walkthrough/demoTourData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
+import { bootstrapAuth } from '@/auth/bootstrap'
 import type { NodeData, EdgeData, CustomStyleDef, FloorMapConfig, NodeType } from '@/types'
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 import type { ZwaveNode, ZwaveEdge } from '@/components/zwave/types'
@@ -62,11 +63,18 @@ const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 export default function App() {
   const { loadCanvas, applyLayout, markSaved, markUnsaved, hasUnsavedChanges, editSeq, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addToGroup, addToContainer, floorMap, setFloorMap } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, isInitialized } = useAuthStore()
+  const authBootstrapStarted = useRef(false)
   const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
   const { activeDesignId, setDesigns, setActiveDesign } = useDesignStore()
 
   useStatusPolling()
+
+  useEffect(() => {
+    if (STANDALONE || authBootstrapStarted.current) return
+    authBootstrapStarted.current = true
+    void bootstrapAuth()
+  }, [])
 
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
   useEffect(() => subscribeAutosaveSettings(setAutosave), [])
@@ -922,6 +930,13 @@ export default function App() {
   const editNode = editNodeId ? nodes.find((n) => n.id === editNodeId) : null
   const editEdge = editEdgeId ? edges.find((e) => e.id === editEdgeId) : null
 
+  if (!STANDALONE && !isInitialized) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-[#0d1117] text-sm text-muted-foreground">
+        Loading authentication…
+      </div>
+    )
+  }
   if (!STANDALONE && !isAuthenticated) return <LoginPage />
 
   return (

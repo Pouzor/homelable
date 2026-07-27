@@ -1,16 +1,22 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/authStore'
+import type { AuthMode, AuthUser } from '@/stores/authStore'
 
 export const api = axios.create({
   baseURL: '/api/v1',
+  withCredentials: true,
 })
 
 // Unauthenticated axios instance — no JWT, no 401 redirect (used for public endpoints)
 const publicApi = axios.create({ baseURL: '/api/v1' })
 
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
+  const { token, csrfToken } = useAuthStore.getState()
   if (token) config.headers.Authorization = `Bearer ${token}`
+  const method = config.method?.toUpperCase() ?? 'GET'
+  if (csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    config.headers['X-Homelable-CSRF'] = csrfToken
+  }
   return config
 })
 
@@ -23,8 +29,11 @@ api.interceptors.response.use(
 )
 
 export const authApi = {
+  config: () => publicApi.get<{ mode: AuthMode; oidc_login_url: string | null }>('/auth/config'),
   login: (username: string, password: string) =>
     api.post<{ access_token: string }>('/auth/login', { username, password }),
+  me: () => api.get<AuthUser>('/auth/me'),
+  logout: () => api.post('/auth/logout'),
 }
 
 export const canvasApi = {

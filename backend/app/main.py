@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.routes import (
     auth,
@@ -25,6 +26,7 @@ from app.api.routes import (
 from app.api.routes import settings as settings_routes
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
+from app.core.security import OIDCCSRFMiddleware
 from app.db.database import init_db
 
 
@@ -53,12 +55,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(OIDCCSRFMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    session_cookie=("__Host-homelable-oidc-flow" if settings.oidc_cookie_secure else "homelable-oidc-flow"),
+    max_age=settings.oidc_transaction_expire_seconds,
+    same_site="lax",
+    https_only=settings.oidc_cookie_secure,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-Homelable-CSRF", "X-MCP-Service-Key"],
 )
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
