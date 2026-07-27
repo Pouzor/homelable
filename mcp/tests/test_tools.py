@@ -66,6 +66,16 @@ async def test_update_node_properties(mock_backend):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("node_type", ["firewall", "docker_container", "ups", "camera", "zigbee_router"])
+async def test_create_node_accepts_previously_rejected_types(mock_backend, node_type):
+    # These types were missing from the old, stale NODE_TYPES enum and were
+    # rejected by the MCP schema even though the backend always accepted them.
+    args = {"type": node_type, "label": "Device"}
+    await _dispatch("create_node", dict(args))
+    mock_backend.post.assert_called_once_with("/api/v1/nodes", args)
+
+
+@pytest.mark.anyio
 async def test_delete_node(mock_backend):
     await _dispatch("delete_node", {"id": "42"})
     mock_backend.delete.assert_called_once_with("/api/v1/nodes/42")
@@ -203,6 +213,16 @@ def test_create_node_schema_exposes_full_node_fields():
         assert field in props, f"create_node schema missing {field}"
     # type stays an enum of the canonical node types
     assert "enum" in props["type"]
+
+
+@pytest.mark.parametrize("tool_name", ["create_node", "update_node", "approve_device"])
+def test_node_type_enum_excludes_canvas_annotations(tool_name):
+    # group/groupRect/text are canvas annotations created via dedicated UI actions
+    # (grouping a selection, "Add Zone", "Add Text") — not real devices, so they
+    # must never be creatable/settable through the device-oriented node tools.
+    type_enum = set(_tool_schema(tool_name)["type"]["enum"])
+    assert type_enum.isdisjoint({"group", "groupRect", "text"})
+    assert "firewall" in type_enum
 
 
 def test_update_node_schema_exposes_full_node_fields():
