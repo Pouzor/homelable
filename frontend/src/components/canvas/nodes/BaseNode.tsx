@@ -5,6 +5,7 @@ import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { resolveNodeIcon, isBrandIconKey } from '@/utils/nodeIcons'
 import { NodeIcon } from '@/components/ui/NodeIcon'
+import { ServiceIcon } from '@/components/ui/ServiceIcon'
 import { resolvePropertyIcon } from '@/utils/propertyIcons'
 import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
@@ -172,13 +173,16 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
                 >
                   
                   <div className="flex items-center justify-between gap-2 w-full min-w-0">
-                    {/* LEFT: service name */}
-                    <span
-                      className="font-medium truncate"
-                      style={{ minWidth: 0, color: svcOffline ? '#f85149' : undefined }}
-                      title={svc.service_name}
-                    >
-                      {svc.service_name}
+                    {/* LEFT: icon + service name */}
+                    <span className="flex items-center gap-1 min-w-0">
+                      <ServiceIcon iconKey={svc.icon} size={11} />
+                      <span
+                        className="font-medium truncate"
+                        style={{ minWidth: 0, color: svcOffline ? '#f85149' : undefined }}
+                        title={svc.service_name}
+                      >
+                        {svc.service_name}
+                      </span>
                     </span>
 
                     {/* RIGHT: path + port */}

@@ -9,14 +9,17 @@ import { getServiceUrl } from '@/utils/serviceUrl'
 import { splitIps } from '@/utils/maskIp'
 import { PROPERTY_ICONS, PROPERTY_ICON_NAMES, resolvePropertyIcon } from '@/utils/propertyIcons'
 import { formatTimestamp } from '@/utils/timeFormat'
+import { ServiceModal } from '@/components/modals/ServiceModal'
+import { serviceToForm, type ServiceFormData, type ServiceSubmitData } from '@/utils/serviceForm'
+import { ServiceIcon } from '@/components/ui/ServiceIcon'
 import type { Node } from '@xyflow/react'
 
 interface DetailPanelProps {
   onEdit: (id: string) => void
 }
 
-type SvcForm = { port: string; protocol: 'tcp' | 'udp'; service_name: string; path: string }
-const EMPTY_FORM: SvcForm = { port: '', protocol: 'tcp', service_name: '', path: '' }
+/** Open service editor: `index === null` means "add a new service". */
+type SvcModalState = { nodeId: string; index: number | null; form?: ServiceFormData }
 
 type PropForm = { key: string; value: string; icon: string | null; visible: boolean }
 const EMPTY_PROP: PropForm = { key: '', value: '', icon: null, visible: true }
@@ -25,10 +28,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
   const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup, removeFromGroup, setNodeSize } = useCanvasStore()
   const serviceStatuses = useCanvasStore((s) => s.serviceStatuses)
 
-  const [addingForNode, setAddingForNode] = useState<string | null>(null)
-  const [newSvc, setNewSvc] = useState<SvcForm>(EMPTY_FORM)
-  const [editingFor, setEditingFor] = useState<{ nodeId: string; index: number } | null>(null)
-  const [editSvc, setEditSvc] = useState<SvcForm>(EMPTY_FORM)
+  const [svcModal, setSvcModal] = useState<SvcModalState | null>(null)
   const [groupName, setGroupName] = useState('')
   const [creatingGroup, setCreatingGroup] = useState(false)
 
@@ -89,8 +89,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
   }
 
   // Normal single-node panel
-  const addingService = addingForNode === node.id
-  const editingIndex = editingFor?.nodeId === node.id ? editingFor.index : null
+  const openSvcModal = svcModal?.nodeId === node.id ? svcModal : null
   const { data } = node
   const services = data.services ?? []
   const statusColor = STATUS_COLORS[data.status]
@@ -104,60 +103,46 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
     }
   }
 
-  const handleAddService = () => {
-    const trimmedPort = newSvc.port.trim()
-    const port = trimmedPort === '' ? undefined : parseInt(trimmedPort, 10)
-    if (!newSvc.service_name.trim()) return
-    if (trimmedPort !== '' && (port == null || Number.isNaN(port) || port < 1 || port > 65535)) return
+  const handleSubmitService = (data: ServiceSubmitData) => {
+    if (!openSvcModal) return
     snapshotHistory()
-    const path = newSvc.path.trim()
-    const svc: ServiceInfo = {
-      ...(port != null ? { port } : {}),
-      protocol: newSvc.protocol,
-      service_name: newSvc.service_name.trim(),
-      ...(path ? { path } : {}),
+    if (openSvcModal.index === null) {
+      const svc: ServiceInfo = {
+        ...(data.port != null ? { port: data.port } : {}),
+        protocol: data.protocol,
+        service_name: data.service_name,
+        ...(data.path ? { path: data.path } : {}),
+        ...(data.icon ? { icon: data.icon } : {}),
+      }
+      updateNode(node.id, { services: [...services, svc] })
+      return
     }
-    updateNode(node.id, { services: [...services, svc] })
-    setNewSvc(EMPTY_FORM)
-    setAddingForNode(null)
+    const updated = services.map((svc, i) =>
+      i === openSvcModal.index
+        ? {
+            ...svc,
+            protocol: data.protocol,
+            service_name: data.service_name,
+            port: data.port,
+            path: data.path,
+            icon: data.icon,
+          }
+        : svc
+    )
+    updateNode(node.id, { services: updated })
   }
 
   const handleRemoveService = (index: number) => {
     snapshotHistory()
     const updated = services.filter((_, i) => i !== index)
     updateNode(node.id, { services: updated })
-    if (editingIndex === index) setEditingFor(null)
+    if (openSvcModal?.index === index) setSvcModal(null)
   }
 
   const handleStartEdit = (index: number) => {
     const svc = services[index]
     if (!svc) return
-    setEditSvc({ port: svc.port != null ? String(svc.port) : '', protocol: svc.protocol, service_name: svc.service_name, path: svc.path ?? '' })
-    setEditingFor({ nodeId: node.id, index })
-    setAddingForNode(null)
-  }
-
-  const handleSaveEdit = () => {
-    if (editingIndex === null) return
-    const trimmedPort = editSvc.port.trim()
-    const port = trimmedPort === '' ? undefined : parseInt(trimmedPort, 10)
-    if (!editSvc.service_name.trim()) return
-    if (trimmedPort !== '' && (port == null || Number.isNaN(port) || port < 1 || port > 65535)) return
-    snapshotHistory()
-    const path = editSvc.path.trim()
-    const updated = services.map((svc, i) =>
-      i === editingIndex
-        ? {
-            ...svc,
-            protocol: editSvc.protocol,
-            service_name: editSvc.service_name.trim(),
-            ...(port != null ? { port } : { port: undefined }),
-            ...(path ? { path } : { path: undefined }),
-          }
-        : svc
-    )
-    updateNode(node.id, { services: updated })
-    setEditingFor(null)
+    setSvcModal({ nodeId: node.id, index, form: serviceToForm(svc) })
   }
 
   const handleReorderService = (from: number, to: number) => {
@@ -351,17 +336,13 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
       <div className="px-4 py-3 border-t border-border">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-muted-foreground">Services{services.length > 0 ? ` (${services.length})` : ''}</span>
-          <button onClick={() => { setAddingForNode((v) => v === node.id ? null : node.id); setEditingFor(null) }} className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer">
+          <button onClick={() => setSvcModal({ nodeId: node.id, index: null })} className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer">
             <Plus size={10} /> Add
           </button>
         </div>
-        {addingService && <ServiceForm form={newSvc} onChange={setNewSvc} onConfirm={handleAddService} onCancel={() => setAddingForNode(null)} confirmLabel="Add" autoFocus />}
         {services.length > 0 && (
           <div className="flex flex-col gap-1.5">
-            {services.map((svc, i) =>
-              editingIndex === i ? (
-                <ServiceForm key={`edit-${i}`} form={editSvc} onChange={setEditSvc} onConfirm={handleSaveEdit} onCancel={() => setEditingFor(null)} confirmLabel="Save" autoFocus />
-              ) : (
+            {services.map((svc, i) => (
                 <ServiceBadge
                   key={`${svc.port ?? 'host'}-${svc.protocol}-${svc.path ?? ''}-${i}`}
                   svc={svc}
@@ -381,12 +362,23 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
                   onEdit={() => handleStartEdit(i)}
                   onRemove={() => handleRemoveService(i)}
                 />
-              )
-            )}
+            ))}
           </div>
         )}
-        {services.length === 0 && !addingService && <p className="text-[10px] text-muted-foreground/50">No services — click Add to register one.</p>}
+        {services.length === 0 && <p className="text-[10px] text-muted-foreground/50">No services — click Add to register one.</p>}
       </div>
+
+      {openSvcModal && (
+        <ServiceModal
+          key={`svc-${openSvcModal.index ?? 'new'}`}
+          open
+          onClose={() => setSvcModal(null)}
+          onSubmit={handleSubmitService}
+          initial={openSvcModal.form}
+          title={openSvcModal.index === null ? 'Add Service' : 'Edit Service'}
+          confirmLabel={openSvcModal.index === null ? 'Add' : 'Save'}
+        />
+      )}
 
       {data.notes && (
         <div className="px-4 py-3 border-t border-border">
@@ -697,55 +689,6 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
   )
 }
 
-function ServiceForm({ form, onChange, onConfirm, onCancel, confirmLabel, autoFocus }: {
-  form: { port: string; protocol: 'tcp' | 'udp'; service_name: string; path: string }
-  onChange: (f: { port: string; protocol: 'tcp' | 'udp'; service_name: string; path: string }) => void
-  onConfirm: () => void
-  onCancel: () => void
-  confirmLabel: string
-  autoFocus?: boolean
-}) {
-  const setPort = (value: string) => {
-    const digitsOnly = value.replace(/\D/g, '').slice(0, 5)
-    onChange({ ...form, port: digitsOnly })
-  }
-
-  const clampPort = (value: string) => {
-    if (!value) return ''
-    const parsed = Number.parseInt(value, 10)
-    if (!Number.isFinite(parsed)) return ''
-    return String(Math.max(1, Math.min(65535, parsed)))
-  }
-
-  return (
-    <div className="flex flex-col gap-1.5 mb-1 p-2 rounded-md bg-[#0d1117] border border-[#30363d]">
-      <Input value={form.service_name} onChange={(e) => onChange({ ...form, service_name: e.target.value })} placeholder="Service name" className="bg-[#21262d] border-[#30363d] text-xs h-7" autoFocus={autoFocus} onKeyDown={(e) => e.key === 'Enter' && onConfirm()} />
-      <div className="flex gap-1.5">
-        <Input
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          value={form.port}
-          onChange={(e) => setPort(e.target.value)}
-          onBlur={() => onChange({ ...form, port: clampPort(form.port) })}
-          placeholder="Port"
-          className="bg-[#21262d] border-[#30363d] font-mono text-xs h-7 w-28 shrink-0"
-          onKeyDown={(e) => e.key === 'Enter' && onConfirm()}
-        />
-        <select value={form.protocol} onChange={(e) => onChange({ ...form, protocol: e.target.value as 'tcp' | 'udp' })} className="flex-1 bg-[#21262d] border border-[#30363d] rounded-md text-xs h-7 px-1.5 text-foreground">
-          <option value="tcp">tcp</option>
-          <option value="udp">udp</option>
-        </select>
-      </div>
-      <Input value={form.path} onChange={(e) => onChange({ ...form, path: e.target.value })} placeholder="Path (/admin)" className="bg-[#21262d] border-[#30363d] font-mono text-xs h-7" onKeyDown={(e) => e.key === 'Enter' && onConfirm()} />
-      <div className="flex gap-1.5">
-        <Button size="sm" className="flex-1 h-6 text-[10px] bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90" onClick={onConfirm}>{confirmLabel}</Button>
-        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={onCancel}>Cancel</Button>
-      </div>
-    </div>
-  )
-}
-
 // --- Property components ---
 
 function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel }: {
@@ -926,6 +869,7 @@ function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, on
           </span>
         )}
         <span className="shrink-0 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+        <ServiceIcon iconKey={svc.icon} size={12} className="shrink-0" color={color} />
 
         {url ? (
           <a

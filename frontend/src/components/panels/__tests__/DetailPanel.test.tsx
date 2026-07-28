@@ -343,13 +343,56 @@ describe('DetailPanel', () => {
   })
 
   describe('Services — add/remove', () => {
-    it('shows add form when Add is clicked', () => {
+    it('opens the Add Service modal when Add is clicked', () => {
       setupStore({})
       render(<DetailPanel onEdit={vi.fn()} />)
       // Two "Add" buttons: first = properties, second = services
       const addButtons = screen.getAllByText('Add')
       fireEvent.click(addButtons[addButtons.length - 1])
+      expect(screen.getByText('Add Service')).toBeDefined()
       expect(screen.getByPlaceholderText('Service name')).toBeDefined()
+    })
+
+    it('renders no service form until the modal is opened', () => {
+      setupStore({})
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.queryByPlaceholderText('Service name')).toBeNull()
+    })
+
+    it('persists the icon chosen in the modal', () => {
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+        nodes: [makeNode({})],
+        selectedNodeId: 'n1',
+        selectedNodeIds: [],
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode,
+        snapshotHistory: vi.fn(),
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
+      } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const addHeaders = screen.getAllByText('Add')
+      fireEvent.click(addHeaders[addHeaders.length - 1])
+      fireEvent.change(screen.getByPlaceholderText('Service name'), { target: { value: 'plex' } })
+      fireEvent.click(screen.getByLabelText('Icon picker trigger'))
+      fireEvent.click(screen.getByRole('tab', { name: 'Brand' }))
+      fireEvent.change(screen.getByLabelText('Brand icon search'), { target: { value: 'plex' } })
+      fireEvent.click(screen.getByRole('button', { name: 'plex' }))
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add' }).at(-1) as HTMLButtonElement)
+
+      expect(updateNode.mock.calls[0][1].services[0]).toMatchObject({ service_name: 'plex', icon: 'brand:plex' })
+    })
+
+    it('closes the modal after adding', () => {
+      setupStore({})
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const addHeaders = screen.getAllByText('Add')
+      fireEvent.click(addHeaders[addHeaders.length - 1])
+      fireEvent.change(screen.getByPlaceholderText('Service name'), { target: { value: 'nginx' } })
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add' }).at(-1) as HTMLButtonElement)
+      expect(screen.queryByPlaceholderText('Service name')).toBeNull()
     })
 
     it('calls updateNode with new service on Add confirm', () => {
@@ -372,7 +415,7 @@ describe('DetailPanel', () => {
       fireEvent.change(screen.getByPlaceholderText('Service name'), { target: { value: 'nginx' } })
       fireEvent.change(screen.getByPlaceholderText('Port'), { target: { value: '80' } })
       fireEvent.change(screen.getByPlaceholderText('Path (/admin)'), { target: { value: '/admin' } })
-      fireEvent.keyDown(screen.getByPlaceholderText('Port'), { key: 'Enter' })
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add' }).at(-1) as HTMLButtonElement)
       expect(updateNode).toHaveBeenCalledOnce()
       expect(updateNode.mock.calls[0][1].services[0]).toMatchObject({ service_name: 'nginx', port: 80, protocol: 'tcp', path: '/admin' })
     })
@@ -473,12 +516,13 @@ describe('DetailPanel', () => {
   describe('Services — edit', () => {
     const svc = { port: 80, protocol: 'tcp' as const, service_name: 'nginx' }
 
-    it('shows edit form pre-filled when pencil is clicked', () => {
+    it('opens the Edit Service modal pre-filled when pencil is clicked', () => {
       setupStore({ services: [{ ...svc, path: '/admin' }] })
       render(<DetailPanel onEdit={vi.fn()} />)
       // Hover to reveal edit button (fireEvent.mouseOver isn't needed — opacity is CSS only)
       const editBtn = screen.getByTitle('Edit service')
       fireEvent.click(editBtn)
+      expect(screen.getByText('Edit Service')).toBeDefined()
       const nameInput = screen.getByPlaceholderText('Service name') as HTMLInputElement
       expect(nameInput.value).toBe('nginx')
       const portInput = screen.getByPlaceholderText('Port') as HTMLInputElement
@@ -510,6 +554,46 @@ describe('DetailPanel', () => {
       expect(updateNode.mock.calls[0][1].services[0].service_name).toBe('apache')
       expect(updateNode.mock.calls[0][1].services[0].port).toBe(80)
       expect(updateNode.mock.calls[0][1].services[0].path).toBe('/admin')
+    })
+
+    it('keeps fields the modal does not own, like category', () => {
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+        nodes: [makeNode({ services: [{ ...svc, category: 'web' }] })],
+        selectedNodeId: 'n1',
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode,
+        snapshotHistory: vi.fn(),
+      } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+
+      render(<DetailPanel onEdit={vi.fn()} />)
+      fireEvent.click(screen.getByTitle('Edit service'))
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      expect(updateNode.mock.calls[0][1].services[0].category).toBe('web')
+    })
+
+    it('saves a brand icon picked while editing', () => {
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+        nodes: [makeNode({ services: [svc] })],
+        selectedNodeId: 'n1',
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode,
+        snapshotHistory: vi.fn(),
+      } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+
+      render(<DetailPanel onEdit={vi.fn()} />)
+      fireEvent.click(screen.getByTitle('Edit service'))
+      fireEvent.click(screen.getByLabelText('Icon picker trigger'))
+      fireEvent.click(screen.getByRole('tab', { name: 'Brand' }))
+      fireEvent.change(screen.getByLabelText('Brand icon search'), { target: { value: 'nginx' } })
+      fireEvent.click(screen.getByRole('button', { name: 'nginx' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      expect(updateNode.mock.calls[0][1].services[0].icon).toBe('brand:nginx')
     })
 
     it('cancels edit without updating', () => {
@@ -584,6 +668,25 @@ describe('DetailPanel', () => {
       render(<DetailPanel onEdit={vi.fn()} />)
       expect(screen.getByText('nginx')).toBeDefined()
       expect(screen.getByText('8080/tcp')).toBeDefined()
+    })
+
+    it('renders a brand icon image when the service carries one', () => {
+      setupStore({ services: [{ port: 32400, protocol: 'tcp', service_name: 'plex', icon: 'brand:plex' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const img = screen.getByAltText('plex') as HTMLImageElement
+      expect(img.src).toContain('dashboard-icons/svg/plex.svg')
+    })
+
+    it('renders no icon image when the service has no icon', () => {
+      setupStore({ services: [{ port: 80, protocol: 'tcp', service_name: 'nginx' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.queryByRole('img')).toBeNull()
+    })
+
+    it('renders no icon image for an unresolvable legacy icon key', () => {
+      setupStore({ services: [{ port: 80, protocol: 'tcp', service_name: 'nginx', icon: 'bar-chart-2' }] })
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.queryByRole('img')).toBeNull()
     })
 
     it('renders path label when path is set', () => {
