@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod, type NodeTypeStyle } from '@/types'
 import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
-import { ICON_REGISTRY, ICON_CATEGORIES, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
-import { BrandIconPicker } from './BrandIconPicker'
+import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
+import { IconPickerPanel } from './IconPickerPanel'
 import { MAX_HANDLES, clampHandles, sideDefault, handleCountField, type Side } from '@/utils/handleUtils'
 import { getValidParentTypes } from '@/utils/virtualEdgeParent'
 
@@ -142,9 +142,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
   const merged = { ...DEFAULT_DATA, ...initial }
   if (MESH_TYPES.includes((merged.type ?? '') as NodeType)) merged.check_method = 'none'
   const [form, setForm] = useState<Partial<NodeData>>(merged)
-  const [iconSearch, setIconSearch] = useState('')
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
-  const [iconTab, setIconTab] = useState<'generic' | 'brand'>(isBrandIconKey(initial?.custom_icon) ? 'brand' : 'generic')
   const [labelError, setLabelError] = useState(false)
   const resolvedNodeColors = resolveNodeColors({ type: form.type ?? 'generic', custom_colors: form.custom_colors })
   const showServicesEnabled = form.custom_colors?.show_services === true
@@ -298,85 +296,12 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
 
             {/* Inline icon picker - full width, shown below the type+icon row */}
             {iconPickerOpen && (
-              <div className="flex flex-col gap-2 p-2.5 rounded-md bg-[#0d1117] border border-[#30363d] col-span-2">
-                <div className="flex gap-1 mb-1" role="tablist" aria-label="Icon source">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={iconTab === 'generic'}
-                    onClick={() => setIconTab('generic')}
-                    className={`text-[11px] px-2 py-1 rounded transition-colors cursor-pointer ${
-                      iconTab === 'generic' ? 'bg-[#21262d] text-foreground border border-[#30363d]' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Generic
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={iconTab === 'brand'}
-                    onClick={() => setIconTab('brand')}
-                    className={`text-[11px] px-2 py-1 rounded transition-colors cursor-pointer ${
-                      iconTab === 'brand' ? 'bg-[#21262d] text-foreground border border-[#30363d]' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Brand
-                  </button>
-                </div>
-                {iconTab === 'brand' ? (
-                  <BrandIconPicker
-                    value={form.custom_icon}
-                    onSelect={(key) => { set('custom_icon', key); setIconPickerOpen(false) }}
-                  />
-                ) : (
-                <>
-                <Input
-                  value={iconSearch}
-                  onChange={(e) => setIconSearch(e.target.value)}
-                  placeholder="Search icons…"
-                  className={`bg-[#21262d] border-[#30363d] text-xs h-7 ${modalStyles['modal-radius']}`}
+              <div className="col-span-2">
+                <IconPickerPanel
+                  value={form.custom_icon}
+                  onSelect={(key) => { set('custom_icon', key); setIconPickerOpen(false) }}
                   autoFocus
                 />
-                <div className="flex flex-col gap-2 max-h-52 overflow-y-auto">
-                  {ICON_CATEGORIES.map((cat) => {
-                    const entries = ICON_REGISTRY.filter(
-                      (e) => e.category === cat &&
-                        (iconSearch === '' || e.label.toLowerCase().includes(iconSearch.toLowerCase()) || e.key.includes(iconSearch.toLowerCase()))
-                    )
-                    if (entries.length === 0) return null
-                    return (
-                      <div key={cat}>
-                        <p className="text-[9px] font-semibold text-muted-foreground/50 uppercase tracking-wider mb-1">{cat}</p>
-                        <div className="grid grid-cols-7 gap-1">
-                          {entries.map((entry) => {
-                            const isSelected = form.custom_icon === entry.key
-                            return (
-                              <button
-                                key={entry.key}
-                                type="button"
-                                title={entry.label}
-                                onClick={() => { set('custom_icon', isSelected ? undefined : entry.key); setIconPickerOpen(false) }}
-                                className={`flex items-center justify-center w-7 h-7 rounded transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
-                                aria-label={`Select icon ${entry.label}`}
-                                style={{
-                                  background: isSelected ? '#00d4ff22' : 'transparent',
-                                  border: isSelected ? '1px solid #00d4ff88' : '1px solid transparent',
-                                  color: isSelected ? '#00d4ff' : '#8b949e',
-                                }}
-                                onMouseEnter={(e) => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = '#21262d' }}
-                                onMouseLeave={(e) => { if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
-                              >
-                                {createElement(entry.icon, { size: 13 })}
-                              </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-                </>
-                )}
               </div>
             )}
 

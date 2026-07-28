@@ -44,9 +44,11 @@ vi.mock('@/utils/nodeColors', () => ({
   resolveNodeColors: () => ({ background: '#161b22', border: '#30363d', icon: '#00d4ff' }),
 }))
 
-vi.mock('@/utils/nodeIcons', () => ({
+// Partial mock: node-type icon resolution is stubbed, but the brand/lucide
+// resolver stays real so service icons render as they do in the app.
+vi.mock('@/utils/nodeIcons', async (importActual) => ({
+  ...(await importActual<typeof import('@/utils/nodeIcons')>()),
   resolveNodeIcon: (_typeIcon: unknown) => _typeIcon,
-  isBrandIconKey: (k: string | undefined) => !!k && k.startsWith('brand:'),
 }))
 
 vi.mock('@/utils/maskIp', () => ({
@@ -251,6 +253,27 @@ describe('BaseNode — services visibility toggle', () => {
     })
 
     expect(screen.queryByRole('link', { name: /ssh/i })).toBeNull()
+  })
+
+  it('renders the brand icon of a service that has one', () => {
+    renderBaseNode({
+      ip: '192.168.1.10',
+      custom_colors: { show_services: true },
+      services: [{ service_name: 'plex', port: 32400, protocol: 'tcp', icon: 'brand:plex' }],
+    })
+
+    const img = screen.getByAltText('plex') as HTMLImageElement
+    expect(img.src).toContain('dashboard-icons/svg/plex.svg')
+  })
+
+  it('renders no service icon when the service has none', () => {
+    renderBaseNode({
+      ip: '192.168.1.10',
+      custom_colors: { show_services: true },
+      services: [{ service_name: 'ssh', port: 22, protocol: 'tcp' }],
+    })
+
+    expect(screen.queryByRole('img')).toBeNull()
   })
 })
 
