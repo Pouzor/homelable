@@ -234,6 +234,55 @@ async def test_list_nodes(mock_backend):
 
 
 @pytest.mark.anyio
+async def test_list_node_summaries(mock_backend):
+    mock_backend.get = AsyncMock(return_value=[
+        {
+            "id": "1", "label": "Freebox", "type": "router", "status": "online",
+            "ip": "192.168.1.1", "notes": "ISP box", "properties": [{"name": "rack", "value": "A1"}],
+        },
+    ])
+    result = await _dispatch("list_node_summaries", {})
+    mock_backend.get.assert_called_once_with("/api/v1/nodes")
+    assert result == [{"id": "1", "label": "Freebox", "type": "router", "status": "online"}]
+
+
+@pytest.mark.anyio
+async def test_get_node_by_id(mock_backend):
+    mock_backend.get = AsyncMock(return_value={"id": "42", "label": "pve1", "type": "proxmox"})
+    result = await _dispatch("get_node", {"id": "42"})
+    mock_backend.get.assert_called_once_with("/api/v1/nodes/42")
+    assert result == {"id": "42", "label": "pve1", "type": "proxmox"}
+
+
+@pytest.mark.anyio
+async def test_get_node_by_label(mock_backend):
+    mock_backend.get = AsyncMock(return_value=[{"id": "1", "label": "pve1"}, {"id": "2", "label": "pve2"}])
+    result = await _dispatch("get_node", {"label": "pve"})
+    mock_backend.get.assert_called_once_with("/api/v1/nodes?label=pve")
+    assert result == [{"id": "1", "label": "pve1"}, {"id": "2", "label": "pve2"}]
+
+
+@pytest.mark.anyio
+async def test_get_node_by_label_url_encodes(mock_backend):
+    mock_backend.get = AsyncMock(return_value=[])
+    await _dispatch("get_node", {"label": "living room ap"})
+    mock_backend.get.assert_called_once_with("/api/v1/nodes?label=living%20room%20ap")
+
+
+@pytest.mark.anyio
+async def test_get_node_id_takes_precedence_over_label(mock_backend):
+    mock_backend.get = AsyncMock(return_value={"id": "42"})
+    await _dispatch("get_node", {"id": "42", "label": "pve"})
+    mock_backend.get.assert_called_once_with("/api/v1/nodes/42")
+
+
+@pytest.mark.anyio
+async def test_get_node_requires_id_or_label():
+    with pytest.raises(ValueError, match="requires either"):
+        await _dispatch("get_node", {})
+
+
+@pytest.mark.anyio
 async def test_list_pending_devices(mock_backend):
     mock_backend.get = AsyncMock(return_value=[{"id": "p1", "ip": "192.168.1.50"}])
     result = await _dispatch("list_pending_devices", {})

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,9 +55,15 @@ async def _find_free_position(db: AsyncSession, design_id: str | None) -> tuple[
 
 
 @router.get("", response_model=list[NodeResponse])
-async def list_nodes(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[Node]:
-    result = await db.execute(select(Node))
-    return list(result.scalars().all())
+async def list_nodes(
+    label: str | None = Query(None, description="Case-insensitive substring filter on node label"),
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> list[Node]:
+    query = select(Node)
+    if label:
+        query = query.where(Node.label.ilike(f"%{label}%"))
+    return list((await db.execute(query)).scalars().all())
 
 
 @router.post("", response_model=NodeResponse, status_code=status.HTTP_201_CREATED)

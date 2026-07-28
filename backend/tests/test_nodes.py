@@ -363,3 +363,43 @@ async def test_create_node_explicit_zero_position_preserved(client: AsyncClient,
     )
     assert res.status_code == 201
     assert (res.json()["pos_x"], res.json()["pos_y"]) == (0.0, 0.0)
+
+
+async def test_list_nodes_filters_by_label_exact(client: AsyncClient, headers: dict):
+    await client.post("/api/v1/nodes", json={"type": "server", "label": "Proxmox", "status": "unknown"}, headers=headers)
+    await client.post("/api/v1/nodes", json={"type": "router", "label": "Router", "status": "unknown"}, headers=headers)
+    res = await client.get("/api/v1/nodes?label=Proxmox", headers=headers)
+    assert res.status_code == 200
+    assert [n["label"] for n in res.json()] == ["Proxmox"]
+
+
+async def test_list_nodes_filters_by_label_substring(client: AsyncClient, headers: dict):
+    await client.post("/api/v1/nodes", json={"type": "server", "label": "pve1-node", "status": "unknown"}, headers=headers)
+    await client.post("/api/v1/nodes", json={"type": "server", "label": "pve2-node", "status": "unknown"}, headers=headers)
+    await client.post("/api/v1/nodes", json={"type": "router", "label": "Router", "status": "unknown"}, headers=headers)
+    res = await client.get("/api/v1/nodes?label=pve", headers=headers)
+    assert res.status_code == 200
+    assert sorted(n["label"] for n in res.json()) == ["pve1-node", "pve2-node"]
+
+
+async def test_list_nodes_filters_by_label_case_insensitive(client: AsyncClient, headers: dict):
+    await client.post("/api/v1/nodes", json={"type": "server", "label": "Proxmox", "status": "unknown"}, headers=headers)
+    res = await client.get("/api/v1/nodes?label=PROXMOX", headers=headers)
+    assert res.status_code == 200
+    assert [n["label"] for n in res.json()] == ["Proxmox"]
+
+
+async def test_list_nodes_filters_by_label_no_match(client: AsyncClient, headers: dict):
+    await client.post("/api/v1/nodes", json={"type": "server", "label": "Proxmox", "status": "unknown"}, headers=headers)
+    res = await client.get("/api/v1/nodes?label=nonexistent", headers=headers)
+    assert res.status_code == 200
+    assert res.json() == []
+
+
+async def test_list_nodes_without_label_param_returns_all(client: AsyncClient, headers: dict):
+    """Omitting label is fully backward compatible with the old unfiltered behavior."""
+    for label in ("A", "B", "C"):
+        await client.post("/api/v1/nodes", json={"type": "generic", "label": label, "status": "unknown"}, headers=headers)
+    res = await client.get("/api/v1/nodes", headers=headers)
+    assert res.status_code == 200
+    assert len(res.json()) == 3

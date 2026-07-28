@@ -1,4 +1,5 @@
 import json
+from urllib.parse import quote
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 from .backend_client import backend
@@ -131,6 +132,17 @@ def _build_tools() -> list[Tool]:
             "type": "object",
             "properties": {},
         }),
+        Tool(name="list_node_summaries", description="List all nodes with only id/label/type/status — a lighter, lower-token alternative to list_nodes or get_canvas for when full node detail (ip, services, notes, hardware, properties, ...) isn't needed.", inputSchema={
+            "type": "object",
+            "properties": {},
+        }),
+        Tool(name="get_node", description="Get node(s) by id or by label. Provide exactly one of the two. Lookup by 'id' returns a single full node object. Lookup by 'label' is a case-insensitive substring match and returns a list of full node objects, since labels are not unique.", inputSchema={
+            "type": "object",
+            "properties": {
+                "id":    {"type": "string", "description": "Node id. Returns a single node object."},
+                "label": {"type": "string", "description": "Case-insensitive substring match on label. Returns a list of matching node objects."},
+            },
+        }),
         Tool(name="list_pending_devices", description="List devices discovered by scan but not yet approved or hidden", inputSchema={
             "type": "object",
             "properties": {},
@@ -213,6 +225,11 @@ def _slim_canvas(raw: dict) -> dict:
     }
 
 
+def _slim_node_summary(n: dict) -> dict:
+    """Only the fields needed to identify a node and reference it in later calls."""
+    return {"id": n.get("id"), "label": n.get("label"), "type": n.get("type"), "status": n.get("status")}
+
+
 async def _dispatch(name: str, args: dict) -> dict:
     if name == "create_node":
         return await backend.post("/api/v1/nodes", args)
@@ -249,6 +266,19 @@ async def _dispatch(name: str, args: dict) -> dict:
 
     if name == "list_nodes":
         return await backend.get("/api/v1/nodes")
+
+    if name == "list_node_summaries":
+        nodes = await backend.get("/api/v1/nodes")
+        return [_slim_node_summary(n) for n in nodes]
+
+    if name == "get_node":
+        node_id = args.get("id")
+        label = args.get("label")
+        if node_id:
+            return await backend.get(f"/api/v1/nodes/{node_id}")
+        if label:
+            return await backend.get(f"/api/v1/nodes?label={quote(label)}")
+        raise ValueError("get_node requires either 'id' or 'label'")
 
     if name == "list_pending_devices":
         # Backend /scan/pending returns the whole inventory: approved rows stay
