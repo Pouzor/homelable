@@ -1,5 +1,15 @@
-mcp[cli]>=1.0
+# Upper bound is load-bearing: mcp 2.0 dropped the low-level `Server.list_resources`
+# / `Server.list_tools` decorator API that app/resources.py and app/tools.py use.
+# Removing the bound breaks both the tests and the Docker image at import time.
+mcp[cli]>=1.26,<2
 httpx>=0.27
 fastapi>=0.115
 uvicorn[standard]>=0.30
 pydantic-settings>=2.0
+
+# Test-only, kept here for the same reason backend/requirements.txt carries its
+# own: CI installs a single requirements file then runs pytest.
+# pytest-anyio provides the `anyio` marker and parametrises asyncio + trio.
+pytest>=9.0
+pytest-anyio>=0.0.0
+trio>=0.27

@@ -16,6 +16,12 @@ NODE_TYPES = [
     "light", "meter", "transformer", "load",
 ]
 
+# Kept in sync manually with frontend/src/types/index.ts EdgeType.
+# Sync is enforced automatically by test_edge_types_in_sync_with_frontend (mcp/tests/test_edge_types_sync.py).
+EDGE_TYPES = [
+    "ethernet", "wifi", "iot", "vlan", "virtual", "cluster", "fibre", "electrical",
+]
+
 # Shared field schemas mirroring backend NodeBase / NodeUpdate (backend/app/schemas/nodes.py).
 # create_node and update_node both expose these so the MCP is symmetric with what the
 # backend already validates and stores. _dispatch forwards args verbatim, so any field
@@ -102,7 +108,7 @@ def _build_tools() -> list[Tool]:
             "properties": {
                 "source": {"type": "string"},
                 "target": {"type": "string"},
-                "type":   {"type": "string", "enum": ["ethernet", "wifi", "iot", "vlan", "virtual"], "default": "ethernet"},
+                "type":   {"type": "string", "enum": EDGE_TYPES, "default": "ethernet"},
                 "label":  {"type": "string"},
                 **_DESIGN_ID_FIELD,
             },

@@ -88,6 +88,16 @@ async def test_create_edge(mock_backend):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("edge_type", ["cluster", "fibre", "electrical"])
+async def test_create_edge_accepts_previously_rejected_types(mock_backend, edge_type):
+    # These types were missing from the old, stale edge type enum and were
+    # rejected by the MCP schema even though the backend always accepted them.
+    args = {"source": "1", "target": "2", "type": edge_type}
+    await _dispatch("create_edge", dict(args))
+    mock_backend.post.assert_called_once_with("/api/v1/edges", args)
+
+
+@pytest.mark.anyio
 async def test_create_node_with_design_id(mock_backend):
     # design_id is forwarded to the backend, which attaches the node to that canvas.
     args = {"type": "server", "label": "Proxmox", "design_id": "design-2"}
@@ -223,6 +233,13 @@ def test_node_type_enum_excludes_canvas_annotations(tool_name):
     type_enum = set(_tool_schema(tool_name)["type"]["enum"])
     assert type_enum.isdisjoint({"group", "groupRect", "text"})
     assert "firewall" in type_enum
+
+
+def test_create_edge_schema_exposes_full_edge_type_enum():
+    props = _tool_schema("create_edge")
+    type_enum = set(props["type"]["enum"])
+    assert {"cluster", "fibre", "electrical"} <= type_enum
+    assert props["type"]["default"] == "ethernet"
 
 
 def test_update_node_schema_exposes_full_node_fields():
