@@ -4,7 +4,23 @@ from mcp.types import Tool, TextContent
 from .backend_client import backend
 
 
-NODE_TYPES = ["isp", "router", "switch", "server", "proxmox", "vm", "lxc", "nas", "iot", "ap", "generic"]
+# Kept in sync manually with frontend/src/types/index.ts NodeType (device types only —
+# group/groupRect/text are canvas annotations created via dedicated UI actions, not create_node).
+# Sync is enforced automatically by test_node_types_in_sync_with_frontend (mcp/tests/test_node_types_sync.py).
+NODE_TYPES = [
+    "isp", "router", "firewall", "switch", "server", "proxmox", "vm", "lxc", "nas", "iot", "ap",
+    "camera", "printer", "computer", "laptop", "mobile", "cpl", "docker_host", "docker_container",
+    "generic", "zigbee_coordinator", "zigbee_router", "zigbee_enddevice",
+    "zwave_coordinator", "zwave_router", "zwave_enddevice", "grid", "ups", "battery", "generator",
+    "solar_panel", "inverter", "circuit_breaker", "contactor", "electrical_switch", "socket",
+    "light", "meter", "transformer", "load",
+]
+
+# Kept in sync manually with frontend/src/types/index.ts EdgeType.
+# Sync is enforced automatically by test_edge_types_in_sync_with_frontend (mcp/tests/test_edge_types_sync.py).
+EDGE_TYPES = [
+    "ethernet", "wifi", "iot", "vlan", "virtual", "cluster", "fibre", "electrical",
+]
 
 # Shared field schemas mirroring backend NodeBase / NodeUpdate (backend/app/schemas/nodes.py).
 # create_node and update_node both expose these so the MCP is symmetric with what the
@@ -92,7 +108,7 @@ def _build_tools() -> list[Tool]:
             "properties": {
                 "source": {"type": "string"},
                 "target": {"type": "string"},
-                "type":   {"type": "string", "enum": ["ethernet", "wifi", "iot", "vlan", "virtual"], "default": "ethernet"},
+                "type":   {"type": "string", "enum": EDGE_TYPES, "default": "ethernet"},
                 "label":  {"type": "string"},
                 **_DESIGN_ID_FIELD,
             },
