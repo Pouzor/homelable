@@ -1,0 +1,263 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import { useRackStore } from '../store'
+import { getFaceplate } from '../faceplates'
+import { RACK_COLUMNS } from '../types'
+
+const store = () => useRackStore.getState()
+
+beforeEach(() => {
+  useRackStore.getState().reset()
+})
+
+describe('racks', () => {
+  it('boots with the demo rack and its mounted gear', () => {
+    expect(store().racks).toHaveLength(1)
+    expect(store().devices.length).toBeGreaterThan(0)
+    expect(store().cables.length).toBeGreaterThan(0)
+  })
+
+  it('adds a rack and selects it', () => {
+    const id = store().addRack()
+    expect(store().racks).toHaveLength(2)
+    expect(store().selectedRackId).toBe(id)
+  })
+
+  it('deletes a rack with its devices and their cables', () => {
+    store().removeRack('rack-main')
+    expect(store().racks).toHaveLength(0)
+    expect(store().devices).toHaveLength(0)
+    expect(store().cables).toHaveLength(0)
+  })
+
+  it('patches style without dropping the other style keys', () => {
+    store().updateRackStyle('rack-main', { showNumbers: false })
+    const style = store().racks[0].style
+    expect(style.showNumbers).toBe(false)
+    expect(style.frame).toBeTruthy()
+  })
+})
+
+describe('mounting', () => {
+  it('mounts an inventory item using its suggested faceplate', () => {
+    const id = store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 5 })
+    expect(id).not.toBeNull()
+    const device = store().devices.find((d) => d.id === id)!
+    expect(device.faceplateId).toBe('switch-8')
+    expect(device.nodeId).toBe('inv-sw8')
+    expect(device.ports.length).toBe(getFaceplate('switch-8').ports.length)
+  })
+
+  it('gives every mounted port a distinct id', () => {
+    const id = store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 5 })!
+    const ports = store().devices.find((d) => d.id === id)!.ports
+    expect(new Set(ports.map((p) => p.id)).size).toBe(ports.length)
+  })
+
+  it('slides a drop onto an occupied U to a free one', () => {
+    const taken = store().devices.find((d) => d.id === 'dev-sw24')!
+    const id = store().mountFromInventory('inv-sw8', 'rack-main', { uStart: taken.uStart })!
+    expect(store().devices.find((d) => d.id === id)!.uStart).not.toBe(taken.uStart)
+  })
+
+  it('returns null when the rack has no room', () => {
+    const rackId = store().addRack({ uHeight: 1 })
+    store().mountAccessory('blank-1u', rackId, { uStart: 1 })
+    expect(store().mountAccessory('blank-1u', rackId, { uStart: 1 })).toBeNull()
+  })
+
+  it('mounts an accessory with no inventory link', () => {
+    const id = store().mountAccessory('shelf-1u', 'rack-main', { uStart: 6 })!
+    expect(store().devices.find((d) => d.id === id)!.nodeId).toBeNull()
+  })
+
+  it('keeps the inventory entry when a device is unmounted', () => {
+    const before = store().inventory.length
+    store().unmountDevice('dev-pve1')
+    expect(store().devices.find((d) => d.id === 'dev-pve1')).toBeUndefined()
+    expect(store().inventory).toHaveLength(before)
+    expect(store().inventory.some((i) => i.id === 'inv-pve1')).toBe(true)
+  })
+
+  it('drops the cables of an unmounted device', () => {
+    const had = store().cables.some(
+      (c) => c.from.deviceId === 'dev-nas' || c.to.deviceId === 'dev-nas',
+    )
+    expect(had).toBe(true)
+    store().unmountDevice('dev-nas')
+    expect(
+      store().cables.some((c) => c.from.deviceId === 'dev-nas' || c.to.deviceId === 'dev-nas'),
+    ).toBe(false)
+  })
+})
+
+describe('moving and resizing', () => {
+  it('refuses a move onto an occupied slot', () => {
+    const target = store().devices.find((d) => d.id === 'dev-sw24')!
+    const ok = store().moveDevice('dev-fw', 'rack-main', {
+      uStart: target.uStart,
+      uHeight: 1,
+      colStart: 0,
+      colSpan: RACK_COLUMNS,
+    })
+    expect(ok).toBe(false)
+    expect(store().devices.find((d) => d.id === 'dev-fw')!.uStart).toBe(15)
+  })
+
+  it('accepts a move onto a free slot', () => {
+    const ok = store().moveDevice('dev-fw', 'rack-main', {
+      uStart: 5,
+      uHeight: 1,
+      colStart: 0,
+      colSpan: RACK_COLUMNS,
+    })
+    expect(ok).toBe(true)
+    expect(store().devices.find((d) => d.id === 'dev-fw')!.uStart).toBe(5)
+  })
+
+  it('ignores a geometry edit that would collide', () => {
+    // dev-pve1 is 2U at U11; growing it to 4U would run into dev-fw territory.
+    store().updateDevice('dev-pve1', { uHeight: 5 })
+    expect(store().devices.find((d) => d.id === 'dev-pve1')!.uHeight).toBe(2)
+  })
+
+  it('applies a non-geometry edit even in a tight rack', () => {
+    store().updateDevice('dev-pve1', { label: 'renamed' })
+    expect(store().devices.find((d) => d.id === 'dev-pve1')!.label).toBe('renamed')
+  })
+
+  it('resizes to the new faceplate when it fits', () => {
+    store().updateDevice('dev-blank', { label: 'slot' })
+    store().applyFaceplate('dev-pve2', 'server-1u')
+    const device = store().devices.find((d) => d.id === 'dev-pve2')!
+    expect(device.faceplateId).toBe('server-1u')
+    expect(device.uHeight).toBe(1)
+  })
+
+  it('keeps the old geometry when the new faceplate does not fit', () => {
+    store().applyFaceplate('dev-sw24', 'server-4u-storage')
+    const device = store().devices.find((d) => d.id === 'dev-sw24')!
+    expect(device.faceplateId).toBe('server-4u-storage')
+    expect(device.uHeight).toBe(1)
+  })
+})
+
+describe('ports', () => {
+  it('adds and removes a port', () => {
+    const before = store().devices.find((d) => d.id === 'dev-pve1')!.ports.length
+    store().addPort('dev-pve1', { label: 'ipmi', type: 'rj45', x: 0.5, y: 0.5 })
+    const ports = store().devices.find((d) => d.id === 'dev-pve1')!.ports
+    expect(ports).toHaveLength(before + 1)
+    store().removePort('dev-pve1', ports[ports.length - 1].id)
+    expect(store().devices.find((d) => d.id === 'dev-pve1')!.ports).toHaveLength(before)
+  })
+
+  it('removes the cable attached to a deleted port', () => {
+    const cable = store().cables[0]
+    store().removePort(cable.from.deviceId, cable.from.portId)
+    expect(store().cables.find((c) => c.id === cable.id)).toBeUndefined()
+  })
+
+  it('renames a port in place', () => {
+    const port = store().devices.find((d) => d.id === 'dev-pve1')!.ports[0]
+    store().updatePort('dev-pve1', port.id, { label: 'wan' })
+    expect(store().devices.find((d) => d.id === 'dev-pve1')!.ports[0].label).toBe('wan')
+  })
+})
+
+describe('cables', () => {
+  const freePorts = () => {
+    const used = new Set(
+      store().cables.flatMap((c) => [
+        `${c.from.deviceId}:${c.from.portId}`,
+        `${c.to.deviceId}:${c.to.portId}`,
+      ]),
+    )
+    const pick = (deviceId: string) => {
+      const device = store().devices.find((d) => d.id === deviceId)!
+      const port = device.ports.find((p) => !used.has(`${deviceId}:${p.id}`))!
+      return { deviceId, portId: port.id }
+    }
+    return { a: pick('dev-sw24'), b: pick('dev-pve1') }
+  }
+
+  it('creates a cable between two free ports', () => {
+    const { a, b } = freePorts()
+    const id = store().addCable(a, b)
+    expect(id).not.toBeNull()
+    expect(store().cables.find((c) => c.id === id)!.color).toBeTruthy()
+  })
+
+  it('infers the cable type from the port it starts on', () => {
+    const sw = store().devices.find((d) => d.id === 'dev-sw24')!
+    const nas = store().devices.find((d) => d.id === 'dev-nas')!
+    const freeOf = (deviceId: string, type: string) => {
+      const patched = new Set(store().cables.flatMap((c) => [c.from.portId, c.to.portId]))
+      const device = store().devices.find((d) => d.id === deviceId)!
+      return device.ports.find((p) => p.type === type && !patched.has(p.id))!
+    }
+
+    const copper = store().addCable(
+      { deviceId: sw.id, portId: freeOf(sw.id, 'rj45').id },
+      { deviceId: nas.id, portId: freeOf(nas.id, 'rj45').id },
+    )
+    expect(store().cables.find((c) => c.id === copper)!.type).toBe('ethernet')
+
+    const fiber = store().addCable(
+      { deviceId: sw.id, portId: freeOf(sw.id, 'sfp+').id },
+      { deviceId: nas.id, portId: freeOf(nas.id, 'rj45').id },
+    )
+    expect(store().cables.find((c) => c.id === fiber)!.type).toBe('fiber')
+  })
+
+  it('refuses a second cable on an already patched port', () => {
+    const existing = store().cables[0]
+    const { b } = freePorts()
+    expect(store().addCable(existing.from, b)).toBeNull()
+  })
+
+  it('refuses a port patched to itself', () => {
+    const { a } = freePorts()
+    expect(store().addCable(a, a)).toBeNull()
+  })
+
+  it('refuses an unknown port', () => {
+    const { a } = freePorts()
+    expect(store().addCable(a, { deviceId: 'dev-pve1', portId: 'nope' })).toBeNull()
+  })
+
+  it('builds a cable across two clicks in patch mode', () => {
+    const { a, b } = freePorts()
+    const before = store().cables.length
+    store().pickPort(a.deviceId, a.portId)
+    expect(store().cableDraft).toEqual(a)
+    store().pickPort(b.deviceId, b.portId)
+    expect(store().cableDraft).toBeNull()
+    expect(store().cables).toHaveLength(before + 1)
+  })
+
+  it('turns cables on when entering patch mode', () => {
+    expect(store().cableVisibility).toBe('hover')
+    store().toggleCableMode()
+    expect(store().cableMode).toBe(true)
+    expect(store().cableVisibility).toBe('always')
+  })
+
+  it('imports links from the network canvas once', () => {
+    // Mount the two inventory items the hints reference.
+    store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 4 })
+    const first = store().importCablesFromNetwork()
+    expect(first).toBeGreaterThan(0)
+    expect(store().importCablesFromNetwork()).toBe(0)
+  })
+
+  it('skips hints whose devices are not racked', () => {
+    // inv-jbod is never mounted in the demo, so its hint cannot resolve.
+    store().importCablesFromNetwork()
+    expect(
+      store().cables.some((c) => {
+        const from = store().devices.find((d) => d.id === c.from.deviceId)
+        return from?.nodeId === 'inv-jbod'
+      }),
+    ).toBe(false)
+  })
+})
