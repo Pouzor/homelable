@@ -1,0 +1,154 @@
+/**
+ * Fake inventory + a pre-filled rack, so the prototype boots with something
+ * to look at. Ids are fixed strings (not UUIDs) to keep tests readable.
+ */
+import { getFaceplate } from './faceplates'
+import { CABLE_COLORS, DEFAULT_RACK_STYLE } from './rackDefaults'
+import type { Cable, CableType, InventoryDevice, Port, Rack, RackDevice } from './types'
+
+let portSeq = 0
+function withIds(ports: Omit<Port, 'id'>[], deviceId: string): Port[] {
+  return ports.map((p) => ({ ...p, id: `${deviceId}-p${portSeq++}` }))
+}
+
+export function demoInventory(): InventoryDevice[] {
+  return [
+    { id: 'inv-pve1', label: 'pve-01', type: 'proxmox', ip: '192.168.1.10', status: 'online', suggestedFaceplateId: 'server-2u-bays' },
+    { id: 'inv-pve2', label: 'pve-02', type: 'proxmox', ip: '192.168.1.11', status: 'online', suggestedFaceplateId: 'server-1u-bays' },
+    { id: 'inv-nuc1', label: 'nuc-k3s-a', type: 'server', ip: '192.168.1.21', status: 'online', suggestedFaceplateId: 'sff-half' },
+    { id: 'inv-nuc2', label: 'nuc-k3s-b', type: 'server', ip: '192.168.1.22', status: 'online', suggestedFaceplateId: 'sff-half' },
+    { id: 'inv-pi1', label: 'pi-dns', type: 'server', ip: '192.168.1.31', status: 'online', suggestedFaceplateId: 'mini-third' },
+    { id: 'inv-pi2', label: 'pi-backup', type: 'server', ip: '192.168.1.32', status: 'offline', suggestedFaceplateId: 'mini-third' },
+    { id: 'inv-sw24', label: 'sw-core-24', type: 'switch', ip: '192.168.1.2', status: 'online', suggestedFaceplateId: 'switch-24' },
+    { id: 'inv-sw8', label: 'sw-lab-8', type: 'switch', ip: '192.168.1.3', status: 'online', suggestedFaceplateId: 'switch-8' },
+    { id: 'inv-fw', label: 'opnsense', type: 'firewall', ip: '192.168.1.1', status: 'online', suggestedFaceplateId: 'router-1u' },
+    { id: 'inv-nas', label: 'nas-truenas', type: 'nas', ip: '192.168.1.40', status: 'online', suggestedFaceplateId: 'nas-2u' },
+    { id: 'inv-jbod', label: 'jbod-shelf', type: 'server', ip: '192.168.1.41', status: 'unknown', suggestedFaceplateId: 'server-4u-storage' },
+    { id: 'inv-ups', label: 'ups-eaton', type: 'ups', ip: '192.168.1.50', status: 'online', suggestedFaceplateId: 'ups-2u' },
+    { id: 'inv-pdu', label: 'pdu-main', type: 'pdu', status: 'unknown', suggestedFaceplateId: 'pdu-1u' },
+    { id: 'inv-patch', label: 'patch-house', type: 'patch_panel', status: 'unknown', suggestedFaceplateId: 'patch-24' },
+  ]
+}
+
+export function demoRacks(): Rack[] {
+  return [
+    {
+      id: 'rack-main',
+      name: 'Main rack',
+      location: 'Garage',
+      uHeight: 18,
+      widthStandard: '19',
+      numbering: 'bottom-up',
+      style: { ...DEFAULT_RACK_STYLE },
+      position: { x: 120, y: 60 },
+    },
+  ]
+}
+
+interface DemoMount {
+  id: string
+  nodeId: string | null
+  label: string
+  faceplateId: string
+  uStart: number
+  colStart?: number
+  colSpan?: number
+  status?: RackDevice['status']
+}
+
+/** Layout of the pre-filled rack, top (18U) down to the bottom. */
+const DEMO_MOUNTS: DemoMount[] = [
+  { id: 'dev-patch', nodeId: 'inv-patch', label: 'patch-house', faceplateId: 'patch-24', uStart: 18 },
+  { id: 'dev-sw24', nodeId: 'inv-sw24', label: 'sw-core-24', faceplateId: 'switch-24', uStart: 17 },
+  { id: 'dev-mgmt', nodeId: null, label: 'Cable manager', faceplateId: 'cable-manager-1u', uStart: 16 },
+  { id: 'dev-fw', nodeId: 'inv-fw', label: 'opnsense', faceplateId: 'router-1u', uStart: 15 },
+  // Two half-width mini PCs sharing 14U.
+  { id: 'dev-nuc1', nodeId: 'inv-nuc1', label: 'nuc-k3s-a', faceplateId: 'sff-half', uStart: 14, colStart: 0, colSpan: 6 },
+  { id: 'dev-nuc2', nodeId: 'inv-nuc2', label: 'nuc-k3s-b', faceplateId: 'sff-half', uStart: 14, colStart: 6, colSpan: 6 },
+  // Three third-width nodes sharing 13U.
+  { id: 'dev-pi1', nodeId: 'inv-pi1', label: 'pi-dns', faceplateId: 'mini-third', uStart: 13, colStart: 0, colSpan: 4 },
+  { id: 'dev-pi2', nodeId: 'inv-pi2', label: 'pi-backup', faceplateId: 'mini-third', uStart: 13, colStart: 4, colSpan: 4, status: 'offline' },
+  { id: 'dev-blank', nodeId: null, label: 'Blank', faceplateId: 'blank-1u', uStart: 13, colStart: 8, colSpan: 4 },
+  { id: 'dev-pve1', nodeId: 'inv-pve1', label: 'pve-01', faceplateId: 'server-2u-bays', uStart: 11 },
+  { id: 'dev-pve2', nodeId: 'inv-pve2', label: 'pve-02', faceplateId: 'server-1u-bays', uStart: 10 },
+  { id: 'dev-nas', nodeId: 'inv-nas', label: 'nas-truenas', faceplateId: 'nas-2u', uStart: 8 },
+  { id: 'dev-shelf', nodeId: null, label: 'Shelf', faceplateId: 'shelf-1u', uStart: 7 },
+  { id: 'dev-pdu', nodeId: 'inv-pdu', label: 'pdu-main', faceplateId: 'pdu-1u', uStart: 3 },
+  { id: 'dev-ups', nodeId: 'inv-ups', label: 'ups-eaton', faceplateId: 'ups-2u', uStart: 1 },
+]
+
+export function demoDevices(): RackDevice[] {
+  portSeq = 0
+  const inventory = demoInventory()
+  return DEMO_MOUNTS.map((mount) => {
+    const plate = getFaceplate(mount.faceplateId)
+    const inv = mount.nodeId ? inventory.find((i) => i.id === mount.nodeId) : undefined
+    return {
+      id: mount.id,
+      rackId: 'rack-main',
+      nodeId: mount.nodeId,
+      label: mount.label,
+      uStart: mount.uStart,
+      uHeight: plate.uHeight,
+      colStart: mount.colStart ?? 0,
+      colSpan: mount.colSpan ?? plate.colSpan,
+      faceplateId: mount.faceplateId,
+      status: mount.status ?? inv?.status ?? 'unknown',
+      ports: withIds(plate.ports, mount.id),
+    }
+  })
+}
+
+/**
+ * A few patch cables so the cabling overlay has something to show on boot.
+ * Ports are picked by index into each device's generated port list.
+ */
+const DEMO_CABLE_SPECS: {
+  from: [string, number]
+  to: [string, number]
+  type: CableType
+  label?: string
+}[] = [
+  { from: ['dev-sw24', 0], to: ['dev-fw', 0], type: 'ethernet', label: 'WAN uplink' },
+  { from: ['dev-sw24', 1], to: ['dev-pve1', 0], type: 'ethernet' },
+  { from: ['dev-sw24', 2], to: ['dev-pve2', 0], type: 'ethernet' },
+  { from: ['dev-sw24', 3], to: ['dev-nuc1', 0], type: 'ethernet' },
+  { from: ['dev-sw24', 4], to: ['dev-nuc2', 0], type: 'ethernet' },
+  // sw24 ports: 0..23 are RJ45, 24..25 are SFP+.
+  { from: ['dev-sw24', 24], to: ['dev-nas', 2], type: 'fiber', label: '10G SAN' },
+  { from: ['dev-patch', 0], to: ['dev-sw24', 12], type: 'ethernet', label: 'office' },
+  { from: ['dev-patch', 1], to: ['dev-sw24', 13], type: 'ethernet', label: 'living room' },
+]
+
+export function demoCables(): Cable[] {
+  const devices = demoDevices()
+  const byId = new Map(devices.map((d) => [d.id, d]))
+  const cables: Cable[] = []
+  for (const [i, spec] of DEMO_CABLE_SPECS.entries()) {
+    const from = byId.get(spec.from[0])?.ports[spec.from[1]]
+    const to = byId.get(spec.to[0])?.ports[spec.to[1]]
+    if (!from || !to) continue
+    cables.push({
+      id: `cable-${i}`,
+      type: spec.type,
+      color: CABLE_COLORS[spec.type],
+      label: spec.label,
+      from: { deviceId: spec.from[0], portId: from.id },
+      to: { deviceId: spec.to[0], portId: to.id },
+    })
+  }
+  return cables
+}
+
+/**
+ * Stand-in for "read the links already drawn on the logical canvas".
+ * The real implementation would read the network design's edges; here it is a
+ * fixed list of inventory-id pairs used by the one-shot import action.
+ */
+export function networkEdgeHints(): { from: string; to: string; type: CableType; label?: string }[] {
+  return [
+    { from: 'inv-sw8', to: 'inv-sw24', type: 'ethernet', label: 'lab uplink' },
+    { from: 'inv-jbod', to: 'inv-nas', type: 'ethernet' },
+    { from: 'inv-pi1', to: 'inv-sw24', type: 'ethernet' },
+  ]
+}
