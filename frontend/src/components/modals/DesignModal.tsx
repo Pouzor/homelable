@@ -4,11 +4,22 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { DESIGN_ICONS, DEFAULT_DESIGN_ICON, resolveDesignIcon } from '@/utils/designIcons'
-import type { Design, FloorMapConfig } from '@/types'
+import type { Design, DesignType, FloorMapConfig } from '@/types'
+
+/** Canvas kinds offered on create. `electrical` shares the network renderer. */
+const CANVAS_KINDS: { value: DesignType; label: string; hint: string }[] = [
+  { value: 'network', label: 'Diagram', hint: 'Nodes and links on a free canvas' },
+  { value: 'rack', label: 'Rack', hint: 'Racks, mounted gear and patching' },
+]
 
 export interface DesignFormData {
   name: string
   icon: string
+  /**
+   * Kind of canvas to create. Only offered in create mode — a canvas cannot
+   * change kind afterwards, since network and rack store different things.
+   */
+  designType?: DesignType
   /**
    * Floor plan for THIS canvas. Only present when the floor-plan section is
    * shown (edit mode on the active canvas). `null` means "remove the floor
@@ -60,9 +71,12 @@ export function DesignModal({
 }: DesignModalProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [icon, setIcon] = useState(initial?.icon ?? DEFAULT_DESIGN_ICON)
+  const [designType, setDesignType] = useState<DesignType>(initial?.designType ?? 'network')
 
   // "Copy from existing" is create-mode only (no floor-plan section shown).
   const canCopy = !showFloorMap && sourceDesigns.length > 0
+  // Editing never changes the kind; `initial` is only passed in edit mode.
+  const canPickKind = !initial && !showFloorMap
   const [fromExisting, setFromExisting] = useState(false)
   const [sourceId, setSourceId] = useState<string>(sourceDesigns[0]?.id ?? '')
 
@@ -103,6 +117,7 @@ export function DesignModal({
     if (!trimmed) return
     if (canCopy && fromExisting && !sourceId) return
     const data: DesignFormData = { name: trimmed, icon }
+    if (canPickKind) data.designType = designType
     if (canCopy && fromExisting && sourceId) {
       data.sourceId = sourceId
     }
@@ -145,6 +160,35 @@ export function DesignModal({
               autoFocus
             />
           </div>
+
+          {/* A copy inherits the source's kind, so the picker would be a lie. */}
+          {canPickKind && !fromExisting && (
+            <div className="space-y-1.5">
+              <Label>Kind</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {CANVAS_KINDS.map((kind) => {
+                  const selected = kind.value === designType
+                  return (
+                    <button
+                      key={kind.value}
+                      type="button"
+                      aria-pressed={selected}
+                      title={kind.hint}
+                      onClick={() => setDesignType(kind.value)}
+                      className={`rounded-md border px-2 py-2 text-left transition-colors cursor-pointer ${
+                        selected
+                          ? 'border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff]'
+                          : 'border-border text-muted-foreground hover:text-foreground hover:border-[#30363d]'
+                      }`}
+                    >
+                      <span className="block text-xs font-medium">{kind.label}</span>
+                      <span className="block text-[10px] leading-tight opacity-70">{kind.hint}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label>Icon</Label>

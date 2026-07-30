@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.db.database import AsyncSessionLocal, get_db
 from app.db.models import Design, Edge, Node, PendingDevice, PendingDeviceLink, ScanRun
 from app.schemas.nodes import NodeCreate
-from app.schemas.scan import PendingDeviceResponse, ScanRunResponse
+from app.schemas.scan import PendingDeviceCreate, PendingDeviceResponse, ScanRunResponse
 from app.services.node_dedupe import dedupe_nodes_by_ieee, find_duplicate_node
 from app.services.scanner import DeepScanOptions, _valid_port_range, request_cancel, run_scan
 from app.services.zigbee_service import (
@@ -310,6 +310,35 @@ async def list_pending(db: AsyncSession = Depends(get_db), _: str = Depends(get_
     # stay listed so they keep showing with a canvas-presence badge.
     result = await db.execute(select(PendingDevice).where(PendingDevice.status != "hidden"))
     return await _with_canvas_counts(db, list(result.scalars().all()))
+
+
+@router.post("/pending", response_model=PendingDeviceResponse, status_code=201)
+async def create_pending(
+    body: PendingDeviceCreate,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> PendingDevice:
+    """Add an inventory entry by hand, for hardware no scan can discover.
+
+    Lands as ``status="pending"`` like a discovery would, so the existing approve
+    / hide / restore flows apply unchanged.
+    """
+    device = PendingDevice(
+        hostname=body.hostname,
+        ip=body.ip,
+        mac=body.mac,
+        suggested_type=body.suggested_type,
+        model=body.model,
+        vendor=body.vendor,
+        properties=body.properties,
+        status="pending",
+        discovery_source="manual",
+        discovery_sources=["manual"],
+    )
+    db.add(device)
+    await db.commit()
+    await db.refresh(device)
+    return (await _with_canvas_counts(db, [device]))[0]
 
 
 @router.delete("/pending", response_model=dict)

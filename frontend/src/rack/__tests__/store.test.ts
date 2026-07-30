@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useRackStore } from '../store'
 import { getFaceplate } from '../faceplates'
-import { RACK_COLUMNS } from '../types'
+import { RACK_COLUMNS } from '@/types'
+import { demoNetworkLinks } from '../demoData'
 
 const store = () => useRackStore.getState()
 
 beforeEach(() => {
-  useRackStore.getState().reset()
+  useRackStore.getState().loadDemo()
 })
 
 describe('racks', () => {
@@ -43,7 +44,7 @@ describe('mounting', () => {
     expect(id).not.toBeNull()
     const device = store().devices.find((d) => d.id === id)!
     expect(device.faceplateId).toBe('switch-8')
-    expect(device.nodeId).toBe('inv-sw8')
+    expect(device.deviceId).toBe('inv-sw8')
     expect(device.ports.length).toBe(getFaceplate('switch-8').ports.length)
   })
 
@@ -67,7 +68,24 @@ describe('mounting', () => {
 
   it('mounts an accessory with no inventory link', () => {
     const id = store().mountAccessory('shelf-1u', 'rack-main', { uStart: 6 })!
-    expect(store().devices.find((d) => d.id === id)!.nodeId).toBeNull()
+    expect(store().devices.find((d) => d.id === id)!.deviceId).toBeNull()
+  })
+
+  it('flags the inventory entry as racked once it is mounted', () => {
+    expect(store().inventory.find((i) => i.id === 'inv-sw8')!.racked).toBe(false)
+    store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 5 })
+    expect(store().inventory.find((i) => i.id === 'inv-sw8')!.racked).toBe(true)
+  })
+
+  it('clears the racked flag again when the device is unmounted', () => {
+    expect(store().inventory.find((i) => i.id === 'inv-pve1')!.racked).toBe(true)
+    store().unmountDevice('dev-pve1')
+    expect(store().inventory.find((i) => i.id === 'inv-pve1')!.racked).toBe(false)
+  })
+
+  it('carries the canvas node link onto the mount', () => {
+    const id = store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 5 })!
+    expect(store().devices.find((d) => d.id === id)!.nodeId).toBe('node-inv-sw8')
   })
 
   it('keeps the inventory entry when a device is unmounted', () => {
@@ -243,21 +261,60 @@ describe('cables', () => {
   })
 
   it('imports links from the network canvas once', () => {
-    // Mount the two inventory items the hints reference.
+    // Mount the inventory item the hints reference; the other end is racked already.
     store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 4 })
-    const first = store().importCablesFromNetwork()
+    const first = store().importCablesFromNetwork(demoNetworkLinks())
     expect(first).toBeGreaterThan(0)
-    expect(store().importCablesFromNetwork()).toBe(0)
+    expect(store().importCablesFromNetwork(demoNetworkLinks())).toBe(0)
   })
 
   it('skips hints whose devices are not racked', () => {
     // inv-jbod is never mounted in the demo, so its hint cannot resolve.
-    store().importCablesFromNetwork()
+    store().importCablesFromNetwork(demoNetworkLinks())
     expect(
       store().cables.some((c) => {
         const from = store().devices.find((d) => d.id === c.from.deviceId)
-        return from?.nodeId === 'inv-jbod'
+        return from?.nodeId === 'node-inv-jbod'
       }),
     ).toBe(false)
+  })
+})
+
+describe('dirty tracking', () => {
+  it('starts clean after loading the sample and marks edits', () => {
+    // loadDemo seeds unsaved sample data on purpose; a real load starts clean.
+    store().markSaved()
+    expect(store().hasUnsavedChanges).toBe(false)
+    store().addRack()
+    expect(store().hasUnsavedChanges).toBe(true)
+  })
+
+  it('bumps the edit counter on every mutation', () => {
+    const before = store().editSeq
+    store().updateRack('rack-main', { name: 'renamed' })
+    expect(store().editSeq).toBeGreaterThan(before)
+  })
+
+  it('does not dirty the canvas for pan and zoom', () => {
+    store().markSaved()
+    store().setViewport({ x: 12, y: 34, zoom: 2 })
+    expect(store().hasUnsavedChanges).toBe(false)
+    expect(store().viewport).toEqual({ x: 12, y: 34, zoom: 2 })
+  })
+
+  it('does not dirty the canvas for selection or cable visibility', () => {
+    store().markSaved()
+    store().selectDevice('dev-sw24')
+    store().setCableVisibility('always')
+    store().toggleCableMode()
+    expect(store().hasUnsavedChanges).toBe(false)
+  })
+
+  it('clears everything on reset', () => {
+    store().reset()
+    expect(store().racks).toEqual([])
+    expect(store().devices).toEqual([])
+    expect(store().inventory).toEqual([])
+    expect(store().hasUnsavedChanges).toBe(false)
   })
 })

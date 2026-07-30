@@ -5,19 +5,44 @@
  * persisted directly to localStorage:
  *   - `homelable_designs`         → Design[] (the canvas list)
  *   - `homelable_canvas:<id>`     → { nodes, edges, theme_id, custom_style } per design
+ *   - `homelable_rack:<id>`       → { racks, devices, cables, viewport } per rack design
  *
  * Legacy single-canvas installs stored everything under `homelable_canvas`
  * (no per-design key, no design list). `ensureSeed()` migrates that data into a
  * default design on first run so existing users keep their canvas.
  */
 import type { Node, Edge } from '@xyflow/react'
-import type { Design, DesignType, NodeData, EdgeData, CustomStyleDef } from '@/types'
+import type {
+  Cable,
+  CustomStyleDef,
+  Design,
+  DesignType,
+  EdgeData,
+  InventoryDevice,
+  NodeData,
+  Rack,
+  RackDevice,
+} from '@/types'
 import type { ThemeId } from '@/utils/themes'
 import { generateUUID } from '@/utils/uuid'
 
 const DESIGNS_KEY = 'homelable_designs'
 const LEGACY_CANVAS_KEY = 'homelable_canvas'
+const RACK_KEY = 'homelable_rack'
 const canvasKey = (designId: string) => `${LEGACY_CANVAS_KEY}:${designId}`
+const rackKey = (designId: string) => `${RACK_KEY}:${designId}`
+
+export interface StandaloneRackCanvas {
+  racks: Rack[]
+  devices: RackDevice[]
+  cables: Cable[]
+  viewport?: { x: number; y: number; zoom: number }
+  /**
+   * Inventory entries created from the rack canvas. Standalone has no
+   * `pending_devices` table, so hardware documented here lives with the canvas.
+   */
+  inventory: InventoryDevice[]
+}
 
 export interface StandaloneCanvas {
   nodes: Node<NodeData>[]
@@ -115,12 +140,17 @@ export function listDesignsWithCounts(): Design[] {
 
 /** Deep-copy a design's canvas into a new design. Returns the new design. */
 export function copyDesign(sourceId: string, name: string, icon?: string | null): Design {
-  const design = createDesign(name, icon)
+  const sourceType = listDesigns().find((d) => d.id === sourceId)?.design_type ?? 'network'
+  const design = createDesign(name, icon, sourceType)
   const source = loadCanvas(sourceId)
   if (source) {
     // localStorage canvas already stores React Flow nodes/edges by value; a fresh
     // JSON round-trip is enough to detach the copy from the source.
     saveCanvas(design.id, JSON.parse(JSON.stringify(source)) as StandaloneCanvas)
+  }
+  const sourceRack = loadRackCanvas(sourceId)
+  if (sourceRack) {
+    saveRackCanvas(design.id, JSON.parse(JSON.stringify(sourceRack)) as StandaloneRackCanvas)
   }
   return design
 }
@@ -138,6 +168,16 @@ export function updateDesign(id: string, patch: Partial<Pick<Design, 'name' | 'i
 export function deleteDesign(id: string): void {
   writeDesigns(listDesigns().filter((d) => d.id !== id))
   localStorage.removeItem(canvasKey(id))
+  localStorage.removeItem(rackKey(id))
+}
+
+/** Load a design's rack canvas. Returns null when it has never been saved. */
+export function loadRackCanvas(designId: string): StandaloneRackCanvas | null {
+  return readJSON<StandaloneRackCanvas>(rackKey(designId))
+}
+
+export function saveRackCanvas(designId: string, data: StandaloneRackCanvas): void {
+  localStorage.setItem(rackKey(designId), JSON.stringify(data))
 }
 
 /** Load a design's canvas. Returns null when the design has never been saved. */

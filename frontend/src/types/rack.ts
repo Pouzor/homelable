@@ -1,8 +1,9 @@
 /**
- * Rack canvas prototype — domain types.
+ * Rack canvas — domain types.
  *
- * Front-only UX prototype. Nothing here is persisted server-side yet; the
- * shapes are meant to be lifted into `@/types` once the UX is validated.
+ * A rack canvas is a design of `design_type: 'rack'`. These camelCase shapes are
+ * what the store and components work with; `@/utils/rackSerializer` maps them to
+ * and from the snake_case API payloads.
  */
 
 /** Horizontal grid inside a rack. 12 columns = full width, 6 = half, 4 = third. */
@@ -119,8 +120,17 @@ export interface RackDevice {
   id: string
   rackId: string
   /**
-   * Inventory node id this mount represents. Null for accessories (blank
+   * Device Inventory entry this mount represents. Null for accessories (blank
    * panels, shelves) that exist only in the rack view.
+   *
+   * Unmounting never deletes the inventory entry — the inventory outlives both
+   * the rack mount and any canvas node, which is the whole point of keying on it.
+   */
+  deviceId: string | null
+  /**
+   * Logical-canvas node for the same hardware, when one exists. Read-only here:
+   * resolved by the backend from the inventory entry, used for live status and
+   * for seeding cables from the network design's edges.
    */
   nodeId: string | null
   label: string
@@ -156,28 +166,28 @@ export interface Cable {
 export type CableVisibility = 'hover' | 'always' | 'hidden'
 
 // ---------------------------------------------------------------------------
-// Inventory (fake, prototype only)
+// Inventory
 // ---------------------------------------------------------------------------
 
-/** Subset of the network inventory that can physically live in a rack. */
-export type RackableNodeType =
-  | 'server'
-  | 'proxmox'
-  | 'switch'
-  | 'router'
-  | 'firewall'
-  | 'nas'
-  | 'ups'
-  | 'patch_panel'
-  | 'pdu'
-  | 'generic'
-
+/**
+ * A Device Inventory entry offered to the rack tray.
+ *
+ * Sourced from the backend's `pending_devices` — the same list the Device
+ * Inventory panel shows. Entries survive approval and node deletion, so racking
+ * and unracking never mutates them.
+ */
 export interface InventoryDevice {
   id: string
   label: string
-  type: RackableNodeType
-  ip?: string
+  /** `suggested_type` from discovery; free-form, may be unknown to the UI. */
+  type: string | null
+  ip?: string | null
+  /** Live status of the matching canvas node, `unknown` when there is none. */
   status: DeviceStatus
+  /** Matching canvas node, when the device is on a logical canvas. */
+  nodeId: string | null
+  /** Already mounted somewhere in this rack design. */
+  racked: boolean
   /** Faceplate proposed when the device is dropped into a rack. */
   suggestedFaceplateId: string
 }

@@ -1,33 +1,67 @@
 /**
- * Fake inventory + a pre-filled rack, so the prototype boots with something
- * to look at. Ids are fixed strings (not UUIDs) to keep tests readable.
+ * A sample inventory + a pre-filled rack, offered on an empty rack canvas and
+ * used as fixtures by the rack tests. Ids are fixed strings (not UUIDs) to keep
+ * tests readable.
+ *
+ * `inv-*` ids stand in for Device Inventory entries, `node-*` for the matching
+ * canvas nodes — the same two links a real mount carries.
  */
 import { getFaceplate } from './faceplates'
 import { CABLE_COLORS, DEFAULT_RACK_STYLE } from './rackDefaults'
-import type { Cable, CableType, InventoryDevice, Port, Rack, RackDevice } from './types'
+import type { Cable, CableType, InventoryDevice, Port, Rack, RackDevice } from '@/types'
 
 let portSeq = 0
 function withIds(ports: Omit<Port, 'id'>[], deviceId: string): Port[] {
   return ports.map((p) => ({ ...p, id: `${deviceId}-p${portSeq++}` }))
 }
 
+interface DemoInventorySpec {
+  id: string
+  label: string
+  type: string
+  ip?: string
+  status: InventoryDevice['status']
+  suggestedFaceplateId: string
+  /** Omitted for gear that was never placed on a logical canvas. */
+  onCanvas?: false
+}
+
+const DEMO_INVENTORY: DemoInventorySpec[] = [
+  { id: 'inv-pve1', label: 'pve-01', type: 'proxmox', ip: '192.168.1.10', status: 'online', suggestedFaceplateId: 'server-2u-bays' },
+  { id: 'inv-pve2', label: 'pve-02', type: 'proxmox', ip: '192.168.1.11', status: 'online', suggestedFaceplateId: 'server-1u-bays' },
+  { id: 'inv-nuc1', label: 'nuc-k3s-a', type: 'server', ip: '192.168.1.21', status: 'online', suggestedFaceplateId: 'sff-half' },
+  { id: 'inv-nuc2', label: 'nuc-k3s-b', type: 'server', ip: '192.168.1.22', status: 'online', suggestedFaceplateId: 'sff-half' },
+  { id: 'inv-pi1', label: 'pi-dns', type: 'server', ip: '192.168.1.31', status: 'online', suggestedFaceplateId: 'mini-third' },
+  { id: 'inv-pi2', label: 'pi-backup', type: 'server', ip: '192.168.1.32', status: 'offline', suggestedFaceplateId: 'mini-third' },
+  { id: 'inv-sw24', label: 'sw-core-24', type: 'switch', ip: '192.168.1.2', status: 'online', suggestedFaceplateId: 'switch-24' },
+  { id: 'inv-sw8', label: 'sw-lab-8', type: 'switch', ip: '192.168.1.3', status: 'online', suggestedFaceplateId: 'switch-8' },
+  { id: 'inv-fw', label: 'opnsense', type: 'firewall', ip: '192.168.1.1', status: 'online', suggestedFaceplateId: 'router-1u' },
+  { id: 'inv-nas', label: 'nas-truenas', type: 'nas', ip: '192.168.1.40', status: 'online', suggestedFaceplateId: 'nas-2u' },
+  { id: 'inv-jbod', label: 'jbod-shelf', type: 'server', ip: '192.168.1.41', status: 'unknown', suggestedFaceplateId: 'server-4u-storage' },
+  { id: 'inv-ups', label: 'ups-eaton', type: 'ups', ip: '192.168.1.50', status: 'online', suggestedFaceplateId: 'ups-2u' },
+  // Dumb hardware: documented by hand, never on a logical canvas.
+  { id: 'inv-pdu', label: 'pdu-main', type: 'generic', status: 'unknown', suggestedFaceplateId: 'pdu-1u', onCanvas: false },
+  { id: 'inv-patch', label: 'patch-house', type: 'generic', status: 'unknown', suggestedFaceplateId: 'patch-24', onCanvas: false },
+]
+
+/** Canvas node id for an inventory entry, when it has one. */
+export function demoNodeId(inventoryId: string): string | null {
+  const spec = DEMO_INVENTORY.find((i) => i.id === inventoryId)
+  if (!spec || spec.onCanvas === false) return null
+  return `node-${inventoryId}`
+}
+
 export function demoInventory(): InventoryDevice[] {
-  return [
-    { id: 'inv-pve1', label: 'pve-01', type: 'proxmox', ip: '192.168.1.10', status: 'online', suggestedFaceplateId: 'server-2u-bays' },
-    { id: 'inv-pve2', label: 'pve-02', type: 'proxmox', ip: '192.168.1.11', status: 'online', suggestedFaceplateId: 'server-1u-bays' },
-    { id: 'inv-nuc1', label: 'nuc-k3s-a', type: 'server', ip: '192.168.1.21', status: 'online', suggestedFaceplateId: 'sff-half' },
-    { id: 'inv-nuc2', label: 'nuc-k3s-b', type: 'server', ip: '192.168.1.22', status: 'online', suggestedFaceplateId: 'sff-half' },
-    { id: 'inv-pi1', label: 'pi-dns', type: 'server', ip: '192.168.1.31', status: 'online', suggestedFaceplateId: 'mini-third' },
-    { id: 'inv-pi2', label: 'pi-backup', type: 'server', ip: '192.168.1.32', status: 'offline', suggestedFaceplateId: 'mini-third' },
-    { id: 'inv-sw24', label: 'sw-core-24', type: 'switch', ip: '192.168.1.2', status: 'online', suggestedFaceplateId: 'switch-24' },
-    { id: 'inv-sw8', label: 'sw-lab-8', type: 'switch', ip: '192.168.1.3', status: 'online', suggestedFaceplateId: 'switch-8' },
-    { id: 'inv-fw', label: 'opnsense', type: 'firewall', ip: '192.168.1.1', status: 'online', suggestedFaceplateId: 'router-1u' },
-    { id: 'inv-nas', label: 'nas-truenas', type: 'nas', ip: '192.168.1.40', status: 'online', suggestedFaceplateId: 'nas-2u' },
-    { id: 'inv-jbod', label: 'jbod-shelf', type: 'server', ip: '192.168.1.41', status: 'unknown', suggestedFaceplateId: 'server-4u-storage' },
-    { id: 'inv-ups', label: 'ups-eaton', type: 'ups', ip: '192.168.1.50', status: 'online', suggestedFaceplateId: 'ups-2u' },
-    { id: 'inv-pdu', label: 'pdu-main', type: 'pdu', status: 'unknown', suggestedFaceplateId: 'pdu-1u' },
-    { id: 'inv-patch', label: 'patch-house', type: 'patch_panel', status: 'unknown', suggestedFaceplateId: 'patch-24' },
-  ]
+  return DEMO_INVENTORY.map((spec) => ({
+    id: spec.id,
+    label: spec.label,
+    type: spec.type,
+    ip: spec.ip ?? null,
+    status: spec.status,
+    nodeId: demoNodeId(spec.id),
+    racked: false,
+    suggestedFaceplateId: spec.suggestedFaceplateId,
+  }))
 }
 
 export function demoRacks(): Rack[] {
@@ -47,7 +81,8 @@ export function demoRacks(): Rack[] {
 
 interface DemoMount {
   id: string
-  nodeId: string | null
+  /** Device Inventory entry; null for rack-only accessories. */
+  deviceId: string | null
   label: string
   faceplateId: string
   uStart: number
@@ -58,23 +93,23 @@ interface DemoMount {
 
 /** Layout of the pre-filled rack, top (18U) down to the bottom. */
 const DEMO_MOUNTS: DemoMount[] = [
-  { id: 'dev-patch', nodeId: 'inv-patch', label: 'patch-house', faceplateId: 'patch-24', uStart: 18 },
-  { id: 'dev-sw24', nodeId: 'inv-sw24', label: 'sw-core-24', faceplateId: 'switch-24', uStart: 17 },
-  { id: 'dev-mgmt', nodeId: null, label: 'Cable manager', faceplateId: 'cable-manager-1u', uStart: 16 },
-  { id: 'dev-fw', nodeId: 'inv-fw', label: 'opnsense', faceplateId: 'router-1u', uStart: 15 },
+  { id: 'dev-patch', deviceId: 'inv-patch', label: 'patch-house', faceplateId: 'patch-24', uStart: 18 },
+  { id: 'dev-sw24', deviceId: 'inv-sw24', label: 'sw-core-24', faceplateId: 'switch-24', uStart: 17 },
+  { id: 'dev-mgmt', deviceId: null, label: 'Cable manager', faceplateId: 'cable-manager-1u', uStart: 16 },
+  { id: 'dev-fw', deviceId: 'inv-fw', label: 'opnsense', faceplateId: 'router-1u', uStart: 15 },
   // Two half-width mini PCs sharing 14U.
-  { id: 'dev-nuc1', nodeId: 'inv-nuc1', label: 'nuc-k3s-a', faceplateId: 'sff-half', uStart: 14, colStart: 0, colSpan: 6 },
-  { id: 'dev-nuc2', nodeId: 'inv-nuc2', label: 'nuc-k3s-b', faceplateId: 'sff-half', uStart: 14, colStart: 6, colSpan: 6 },
+  { id: 'dev-nuc1', deviceId: 'inv-nuc1', label: 'nuc-k3s-a', faceplateId: 'sff-half', uStart: 14, colStart: 0, colSpan: 6 },
+  { id: 'dev-nuc2', deviceId: 'inv-nuc2', label: 'nuc-k3s-b', faceplateId: 'sff-half', uStart: 14, colStart: 6, colSpan: 6 },
   // Three third-width nodes sharing 13U.
-  { id: 'dev-pi1', nodeId: 'inv-pi1', label: 'pi-dns', faceplateId: 'mini-third', uStart: 13, colStart: 0, colSpan: 4 },
-  { id: 'dev-pi2', nodeId: 'inv-pi2', label: 'pi-backup', faceplateId: 'mini-third', uStart: 13, colStart: 4, colSpan: 4, status: 'offline' },
-  { id: 'dev-blank', nodeId: null, label: 'Blank', faceplateId: 'blank-1u', uStart: 13, colStart: 8, colSpan: 4 },
-  { id: 'dev-pve1', nodeId: 'inv-pve1', label: 'pve-01', faceplateId: 'server-2u-bays', uStart: 11 },
-  { id: 'dev-pve2', nodeId: 'inv-pve2', label: 'pve-02', faceplateId: 'server-1u-bays', uStart: 10 },
-  { id: 'dev-nas', nodeId: 'inv-nas', label: 'nas-truenas', faceplateId: 'nas-2u', uStart: 8 },
-  { id: 'dev-shelf', nodeId: null, label: 'Shelf', faceplateId: 'shelf-1u', uStart: 7 },
-  { id: 'dev-pdu', nodeId: 'inv-pdu', label: 'pdu-main', faceplateId: 'pdu-1u', uStart: 3 },
-  { id: 'dev-ups', nodeId: 'inv-ups', label: 'ups-eaton', faceplateId: 'ups-2u', uStart: 1 },
+  { id: 'dev-pi1', deviceId: 'inv-pi1', label: 'pi-dns', faceplateId: 'mini-third', uStart: 13, colStart: 0, colSpan: 4 },
+  { id: 'dev-pi2', deviceId: 'inv-pi2', label: 'pi-backup', faceplateId: 'mini-third', uStart: 13, colStart: 4, colSpan: 4, status: 'offline' },
+  { id: 'dev-blank', deviceId: null, label: 'Blank', faceplateId: 'blank-1u', uStart: 13, colStart: 8, colSpan: 4 },
+  { id: 'dev-pve1', deviceId: 'inv-pve1', label: 'pve-01', faceplateId: 'server-2u-bays', uStart: 11 },
+  { id: 'dev-pve2', deviceId: 'inv-pve2', label: 'pve-02', faceplateId: 'server-1u-bays', uStart: 10 },
+  { id: 'dev-nas', deviceId: 'inv-nas', label: 'nas-truenas', faceplateId: 'nas-2u', uStart: 8 },
+  { id: 'dev-shelf', deviceId: null, label: 'Shelf', faceplateId: 'shelf-1u', uStart: 7 },
+  { id: 'dev-pdu', deviceId: 'inv-pdu', label: 'pdu-main', faceplateId: 'pdu-1u', uStart: 3 },
+  { id: 'dev-ups', deviceId: 'inv-ups', label: 'ups-eaton', faceplateId: 'ups-2u', uStart: 1 },
 ]
 
 export function demoDevices(): RackDevice[] {
@@ -82,11 +117,12 @@ export function demoDevices(): RackDevice[] {
   const inventory = demoInventory()
   return DEMO_MOUNTS.map((mount) => {
     const plate = getFaceplate(mount.faceplateId)
-    const inv = mount.nodeId ? inventory.find((i) => i.id === mount.nodeId) : undefined
+    const inv = mount.deviceId ? inventory.find((i) => i.id === mount.deviceId) : undefined
     return {
       id: mount.id,
       rackId: 'rack-main',
-      nodeId: mount.nodeId,
+      deviceId: mount.deviceId,
+      nodeId: mount.deviceId ? demoNodeId(mount.deviceId) : null,
       label: mount.label,
       uStart: mount.uStart,
       uHeight: plate.uHeight,
@@ -141,14 +177,14 @@ export function demoCables(): Cable[] {
 }
 
 /**
- * Stand-in for "read the links already drawn on the logical canvas".
- * The real implementation would read the network design's edges; here it is a
- * fixed list of inventory-id pairs used by the one-shot import action.
+ * Sample "links already drawn on the logical canvas", keyed by canvas node id.
+ * The real list comes from `networkLinks.ts`; this one backs the tests and the
+ * sample canvas.
  */
-export function networkEdgeHints(): { from: string; to: string; type: CableType; label?: string }[] {
+export function demoNetworkLinks(): { from: string; to: string; type: CableType; label?: string }[] {
   return [
-    { from: 'inv-sw8', to: 'inv-sw24', type: 'ethernet', label: 'lab uplink' },
-    { from: 'inv-jbod', to: 'inv-nas', type: 'ethernet' },
-    { from: 'inv-pi1', to: 'inv-sw24', type: 'ethernet' },
+    { from: 'node-inv-sw8', to: 'node-inv-sw24', type: 'ethernet', label: 'lab uplink' },
+    { from: 'node-inv-jbod', to: 'node-inv-nas', type: 'ethernet' },
+    { from: 'node-inv-pi1', to: 'node-inv-sw24', type: 'ethernet' },
   ]
 }

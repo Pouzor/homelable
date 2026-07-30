@@ -8,7 +8,7 @@
  *
  * Templates only seed the ports — the user edits the port list afterwards.
  */
-import { RACK_COLUMNS, type FaceplateTemplate, type Port, type PortType } from './types'
+import { RACK_COLUMNS, type FaceplateTemplate, type Port, type PortType } from '@/types'
 
 interface BankOptions {
   type: PortType
@@ -379,6 +379,34 @@ const BY_ID = new Map(FACEPLATES.map((f) => [f.id, f]))
 
 export function getFaceplate(id: string): FaceplateTemplate {
   return BY_ID.get(id) ?? FACEPLATES[0]
+}
+
+/**
+ * Faceplate proposed when an inventory device is dropped into a rack.
+ *
+ * Keyed on the device's discovery `suggested_type`, which is free-form — an
+ * unknown or missing type falls back to a plain 1U server plate, which the user
+ * can swap in the inspector.
+ */
+const FACEPLATE_BY_DEVICE_TYPE: Record<string, string> = {
+  server: 'server-1u-bays',
+  proxmox: 'server-2u-bays',
+  nas: 'nas-2u',
+  switch: 'switch-24',
+  router: 'router-1u',
+  firewall: 'router-1u',
+  ap: 'sff-half',
+  computer: 'sff-half',
+  docker_host: 'server-1u',
+  ups: 'ups-2u',
+  printer: 'shelf-1u',
+  camera: 'mini-third',
+  iot: 'mini-third',
+  cpl: 'mini-third',
+}
+
+export function suggestFaceplate(deviceType: string | null | undefined): string {
+  return (deviceType && FACEPLATE_BY_DEVICE_TYPE[deviceType]) || 'server-1u'
 }
 
 /** Templates grouped for the picker, preserving catalog order. */

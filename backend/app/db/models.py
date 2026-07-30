@@ -105,6 +105,99 @@ class CanvasState(Base):
     saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class Rack(Base):
+    """A physical rack on a `design_type='rack'` canvas.
+
+    Racks live per design, like nodes and edges. Geometry is expressed in rack
+    units: `u_height` is the number of mountable U, and a device's `u_start` is
+    always counted from the bottom rail — `numbering` only changes the printed
+    labels.
+    """
+
+    __tablename__ = "racks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    design_id: Mapped[str] = mapped_column(String, ForeignKey("designs.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    u_height: Mapped[int] = mapped_column(Integer, default=42)
+    # "19" or "10" (inches). Drives the drawn inner width.
+    width_standard: Mapped[str] = mapped_column(String, default="19")
+    # "bottom-up" or "top-down" — printed U labels only, never storage order.
+    numbering: Mapped[str] = mapped_column(String, default="bottom-up")
+    location: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Frame/rail/interior colours + showNumbers/enclosed flags.
+    style: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    pos_x: Mapped[float] = mapped_column(Float, default=0)
+    pos_y: Mapped[float] = mapped_column(Float, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class RackDevice(Base):
+    """A piece of gear mounted in a rack.
+
+    Two independent, both-optional links back to the rest of the app:
+
+    * `device_id` — the Device Inventory entry (`pending_devices`). This is the
+      primary link: inventory rows survive approval *and* node deletion, so
+      unracking or deleting a canvas node never removes the inventory entry.
+    * `node_id` — the logical-canvas node, when one exists. Only used to resolve
+      live status and to seed cables from the network design's edges.
+
+    Both are ``SET NULL`` on delete and `label` is denormalized, so a rack keeps
+    rendering after an inventory purge.
+    """
+
+    __tablename__ = "rack_devices"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    design_id: Mapped[str] = mapped_column(String, ForeignKey("designs.id", ondelete="CASCADE"), nullable=False)
+    rack_id: Mapped[str] = mapped_column(String, ForeignKey("racks.id", ondelete="CASCADE"), nullable=False)
+    device_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("pending_devices.id", ondelete="SET NULL"), nullable=True
+    )
+    node_id: Mapped[str | None] = mapped_column(String, ForeignKey("nodes.id", ondelete="SET NULL"), nullable=True)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    # 1-based, counted from the bottom rail.
+    u_start: Mapped[int] = mapped_column(Integer, default=1)
+    u_height: Mapped[int] = mapped_column(Integer, default=1)
+    # 12-column horizontal grid: full = 12, half = 6, third = 4, quarter = 3.
+    col_start: Mapped[int] = mapped_column(Integer, default=0)
+    col_span: Mapped[int] = mapped_column(Integer, default=12)
+    faceplate_id: Mapped[str] = mapped_column(String, nullable=False, default="blank-1u")
+    color: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="unknown")
+    # [{id, label, type, x, y}] — positions are unit coordinates on the plate.
+    ports: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class RackCable(Base):
+    """A patch between two rack device ports.
+
+    Not an `Edge`: rack cables are port-to-port and may cross racks, so they are
+    their own relation rather than a canvas edge.
+    """
+
+    __tablename__ = "rack_cables"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    design_id: Mapped[str] = mapped_column(String, ForeignKey("designs.id", ondelete="CASCADE"), nullable=False)
+    from_device_id: Mapped[str] = mapped_column(
+        String, ForeignKey("rack_devices.id", ondelete="CASCADE"), nullable=False
+    )
+    from_port_id: Mapped[str] = mapped_column(String, nullable=False)
+    to_device_id: Mapped[str] = mapped_column(
+        String, ForeignKey("rack_devices.id", ondelete="CASCADE"), nullable=False
+    )
+    to_port_id: Mapped[str] = mapped_column(String, nullable=False)
+    type: Mapped[str] = mapped_column(String, default="ethernet")
+    color: Mapped[str] = mapped_column(String, default="#39d353")
+    label: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class PendingDevice(Base):
     __tablename__ = "pending_devices"
     # Permit the plain (non-Mapped[]) annotations on the transient request-only

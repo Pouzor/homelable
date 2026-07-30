@@ -17,6 +17,7 @@ from app.api.routes import (
     media,
     nodes,
     proxmox,
+    racks,
     scan,
     stats,
     status,
@@ -77,6 +78,7 @@ app.include_router(nodes.router, prefix="/api/v1/nodes", tags=["nodes"])
 app.include_router(edges.router, prefix="/api/v1/edges", tags=["edges"])
 app.include_router(canvas.router, prefix="/api/v1/canvas", tags=["canvas"])
 app.include_router(designs.router, prefix="/api/v1/designs", tags=["designs"])
+app.include_router(racks.router, prefix="/api/v1/racks", tags=["racks"])
 app.include_router(scan.router, prefix="/api/v1/scan", tags=["scan"])
 app.include_router(status.router, prefix="/api/v1/status", tags=["status"])
 app.include_router(settings_routes.router, prefix="/api/v1/settings", tags=["settings"])

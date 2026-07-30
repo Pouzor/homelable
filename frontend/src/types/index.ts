@@ -1,4 +1,13 @@
-export type DesignType = 'network' | 'electrical'
+export * from './rack'
+
+/**
+ * `network` and `electrical` render the same React Flow canvas and differ only
+ * by palette and node set. `rack` is a different renderer entirely (racks,
+ * mounted gear, port-to-port patching), so `App` branches on this.
+ *
+ * Kept in sync with DESIGN_TYPES in backend/app/schemas/designs.py.
+ */
+export type DesignType = 'network' | 'electrical' | 'rack'
 
 export interface Design {
   id: string
