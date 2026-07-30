@@ -8,7 +8,7 @@
 import { ViewportPortal } from '@xyflow/react'
 import { portPosition } from '../layout'
 import { useRackStore } from '../store'
-import type { Cable, Port, Rack, RackDevice } from '../types'
+import type { Cable, Port, Rack, RackDevice } from '@/types'
 
 interface Resolved {
   cable: Cable

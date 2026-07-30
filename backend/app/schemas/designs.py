@@ -1,14 +1,26 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+# Kept in sync with DesignType in frontend/src/types.
+# "network" and "electrical" render the same React Flow canvas and differ only by
+# palette and node set — the icon drives their presentation. "rack" is a genuinely
+# different renderer (racks, mounted gear, port-to-port cables), so the frontend
+# does branch on this field.
+DESIGN_TYPES = {"network", "electrical", "rack"}
 
 
 class DesignCreate(BaseModel):
     name: str
     icon: str = "dashboard"
-    # Vestigial: kept for backward compatibility. The UI no longer branches on it;
-    # the chosen icon now drives presentation. Defaults to a generic canvas.
     design_type: str = "network"
+
+    @field_validator("design_type")
+    @classmethod
+    def _known_type(cls, v: str) -> str:
+        if v not in DESIGN_TYPES:
+            raise ValueError(f"design_type must be one of {sorted(DESIGN_TYPES)}")
+        return v
 
 
 class DesignUpdate(BaseModel):

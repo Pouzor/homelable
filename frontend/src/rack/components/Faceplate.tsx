@@ -7,17 +7,8 @@
  */
 import { memo, useId } from 'react'
 import { getFaceplate } from '../faceplates'
-import type { DeviceStatus, FaceplateElement, Port, PortType } from '../types'
-
-const STATUS_COLOR: Record<DeviceStatus, string> = {
-  online: '#39d353',
-  offline: '#f85149',
-  unknown: '#8b949e',
-}
-
-/** Unpatched port artwork — a dark recess with a metal bezel. */
-const PORT_BEZEL = '#5b6673'
-const PORT_RECESS = '#0b0e13'
+import { useRackPalette } from '../rackTheme'
+import type { DeviceStatus, FaceplateElement, Port, PortType } from '@/types'
 
 const LED_X = 9
 const LED_R = 3
@@ -191,9 +182,10 @@ export const Faceplate = memo(function Faceplate({
   onPortClick,
 }: Props) {
   const template = getFaceplate(faceplateId)
+  const palette = useRackPalette()
   const clipId = useId()
   const panel = template.elements.find((e) => e.kind === 'panel')
-  const fill = colorOverride ?? (panel?.kind === 'panel' ? panel.fill : '#2b323c')
+  const fill = colorOverride ?? (panel?.kind === 'panel' ? panel.fill : palette.plate)
 
   const showPorts = template.alwaysShowPorts || revealed || interactivePorts
 
@@ -222,7 +214,7 @@ export const Faceplate = memo(function Faceplate({
         height={height - 1}
         rx={2}
         fill={fill}
-        stroke={selected ? '#00d4ff' : '#0d1117'}
+        stroke={selected ? palette.accent : palette.plateOutline}
         strokeWidth={selected ? 1.5 : 1}
       />
 
@@ -233,7 +225,7 @@ export const Faceplate = memo(function Faceplate({
       {template.elements.map((el, i) => drawElement(el, i, width, height))}
 
       {template.statusLed && (
-        <circle cx={LED_X} cy={height / 2} r={LED_R} fill={STATUS_COLOR[status]} />
+        <circle cx={LED_X} cy={height / 2} r={LED_R} fill={palette.status[status]} />
       )}
 
       {showLabel && (
@@ -242,7 +234,7 @@ export const Faceplate = memo(function Faceplate({
           y={height / 2}
           clipPath={`url(#${clipId})`}
           fontSize={fontSize}
-          fill="#c9d1d9"
+          fill={palette.text}
           dominantBaseline="central"
           textAnchor="start"
           fontFamily="Inter, system-ui, sans-serif"
@@ -258,7 +250,7 @@ export const Faceplate = memo(function Faceplate({
           const patchColor = patchedPorts?.get(port.id)
           const isDraft = draftPortId === port.id
           const { w, h } = portShapeSize(template.portSize ?? 'md', height, port.type)
-          const stroke = isDraft ? '#00d4ff' : patchColor ?? PORT_BEZEL
+          const stroke = isDraft ? palette.accent : patchColor ?? palette.portBezel
 
           return (
             <g
@@ -280,7 +272,7 @@ export const Faceplate = memo(function Faceplate({
               {port.type === 'rj45' ? (
                 <path
                   d={rj45Path(w, h)}
-                  fill={PORT_RECESS}
+                  fill={palette.portRecess}
                   stroke={stroke}
                   strokeWidth={isDraft ? 1.4 : 0.9}
                   strokeLinejoin="round"
@@ -293,7 +285,7 @@ export const Faceplate = memo(function Faceplate({
                     width={w}
                     height={h}
                     rx={1}
-                    fill={PORT_RECESS}
+                    fill={palette.portRecess}
                     stroke={stroke}
                     strokeWidth={isDraft ? 1.4 : 0.9}
                   />

@@ -1,11 +1,11 @@
-# Rack canvas — UX prototype
+# Rack canvas
 
-Front-only. No API, no persistence, no backend enum changes. Open **`/racklab`**
-(`npm run dev` → http://localhost:5173/racklab).
+A rack canvas is a design of `design_type: 'rack'` — the physical counterpart to
+the logical network canvas. It lives in the same shell: same header, same left
+rail, same right panel, same design switcher. `App` swaps the renderer when the
+active design is a rack.
 
-Isolated on purpose: `main.tsx` routes `/racklab` the same way it already routes
-`/view`, so nothing here touches the logical canvas. Once the UX is settled, the
-model in `types.ts` is what gets lifted into `@/types` + a `design_type: 'rack'`.
+Create one from **New Canvas → Kind → Rack**.
 
 ## Model
 
@@ -14,27 +14,54 @@ model in `types.ts` is what gets lifted into `@/types` + a `design_type: 'rack'`
 | Vertical | `uStart` (1-based, **always counted from the bottom rail**) + `uHeight`. `numbering` only changes the printed labels. |
 | Horizontal | 12-column grid (`RACK_COLUMNS`). Full = 12, half = 6, third = 4, quarter = 3 — so 2 or 3 machines share one U. |
 | Collision | `canPlace` / `findSlot` in `layout.ts`. A drop snaps to the nearest free slot; an impossible drop shows a red preview. |
-| Inventory | A mount references an inventory id. **Unmounting never deletes the inventory entry** — same rule as the network canvas. Accessories (blank, shelf, cable manager) have `nodeId: null`. |
-| Faceplates | Declarative templates in `faceplates.ts`, drawn as SVG in unit coordinates so a plate scales with U height and rack width. Applying a template seeds ports; the user edits them afterwards. |
-| Ports | RJ45 and SFP/SFP+ only, drawn as real jack artwork at a fixed pixel size so plates of different U heights line up. Manual list per device; position is unit coordinates on the plate. Power outlets are artwork, never a cable endpoint. |
+| Inventory | A mount references a **Device Inventory** entry (`pending_devices`) via `deviceId`. Those rows survive approval *and* node deletion, so unracking never removes the device. Accessories (blank, shelf, cable manager) have `deviceId: null`. |
+| Canvas node link | `nodeId` is a second, optional link to a logical-canvas node, resolved server-side by IEEE then IP. It supplies live status and lets the network-link import match endpoints. Never required. |
+| Faceplates | Declarative templates in `faceplates.ts`, drawn as SVG in unit coordinates so a plate scales with U height and rack width. Applying a template seeds ports; the user edits them afterwards. `suggestFaceplate()` picks one from the device's discovery type. |
+| Ports | RJ45 and SFP/SFP+ only, drawn as real jack artwork at a fixed pixel size so plates of different U heights line up. Manual list per device. Power outlets are artwork, never a cable endpoint. |
 | Port visibility | Patch-facing gear (switches, patch panels) shows its ports permanently. Everything else reveals them on hover, on selection, or when cables are on — a cable never ends on an invisible port. |
 | Plate zones | Each template reserves three non-overlapping bands: status LED (fixed left), `labelBox` (name, clipped), then artwork and ports. A test asserts no port lands on the name band. |
 | Cables | Port-to-port, a relation of their own — not React Flow edges. One cable per port. Drawn in a `ViewportPortal` so they pan/zoom with the canvas and can cross racks. |
-| Cable visibility | Hidden by default; shown on hover/selection, or all-on via patch mode / the toolbar. Plates fade to 40 % when cables are on, which is the "transparency" ask. Copper vs fibre follows the port the patch starts from. |
-| Network import | `importCablesFromNetwork()` — one shot, at creation time only, guarded by `networkImportDone`. Fed by `networkEdgeHints()` (fake here; would read the network design's edges for real). |
+| Cable visibility | Hidden by default; shown on hover/selection, or all-on via patch mode / the header. Plates fade to 40 % when cables are on. Copper vs fibre follows the port the patch starts from. |
+| Colours | `rackTheme.ts` derives the whole rack palette from the active app theme rather than declaring one per theme, so a new theme works here for free. Per-rack chrome (frame, rails, interior) stays user-editable; only its default comes from the theme. |
+
+## Persistence
+
+Explicit save, like the logical canvas — plus the same opt-in autosave, which
+debounces on the store's `editSeq`.
+
+| Where | What |
+|---|---|
+| `racks`, `rack_devices`, `rack_cables` | One row set per design. `rack_devices.device_id → pending_devices` and `node_id → nodes` are both `ON DELETE SET NULL`, and `label` is denormalized, so a rack keeps rendering after an inventory purge. |
+| `canvas_state.viewport` | Pan/zoom, shared with the logical canvas row for that design. |
+| `GET /api/v1/racks?design_id=` | Full state. |
+| `POST /api/v1/racks/save` | Full state: upsert what is sent, prune the rest. Rejects a device pointing at a rack outside the payload, or a cable pointing at a device outside it. |
+| `GET /api/v1/racks/inventory?design_id=` | Rackable inventory entries, each flagged `racked` and resolved to a canvas node when one matches. |
+| `POST /api/v1/scan/pending` | Manual inventory entry (`discovery_source: "manual"`), for hardware no scan can find. |
+| Standalone | `homelable_rack:<designId>` in localStorage, inventory included (no `pending_devices` table to read). |
+
+`@/utils/rackSerializer` maps the snake_case wire shapes to the camelCase domain
+types in `@/types/rack`, narrowing every enum on the way in.
 
 ## Interactions
 
-- Drag from the left tray onto a rack → snaps to a free U.
+- Drag from the sidebar tray onto a rack → snaps to a free U.
 - Drag a mounted device inside the rack → same snapping, own slot ignored.
 - Click a device → inspector on the right (label, faceplate, U/height/column/width, status, colour, port list).
 - Click empty rack chrome → rack settings (name, location, U height, 19"/10", numbering direction, frame/rail/interior colours, U numbers, enclosed).
 - **Patch mode**: click port A then port B to cable them; click a cable to remove it. Rack dragging is disabled while in patch mode.
+- **Import links**: one shot per canvas, guarded by `networkImportDone`. Reads the physical edges (ethernet/fibre/vlan/cluster) of every non-rack design and matches them on `nodeId`.
+- **New device**: adds a Device Inventory entry from the tray, for gear no scan will ever discover.
 
-## Known gaps (deliberate, for the UX pass)
+## Panel behaviour in rack mode
+
+- **Header**: undo/redo, auto layout, YAML import/export, MD and live View are hidden. Add Rack, Patch, cable visibility, cable type filter and Import links replace them. PNG export and Save stay.
+- **Left rail**: the design switcher, Device Inventory, Scan History, Settings and Logout stay. The node/zone/text/scan/import block becomes the inventory tray plus Add Rack. The footer counts racks, mounts, cables and free U instead of online/offline nodes.
+- **Right rail**: `RackInspector` replaces `DetailPanel`, and is always visible rather than appearing on selection.
+
+## Known gaps
 
 - Front view only — no rear, no half-depth pairing.
 - No 0U side-mounted PDU.
 - Power draw / outlet budgeting out of scope (v1 decision).
-- No export yet (PNG/SVG comes with integration).
-- Demo state resets on reload; `Reset demo` restores it mid-session.
+- No undo/redo on the rack canvas.
+- No read-only live view for rack designs.

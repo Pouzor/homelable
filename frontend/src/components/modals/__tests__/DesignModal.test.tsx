@@ -15,7 +15,7 @@ describe('DesignModal', () => {
     const { onSubmit } = renderModal()
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Home Network' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create' }))
-    expect(onSubmit).toHaveBeenCalledWith({ name: 'Home Network', icon: DEFAULT_DESIGN_ICON })
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'Home Network', icon: DEFAULT_DESIGN_ICON, designType: 'network' })
   })
 
   it('submits the selected icon', () => {
@@ -23,7 +23,41 @@ describe('DesignModal', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Rack Power' } })
     fireEvent.click(screen.getByRole('button', { name: 'Electrical' })) // zap icon's aria-label
     fireEvent.click(screen.getByRole('button', { name: 'Create' }))
-    expect(onSubmit).toHaveBeenCalledWith({ name: 'Rack Power', icon: 'zap' })
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'Rack Power', icon: 'zap', designType: 'network' })
+  })
+
+  describe('canvas kind', () => {
+    it('defaults to a diagram canvas', () => {
+      const { onSubmit } = renderModal()
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Net' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+      expect(onSubmit.mock.calls[0][0].designType).toBe('network')
+    })
+
+    it('submits the rack kind when picked', () => {
+      const { onSubmit } = renderModal()
+      fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Rack Room' } })
+      fireEvent.click(screen.getByRole('button', { name: /^Rack/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+      expect(onSubmit.mock.calls[0][0].designType).toBe('rack')
+    })
+
+    it('is not offered in edit mode — a canvas cannot change kind', () => {
+      renderModal({ initial: { name: 'Existing', icon: 'server' }, submitLabel: 'Save' })
+      expect(screen.queryByRole('button', { name: /^Rack/ })).toBeNull()
+    })
+
+    it('is hidden once copying — a copy inherits the source kind', () => {
+      renderModal({
+        sourceDesigns: [
+          { id: 's1', name: 'Home Net', icon: 'network', design_type: 'network' as const,
+            created_at: '', updated_at: '', node_count: 1, group_count: 0, text_count: 0 },
+        ],
+      })
+      expect(screen.getByRole('button', { name: /^Rack/ })).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Copy from existing' }))
+      expect(screen.queryByRole('button', { name: /^Rack/ })).toBeNull()
+    })
   })
 
   it('trims whitespace and blocks empty names', () => {
@@ -34,7 +68,7 @@ describe('DesignModal', () => {
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: '  Spaced  ' } })
     fireEvent.click(submit)
-    expect(onSubmit).toHaveBeenCalledWith({ name: 'Spaced', icon: DEFAULT_DESIGN_ICON })
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'Spaced', icon: DEFAULT_DESIGN_ICON, designType: 'network' })
   })
 
   it('prefills name and icon in edit mode', () => {
@@ -55,7 +89,7 @@ describe('DesignModal', () => {
     const input = screen.getByLabelText('Name')
     fireEvent.change(input, { target: { value: 'Quick' } })
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(onSubmit).toHaveBeenCalledWith({ name: 'Quick', icon: DEFAULT_DESIGN_ICON })
+    expect(onSubmit).toHaveBeenCalledWith({ name: 'Quick', icon: DEFAULT_DESIGN_ICON, designType: 'network' })
   })
 
   it('calls onClose from Cancel', () => {
@@ -93,7 +127,7 @@ describe('DesignModal', () => {
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Copy of Home' } })
       fireEvent.click(screen.getByRole('button', { name: 'Copy from existing' }))
       fireEvent.click(screen.getByRole('button', { name: 'Create' }))
-      expect(onSubmit).toHaveBeenCalledWith({ name: 'Copy of Home', icon: DEFAULT_DESIGN_ICON, sourceId: 's1' })
+      expect(onSubmit).toHaveBeenCalledWith({ name: 'Copy of Home', icon: DEFAULT_DESIGN_ICON, designType: 'network', sourceId: 's1' })
     })
 
     it('includes the picked sourceId on submit', () => {
@@ -102,14 +136,14 @@ describe('DesignModal', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Copy from existing' }))
       fireEvent.click(screen.getByRole('radio', { name: /Lab/ }))
       fireEvent.click(screen.getByRole('button', { name: 'Create' }))
-      expect(onSubmit).toHaveBeenCalledWith({ name: 'Copy of Lab', icon: DEFAULT_DESIGN_ICON, sourceId: 's2' })
+      expect(onSubmit).toHaveBeenCalledWith({ name: 'Copy of Lab', icon: DEFAULT_DESIGN_ICON, designType: 'network', sourceId: 's2' })
     })
 
     it('omits sourceId when the blank option is kept', () => {
       const { onSubmit } = renderModal({ sourceDesigns })
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Fresh' } })
       fireEvent.click(screen.getByRole('button', { name: 'Create' }))
-      expect(onSubmit).toHaveBeenCalledWith({ name: 'Fresh', icon: DEFAULT_DESIGN_ICON })
+      expect(onSubmit).toHaveBeenCalledWith({ name: 'Fresh', icon: DEFAULT_DESIGN_ICON, designType: 'network' })
       expect('sourceId' in onSubmit.mock.calls[0][0]).toBe(false)
     })
 
@@ -131,7 +165,7 @@ describe('DesignModal', () => {
       expect(screen.queryByText('Floor Plan')).toBeNull()
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'X' } })
       fireEvent.click(screen.getByRole('button', { name: 'Create' }))
-      expect(onSubmit).toHaveBeenCalledWith({ name: 'X', icon: DEFAULT_DESIGN_ICON })
+      expect(onSubmit).toHaveBeenCalledWith({ name: 'X', icon: DEFAULT_DESIGN_ICON, designType: 'network' })
       expect('floorMap' in onSubmit.mock.calls[0][0]).toBe(false)
     })
 

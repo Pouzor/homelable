@@ -109,6 +109,15 @@ export interface DuplicateNodeConflict {
 export const scanApi = {
   trigger: (deepScan?: Partial<DeepScanConfig>) => api.post('/scan/trigger', deepScan ?? {}),
   pending: () => api.get('/scan/pending'),
+  /** Add an inventory entry by hand, for hardware no scan can discover. */
+  createPending: (data: {
+    hostname: string
+    ip?: string | null
+    mac?: string | null
+    suggested_type?: string | null
+    model?: string | null
+    vendor?: string | null
+  }) => api.post<{ id: string; hostname: string | null }>('/scan/pending', data),
   hidden: () => api.get('/scan/hidden'),
   runs: () => api.get('/scan/runs'),
   clearPending: () => api.delete('/scan/pending'),
@@ -218,6 +227,17 @@ export const designsApi = {
   update: (id: string, data: { name?: string; icon?: string }) =>
     api.put<import('@/types').Design>(`/designs/${id}`, data),
   delete: (id: string) => api.delete(`/designs/${id}`),
+}
+
+export const racksApi = {
+  load: (designId: string) =>
+    api.get<import('@/utils/rackSerializer').ApiRackState>('/racks', { params: { design_id: designId } }),
+  save: (payload: import('@/utils/rackSerializer').RackSavePayload) =>
+    api.post<{ saved: boolean }>('/racks/save', payload),
+  inventory: (designId: string) =>
+    api.get<{ items: import('@/utils/rackSerializer').ApiInventoryItem[] }>('/racks/inventory', {
+      params: { design_id: designId },
+    }),
 }
 
 export interface ZigbeeConfigData {

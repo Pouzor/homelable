@@ -18,7 +18,7 @@ import {
   yToU,
 } from '../layout'
 import { DEFAULT_RACK_STYLE } from '../rackDefaults'
-import { RACK_COLUMNS, type Port, type Rack, type RackDevice } from '../types'
+import { RACK_COLUMNS, type Port, type Rack, type RackDevice } from '@/types'
 
 function makeRack(patch: Partial<Rack> = {}): Rack {
   return {

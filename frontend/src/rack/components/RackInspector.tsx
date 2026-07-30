@@ -1,10 +1,10 @@
 /** Right rail: settings for the selected rack or the selected mounted device. */
 import { faceplateGroups } from '../faceplates'
-import { RACK_COLUMNS } from '../types'
+import { RACK_COLUMNS } from '@/types'
 import { freeUnits } from '../layout'
 import { useRackStore } from '../store'
 import { CABLE_TYPE_LABELS } from '../rackDefaults'
-import type { CableType, DeviceStatus, PortType, RackNumbering, RackWidthStandard } from '../types'
+import type { CableType, DeviceStatus, PortType, RackNumbering, RackWidthStandard } from '@/types'
 
 const inputClass =
   'w-full rounded border border-[#21262d] bg-[#0d1117] px-2 py-1 text-sm text-[#c9d1d9] outline-none focus:border-[#00d4ff]'
@@ -143,7 +143,11 @@ function DeviceSettings({ deviceId }: { deviceId: string }) {
     <div>
       <h2 className="mb-1 text-sm font-semibold">{device.label}</h2>
       <p className="mb-3 text-[11px] text-[#6e7681]">
-        {device.nodeId ? `Inventory: ${device.nodeId}` : 'Rack-only accessory'}
+        {device.deviceId
+          ? device.nodeId
+            ? 'From the Device Inventory · on a logical canvas'
+            : 'From the Device Inventory'
+          : 'Rack-only accessory'}
       </p>
 
       <Field label="Label">
@@ -298,7 +302,7 @@ function DeviceSettings({ deviceId }: { deviceId: string }) {
         className="mt-4 w-full rounded border border-[#f85149] px-2 py-1.5 text-sm text-[#f85149] hover:bg-[#f8514922]"
         onClick={() => unmountDevice(device.id)}
       >
-        Unmount {device.nodeId ? '(stays in inventory)' : ''}
+        Unmount {device.deviceId ? '(stays in inventory)' : ''}
       </button>
     </div>
   )
@@ -309,7 +313,7 @@ export function RackInspector() {
   const selectedRackId = useRackStore((s) => s.selectedRackId)
 
   return (
-    <aside className="w-72 shrink-0 overflow-y-auto border-l border-[#21262d] bg-[#0d1117] p-3 text-sm text-[#c9d1d9]">
+    <aside className="w-72 shrink-0 overflow-y-auto border-l border-border bg-[#161b22] p-3 text-sm text-foreground">
       {selectedDeviceId ? (
         <DeviceSettings deviceId={selectedDeviceId} />
       ) : selectedRackId ? (

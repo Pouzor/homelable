@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { FACEPLATES, bank, faceplateGroups, getFaceplate } from '../faceplates'
-import { RACK_COLUMNS, type PortType } from '../types'
+import { RACK_COLUMNS, type PortType } from '@/types'
 
 const ALLOWED_PORT_TYPES: PortType[] = ['rj45', 'sfp', 'sfp+']
 

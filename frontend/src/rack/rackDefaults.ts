@@ -1,5 +1,5 @@
 /** Shared defaults, kept out of the store to avoid a cycle with demoData. */
-import type { CableType, PortType, RackStyle } from './types'
+import type { CableType, PortType, RackStyle } from '@/types'
 
 export const DEFAULT_RACK_STYLE: RackStyle = {
   frame: '#1c2129',

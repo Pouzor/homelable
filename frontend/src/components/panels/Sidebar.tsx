@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2, Rows3 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -9,6 +9,10 @@ import { authApi, designsApi, mediaApi } from '@/api/client'
 import * as standaloneStorage from '@/utils/standaloneStorage'
 import { resolveDesignIcon, DEFAULT_DESIGN_ICON } from '@/utils/designIcons'
 import { DesignModal, type DesignFormData } from '@/components/modals/DesignModal'
+import { InventoryTray } from '@/rack/components/InventoryTray'
+import { useRackStore } from '@/rack/store'
+import { useRackPalette } from '@/rack/rackTheme'
+import { freeUnits } from '@/rack/layout'
 import type { Design } from '@/types'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
@@ -37,15 +41,20 @@ interface SidebarProps {
 export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onZwaveImport, onProxmoxImport, onSave, onOpenSettings, onOpenHistory, onOpenPending }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const logout = useAuthStore((s) => s.logout)
-  const { designs, activeDesignId, setActiveDesign, addDesign, updateDesign, removeDesign } = useDesignStore()
+  const { designs, activeDesignId, activeDesignType, setActiveDesign, addDesign, updateDesign, removeDesign } = useDesignStore()
+  const isRack = activeDesignType === 'rack'
   const [designSwitcherOpen, setDesignSwitcherOpen] = useState(false)
   const [designModal, setDesignModal] = useState<{ mode: 'create' | 'edit'; design?: Design } | null>(null)
   // Bumped on every open so the modal remounts and re-seeds its local state from
   // the current floor plan — otherwise a reopen keeps stale width/height/lock
   // and Save would clobber canvas-side resize/move.
   const [openSeq, setOpenSeq] = useState(0)
-  const { nodes, hasUnsavedChanges, floorMap, setFloorMap } = useCanvasStore()
+  const { nodes, hasUnsavedChanges: canvasDirty, floorMap, setFloorMap } = useCanvasStore()
   const floorMapEditNonce = useCanvasStore((s) => s.floorMapEditNonce)
+  const rackPalette = useRackPalette()
+  const rackDirty = useRackStore((s) => s.hasUnsavedChanges)
+  const addRack = useRackStore((s) => s.addRack)
+  const hasUnsavedChanges = isRack ? rackDirty : canvasDirty
 
   const handleLogout = useCallback(async () => {
     try {
@@ -72,9 +81,10 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
             ? standaloneStorage.copyDesign(data.sourceId, data.name, data.icon)
             : (await designsApi.copy(data.sourceId, { name: data.name, icon: data.icon })).data
         } else {
+          const designType = data.designType ?? 'network'
           created = STANDALONE
-            ? standaloneStorage.createDesign(data.name, data.icon)
-            : (await designsApi.create({ name: data.name, icon: data.icon })).data
+            ? standaloneStorage.createDesign(data.name, data.icon, designType)
+            : (await designsApi.create({ name: data.name, icon: data.icon, design_type: designType })).data
         }
         addDesign(created)
       } else if (designModal.design) {
@@ -231,8 +241,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
       {/* Views */}
       <nav className="flex flex-col gap-0.5 p-2">
         <SidebarItem
-          icon={LayoutDashboard}
-          label="Canvas"
+          icon={isRack ? Rows3 : LayoutDashboard}
+          label={isRack ? 'Rack view' : 'Canvas'}
           collapsed={collapsed}
           active
         />
@@ -255,10 +265,13 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
         )}
       </nav>
 
-      {!collapsed && <div className="flex-1" />}
+      {/* The rack inventory is the sidebar's body: it scrolls, everything else
+          stays pinned. On a logical canvas the space is just a spacer. */}
+      {isRack && !collapsed ? <InventoryTray /> : !collapsed && <div className="flex-1" />}
 
       {/* Stats footer — hidden in standalone (no scan / live status to count) */}
-      {!collapsed && !STANDALONE && (
+      {!collapsed && isRack && <RackStats />}
+      {!collapsed && !isRack && !STANDALONE && (
         <div className="px-3 py-2 border-t border-border text-xs text-muted-foreground space-y-0.5">
           <div className="flex justify-between">
             <span>Total</span>
@@ -277,16 +290,22 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
 
       {/* Actions */}
       <div className="flex flex-col gap-0.5 p-2 border-t border-border">
-        <SidebarItem icon={Plus} label="Add Node" collapsed={collapsed} onClick={onAddNode} dataTour="add-node" />
-        <SidebarItem icon={Square} label="Add Zone" collapsed={collapsed} onClick={onAddGroupRect} dataTour="add-zone" />
-        <SidebarItem icon={Type} label="Add Text" collapsed={collapsed} onClick={onAddText} dataTour="add-text" />
-        {!STANDALONE && <SidebarItem icon={ScanLine} label="Scan Network" collapsed={collapsed} onClick={handleScan} dataTour="scan-network" />}
-        {!STANDALONE && <SidebarItem icon={Network} label="Zigbee Import" collapsed={collapsed} onClick={onZigbeeImport} dataTour="zigbee-import" />}
-        {!STANDALONE && <SidebarItem icon={RadioTower} label="Z-Wave Import" collapsed={collapsed} onClick={onZwaveImport} dataTour="zwave-import" />}
-        {!STANDALONE && <SidebarItem icon={Server} label="Proxmox Import" collapsed={collapsed} onClick={onProxmoxImport} dataTour="proxmox-import" />}
+        {isRack ? (
+          <SidebarItem icon={Plus} label="Add Rack" collapsed={collapsed} onClick={() => addRack({ style: rackPalette.defaultRackStyle })} />
+        ) : (
+          <>
+            <SidebarItem icon={Plus} label="Add Node" collapsed={collapsed} onClick={onAddNode} dataTour="add-node" />
+            <SidebarItem icon={Square} label="Add Zone" collapsed={collapsed} onClick={onAddGroupRect} dataTour="add-zone" />
+            <SidebarItem icon={Type} label="Add Text" collapsed={collapsed} onClick={onAddText} dataTour="add-text" />
+          </>
+        )}
+        {!STANDALONE && !isRack && <SidebarItem icon={ScanLine} label="Scan Network" collapsed={collapsed} onClick={handleScan} dataTour="scan-network" />}
+        {!STANDALONE && !isRack && <SidebarItem icon={Network} label="Zigbee Import" collapsed={collapsed} onClick={onZigbeeImport} dataTour="zigbee-import" />}
+        {!STANDALONE && !isRack && <SidebarItem icon={RadioTower} label="Z-Wave Import" collapsed={collapsed} onClick={onZwaveImport} dataTour="zwave-import" />}
+        {!STANDALONE && !isRack && <SidebarItem icon={Server} label="Proxmox Import" collapsed={collapsed} onClick={onProxmoxImport} dataTour="proxmox-import" />}
         <SidebarItem
           icon={Save}
-          label="Save Canvas"
+          label={isRack ? 'Save Rack' : 'Save Canvas'}
           collapsed={collapsed}
           onClick={() => onSave()}
           badge={hasUnsavedChanges}
@@ -330,6 +349,37 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
         }
       />
     </aside>
+  )
+}
+
+/** Rack equivalent of the node stats footer: capacity rather than reachability. */
+function RackStats() {
+  const racks = useRackStore((s) => s.racks)
+  const devices = useRackStore((s) => s.devices)
+  const cables = useRackStore((s) => s.cables)
+
+  const free = racks.reduce((sum, rack) => sum + freeUnits(rack, devices), 0)
+  const total = racks.reduce((sum, rack) => sum + rack.uHeight, 0)
+
+  return (
+    <div className="px-3 py-2 border-t border-border text-xs text-muted-foreground space-y-0.5">
+      <div className="flex justify-between">
+        <span>Racks</span>
+        <span className="text-foreground font-mono">{racks.length}</span>
+      </div>
+      <div className="flex justify-between">
+        <span>Mounted</span>
+        <span className="text-foreground font-mono">{devices.length}</span>
+      </div>
+      <div className="flex justify-between">
+        <span>Cables</span>
+        <span className="text-foreground font-mono">{cables.length}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-[#39d353]">Free</span>
+        <span className="font-mono text-[#39d353]">{free}U / {total}U</span>
+      </div>
+    </div>
   )
 }
 

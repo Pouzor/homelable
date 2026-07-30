@@ -47,6 +47,23 @@ class PendingDeviceResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PendingDeviceCreate(BaseModel):
+    """Manually add an entry to the Device Inventory.
+
+    Used when the user documents hardware no scan can find — a dumb switch, a
+    patch panel, a machine that is powered off. Lands with
+    `discovery_source="manual"` so the inventory filters can tell it apart.
+    """
+
+    hostname: str
+    ip: str | None = None
+    mac: str | None = None
+    suggested_type: str | None = None
+    model: str | None = None
+    vendor: str | None = None
+    properties: list[Any] = []
+
+
 class ScanRunResponse(BaseModel):
     id: str
     status: str

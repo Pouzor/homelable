@@ -4,7 +4,7 @@
  * All U values are 1-based and counted from the bottom rail, whatever the
  * rack's `numbering` setting is — numbering only affects the printed labels.
  */
-import { RACK_COLUMNS, type Port, type Rack, type RackDevice } from './types'
+import { RACK_COLUMNS, type Port, type Rack, type RackDevice } from '@/types'
 
 /** Pixel height of one rack unit at zoom 1. */
 export const U_PX = 24

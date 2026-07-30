@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.database import get_db
-from app.db.models import CanvasState, Design, Edge, Node
+from app.db.models import CanvasState, Design, Edge, Node, Rack, RackCable, RackDevice
 from app.schemas.designs import DesignCopy, DesignCreate, DesignResponse, DesignUpdate
 
 router = APIRouter()
@@ -118,6 +118,56 @@ async def copy_design(
             )
         )
 
+    # Copy the rack canvas, if the source has one. Racks, mounted gear and patches
+    # all get new ids; the inventory / node links are carried over untouched, since
+    # a copy documents the same hardware.
+    src_racks = (await db.execute(select(Rack).where(Rack.design_id == source_id))).scalars().all()
+    rack_id_map = {r.id: str(uuid.uuid4()) for r in src_racks}
+    rack_skip = {"id", "design_id", "created_at", "updated_at"}
+    for r in src_racks:
+        cols = {c.name: getattr(r, c.name) for c in Rack.__table__.columns if c.name not in rack_skip}
+        db.add(Rack(id=rack_id_map[r.id], design_id=new_design.id, **cols))
+
+    src_rack_devices = (
+        await db.execute(select(RackDevice).where(RackDevice.design_id == source_id))
+    ).scalars().all()
+    rack_device_id_map = {d.id: str(uuid.uuid4()) for d in src_rack_devices}
+    rack_device_skip = {"id", "design_id", "rack_id", "created_at", "updated_at"}
+    for d in src_rack_devices:
+        if d.rack_id not in rack_id_map:
+            continue
+        cols = {
+            c.name: getattr(d, c.name)
+            for c in RackDevice.__table__.columns
+            if c.name not in rack_device_skip
+        }
+        db.add(
+            RackDevice(
+                id=rack_device_id_map[d.id],
+                design_id=new_design.id,
+                rack_id=rack_id_map[d.rack_id],
+                **cols,
+            )
+        )
+
+    src_cables = (await db.execute(select(RackCable).where(RackCable.design_id == source_id))).scalars().all()
+    cable_skip = {"id", "design_id", "from_device_id", "to_device_id", "created_at"}
+    for c_row in src_cables:
+        if c_row.from_device_id not in rack_device_id_map or c_row.to_device_id not in rack_device_id_map:
+            continue
+        cols = {
+            c.name: getattr(c_row, c.name) for c in RackCable.__table__.columns if c.name not in cable_skip
+        }
+        db.add(
+            RackCable(
+                id=str(uuid.uuid4()),
+                design_id=new_design.id,
+                from_device_id=rack_device_id_map[c_row.from_device_id],
+                to_device_id=rack_device_id_map[c_row.to_device_id],
+                **cols,
+            )
+        )
+
     # Copy canvas state (viewport, custom style, and the floor plan carried in viewport).
     src_state = await db.get(CanvasState, source_id)
     db.add(
@@ -165,10 +215,20 @@ async def delete_design(
     count = (await db.execute(select(Design))).scalars().all()
     if len(count) <= 1:
         raise HTTPException(400, "Cannot delete the only design")
-    # Delete associated canvas state, edges, nodes
+    # Delete associated canvas state, rack rows, edges, nodes. SQLite does not
+    # always enforce the ON DELETE CASCADE, so unwind by hand — cables before
+    # devices before racks.
     cs = await db.get(CanvasState, design_id)
     if cs:
         await db.delete(cs)
+    for cable in (await db.execute(select(RackCable).where(RackCable.design_id == design_id))).scalars().all():
+        await db.delete(cable)
+    for rack_device in (
+        await db.execute(select(RackDevice).where(RackDevice.design_id == design_id))
+    ).scalars().all():
+        await db.delete(rack_device)
+    for rack in (await db.execute(select(Rack).where(Rack.design_id == design_id))).scalars().all():
+        await db.delete(rack)
     edges = (await db.execute(select(Edge).where(Edge.design_id == design_id))).scalars().all()
     for e in edges:
         await db.delete(e)

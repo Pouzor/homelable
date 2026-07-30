@@ -52,7 +52,10 @@ import { WalkthroughOverlay } from '@/walkthrough/WalkthroughOverlay'
 import { DEMO_SCAN_RUNS, DEMO_PENDING_DEVICES } from '@/walkthrough/demoTourData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
 import { bootstrapAuth } from '@/auth/bootstrap'
-import type { NodeData, EdgeData, CustomStyleDef, FloorMapConfig, NodeType } from '@/types'
+import { RackCanvas } from '@/rack/components/RackCanvas'
+import { RackInspector } from '@/rack/components/RackInspector'
+import { useRackStore } from '@/rack/store'
+import type { NodeData, EdgeData, CustomStyleDef, DesignType, FloorMapConfig, NodeType } from '@/types'
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 import type { ZwaveNode, ZwaveEdge } from '@/components/zwave/types'
 import type { ProxmoxNode, ProxmoxEdge } from '@/components/proxmox/types'
@@ -66,7 +69,17 @@ export default function App() {
   const { isAuthenticated, isInitialized } = useAuthStore()
   const authBootstrapStarted = useRef(false)
   const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
-  const { activeDesignId, setDesigns, setActiveDesign } = useDesignStore()
+  const { activeDesignId, activeDesignType, setDesigns, setActiveDesign } = useDesignStore()
+  const isRackDesign = activeDesignType === 'rack'
+  const rackDirty = useRackStore((s) => s.hasUnsavedChanges)
+  const rackEditSeq = useRackStore((s) => s.editSeq)
+
+  /** Kind of a design by id, read straight from the store (no stale closure). */
+  const designTypeOf = useCallback(
+    (id: string | null | undefined): DesignType =>
+      useDesignStore.getState().designs.find((d) => d.id === id)?.design_type ?? 'network',
+    [],
+  )
 
   useStatusPolling()
 
@@ -134,6 +147,16 @@ export default function App() {
   const handleSave = useCallback(async (designIdOverride?: string, options?: { silent?: boolean }): Promise<boolean> => {
     try {
       const saveDesignId = designIdOverride ?? activeDesignId
+      // Rack canvases own their own state and persistence path.
+      if (designTypeOf(saveDesignId) === 'rack') {
+        const ok = await useRackStore.getState().save()
+        if (ok) {
+          if (!options?.silent) toast.success('Rack canvas saved')
+        } else {
+          toast.error('Save failed')
+        }
+        return ok
+      }
       if (STANDALONE) {
         if (!saveDesignId) return false
         // Floor plans are backend-only (upload/serve), so standalone never persists one.
@@ -154,7 +177,7 @@ export default function App() {
       toast.error('Save failed')
       return false
     }
-  }, [nodes, edges, markSaved, activeTheme, customStyle, activeDesignId, floorMap])
+  }, [nodes, edges, markSaved, activeTheme, customStyle, activeDesignId, floorMap, designTypeOf])
 
   // Keep a ref so the keydown handler always calls the latest version
   const handleSaveRef = useRef(handleSave)
@@ -165,12 +188,12 @@ export default function App() {
   useAutosave({
     enabled: autosave.enabled,
     delaySeconds: autosave.delay,
-    hasUnsavedChanges,
+    hasUnsavedChanges: isRackDesign ? rackDirty : hasUnsavedChanges,
     designId: loadedDesignId,
     // Debounce resets on each real user edit (editSeq), not on raw nodes/edges
     // identity — live status polling churns those arrays without a user edit and
     // would otherwise keep re-arming (and starving) the timer during monitoring.
-    changeSignals: [editSeq],
+    changeSignals: [isRackDesign ? rackEditSeq : editSeq],
     getLiveDesignId: () => loadedDesignIdRef.current,
     onSave: (designId) => { void handleSaveRef.current(designId, { silent: true }) },
   })
@@ -257,6 +280,24 @@ export default function App() {
     setLoadedDesignId(designId)
   }, [loadCanvas, setTheme, setCustomStyle, setFloorMap])
 
+  /**
+   * Load whichever canvas the design holds. Rack designs bypass the node/edge
+   * canvas entirely — different store, different endpoints.
+   */
+  const loadAnyDesign = useCallback(async (designId: string) => {
+    if (designTypeOf(designId) !== 'rack') {
+      if (STANDALONE) loadStandaloneCanvas(designId)
+      else await loadCanvasFromApi(designId)
+      return
+    }
+    // The rack store owns the fetch; App only records provenance afterwards, so
+    // none of these run synchronously inside the calling effect.
+    await useRackStore.getState().loadDesign(designId)
+    setIsNewUser(false)
+    setLoadError(false)
+    setLoadedDesignId(designId)
+  }, [designTypeOf, loadStandaloneCanvas, loadCanvasFromApi])
+
   const loadDesignsAndCanvas = useCallback(async () => {
     // Prefer a design id explicitly requested via the URL (?design=<id>), so a
     // refresh or shared link opens that design. Ignore it when it doesn't match
@@ -269,7 +310,7 @@ export default function App() {
       const targetId = fromUrl ?? activeDesignId ?? designs[0]?.id
       if (targetId) {
         setActiveDesign(targetId)
-        loadStandaloneCanvas(targetId)
+        void loadAnyDesign(targetId)
       }
       return
     }
@@ -281,7 +322,7 @@ export default function App() {
       const targetId = fromUrl ?? activeDesignId ?? loadedDesigns[0]?.id
       if (targetId) {
         setActiveDesign(targetId)
-        await loadCanvasFromApi(targetId)
+        await loadAnyDesign(targetId)
       }
     } catch {
       // Backend unreachable/errored — surface it. Do NOT seed the demo: that would
@@ -289,7 +330,7 @@ export default function App() {
       setLoadError(true)
       toast.error('Could not reach backend — check the server and retry')
     }
-  }, [setDesigns, setActiveDesign, loadCanvasFromApi, loadStandaloneCanvas, activeDesignId])
+  }, [setDesigns, setActiveDesign, loadAnyDesign, activeDesignId])
 
   // Keep a ref so the auth effect can call the latest loader without listing it
   // as a dependency (which would re-fire on every design switch).
@@ -376,7 +417,7 @@ export default function App() {
     }
     // Standalone has no auth gate; backed mode requires authentication.
     const ready = STANDALONE || isAuthenticated
-    const loadForDesign = STANDALONE ? loadStandaloneCanvas : loadCanvasFromApi
+    const loadForDesign = loadAnyDesign
     if (ready && activeDesignId && initialLoadDone.current) {
       const oldId = prevDesignRef.current
       // If the previous design was deleted (no longer in the list), don't try to
@@ -390,7 +431,7 @@ export default function App() {
         const targetId = activeDesignId
         handleSave(oldId).then((ok) => {
           if (ok) {
-            loadForDesign(targetId)
+            void loadForDesign(targetId)
           } else {
             // Save failed: don't load the new design — that would overwrite the
             // unsaved in-memory canvas. Revert the selection back to the old
@@ -401,7 +442,12 @@ export default function App() {
           }
         })
       } else {
-        loadForDesign(activeDesignId)
+        // Loading a design is exactly the "synchronize with an external system"
+        // case: it fetches and then publishes the result into React state. The
+        // rule can't see through the loader, so silence it here rather than
+        // deferring the fetch by a tick.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        void loadForDesign(activeDesignId)
       }
     }
     if (activeDesignId) {
@@ -990,17 +1036,25 @@ export default function App() {
             />
             <div className="flex flex-1 min-h-0">
               <div ref={canvasRef} className="flex-1 min-w-0 h-full">
-                <CanvasContainer
-                  onConnect={handleEdgeConnect}
-                  onEdgeDoubleClick={handleEdgeDoubleClick}
-                  onNodeDoubleClick={handleNodeDoubleClick}
-                  onNodeDragStart={snapshotHistory}
-                  onRequestAddToGroup={setPendingGroupAdd}
-                  onRequestAddToContainer={setPendingContainerAdd}
-                  onOpenPending={(deviceId) => openPendingModal(deviceId)}
-                />
+                {isRackDesign ? (
+                  <RackCanvas />
+                ) : (
+                  <CanvasContainer
+                    onConnect={handleEdgeConnect}
+                    onEdgeDoubleClick={handleEdgeDoubleClick}
+                    onNodeDoubleClick={handleNodeDoubleClick}
+                    onNodeDragStart={snapshotHistory}
+                    onRequestAddToGroup={setPendingGroupAdd}
+                    onRequestAddToContainer={setPendingContainerAdd}
+                    onOpenPending={(deviceId) => openPendingModal(deviceId)}
+                  />
+                )}
               </div>
-              {(selectedNodeId || selectedNodeIds.length > 1) && <DetailPanel onEdit={handleEditNode} />}
+              {isRackDesign ? (
+                <RackInspector />
+              ) : (
+                (selectedNodeId || selectedNodeIds.length > 1) && <DetailPanel onEdit={handleEditNode} />
+              )}
             </div>
           </div>
         </div>

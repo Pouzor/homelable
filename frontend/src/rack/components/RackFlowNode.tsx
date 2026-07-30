@@ -20,7 +20,8 @@ import {
   yToU,
 } from '../layout'
 import { useRackStore } from '../store'
-import { RACK_COLUMNS } from '../types'
+import { useRackPalette } from '../rackTheme'
+import { RACK_COLUMNS } from '@/types'
 import { Faceplate } from './Faceplate'
 import { endDrag, getDragPayload, parseDragPayload, startDrag } from './dragPayload'
 
@@ -33,6 +34,7 @@ interface DropPreview {
 }
 
 export function RackFlowNode({ id }: NodeProps) {
+  const palette = useRackPalette()
   const rack = useRackStore((s) => s.racks.find((r) => r.id === id))
   const devices = useRackStore((s) => s.devices)
   const cables = useRackStore((s) => s.cables)
@@ -162,7 +164,7 @@ export function RackFlowNode({ id }: NodeProps) {
           inset: 0,
           left: gutter,
           background: rack.style.frame,
-          border: `2px solid ${selectedRackId === rack.id ? '#00d4ff' : '#0d1117'}`,
+          border: `2px solid ${selectedRackId === rack.id ? palette.accent : palette.plateOutline}`,
           borderRadius: 6,
           boxShadow: rack.style.enclosed ? 'inset 0 0 0 4px rgba(0,0,0,0.35)' : undefined,
         }}
@@ -211,7 +213,7 @@ export function RackFlowNode({ id }: NodeProps) {
                   fontSize: 9,
                   lineHeight: `${U_PX}px`,
                   textAlign: 'right',
-                  color: '#6e7681',
+                  color: palette.muted,
                   fontFamily: 'JetBrains Mono, monospace',
                 }}
               >
@@ -241,7 +243,7 @@ export function RackFlowNode({ id }: NodeProps) {
             top: INTERIOR_TOP_PX + (rack.uHeight - preview.uStart - preview.uHeight + 1) * U_PX,
             width: preview.colSpan * col,
             height: preview.uHeight * U_PX,
-            border: `1.5px dashed ${preview.valid ? '#39d353' : '#f85149'}`,
+            border: `1.5px dashed ${preview.valid ? palette.status.online : palette.status.offline}`,
             background: preview.valid ? 'rgba(57,211,83,0.12)' : 'rgba(248,81,73,0.12)',
             borderRadius: 3,
             pointerEvents: 'none',
@@ -306,14 +308,14 @@ export function RackFlowNode({ id }: NodeProps) {
           height: HEADER_PX,
           lineHeight: `${HEADER_PX}px`,
           fontSize: 12,
-          color: '#c9d1d9',
+          color: palette.text,
           fontFamily: 'Inter, system-ui, sans-serif',
           pointerEvents: 'none',
         }}
       >
         {rack.name}
-        {rack.location && <span style={{ color: '#6e7681' }}> · {rack.location}</span>}
-        <span style={{ color: '#6e7681' }}> · {rack.uHeight}U</span>
+        {rack.location && <span style={{ color: palette.muted }}> · {rack.location}</span>}
+        <span style={{ color: palette.muted }}> · {rack.uHeight}U</span>
       </div>
     </div>
   )
