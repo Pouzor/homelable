@@ -26,6 +26,12 @@ function submit() {
   fireEvent.click(screen.getByRole('button', { name: /^(Add|Save)$/ }))
 }
 
+/** The plate is picked from the visual catalog, not a native select. */
+function pickFaceplate(label: string) {
+  fireEvent.click(screen.getByLabelText('Faceplate'))
+  fireEvent.click(screen.getByRole('button', { name: label }))
+}
+
 describe('RackDeviceModal — nothing to edit', () => {
   it('renders nothing while no editor is open', () => {
     const { container } = render(<RackDeviceModal />)
@@ -78,7 +84,7 @@ describe('RackDeviceModal — adding', () => {
     render(<RackDeviceModal />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Accessory' }))
-    fireEvent.change(screen.getByLabelText('Faceplate'), { target: { value: 'blank-1u' } })
+    pickFaceplate('Blank panel 1U')
     fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'filler' } })
     submit()
 
@@ -86,6 +92,22 @@ describe('RackDeviceModal — adding', () => {
     const mounted = store().devices.find((d) => d.label === 'filler')!
     expect(mounted.deviceId).toBeNull()
     expect(store().inventory).toHaveLength(before)
+  })
+
+  it('swaps to an accessory plate — and back — with the source', () => {
+    store().openDeviceEditor()
+    render(<RackDeviceModal />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Accessory' }))
+    expect(screen.getByLabelText('Faceplate')).toHaveAttribute('data-faceplate', 'blank-1u')
+    // The picker then only offers rack furniture.
+    fireEvent.click(screen.getByLabelText('Faceplate'))
+    expect(screen.queryByRole('button', { name: 'Server 1U' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Shelf 1U' }))
+    expect(screen.getByLabelText('Faceplate')).toHaveAttribute('data-faceplate', 'shelf-1u')
+
+    fireEvent.click(screen.getByRole('button', { name: 'New device' }))
+    expect(screen.getByLabelText('Faceplate')).toHaveAttribute('data-faceplate', 'server-1u')
   })
 })
 
@@ -98,7 +120,10 @@ describe('RackDeviceModal — editing', () => {
     expect(screen.getByLabelText('Label')).toHaveValue(device.label)
     expect(screen.getByLabelText('U position')).toHaveValue(device.uStart)
     expect(screen.getByLabelText('Height (U)')).toHaveValue(device.uHeight)
-    expect(screen.getByLabelText('Faceplate')).toHaveValue(device.faceplateId)
+    expect(screen.getByLabelText('Faceplate')).toHaveAttribute(
+      'data-faceplate',
+      device.faceplateId,
+    )
     // The old right-panel fields all moved here.
     expect(screen.getByLabelText('Status')).toBeInTheDocument()
     expect(screen.getByLabelText('Colour override')).toBeInTheDocument()
@@ -127,7 +152,7 @@ describe('RackDeviceModal — editing', () => {
 
     // Regression: a 2U plate used to leave the device 1U, so 1U and 2U plates
     // rendered at the same height and the field looked locked.
-    fireEvent.change(screen.getByLabelText('Faceplate'), { target: { value: 'ups-2u' } })
+    pickFaceplate('UPS 2U')
     expect(screen.getByLabelText('Height (U)')).toHaveValue(2)
     submit()
 
