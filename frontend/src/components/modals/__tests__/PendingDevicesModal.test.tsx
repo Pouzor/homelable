@@ -121,6 +121,19 @@ const DEVICE_RACK = {
   discovered_at: '2026-01-05T00:00:00Z',
 }
 
+const DEVICE_VM = {
+  id: 'dev-vm',
+  ip: '192.168.1.55',
+  hostname: 'web-vm',
+  mac: null,
+  os: null,
+  services: [],
+  suggested_type: 'vm',
+  status: 'pending',
+  discovery_source: 'proxmox',
+  discovered_at: '2026-01-06T00:00:00Z',
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   // Apply the selector when one is passed (setSelectedNode is read via a
@@ -603,6 +616,12 @@ describe('PendingDevicesModal', () => {
       expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('1 rack device'))
     })
 
+    it('keeps rack gear in the rackable list — it is hardware', async () => {
+      render(<PendingDevicesModal {...baseProps} initialRackableOnly />)
+      await waitFor(() => expect(screen.getByTestId('pending-card-dev-rack')).toBeInTheDocument())
+      expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument()
+    })
+
     it('approves nothing when the whole selection is rack gear', async () => {
       render(<PendingDevicesModal {...baseProps} />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-rack')).toBeInTheDocument())
@@ -611,6 +630,66 @@ describe('PendingDevicesModal', () => {
       fireEvent.click(screen.getByRole('button', { name: /Approve \(1\)/ }))
 
       await waitFor(() => expect(mockBulkApprove).not.toHaveBeenCalled())
+    })
+  })
+
+  // The rack canvas opens this modal to pick a mount, so it needs a hardware
+  // filter and a way to hand one device back instead of approving it.
+  describe('rackable filter and picker mode', () => {
+    beforeEach(() => {
+      mockPending.mockResolvedValue({ data: [DEVICE_IP, DEVICE_VM] })
+    })
+
+    it('drops virtual and mesh kinds when the filter is on', async () => {
+      render(<PendingDevicesModal {...baseProps} />)
+      await waitFor(() => expect(screen.getByTestId('pending-card-dev-vm')).toBeInTheDocument())
+
+      fireEvent.click(screen.getByRole('button', { name: 'Rackable' }))
+      expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument()
+      expect(screen.queryByTestId('pending-card-dev-vm')).not.toBeInTheDocument()
+    })
+
+    it('starts filtered when the caller asks for it', async () => {
+      render(<PendingDevicesModal {...baseProps} initialRackableOnly />)
+      await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+      expect(screen.queryByTestId('pending-card-dev-vm')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Rackable' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
+    })
+
+    it('re-arms the filter when reopened after the user turned it off', async () => {
+      const { rerender } = render(<PendingDevicesModal {...baseProps} initialRackableOnly />)
+      await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: 'Rackable' }))
+      expect(screen.getByTestId('pending-card-dev-vm')).toBeInTheDocument()
+
+      rerender(<PendingDevicesModal {...baseProps} open={false} initialRackableOnly />)
+      rerender(<PendingDevicesModal {...baseProps} initialRackableOnly />)
+      await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+      expect(screen.queryByTestId('pending-card-dev-vm')).not.toBeInTheDocument()
+    })
+
+    it('hands the card back instead of opening the approval modal', async () => {
+      const onPick = vi.fn()
+      render(<PendingDevicesModal {...baseProps} onPick={onPick} />)
+      await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+
+      fireEvent.click(screen.getByTestId('pending-card-dev-a'))
+      expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'dev-a' }))
+      expect(screen.queryByTestId('approval-modal')).not.toBeInTheDocument()
+    })
+
+    it('hides the bulk and clear controls a picker has no business offering', async () => {
+      render(<PendingDevicesModal {...baseProps} onPick={vi.fn()} />)
+      await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+
+      expect(screen.queryByRole('button', { name: 'Select mode' })).not.toBeInTheDocument()
+      expect(screen.queryByTitle(/Clear all pending/)).not.toBeInTheDocument()
+      // …and the keyboard shortcut cannot bring select mode back either.
+      fireEvent.keyDown(window, { key: 's' })
+      expect(screen.queryByRole('button', { name: /Approve \(/ })).not.toBeInTheDocument()
     })
   })
 })

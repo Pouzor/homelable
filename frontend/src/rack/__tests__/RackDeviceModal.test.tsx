@@ -8,11 +8,18 @@ import { RackDeviceModal } from '../components/RackDeviceModal'
 import { useRackStore } from '../store'
 
 const createPending = vi.fn()
+const pendingList = vi.fn()
 
 vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 vi.mock('@/api/client', () => ({
   racksApi: { load: vi.fn(), inventory: vi.fn(), save: vi.fn() },
-  scanApi: { createPending: (...args: unknown[]) => createPending(...args) },
+  scanApi: {
+    createPending: (...args: unknown[]) => createPending(...args),
+    // The inventory entry is now picked in the Device Inventory modal, which
+    // reads `pending_devices` itself rather than the rack's mirrored list.
+    pending: (...args: unknown[]) => pendingList(...args),
+    hidden: vi.fn().mockResolvedValue({ data: [] }),
+  },
 }))
 
 const store = () => useRackStore.getState()
@@ -20,7 +27,35 @@ const store = () => useRackStore.getState()
 beforeEach(() => {
   vi.clearAllMocks()
   store().loadDemo()
+  pendingList.mockResolvedValue({ data: [] })
 })
+
+/** Shape the Device Inventory modal expects for one of the rack's entries. */
+function pendingRow(id: string, extra: Record<string, unknown> = {}) {
+  return {
+    id,
+    ip: null,
+    hostname: id,
+    mac: null,
+    os: null,
+    services: [],
+    suggested_type: 'server',
+    status: 'pending',
+    discovery_source: 'arp',
+    discovered_at: '2026-01-01T00:00:00Z',
+    ...extra,
+  }
+}
+
+/** Open the Device Inventory from the rack modal and click one of its cards. */
+async function pickFromInventory(id: string, extra: Record<string, unknown> = {}) {
+  pendingList.mockResolvedValue({ data: [pendingRow(id, extra)] })
+  fireEvent.click(screen.getByLabelText('Device Inventory entry'))
+  const card = await screen.findByTestId(`pending-card-${id}`)
+  await act(async () => {
+    fireEvent.click(card)
+  })
+}
 
 function submit() {
   fireEvent.click(screen.getByRole('button', { name: /^(Add|Save)$/ }))
@@ -45,9 +80,7 @@ describe('RackDeviceModal — adding', () => {
     render(<RackDeviceModal />)
 
     const unracked = store().inventory.find((i) => !i.racked)!
-    fireEvent.change(screen.getByLabelText('Device Inventory entry'), {
-      target: { value: unracked.id },
-    })
+    await pickFromInventory(unracked.id)
     submit()
 
     await waitFor(() =>
@@ -58,7 +91,7 @@ describe('RackDeviceModal — adding', () => {
     expect(store().deviceEditor).toBeNull()
   })
 
-  it('keeps the preselected entry status instead of saving unknown over it', async () => {
+  it('takes the picked entry status instead of saving unknown over it', async () => {
     store().openDeviceEditor()
     const first = store().inventory.find((i) => !i.racked)!
     useRackStore.setState({
@@ -68,12 +101,41 @@ describe('RackDeviceModal — adding', () => {
     })
     render(<RackDeviceModal />)
 
-    // The select preselects the first unracked entry, so submitting straight
-    // away is a real path — it used to commit `unknown` over the live status.
+    // Picking and submitting without touching the Status select is the common
+    // path — it used to commit `unknown` over the entry's live status.
+    await pickFromInventory(first.id)
     submit()
 
     await waitFor(() => expect(store().deviceEditor).toBeNull())
     expect(store().devices.find((d) => d.deviceId === first.id)!.status).toBe('online')
+  })
+
+  it('refuses an entry already mounted in this design', async () => {
+    const { toast } = await import('sonner')
+    store().openDeviceEditor()
+    const racked = store().inventory.find((i) => i.racked)!
+    render(<RackDeviceModal />)
+
+    // The Device Inventory lists every device, racked or not — the rack side is
+    // what knows one is already mounted here, and one mount per entry is the rule.
+    await pickFromInventory(racked.id)
+
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('already mounted'))
+    expect(screen.getByLabelText('Device Inventory entry')).toHaveAttribute('data-device-id', '')
+  })
+
+  it('refuses a device the rack inventory does not carry', async () => {
+    const { toast } = await import('sonner')
+    store().openDeviceEditor()
+    render(<RackDeviceModal />)
+
+    // The two lists come from different endpoints: a row can be in the Device
+    // Inventory and absent from the rack's (hidden there, or a kind no rack can
+    // hold). Refuse it rather than mount a ghost with no entry behind it.
+    await pickFromInventory('dev-ghost')
+
+    expect(toast.error).toHaveBeenCalledWith('That device cannot be mounted in a rack')
+    expect(screen.getByLabelText('Device Inventory entry')).toHaveAttribute('data-device-id', '')
   })
 
   it('creates nothing in the inventory when the rack has no room', async () => {
@@ -122,16 +184,14 @@ describe('RackDeviceModal — adding', () => {
     const picked = store().inventory.find((i) => !i.racked)!
     render(<RackDeviceModal />)
 
-    fireEvent.change(screen.getByLabelText('Device Inventory entry'), {
-      target: { value: picked.id },
-    })
+    await pickFromInventory(picked.id)
     // Racked from another modal, or purged from the inventory, while this one
     // was open: the mount fails, and it used to read "No free slot in this rack".
     act(() => {
       useRackStore.setState({ inventory: store().inventory.filter((i) => i.id !== picked.id) })
     })
-    // The select drops back to its placeholder rather than holding a dead id…
-    expect(screen.getByLabelText('Device Inventory entry')).toHaveValue('')
+    // The field drops back to its placeholder rather than holding a dead id…
+    expect(screen.getByLabelText('Device Inventory entry')).toHaveAttribute('data-device-id', '')
     await act(async () => submit())
 
     // …so the error names the real cause instead of the rack's capacity.
@@ -145,9 +205,7 @@ describe('RackDeviceModal — adding', () => {
     const entry = store().inventory.find((i) => !i.racked)!
     render(<RackDeviceModal />)
 
-    fireEvent.change(screen.getByLabelText('Device Inventory entry'), {
-      target: { value: entry.id },
-    })
+    await pickFromInventory(entry.id)
     // U 1 is taken in the demo rack, so the mount relocates. Patching the form's
     // own geometry afterwards used to undo that, silently.
     fireEvent.change(screen.getByLabelText('U position'), { target: { value: '1' } })
@@ -166,7 +224,7 @@ describe('RackDeviceModal — adding', () => {
     }
   })
 
-  it('labels inventory options without repeating the IP', () => {
+  it('names the picked entry without repeating the IP', async () => {
     store().openDeviceEditor()
     useRackStore.setState({
       inventory: [
@@ -180,25 +238,29 @@ describe('RackDeviceModal — adding', () => {
           racked: false,
           suggestedFaceplateId: 'server-1u',
         },
-        {
-          id: 'inv-named',
-          label: 'pve-01',
-          type: 'proxmox',
-          ip: '192.168.1.10',
-          status: 'unknown',
-          nodeId: null,
-          racked: false,
-          suggestedFaceplateId: 'server-2u-bays',
-        },
       ],
     })
     render(<RackDeviceModal />)
+    await pickFromInventory('inv-ip')
 
     // Regression: an IP-labelled entry read "192.168.1.63 · 192.168.1.63".
-    expect(screen.getByRole('option', { name: '192.168.1.63 · server' })).toBeInTheDocument()
-    expect(
-      screen.getByRole('option', { name: 'pve-01 · 192.168.1.10 · proxmox' }),
-    ).toBeInTheDocument()
+    const field = screen.getByLabelText('Device Inventory entry')
+    expect(field).toHaveTextContent('192.168.1.63 · server')
+    expect(field).not.toHaveTextContent('192.168.1.63 · 192.168.1.63')
+  })
+
+  it('lays the form out in two columns inside a NodeModal-sized dialog', () => {
+    store().openDeviceEditor()
+    render(<RackDeviceModal />)
+
+    // Regression: a max-w-md dialog with one column pushed the port list — and
+    // the Add button — below the fold on a laptop screen.
+    expect(screen.getByRole('dialog')).toHaveClass('sm:max-w-3xl')
+    const columns = document.querySelector('.sm\\:grid-cols-2')!
+    expect(columns).not.toBeNull()
+    // Fields on the left, ports on the right, both inside the same grid.
+    expect(columns).toContainElement(screen.getByLabelText('Label'))
+    expect(columns).toContainElement(screen.getByRole('button', { name: 'Add port' }))
   })
 
   it('creates a brand new inventory entry from the canvas and mounts it', async () => {
