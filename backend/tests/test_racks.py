@@ -142,6 +142,26 @@ class TestSaveAndLoad:
         assert loaded["racks"] == []
         assert loaded["devices"] == []
 
+    async def test_refuses_to_steal_a_row_from_another_design(
+        self, client: AsyncClient, headers
+    ):
+        """Ids come from the client, so a stale tab or a copy can collide.
+
+        The upsert sets `design_id` from the payload: without a guard, saving
+        design B with an id owned by design A moved A's rack — devices and
+        cables with it — into B, and A silently lost it.
+        """
+        first = await _design(client, headers, name="Rack A")
+        second = await _design(client, headers, name="Rack B")
+        await client.post("/api/v1/racks/save", json=_state(first), headers=headers)
+
+        res = await client.post("/api/v1/racks/save", json=_state(second), headers=headers)
+        assert res.status_code == 409
+
+        kept = (await client.get(f"/api/v1/racks?design_id={first}", headers=headers)).json()
+        assert [r["id"] for r in kept["racks"]] == ["rack-1"]
+        assert len(kept["devices"]) == 2
+
     async def test_rejects_an_unknown_design(self, client: AsyncClient, headers):
         res = await client.post("/api/v1/racks/save", json=_state("nope"), headers=headers)
         assert res.status_code == 404

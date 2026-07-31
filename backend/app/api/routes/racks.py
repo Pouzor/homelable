@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -97,6 +97,25 @@ def _ip_tokens(ip: str | None) -> list[str]:
     return [t.strip() for t in ip.split(",") if t.strip()] if ip else []
 
 
+_Row = TypeVar("_Row", Rack, RackDevice, RackCable)
+
+
+async def _owned(
+    db: AsyncSession, model: type[_Row], row_id: str, design_id: str
+) -> _Row | None:
+    """Fetch a rack row by id, refusing one that belongs to another design.
+
+    The upsert below sets `design_id` from the payload, so without this a save
+    carrying an id from design A would quietly move A's rack — devices and
+    cables included — into design B, and A would lose it with no error. Ids come
+    from the client, so a copied design or a stale tab is enough to collide.
+    """
+    row = await db.get(model, row_id)
+    if row is not None and row.design_id != design_id:
+        raise HTTPException(409, f"{model.__name__} {row_id} belongs to another design")
+    return row
+
+
 async def _require_design(db: AsyncSession, design_id: str) -> Design:
     design = await db.get(Design, design_id)
     if not design:
@@ -170,7 +189,7 @@ async def save_racks(
     for rack_data in body.racks:
         payload: dict[str, Any] = rack_data.model_dump()
         payload["design_id"] = body.design_id
-        db_rack = await db.get(Rack, rack_data.id)
+        db_rack = await _owned(db, Rack, rack_data.id, body.design_id)
         if db_rack:
             for field, value in payload.items():
                 setattr(db_rack, field, value)
@@ -181,7 +200,7 @@ async def save_racks(
     for device_data in body.devices:
         payload = device_data.model_dump()
         payload["design_id"] = body.design_id
-        db_device = await db.get(RackDevice, device_data.id)
+        db_device = await _owned(db, RackDevice, device_data.id, body.design_id)
         if db_device:
             for field, value in payload.items():
                 setattr(db_device, field, value)
@@ -192,7 +211,7 @@ async def save_racks(
     for cable_data in body.cables:
         payload = cable_data.model_dump()
         payload["design_id"] = body.design_id
-        db_cable = await db.get(RackCable, cable_data.id)
+        db_cable = await _owned(db, RackCable, cable_data.id, body.design_id)
         if db_cable:
             for field, value in payload.items():
                 setattr(db_cable, field, value)

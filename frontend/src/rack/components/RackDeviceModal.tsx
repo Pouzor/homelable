@@ -119,6 +119,15 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     if (!isEdit) void refreshInventory()
   }, [isEdit, refreshInventory])
 
+  // That refetch can drop the preselected entry (racked from elsewhere, deleted),
+  // leaving the select blank while the state still held the dead id.
+  useEffect(() => {
+    if (isEdit) return
+    setInventoryId((current) =>
+      current && !unracked.some((i) => i.id === current) ? '' : current,
+    )
+  }, [isEdit, unracked])
+
   /** Swapping the plate reseeds size and ports — the old ports belong to it. */
   function pickFaceplate(id: string) {
     const plate = getFaceplate(id)
@@ -171,7 +180,14 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
 
   function commitEdit(): string | null {
     if (!device) return null
-    if (plateChanged && faceplateId !== device.faceplateId) applyFaceplate(device.id, faceplateId)
+    // A plate the rack has no room for changes nothing — and the caller would
+    // still write the new plate's ports onto the old faceplate, silently.
+    if (plateChanged && faceplateId !== device.faceplateId) {
+      if (!applyFaceplate(device.id, faceplateId)) {
+        toast.error('No room in the rack for that faceplate')
+        return null
+      }
+    }
     const name = label.trim() || device.label
     if (!updateDevice(device.id, { ...geometry, label: name, status, color })) {
       toast.error('No room in the rack for that size')
@@ -188,9 +204,11 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     const name = label.trim()
 
     if (source === 'accessory') {
-      const id = mountAccessory(faceplateId, rackId, { uStart, colStart })
+      // Hand the mount the whole geometry: it snaps to the nearest slot that
+      // fits, and patching it afterwards would drag the plate back off it.
+      const id = mountAccessory(faceplateId, rackId, geometry)
       if (!id) return noRoom()
-      updateDevice(id, { ...geometry, label: name || getFaceplate(faceplateId).label, color })
+      updateDevice(id, { label: name || getFaceplate(faceplateId).label, color })
       return id
     }
 
@@ -216,12 +234,11 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
       toast.error('Pick a device from the inventory')
       return null
     }
-
     const id = mountFromInventory(entryId, rackId, { ...geometry, faceplateId })
     if (!id) return noRoom()
-    // The mount takes its label and status from the inventory entry; only patch
-    // what the form actually overrides.
-    updateDevice(id, { ...geometry, status, color, ...(name ? { label: name } : {}) })
+    // The mount takes its label and status from the inventory entry, and its
+    // slot from `findSlot` — only patch what the form actually overrides.
+    updateDevice(id, { status, color, ...(name ? { label: name } : {}) })
     return id
   }
 

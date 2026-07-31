@@ -117,6 +117,55 @@ describe('RackDeviceModal — adding', () => {
     expect(store().deviceEditor).not.toBeNull()
   })
 
+  it('blames the missing entry, not the rack, when the pick is gone', async () => {
+    store().openDeviceEditor()
+    const picked = store().inventory.find((i) => !i.racked)!
+    render(<RackDeviceModal />)
+
+    fireEvent.change(screen.getByLabelText('Device Inventory entry'), {
+      target: { value: picked.id },
+    })
+    // Racked from another modal, or purged from the inventory, while this one
+    // was open: the mount fails, and it used to read "No free slot in this rack".
+    act(() => {
+      useRackStore.setState({ inventory: store().inventory.filter((i) => i.id !== picked.id) })
+    })
+    // The select drops back to its placeholder rather than holding a dead id…
+    expect(screen.getByLabelText('Device Inventory entry')).toHaveValue('')
+    await act(async () => submit())
+
+    // …so the error names the real cause instead of the rack's capacity.
+    const { toast } = await import('sonner')
+    expect(toast.error).toHaveBeenCalledWith('Pick a device from the inventory')
+    expect(store().deviceEditor).not.toBeNull()
+  })
+
+  it('keeps the slot the mount picked instead of dragging it back', async () => {
+    store().openDeviceEditor()
+    const entry = store().inventory.find((i) => !i.racked)!
+    render(<RackDeviceModal />)
+
+    fireEvent.change(screen.getByLabelText('Device Inventory entry'), {
+      target: { value: entry.id },
+    })
+    // U 1 is taken in the demo rack, so the mount relocates. Patching the form's
+    // own geometry afterwards used to undo that, silently.
+    fireEvent.change(screen.getByLabelText('U position'), { target: { value: '1' } })
+    submit()
+
+    await waitFor(() => expect(store().deviceEditor).toBeNull())
+    const mounted = store().devices.find((d) => d.deviceId === entry.id)!
+    const others = store().devices.filter((d) => d.id !== mounted.id && d.rackId === mounted.rackId)
+    for (const other of others) {
+      const overlaps =
+        mounted.uStart < other.uStart + other.uHeight &&
+        other.uStart < mounted.uStart + mounted.uHeight &&
+        mounted.colStart < other.colStart + other.colSpan &&
+        other.colStart < mounted.colStart + mounted.colSpan
+      expect(overlaps).toBe(false)
+    }
+  })
+
   it('labels inventory options without repeating the IP', () => {
     store().openDeviceEditor()
     useRackStore.setState({
@@ -282,6 +331,27 @@ describe('RackDeviceModal — editing', () => {
         (c) => c.from.deviceId === 'dev-pve1' || c.to.deviceId === 'dev-pve1',
       ),
     ).toHaveLength(cablesBefore.length)
+  })
+
+  it('refuses a plate the rack cannot take instead of half-applying it', async () => {
+    const { toast } = await import('sonner')
+    store().openDeviceEditor('dev-pve1')
+    render(<RackDeviceModal />)
+
+    const before = store().devices.find((d) => d.id === 'dev-pve1')!
+    // The demo rack's longest free run is 3U, so the 4U plate cannot be applied.
+    // Shrinking the height then let `updateDevice` succeed on its own, and the
+    // device ended up wearing its old plate with the new plate's ports.
+    pickFaceplate('Storage 4U — 12 bays')
+    fireEvent.change(screen.getByLabelText('Height (U)'), { target: { value: '1' } })
+    submit()
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const after = store().devices.find((d) => d.id === 'dev-pve1')!
+    expect(after.faceplateId).toBe(before.faceplateId)
+    expect(after.ports.map((p) => p.id)).toEqual(before.ports.map((p) => p.id))
+    expect(after.uHeight).toBe(before.uHeight)
+    expect(store().deviceEditor).not.toBeNull()
   })
 
   it('edits the port list and commits it on save', async () => {
