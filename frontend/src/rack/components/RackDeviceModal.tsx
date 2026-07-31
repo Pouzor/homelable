@@ -17,7 +17,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useRackStore } from '../store'
-import { faceplateGroups, getFaceplate } from '../faceplates'
+import { FaceplatePicker } from './FaceplatePicker'
+import { Faceplate } from './Faceplate'
+import { getFaceplate } from '../faceplates'
 import { generateUUID } from '@/utils/uuid'
 import { RACK_COLUMNS, type DeviceStatus, type Port, type PortType } from '@/types'
 
@@ -60,7 +62,6 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
 
   const isEdit = !!device
   const unracked = useMemo(() => inventory.filter((i) => !i.racked), [inventory])
-  const groups = useMemo(() => faceplateGroups(), [])
 
   const [source, setSource] = useState<Source>(unracked.length > 0 ? 'inventory' : 'new')
   const [inventoryId, setInventoryId] = useState(unracked[0]?.id ?? '')
@@ -80,6 +81,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     device?.ports ?? getFaceplate(faceplateId).ports.map((p) => ({ ...p, id: generateUUID() })),
   )
   const [plateChanged, setPlateChanged] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
   // The inventory lives in the Device Inventory, which the user can edit from
@@ -98,6 +100,15 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     setColStart((c) => Math.min(c, RACK_COLUMNS - plate.colSpan))
     setLocalPorts(plate.ports.map((p) => ({ ...p, id: generateUUID() })))
     setPlateChanged(true)
+  }
+
+  /** Accessories and devices draw from disjoint halves of the catalog. */
+  function pickSource(next: Source) {
+    setSource(next)
+    const wantAccessory = next === 'accessory'
+    if ((getFaceplate(faceplateId).kind === 'accessory') !== wantAccessory) {
+      pickFaceplate(wantAccessory ? 'blank-1u' : 'server-1u')
+    }
   }
 
   function pickInventory(id: string) {
@@ -211,7 +222,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setSource(value)}
+                    onClick={() => pickSource(value)}
                     className={`flex-1 cursor-pointer rounded border px-2 py-1 text-xs ${
                       source === value
                         ? 'border-[#00d4ff] text-[#00d4ff]'
@@ -289,22 +300,37 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
           </Field>
 
           <Field label="Faceplate">
-            <select
-              className={inputClass}
+            {/* The catalog is visual — the button previews the current plate and
+                opens the picker rather than hiding drawings behind a name. */}
+            <button
+              type="button"
               aria-label="Faceplate"
-              value={faceplateId}
-              onChange={(e) => pickFaceplate(e.target.value)}
+              data-faceplate={faceplateId}
+              onClick={() => setPickerOpen(true)}
+              className="flex cursor-pointer items-center gap-3 rounded border border-[#30363d] bg-[#21262d] p-2 text-left hover:border-[#00d4ff]"
             >
-              {groups.map(({ group, items }) => (
-                <optgroup key={group} label={group}>
-                  {items.map((plate) => (
-                    <option key={plate.id} value={plate.id}>
-                      {plate.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+              <Faceplate
+                faceplateId={faceplateId}
+                label={label || getFaceplate(faceplateId).label}
+                status={status}
+                ports={ports}
+                width={(160 * colSpan) / RACK_COLUMNS}
+                height={Math.min(uHeight, 4) * 18}
+                colorOverride={color}
+                revealed
+              />
+              <span className="flex flex-col">
+                <span className="text-xs">{getFaceplate(faceplateId).label}</span>
+                <span className="text-[11px] text-[#00d4ff]">Browse faceplates…</span>
+              </span>
+            </button>
+            <FaceplatePicker
+              open={pickerOpen}
+              value={faceplateId}
+              kind={!isEdit && source === 'accessory' ? 'accessory' : undefined}
+              onPick={pickFaceplate}
+              onClose={() => setPickerOpen(false)}
+            />
             {plateChanged && isEdit && (
               <p className="text-[11px] text-[#e3b341]">
                 Changing the plate replaces its ports and drops their patches.
