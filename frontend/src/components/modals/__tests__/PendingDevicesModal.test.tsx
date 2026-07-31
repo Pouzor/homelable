@@ -107,6 +107,20 @@ const DEVICE_PROXMOX = {
   discovered_at: '2026-01-04T00:00:00Z',
 }
 
+const DEVICE_RACK = {
+  id: 'dev-rack',
+  ip: null,
+  hostname: 'patch-house',
+  mac: null,
+  os: null,
+  services: [],
+  suggested_type: null,
+  status: 'pending',
+  discovery_source: 'rack',
+  discovery_sources: ['rack'],
+  discovered_at: '2026-01-05T00:00:00Z',
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   // Apply the selector when one is passed (setSelectedNode is read via a
@@ -547,6 +561,56 @@ describe('PendingDevicesModal', () => {
       const inCard = within(card)
       expect(inCard.getByText('Discovered')).toBeInTheDocument()
       expect(inCard.queryByText('Created')).not.toBeInTheDocument()
+    })
+  })
+
+  // Gear created from a rack canvas lives in the same inventory (so it gets the
+  // search / filter / hide / delete tooling) but describes a mount, not a host.
+  describe('rack devices', () => {
+    beforeEach(() => {
+      mockPending.mockResolvedValue({ data: [DEVICE_IP, DEVICE_RACK] })
+    })
+
+    it('filters them into their own section', async () => {
+      render(<PendingDevicesModal {...baseProps} />)
+      await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: 'Rack devices' }))
+      expect(screen.getByTestId('pending-card-dev-rack')).toBeInTheDocument()
+      expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
+    })
+
+    it('refuses to approve one onto a logical canvas', async () => {
+      const { toast } = await import('sonner')
+      render(<PendingDevicesModal {...baseProps} />)
+      await waitFor(() => expect(screen.getByTestId('pending-card-dev-rack')).toBeInTheDocument())
+      fireEvent.click(screen.getByTestId('pending-card-dev-rack'))
+      fireEvent.click(screen.getByTestId('do-approve'))
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('rack canvas')))
+      expect(mockApprove).not.toHaveBeenCalled()
+    })
+
+    it('drops them from a bulk approve and says how many', async () => {
+      const { toast } = await import('sonner')
+      render(<PendingDevicesModal {...baseProps} />)
+      await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
+      fireEvent.click(screen.getByTestId('pending-card-dev-a'))
+      fireEvent.click(screen.getByTestId('pending-card-dev-rack'))
+      fireEvent.click(screen.getByRole('button', { name: /Approve \(2\)/ }))
+
+      await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-a'], null))
+      expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('1 rack device'))
+    })
+
+    it('approves nothing when the whole selection is rack gear', async () => {
+      render(<PendingDevicesModal {...baseProps} />)
+      await waitFor(() => expect(screen.getByTestId('pending-card-dev-rack')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
+      fireEvent.click(screen.getByTestId('pending-card-dev-rack'))
+      fireEvent.click(screen.getByRole('button', { name: /Approve \(1\)/ }))
+
+      await waitFor(() => expect(mockBulkApprove).not.toHaveBeenCalled())
     })
   })
 })

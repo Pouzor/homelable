@@ -20,7 +20,9 @@ import { rackHeight, rackWidth } from '../layout'
 import { useRackStore } from '../store'
 import { useRackPalette } from '../rackTheme'
 import { CableLayer } from './CableLayer'
+import { RackDeviceModal } from './RackDeviceModal'
 import { RackFlowNode } from './RackFlowNode'
+import { RackSettingsModal } from './RackSettingsModal'
 
 const nodeTypes = { rack: RackFlowNode }
 
@@ -86,6 +88,7 @@ export function RackCanvas() {
   }
 
   return (
+    <>
     <ReactFlow
       nodes={nodes}
       edges={[]}
@@ -102,7 +105,9 @@ export function RackCanvas() {
       <Controls />
       <CableLayer />
       {!loading && racks.length === 0 && (
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
+        // z-10 clears .react-flow__renderer (z-index 4); without it the pane sits
+        // on top and swallows the clicks as a canvas drag.
+        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-center">
           <p className="text-sm text-[#8b949e]">This rack canvas is empty.</p>
           <div className="pointer-events-auto flex gap-2">
             <button
@@ -123,5 +128,9 @@ export function RackCanvas() {
         </div>
       )}
     </ReactFlow>
+    {/* Editors live outside the flow so a dialog is never clipped by it. */}
+    <RackDeviceModal />
+    <RackSettingsModal />
+    </>
   )
 }

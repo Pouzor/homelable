@@ -49,6 +49,8 @@ export function RackFlowNode({ id }: NodeProps) {
   const selectRack = useRackStore((s) => s.selectRack)
   const hoverDevice = useRackStore((s) => s.hoverDevice)
   const pickPort = useRackStore((s) => s.pickPort)
+  const openDeviceEditor = useRackStore((s) => s.openDeviceEditor)
+  const openRackEditor = useRackStore((s) => s.openRackEditor)
   const mountFromInventory = useRackStore((s) => s.mountFromInventory)
   const mountAccessory = useRackStore((s) => s.mountAccessory)
   const moveDevice = useRackStore((s) => s.moveDevice)
@@ -156,6 +158,7 @@ export function RackFlowNode({ id }: NodeProps) {
       onDragLeave={() => setPreview(null)}
       onDrop={onDrop}
       onClick={() => selectRack(rack.id)}
+      onDoubleClick={() => openRackEditor(rack.id)}
     >
       {/* Chassis */}
       <div
@@ -266,6 +269,10 @@ export function RackFlowNode({ id }: NodeProps) {
             onClick={(e) => {
               e.stopPropagation()
               selectDevice(device.id)
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation()
+              openDeviceEditor(device.id)
             }}
             onMouseEnter={() => hoverDevice(device.id)}
             onMouseLeave={() => hoverDevice(null)}

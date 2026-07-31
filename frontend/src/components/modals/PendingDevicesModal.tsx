@@ -18,7 +18,7 @@ import { buildZwaveProperties, isZwaveType } from '@/utils/zwaveProperties'
 import { buildMacProperty } from '@/utils/macProperty'
 import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
 import { getCenteredPosition } from '@/utils/viewportCenter'
-import { sourceBuckets, orderedSources, SOURCE_META, type SourceBucket } from '@/utils/pendingSources'
+import { sourceBuckets, orderedSources, isRackDevice, SOURCE_META, type SourceBucket } from '@/utils/pendingSources'
 
 interface PendingDevicesModalProps {
   open: boolean
@@ -276,6 +276,12 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   // force=true is sent only after the user confirms they want a duplicate node
   // on this design (the backend otherwise 409s to let us ask).
   const approveDevice = async (device: PendingDevice, force = false) => {
+    // Rack gear documents a mount, not a host: it stays out of logical canvases.
+    // The backend refuses it too — this is the friendly half of the guard.
+    if (isRackDevice(device)) {
+      toast.error('Rack devices belong to a rack canvas, not a logical one')
+      return
+    }
     const fallbackLabel = deviceLabel(device)
     const type = (device.suggested_type ?? 'generic') as NodeType
     const zwave = isZwaveType(type)
@@ -360,7 +366,14 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   }
 
   const handleBulkApprove = async () => {
-    const ids = [...selectedIds]
+    const rackIds = new Set(devices.filter(isRackDevice).map((d) => d.id))
+    const ids = [...selectedIds].filter((id) => !rackIds.has(id))
+    const skippedRack = selectedIds.size - ids.length
+    if (skippedRack > 0) {
+      toast.error(
+        `${skippedRack} rack device${skippedRack > 1 ? 's' : ''} skipped — they belong to a rack canvas`,
+      )
+    }
     if (ids.length === 0) return
     try {
       const res = await scanApi.bulkApprove(ids, activeDesignId)
@@ -550,6 +563,13 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
                 className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'proxmox' ? 'bg-[#e57000]/20 text-[#e57000]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
               >
                 Proxmox
+              </button>
+              <button
+                onClick={() => setSourceFilter('rack')}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'rack' ? 'bg-[#39d353]/20 text-[#39d353]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                title="Gear created from a rack canvas"
+              >
+                Rack devices
               </button>
             </div>
             <select

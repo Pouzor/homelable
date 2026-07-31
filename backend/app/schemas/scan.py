@@ -47,12 +47,22 @@ class PendingDeviceResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+"""Sources a hand-made inventory entry may claim.
+
+``rack`` marks gear created from a rack canvas. Those rows live in the Device
+Inventory like any other, but they describe a physical mount rather than a host
+on the network, so they are never placed on a logical canvas.
+"""
+MANUAL_SOURCES = {"manual", "rack"}
+
+
 class PendingDeviceCreate(BaseModel):
     """Manually add an entry to the Device Inventory.
 
     Used when the user documents hardware no scan can find — a dumb switch, a
     patch panel, a machine that is powered off. Lands with
-    `discovery_source="manual"` so the inventory filters can tell it apart.
+    `discovery_source="manual"` (or `"rack"`) so the inventory filters can tell
+    it apart.
     """
 
     hostname: str
@@ -62,6 +72,14 @@ class PendingDeviceCreate(BaseModel):
     model: str | None = None
     vendor: str | None = None
     properties: list[Any] = []
+    discovery_source: str = "manual"
+
+    @field_validator("discovery_source")
+    @classmethod
+    def _known_source(cls, v: str) -> str:
+        if v not in MANUAL_SOURCES:
+            raise ValueError(f"discovery_source must be one of {sorted(MANUAL_SOURCES)}")
+        return v
 
 
 class ScanRunResponse(BaseModel):

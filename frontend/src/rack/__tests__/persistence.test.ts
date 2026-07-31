@@ -160,7 +160,7 @@ describe('save', () => {
 })
 
 describe('createInventoryDevice', () => {
-  it('creates the inventory entry server-side and adds it to the tray', async () => {
+  it('creates the entry in the Device Inventory, tagged as rack gear', async () => {
     await store().loadDesign('d1')
     createPending.mockResolvedValue({ data: { id: 'inv-new', hostname: 'patch panel' } })
 
@@ -170,6 +170,9 @@ describe('createInventoryDevice', () => {
       ip: null,
       mac: null,
       suggested_type: null,
+      // Files it under the inventory's "Rack devices" filter and keeps it off
+      // the logical canvases.
+      discovery_source: 'rack',
     })
     expect(created!.id).toBe('inv-new')
     expect(store().inventory.some((i) => i.id === 'inv-new')).toBe(true)

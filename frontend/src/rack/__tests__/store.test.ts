@@ -132,10 +132,19 @@ describe('moving and resizing', () => {
     expect(store().devices.find((d) => d.id === 'dev-fw')!.uStart).toBe(5)
   })
 
-  it('ignores a geometry edit that would collide', () => {
-    // dev-pve1 is 2U at U11; growing it to 4U would run into dev-fw territory.
-    store().updateDevice('dev-pve1', { uHeight: 5 })
+  it('refuses a geometry edit no slot in the rack can take', () => {
+    // The demo rack's longest free run is 3U (U4-U6), so 5U fits nowhere.
+    expect(store().updateDevice('dev-pve1', { uHeight: 5 })).toBe(false)
     expect(store().devices.find((d) => d.id === 'dev-pve1')!.uHeight).toBe(2)
+  })
+
+  it('relocates a device that outgrows its own slot', () => {
+    // dev-shelf is 1U at U7 with dev-nas right above; growing it to 3U has to
+    // slide it down into the free U4-U6 run rather than silently do nothing.
+    expect(store().updateDevice('dev-shelf', { uHeight: 3 })).toBe(true)
+    const device = store().devices.find((d) => d.id === 'dev-shelf')!
+    expect(device.uHeight).toBe(3)
+    expect(device.uStart).toBe(5) // nearest fit, keeping its own U7
   })
 
   it('applies a non-geometry edit even in a tight rack', () => {
@@ -151,10 +160,21 @@ describe('moving and resizing', () => {
     expect(device.uHeight).toBe(1)
   })
 
-  it('keeps the old geometry when the new faceplate does not fit', () => {
-    store().applyFaceplate('dev-sw24', 'server-4u-storage')
+  it('relocates rather than keep the old height when a taller plate collides', () => {
+    // dev-shelf is 1U at U7, hemmed in by dev-nas above. A 2U plate has to land
+    // somewhere it fits — keeping it 1U is how the height looked "locked".
+    expect(store().applyFaceplate('dev-shelf', 'ups-2u')).toBe(true)
+    const device = store().devices.find((d) => d.id === 'dev-shelf')!
+    expect(device.faceplateId).toBe('ups-2u')
+    expect(device.uHeight).toBe(2)
+    expect(device.uStart).not.toBe(7)
+  })
+
+  it('changes nothing when no slot in the rack takes the new plate', () => {
+    // 4U, and the longest free run is 3U.
+    expect(store().applyFaceplate('dev-sw24', 'server-4u-storage')).toBe(false)
     const device = store().devices.find((d) => d.id === 'dev-sw24')!
-    expect(device.faceplateId).toBe('server-4u-storage')
+    expect(device.faceplateId).toBe('switch-24')
     expect(device.uHeight).toBe(1)
   })
 })

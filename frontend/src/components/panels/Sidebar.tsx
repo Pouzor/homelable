@@ -9,9 +9,8 @@ import { authApi, designsApi, mediaApi } from '@/api/client'
 import * as standaloneStorage from '@/utils/standaloneStorage'
 import { resolveDesignIcon, DEFAULT_DESIGN_ICON } from '@/utils/designIcons'
 import { DesignModal, type DesignFormData } from '@/components/modals/DesignModal'
-import { InventoryTray } from '@/rack/components/InventoryTray'
+import { AccessoryTray } from '@/rack/components/AccessoryTray'
 import { useRackStore } from '@/rack/store'
-import { useRackPalette } from '@/rack/rackTheme'
 import { freeUnits } from '@/rack/layout'
 import type { Design } from '@/types'
 import { toast } from 'sonner'
@@ -51,9 +50,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
   const [openSeq, setOpenSeq] = useState(0)
   const { nodes, hasUnsavedChanges: canvasDirty, floorMap, setFloorMap } = useCanvasStore()
   const floorMapEditNonce = useCanvasStore((s) => s.floorMapEditNonce)
-  const rackPalette = useRackPalette()
   const rackDirty = useRackStore((s) => s.hasUnsavedChanges)
-  const addRack = useRackStore((s) => s.addRack)
+  const openDeviceEditor = useRackStore((s) => s.openDeviceEditor)
   const hasUnsavedChanges = isRack ? rackDirty : canvasDirty
 
   const handleLogout = useCallback(async () => {
@@ -267,7 +265,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
 
       {/* The rack inventory is the sidebar's body: it scrolls, everything else
           stays pinned. On a logical canvas the space is just a spacer. */}
-      {isRack && !collapsed ? <InventoryTray /> : !collapsed && <div className="flex-1" />}
+      {isRack && !collapsed ? <AccessoryTray /> : !collapsed && <div className="flex-1" />}
 
       {/* Stats footer — hidden in standalone (no scan / live status to count) */}
       {!collapsed && isRack && <RackStats />}
@@ -291,7 +289,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
       {/* Actions */}
       <div className="flex flex-col gap-0.5 p-2 border-t border-border">
         {isRack ? (
-          <SidebarItem icon={Plus} label="Add Rack" collapsed={collapsed} onClick={() => addRack({ style: rackPalette.defaultRackStyle })} />
+          <SidebarItem icon={Plus} label="Add Device" collapsed={collapsed} onClick={() => openDeviceEditor()} />
         ) : (
           <>
             <SidebarItem icon={Plus} label="Add Node" collapsed={collapsed} onClick={onAddNode} dataTour="add-node" />
