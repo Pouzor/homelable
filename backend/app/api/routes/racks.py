@@ -59,6 +59,9 @@ def _service_name(device: PendingDevice) -> str | None:
         if isinstance(s, dict)
         and s.get("category")
         and s.get("service_name")
+        # A service with no port is not a fingerprint the inventory names a
+        # device after either — and `None not in _COMMON_PORTS` is True.
+        and s.get("port") is not None
         and s.get("port") not in _COMMON_PORTS
     ]
     if not candidates:
