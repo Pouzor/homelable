@@ -12,6 +12,7 @@ import type {
   CableType,
   DeviceStatus,
   InventoryDevice,
+  MountStatus,
   Port,
   PortType,
   Rack,
@@ -111,6 +112,11 @@ function asStatus(v: string | null): DeviceStatus {
   return (DEVICE_STATUSES as (string | null)[]).includes(v) ? (v as DeviceStatus) : 'unknown'
 }
 
+/** A mount may also store `auto` — it follows the linked node's check. */
+function asMountStatus(v: string | null): MountStatus {
+  return v === 'auto' ? 'auto' : asStatus(v)
+}
+
 /** Style is free-form JSON on the wire; fill any key the server never wrote. */
 function asStyle(raw: Record<string, unknown>): RackStyle {
   const pick = (key: keyof RackStyle) => raw[key]
@@ -177,7 +183,7 @@ export function toRackDevice(api: ApiRackDevice): RackDevice {
     colSpan: api.col_span,
     faceplateId: api.faceplate_id,
     color: api.color ?? undefined,
-    status: asStatus(api.status),
+    status: asMountStatus(api.status),
     ports: asPorts(api.ports ?? []),
   }
 }

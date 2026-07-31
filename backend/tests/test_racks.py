@@ -107,6 +107,22 @@ class TestSaveAndLoad:
         assert loaded["cables"][0]["from_port_id"] == "p1"
         assert loaded["viewport"] == {"x": 10, "y": 20, "zoom": 1.5}
 
+    async def test_keeps_a_mount_that_follows_its_node_check(
+        self, client: AsyncClient, headers
+    ):
+        # "Check device" is stored as `auto` on the mount: the rack has no
+        # checker, it reads the linked node's live status at render time. The
+        # status column is free-form, so this only guards it staying that way.
+        design_id = await _design(client, headers)
+        state = _state(design_id)
+        state["devices"][0]["status"] = "auto"
+        res = await client.post("/api/v1/racks/save", json=state, headers=headers)
+        assert res.status_code == 200, res.text
+
+        loaded = (await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)).json()
+        mount = next(d for d in loaded["devices"] if d["id"] == "dev-sw")
+        assert mount["status"] == "auto"
+
     async def test_prunes_what_the_client_dropped(self, client: AsyncClient, headers):
         design_id = await _design(client, headers)
         await client.post("/api/v1/racks/save", json=_state(design_id), headers=headers)

@@ -21,13 +21,14 @@ import type { PendingDevice } from '@/components/modals/PendingDeviceModal'
 import { useRackStore } from '../store'
 import { FaceplatePicker } from './FaceplatePicker'
 import { Faceplate } from './Faceplate'
-import { getFaceplate } from '../faceplates'
+import { deviceTypeForFaceplate, getFaceplate } from '../faceplates'
 import { findSlot } from '../layout'
+import { canFollowNode, resolveDeviceStatus } from '../deviceStatus'
 import { generateUUID } from '@/utils/uuid'
 import {
   RACK_COLUMNS,
-  type DeviceStatus,
   type InventoryDevice,
+  type MountStatus,
   type Port,
   type PortType,
 } from '@/types'
@@ -101,7 +102,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
   const [uHeight, setUHeight] = useState(device?.uHeight ?? getFaceplate(faceplateId).uHeight)
   const [colStart, setColStart] = useState(device?.colStart ?? 0)
   const [colSpan, setColSpan] = useState(device?.colSpan ?? getFaceplate(faceplateId).colSpan)
-  const [status, setStatus] = useState<DeviceStatus>(device?.status ?? 'unknown')
+  const [status, setStatus] = useState<MountStatus>(device?.status ?? 'unknown')
   const [color, setColor] = useState<string | undefined>(device?.color)
   const [ports, setLocalPorts] = useState<Port[]>(
     device?.ports ?? getFaceplate(faceplateId).ports.map((p) => ({ ...p, id: generateUUID() })),
@@ -156,6 +157,8 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
   function applyInventoryItem(item: InventoryDevice) {
     setInventoryId(item.id)
     if (!label.trim()) setLabel(item.label)
+    // Seed the entry's current colour, not `auto`: following the node's check
+    // is the user's call, made in the Status select.
     setStatus(item.status)
     pickFaceplate(item.suggestedFaceplateId)
   }
@@ -185,6 +188,23 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     applyInventoryItem(entry)
     setInventoryPickerOpen(false)
   }
+
+  /**
+   * The Device Inventory row behind this mount: the entry being picked while
+   * adding, the one the mount was created from while editing.
+   */
+  const selectedEntry = inventory.find((i) => i.id === inventoryId)
+  const mountEntry = isEdit ? inventory.find((i) => i.id === device?.deviceId) : selectedEntry
+
+  // "Check device" needs a canvas node to read a check from — one the mount
+  // already carries, or one the picked entry resolves to.
+  const canCheck = (isEdit && !!device?.nodeId) || canFollowNode(mountEntry)
+
+  // Losing that link (another entry picked, node deleted) must not leave the
+  // form on a status nothing can resolve.
+  useEffect(() => {
+    if (!canCheck) setStatus((s) => (s === 'auto' ? 'unknown' : s))
+  }, [canCheck])
 
   const geometry = { uStart, uHeight, colStart, colSpan }
 
@@ -246,7 +266,13 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
       // on every retry. Check the rack has a slot before creating anything.
       const rack = racks.find((r) => r.id === rackId)
       if (!rack || !findSlot(rack, devices, geometry)) return noRoom()
-      const created = await createInventoryDevice({ label: name, ip: newIp.trim() || null })
+      // Nothing discovered this device, so the plate is what says what it is —
+      // otherwise the inventory row shows up with no type, no icon, no filter.
+      const created = await createInventoryDevice({
+        label: name,
+        type: deviceTypeForFaceplate(faceplateId),
+        ip: newIp.trim() || null,
+      })
       if (!created) {
         toast.error('Could not add the device to the inventory')
         return null
@@ -277,7 +303,11 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
   }
 
   const showInventoryPicker = !isEdit && source === 'inventory'
-  const selectedEntry = inventory.find((i) => i.id === inventoryId)
+  // The plate preview draws a colour, never the word `auto`.
+  const previewStatus = resolveDeviceStatus(
+    { status, deviceId: mountEntry?.id ?? null },
+    inventory,
+  )
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -435,7 +465,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                 <Faceplate
                   faceplateId={faceplateId}
                   label={label || getFaceplate(faceplateId).label}
-                  status={status}
+                  status={previewStatus}
                   ports={ports}
                   width={(160 * colSpan) / RACK_COLUMNS}
                   height={Math.min(uHeight, 4) * 18}
@@ -515,12 +545,20 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                 className={inputClass}
                 aria-label="Status"
                 value={status}
-                onChange={(e) => setStatus(e.target.value as DeviceStatus)}
+                onChange={(e) => setStatus(e.target.value as MountStatus)}
               >
+                {/* Only offered when there is a node to read: the rack runs no
+                    check of its own. */}
+                {canCheck && <option value="auto">Check device (live)</option>}
                 <option value="online">Online</option>
                 <option value="offline">Offline</option>
                 <option value="unknown">Unknown</option>
               </select>
+              {status === 'auto' && (
+                <p className="text-[11px] text-muted-foreground">
+                  Follows the status check configured on the matching canvas node.
+                </p>
+              )}
             </Field>
 
             <Field label="Colour override">

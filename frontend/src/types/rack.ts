@@ -124,6 +124,15 @@ export interface FaceplateTemplate {
 
 export type DeviceStatus = 'online' | 'offline' | 'unknown'
 
+/**
+ * What a mount's Status field holds: a state the user pinned by hand, or `auto`
+ * — "check device", i.e. follow the status check already configured on the
+ * matching logical-canvas node (ping / http / ssh…). The rack runs no checker
+ * of its own, so `auto` only means anything for a mount whose inventory entry
+ * resolves to a node; it renders as `unknown` otherwise.
+ */
+export type MountStatus = DeviceStatus | 'auto'
+
 export interface RackDevice {
   id: string
   rackId: string
@@ -151,7 +160,8 @@ export interface RackDevice {
   faceplateId: string
   /** Overrides the faceplate panel fill when set. */
   color?: string
-  status: DeviceStatus
+  /** Pinned state, or `auto` to follow the linked node's check. */
+  status: MountStatus
   ports: Port[]
 }
 

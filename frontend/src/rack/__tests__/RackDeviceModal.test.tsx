@@ -298,6 +298,26 @@ describe('RackDeviceModal — adding', () => {
     expect(store().inventory.some((i) => i.id === 'pending-1')).toBe(true)
   })
 
+  it('types a canvas-created device from the plate it wears', async () => {
+    createPending.mockResolvedValue({ data: { id: 'pending-pdu' } })
+    store().openDeviceEditor()
+    render(<RackDeviceModal />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'New device' }))
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'pdu-a' } })
+    pickFaceplate('PDU 1U — 8 outlets')
+    submit()
+
+    // Nothing discovered this device, so the plate is what says what it is —
+    // the row used to land in the Device Inventory with no type at all.
+    await waitFor(() => expect(createPending).toHaveBeenCalledTimes(1))
+    expect(createPending).toHaveBeenCalledWith(
+      expect.objectContaining({ suggested_type: 'pdu', discovery_source: 'rack' }),
+    )
+    await waitFor(() => expect(store().deviceEditor).toBeNull())
+    expect(store().inventory.find((i) => i.id === 'pending-pdu')!.type).toBe('pdu')
+  })
+
   it('mounts an accessory without touching the inventory', async () => {
     const before = store().inventory.length
     store().openDeviceEditor()
@@ -328,6 +348,46 @@ describe('RackDeviceModal — adding', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'New device' }))
     expect(screen.getByLabelText('Faceplate')).toHaveAttribute('data-faceplate', 'server-1u')
+  })
+
+  it('offers "Check device" only once the pick resolves to a canvas node', async () => {
+    store().openDeviceEditor()
+    render(<RackDeviceModal />)
+
+    // Nothing picked yet: there is no check to follow, so the option would lie.
+    const select = screen.getByLabelText('Status')
+    expect(select).not.toHaveTextContent('Check device')
+
+    const linked = store().inventory.find((i) => !i.racked && i.nodeId)!
+    await pickFromInventory(linked.id)
+    expect(select).toHaveTextContent('Check device')
+  })
+
+  it('hides "Check device" for an entry with no canvas node behind it', async () => {
+    store().openDeviceEditor()
+    const orphan = store().inventory.find((i) => !i.racked)!
+    useRackStore.setState({
+      inventory: store().inventory.map((i) => (i.id === orphan.id ? { ...i, nodeId: null } : i)),
+    })
+    render(<RackDeviceModal />)
+
+    await pickFromInventory(orphan.id)
+    expect(screen.getByLabelText('Status')).not.toHaveTextContent('Check device')
+  })
+
+  it('mounts a device that follows its node check', async () => {
+    store().openDeviceEditor()
+    const linked = store().inventory.find((i) => !i.racked && i.nodeId)!
+    render(<RackDeviceModal />)
+
+    await pickFromInventory(linked.id)
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'auto' } })
+    submit()
+
+    await waitFor(() => expect(store().deviceEditor).toBeNull())
+    // The mount stores the intent, not a colour — the LED is resolved from the
+    // inventory's live `node_status` at render time.
+    expect(store().devices.find((d) => d.deviceId === linked.id)!.status).toBe('auto')
   })
 })
 
@@ -481,5 +541,36 @@ describe('RackDeviceModal — editing', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     expect(store().deviceEditor).not.toBeNull()
     expect(store().devices.find((d) => d.id === 'dev-pve1')!.uHeight).toBe(2)
+  })
+
+  it('keeps "Check device" for a mount already linked to a node', () => {
+    store().openDeviceEditor('dev-pve1')
+    render(<RackDeviceModal />)
+
+    expect(store().devices.find((d) => d.id === 'dev-pve1')!.nodeId).toBeTruthy()
+    expect(screen.getByLabelText('Status')).toHaveTextContent('Check device')
+  })
+
+  it('drops a mount off the node check when the link is gone', async () => {
+    store().openDeviceEditor('dev-pve1')
+    // The canvas node was deleted (`node_id` is ON DELETE SET NULL) and the
+    // inventory entry no longer resolves to one: nothing left to follow.
+    useRackStore.setState({
+      devices: store().devices.map((d) =>
+        d.id === 'dev-pve1' ? { ...d, nodeId: null, status: 'auto' as const } : d,
+      ),
+      inventory: store().inventory.map((i) =>
+        i.id === 'inv-pve1' ? { ...i, nodeId: null } : i,
+      ),
+    })
+    render(<RackDeviceModal />)
+
+    const select = screen.getByLabelText('Status')
+    expect(select).not.toHaveTextContent('Check device')
+    expect(select).toHaveValue('unknown')
+
+    submit()
+    await waitFor(() => expect(store().deviceEditor).toBeNull())
+    expect(store().devices.find((d) => d.id === 'dev-pve1')!.status).toBe('unknown')
   })
 })

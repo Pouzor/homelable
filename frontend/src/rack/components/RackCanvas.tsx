@@ -19,6 +19,7 @@ import { Plus } from 'lucide-react'
 import { rackHeight, rackWidth } from '../layout'
 import { useRackStore } from '../store'
 import { useRackPalette } from '../rackTheme'
+import { useAutoStatusRefresh } from '../useAutoStatusRefresh'
 import { CableLayer } from './CableLayer'
 import { RackDeviceModal } from './RackDeviceModal'
 import { RackFlowNode } from './RackFlowNode'
@@ -41,6 +42,10 @@ export function RackCanvas() {
 
   const palette = useRackPalette()
   const { setViewport: applyViewport } = useReactFlow()
+
+  // Mounts set to "check device" read their LED from the inventory's
+  // `node_status`, which only a refetch moves.
+  useAutoStatusRefresh()
 
   // Restore the saved pan/zoom once per design, not on every viewport nudge.
   const restoredFor = useRef<string | null>(null)
