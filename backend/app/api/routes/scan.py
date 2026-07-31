@@ -38,6 +38,15 @@ def _ip_tokens(ip: str | None) -> list[str]:
     return [t.strip() for t in ip.split(",") if t.strip()] if ip else []
 
 
+def _is_rack_only(device: PendingDevice) -> bool:
+    """True for inventory entries created from a rack canvas.
+
+    They describe a mount — a patch panel, a shelf, a chassis — not a host to
+    document on a logical canvas, so they are never approved onto one.
+    """
+    return device.discovery_source == "rack" or "rack" in (device.discovery_sources or [])
+
+
 def _is_wireless(node_type: str | None) -> bool:
     """Zigbee + Z-Wave mesh devices share online status / no ICMP check."""
     return node_type in _ZIGBEE_TYPES or node_type in _ZWAVE_TYPES
@@ -332,8 +341,8 @@ async def create_pending(
         vendor=body.vendor,
         properties=body.properties,
         status="pending",
-        discovery_source="manual",
-        discovery_sources=["manual"],
+        discovery_source=body.discovery_source,
+        discovery_sources=[body.discovery_source],
     )
     db.add(device)
     await db.commit()
@@ -410,6 +419,14 @@ async def bulk_approve_devices(
     approved_devices: list[PendingDevice] = []
     skipped_devices: list[dict[str, Any]] = []
     for device in devices:
+        # Rack-only gear belongs to a rack canvas, never to a logical one.
+        if _is_rack_only(device):
+            skipped_devices.append({
+                "device_id": device.id,
+                "label": device.hostname or device.friendly_name or "device",
+                "match": "rack", "value": "rack device", "_ref": None,
+            })
+            continue
         # Record which identifier collided so the caller can explain each skip
         # (and, for existing on-canvas nodes, link to the node already there).
         ip_hit = next((t for t in _ip_tokens(device.ip) if t in placed_ips), None)
@@ -578,6 +595,11 @@ async def approve_device(
     # device is off-limits here.
     if device.status == "hidden":
         raise HTTPException(status_code=409, detail="Device is hidden")
+    if _is_rack_only(device):
+        raise HTTPException(
+            status_code=409,
+            detail="Rack devices cannot be placed on a logical canvas",
+        )
     wireless = _is_wireless(node_data.type)
 
     # A device already on THIS design (matched by ieee, ip OR mac) is NOT placed

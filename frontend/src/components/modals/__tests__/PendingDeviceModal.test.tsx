@@ -162,3 +162,30 @@ describe('PendingDeviceModal', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 })
+
+describe('PendingDeviceModal — rack gear', () => {
+  const rackDevice = makeDevice({
+    id: 'dev-rack',
+    hostname: 'patch-house',
+    ip: null,
+    discovery_source: 'rack',
+    discovery_sources: ['rack'],
+  })
+
+  it('offers no Approve button — rack gear never lands on a logical canvas', () => {
+    render(
+      <PendingDeviceModal device={rackDevice} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+    )
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    // Hide and Delete still apply: the entry is inventory like any other.
+    expect(screen.getByRole('button', { name: 'Hide' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+  })
+
+  it('keeps Approve for a scanned device', () => {
+    render(
+      <PendingDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+    )
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+  })
+})

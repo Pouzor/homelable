@@ -99,6 +99,13 @@ interface RackState {
   cableMode: boolean
   cableDraft: CableDraft | null
   cableTypeFilter: CableType | 'all'
+  /**
+   * Open editor dialogs. Device and rack settings live in modals, so any
+   * component (sidebar, canvas, header) can open them without prop drilling.
+   * `deviceId: null` means "add a device".
+   */
+  deviceEditor: { deviceId: string | null } | null
+  rackEditorId: string | null
 
   // Persistence
   loadDesign: (designId: string) => Promise<void>
@@ -117,20 +124,35 @@ interface RackState {
   removeRack: (id: string) => void
 
   // Devices
-  /** Mount an inventory entry. Returns the new device id, or null if no room. */
-  mountFromInventory: (inventoryId: string, rackId: string, desired: Partial<Placement>) => string | null
+  /**
+   * Mount an inventory entry. Returns the new device id, or null if no room.
+   * `faceplateId` overrides the one suggested from the discovery type.
+   */
+  mountFromInventory: (
+    inventoryId: string,
+    rackId: string,
+    desired: Partial<Placement> & { faceplateId?: string },
+  ) => string | null
   /** Mount a rack-only accessory (blank panel, shelf…). */
   mountAccessory: (faceplateId: string, rackId: string, desired: Partial<Placement>) => string | null
   moveDevice: (deviceId: string, rackId: string, desired: Placement) => boolean
-  updateDevice: (id: string, patch: Partial<Omit<RackDevice, 'id' | 'ports'>>) => void
+  /**
+   * Patch a mounted device. A geometry change that no longer fits where it is
+   * relocates to the nearest free slot rather than being dropped; `false` means
+   * the rack had no room at all and nothing changed.
+   */
+  updateDevice: (id: string, patch: Partial<Omit<RackDevice, 'id' | 'ports'>>) => boolean
   /** Unmounts from the rack. The inventory entry survives. */
   unmountDevice: (id: string) => void
-  applyFaceplate: (deviceId: string, faceplateId: string) => void
+  /** Swaps the plate, resizing to its U height — relocating if need be. */
+  applyFaceplate: (deviceId: string, faceplateId: string) => boolean
 
   // Ports
   addPort: (deviceId: string, port: Omit<Port, 'id'>) => void
   updatePort: (deviceId: string, portId: string, patch: Partial<Omit<Port, 'id'>>) => void
   removePort: (deviceId: string, portId: string) => void
+  /** Replace the whole port list, keeping ids of ports that carry one. */
+  setPorts: (deviceId: string, ports: (Port | Omit<Port, 'id'>)[]) => void
 
   // Cables
   addCable: (
@@ -154,6 +176,10 @@ interface RackState {
   toggleCableMode: () => void
   pickPort: (deviceId: string, portId: string) => void
   cancelCableDraft: () => void
+  openDeviceEditor: (deviceId?: string | null) => void
+  closeDeviceEditor: () => void
+  openRackEditor: (rackId: string) => void
+  closeRackEditor: () => void
   /** Seed the demo rack. Used by tests and by the empty-canvas sample button. */
   loadDemo: () => void
   reset: () => void
@@ -183,6 +209,8 @@ function emptyState() {
     cableDraft: null,
     cableTypeFilter: 'all' as const,
     networkImportDone: false,
+    deviceEditor: null,
+    rackEditorId: null,
   }
 }
 
@@ -300,6 +328,9 @@ export const useRackStore = create<RackState>((set, get) => {
             ip,
             mac,
             suggested_type: type,
+            // Files it under "Rack devices" in the Device Inventory, and keeps
+            // it off the logical canvases.
+            discovery_source: 'rack',
           })
           item.id = res.data.id
         } catch {
@@ -353,6 +384,8 @@ export const useRackStore = create<RackState>((set, get) => {
           ),
           inventory: withRackedFlags(s.inventory, devices),
           selectedRackId: s.selectedRackId === id ? null : s.selectedRackId,
+          rackEditorId: s.rackEditorId === id ? null : s.rackEditorId,
+          deviceEditor: s.deviceEditor && doomed.has(s.deviceEditor.deviceId ?? '') ? null : s.deviceEditor,
         }
       }),
 
@@ -363,7 +396,7 @@ export const useRackStore = create<RackState>((set, get) => {
       const item = inventory.find((i) => i.id === inventoryId)
       if (!rack || !item) return null
 
-      const plate = getFaceplate(item.suggestedFaceplateId)
+      const plate = getFaceplate(desired.faceplateId ?? item.suggestedFaceplateId)
       const slot = findSlot(rack, devices, {
         uStart: desired.uStart ?? 1,
         uHeight: desired.uHeight ?? plate.uHeight,
@@ -434,20 +467,29 @@ export const useRackStore = create<RackState>((set, get) => {
       return true
     },
 
-    updateDevice: (id, patch) =>
-      edit((s) => {
-        const device = s.devices.find((d) => d.id === id)
-        const rack = device && s.racks.find((r) => r.id === (patch.rackId ?? device.rackId))
-        if (!device || !rack) return {}
-        const next = { ...device, ...patch }
-        const geometryChanged =
-          next.uStart !== device.uStart ||
-          next.uHeight !== device.uHeight ||
-          next.colStart !== device.colStart ||
-          next.colSpan !== device.colSpan
-        if (geometryChanged && !canPlace(rack, s.devices, next, id)) return {}
-        return { devices: s.devices.map((d) => (d.id === id ? next : d)) }
-      }),
+    updateDevice: (id, patch) => {
+      const { devices, racks } = get()
+      const device = devices.find((d) => d.id === id)
+      const rack = device && racks.find((r) => r.id === (patch.rackId ?? device.rackId))
+      if (!device || !rack) return false
+
+      const next = { ...device, ...patch }
+      const geometryChanged =
+        next.uStart !== device.uStart ||
+        next.uHeight !== device.uHeight ||
+        next.colStart !== device.colStart ||
+        next.colSpan !== device.colSpan
+      if (geometryChanged && !canPlace(rack, devices, next, id)) {
+        // Growing a device usually collides with whatever sits above it. Move it
+        // to the nearest slot that takes the new size instead of ignoring the
+        // edit — a silent no-op reads as "the field is locked".
+        const slot = findSlot(rack, devices, next, id)
+        if (!slot) return false
+        Object.assign(next, slot)
+      }
+      edit((s) => ({ devices: s.devices.map((d) => (d.id === id ? next : d)) }))
+      return true
+    },
 
     unmountDevice: (id) =>
       edit((s) => {
@@ -457,38 +499,40 @@ export const useRackStore = create<RackState>((set, get) => {
           cables: s.cables.filter((c) => c.from.deviceId !== id && c.to.deviceId !== id),
           inventory: withRackedFlags(s.inventory, devices),
           selectedDeviceId: s.selectedDeviceId === id ? null : s.selectedDeviceId,
+          deviceEditor: s.deviceEditor?.deviceId === id ? null : s.deviceEditor,
         }
       }),
 
-    applyFaceplate: (deviceId, faceplateId) =>
-      edit((s) => {
-        const device = s.devices.find((d) => d.id === deviceId)
-        const rack = device && s.racks.find((r) => r.id === device.rackId)
-        if (!device || !rack) return {}
-        const plate = getFaceplate(faceplateId)
-        const resized = {
-          ...device,
-          faceplateId,
-          uHeight: plate.uHeight,
-          colSpan: plate.colSpan,
-          colStart: Math.min(device.colStart, RACK_COLUMNS - plate.colSpan),
-          ports: withIds(plate.ports),
-        }
-        if (!canPlace(rack, s.devices, resized, deviceId)) {
-          // Keep the plate but leave the geometry alone when it no longer fits.
-          return {
-            devices: s.devices.map((d) =>
-              d.id === deviceId ? { ...d, faceplateId, ports: withIds(plate.ports) } : d,
-            ),
-          }
-        }
-        return {
-          devices: s.devices.map((d) => (d.id === deviceId ? resized : d)),
-          cables: s.cables.filter(
-            (c) => c.from.deviceId !== deviceId && c.to.deviceId !== deviceId,
-          ),
-        }
-      }),
+    applyFaceplate: (deviceId, faceplateId) => {
+      const { devices, racks } = get()
+      const device = devices.find((d) => d.id === deviceId)
+      const rack = device && racks.find((r) => r.id === device.rackId)
+      if (!device || !rack) return false
+
+      const plate = getFaceplate(faceplateId)
+      const resized = {
+        ...device,
+        faceplateId,
+        uHeight: plate.uHeight,
+        colSpan: plate.colSpan,
+        colStart: Math.min(device.colStart, RACK_COLUMNS - plate.colSpan),
+        ports: withIds(plate.ports),
+      }
+      if (!canPlace(rack, devices, resized, deviceId)) {
+        // A taller plate almost always overlaps the neighbour above. Relocate
+        // rather than keep the old height — otherwise swapping a 1U plate for a
+        // 2U one looks like it did nothing.
+        const slot = findSlot(rack, devices, resized, deviceId)
+        if (!slot) return false
+        Object.assign(resized, slot)
+      }
+      edit((s) => ({
+        devices: s.devices.map((d) => (d.id === deviceId ? resized : d)),
+        // The old ports are gone, so their patches have no endpoint left.
+        cables: s.cables.filter((c) => c.from.deviceId !== deviceId && c.to.deviceId !== deviceId),
+      }))
+      return true
+    },
 
     // --- Ports --------------------------------------------------------------
     addPort: (deviceId, port) =>
@@ -518,6 +562,20 @@ export const useRackStore = create<RackState>((set, get) => {
             !(c.to.deviceId === deviceId && c.to.portId === portId),
         ),
       })),
+
+    setPorts: (deviceId, ports) =>
+      edit((s) => {
+        const next: Port[] = ports.map((p) => ('id' in p ? p : { ...p, id: generateUUID() }))
+        const kept = new Set(next.map((p) => p.id))
+        return {
+          devices: s.devices.map((d) => (d.id === deviceId ? { ...d, ports: next } : d)),
+          cables: s.cables.filter(
+            (c) =>
+              !(c.from.deviceId === deviceId && !kept.has(c.from.portId)) &&
+              !(c.to.deviceId === deviceId && !kept.has(c.to.portId)),
+          ),
+        }
+      }),
 
     // --- Cables -------------------------------------------------------------
     addCable: (from, to, options) => {
@@ -618,6 +676,12 @@ export const useRackStore = create<RackState>((set, get) => {
     },
 
     cancelCableDraft: () => set({ cableDraft: null }),
+
+    openDeviceEditor: (deviceId = null) =>
+      set({ deviceEditor: { deviceId }, selectedDeviceId: deviceId }),
+    closeDeviceEditor: () => set({ deviceEditor: null }),
+    openRackEditor: (rackId) => set({ rackEditorId: rackId, selectedRackId: rackId }),
+    closeRackEditor: () => set({ rackEditorId: null }),
 
     loadDemo: () => {
       const devices = demoDevices()

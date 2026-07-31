@@ -117,6 +117,8 @@ export const scanApi = {
     suggested_type?: string | null
     model?: string | null
     vendor?: string | null
+    /** "manual" (default) or "rack" for gear created from a rack canvas. */
+    discovery_source?: 'manual' | 'rack'
   }) => api.post<{ id: string; hostname: string | null }>('/scan/pending', data),
   hidden: () => api.get('/scan/hidden'),
   runs: () => api.get('/scan/runs'),

@@ -1,6 +1,7 @@
 import { Globe, Router, Server, Layers, Box, Container, HardDrive, Cpu, Wifi, Circle, Network } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { isRackDevice } from '@/utils/pendingSources'
 import type { NodeProperty } from '@/types'
 
 interface Service {
@@ -99,6 +100,7 @@ export function PendingDeviceModal({ device, onClose, onApprove, onHide, onIgnor
 
   const TypeIcon = TYPE_ICONS[device.suggested_type ?? 'generic'] ?? Circle
   const isZigbee = device.discovery_source === 'zigbee'
+  const rackOnly = isRackDevice(device)
   const titleLabel = device.friendly_name ?? device.hostname ?? device.ip ?? device.ieee_address ?? 'Pending device'
 
   const handleApprove = () => { onApprove(device) }
@@ -178,13 +180,17 @@ export function PendingDeviceModal({ device, onClose, onApprove, onHide, onIgnor
 
           {/* Actions */}
           <div className="flex gap-2 pt-1">
-            <Button
-              size="sm"
-              className="flex-1 bg-[#39d353]/15 text-[#39d353] hover:bg-[#39d353]/25 border border-[#39d353]/30"
-              onClick={handleApprove}
-            >
-              Approve
-            </Button>
+            {/* Rack gear is mounted from a rack canvas, never approved onto a
+                logical one — so it gets no Approve button at all. */}
+            {!rackOnly && (
+              <Button
+                size="sm"
+                className="flex-1 bg-[#39d353]/15 text-[#39d353] hover:bg-[#39d353]/25 border border-[#39d353]/30"
+                onClick={handleApprove}
+              >
+                Approve
+              </Button>
+            )}
             <Button
               size="sm"
               variant="ghost"

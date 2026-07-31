@@ -274,6 +274,72 @@ class TestInventory:
         assert any(d["id"] == created["id"] for d in listed)
 
 
+class TestRackSourcedInventory:
+    """Gear created from a rack canvas shares the Device Inventory, but never a
+    logical canvas: it documents a mount, not a host."""
+
+    async def _rack_device(self, client: AsyncClient, headers, hostname: str = "patch-house"):
+        return (
+            await client.post(
+                "/api/v1/scan/pending",
+                json={"hostname": hostname, "discovery_source": "rack"},
+                headers=headers,
+            )
+        ).json()
+
+    async def test_records_the_rack_source(self, client: AsyncClient, headers):
+        created = await self._rack_device(client, headers)
+        assert created["discovery_source"] == "rack"
+        assert created["discovery_sources"] == ["rack"]
+
+    async def test_rejects_an_unknown_source(self, client: AsyncClient, headers):
+        res = await client.post(
+            "/api/v1/scan/pending",
+            json={"hostname": "spoof", "discovery_source": "zigbee"},
+            headers=headers,
+        )
+        assert res.status_code == 422
+
+    async def test_approve_refuses_rack_gear(self, client: AsyncClient, headers):
+        created = await self._rack_device(client, headers)
+        res = await client.post(
+            f"/api/v1/scan/pending/{created['id']}/approve",
+            json={"type": "generic", "label": "patch-house"},
+            headers=headers,
+        )
+        assert res.status_code == 409
+        assert "rack" in res.json()["detail"].lower()
+
+    async def test_bulk_approve_skips_rack_gear(self, client: AsyncClient, headers):
+        rack_device = await self._rack_device(client, headers)
+        scanned = (
+            await client.post(
+                "/api/v1/scan/pending",
+                json={"hostname": "nuc", "ip": "192.168.1.77", "suggested_type": "server"},
+                headers=headers,
+            )
+        ).json()
+
+        res = await client.post(
+            "/api/v1/scan/pending/bulk-approve",
+            json={"device_ids": [rack_device["id"], scanned["id"]]},
+            headers=headers,
+        )
+        body = res.json()
+        assert body["approved"] == 1
+        assert body["device_ids"] == [scanned["id"]]
+        skipped = next(s for s in body["skipped_devices"] if s["device_id"] == rack_device["id"])
+        assert skipped["match"] == "rack"
+
+    async def test_rack_gear_is_offered_to_the_rack_inventory(self, client: AsyncClient, headers):
+        design_id = await _design(client, headers)
+        created = await self._rack_device(client, headers, hostname="blank-panel")
+        items = (
+            await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)
+        ).json()["items"]
+        assert any(i["id"] == created["id"] for i in items)
+
+
 class TestDesignLifecycle:
     async def test_deleting_a_design_removes_its_rack_rows(self, client: AsyncClient, headers):
         keeper = await _design(client, headers, name="Keeper", design_type="network")

@@ -53,7 +53,6 @@ import { DEMO_SCAN_RUNS, DEMO_PENDING_DEVICES } from '@/walkthrough/demoTourData
 import { useStatusPolling } from '@/hooks/useStatusPolling'
 import { bootstrapAuth } from '@/auth/bootstrap'
 import { RackCanvas } from '@/rack/components/RackCanvas'
-import { RackInspector } from '@/rack/components/RackInspector'
 import { useRackStore } from '@/rack/store'
 import type { NodeData, EdgeData, CustomStyleDef, DesignType, FloorMapConfig, NodeType } from '@/types'
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
@@ -1050,10 +1049,10 @@ export default function App() {
                   />
                 )}
               </div>
-              {isRackDesign ? (
-                <RackInspector />
-              ) : (
-                (selectedNodeId || selectedNodeIds.length > 1) && <DetailPanel onEdit={handleEditNode} />
+              {/* Rack designs have no right rail: a mount is edited in its own
+                  modal, so the canvas keeps the full width. */}
+              {!isRackDesign && (selectedNodeId || selectedNodeIds.length > 1) && (
+                <DetailPanel onEdit={handleEditNode} />
               )}
             </div>
           </div>

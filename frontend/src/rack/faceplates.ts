@@ -386,7 +386,7 @@ export function getFaceplate(id: string): FaceplateTemplate {
  *
  * Keyed on the device's discovery `suggested_type`, which is free-form — an
  * unknown or missing type falls back to a plain 1U server plate, which the user
- * can swap in the inspector.
+ * can swap in the device modal.
  */
 const FACEPLATE_BY_DEVICE_TYPE: Record<string, string> = {
   server: 'server-1u-bays',

@@ -15,6 +15,7 @@ Create one from **New Canvas → Kind → Rack**.
 | Horizontal | 12-column grid (`RACK_COLUMNS`). Full = 12, half = 6, third = 4, quarter = 3 — so 2 or 3 machines share one U. |
 | Collision | `canPlace` / `findSlot` in `layout.ts`. A drop snaps to the nearest free slot; an impossible drop shows a red preview. |
 | Inventory | A mount references a **Device Inventory** entry (`pending_devices`) via `deviceId`. Those rows survive approval *and* node deletion, so unracking never removes the device. Accessories (blank, shelf, cable manager) have `deviceId: null`. |
+| Rack-created gear | A device created from this canvas is a normal inventory row with `discovery_source: "rack"`, so it inherits the inventory's search, filters, hide and delete. It shows under the **Rack devices** source filter, and both `POST /scan/pending/{id}/approve` and bulk-approve refuse it — a mount is not a host to document on a logical canvas. |
 | Canvas node link | `nodeId` is a second, optional link to a logical-canvas node, resolved server-side by IEEE then IP. It supplies live status and lets the network-link import match endpoints. Never required. |
 | Faceplates | Declarative templates in `faceplates.ts`, drawn as SVG in unit coordinates so a plate scales with U height and rack width. Applying a template seeds ports; the user edits them afterwards. `suggestFaceplate()` picks one from the device's discovery type. |
 | Ports | RJ45 and SFP/SFP+ only, drawn as real jack artwork at a fixed pixel size so plates of different U heights line up. Manual list per device. Power outlets are artwork, never a cable endpoint. |
@@ -44,19 +45,21 @@ types in `@/types/rack`, narrowing every enum on the way in.
 
 ## Interactions
 
+- **+ Device** (left rail) → `RackDeviceModal`. Source is either an existing **Device Inventory** entry, a new device created here (which lands in the inventory too), or a rack-only accessory.
 - Drag from the sidebar tray onto a rack → snaps to a free U.
 - Drag a mounted device inside the rack → same snapping, own slot ignored.
-- Click a device → inspector on the right (label, faceplate, U/height/column/width, status, colour, port list).
-- Click empty rack chrome → rack settings (name, location, U height, 19"/10", numbering direction, frame/rail/interior colours, U numbers, enclosed).
+- Double-click a plate → the same modal in edit mode: label, faceplate, U/height/column/width, status, colour, port list, Unmount. Single click only selects.
+- Double-click empty rack chrome → `RackSettingsModal` (name, location, U height, 19"/10", numbering direction, frame/rail/interior colours, U numbers, enclosed, delete).
+- Growing a device — by hand or by picking a taller plate — relocates it to the nearest slot that takes the new size. Only a rack with no such slot rejects the edit, and says so.
 - **Patch mode**: click port A then port B to cable them; click a cable to remove it. Rack dragging is disabled while in patch mode.
 - **Import links**: one shot per canvas, guarded by `networkImportDone`. Reads the physical edges (ethernet/fibre/vlan/cluster) of every non-rack design and matches them on `nodeId`.
-- **New device**: adds a Device Inventory entry from the tray, for gear no scan will ever discover.
+- **New device**: the modal's *New device* source adds a Device Inventory entry (tagged `rack`), for gear no scan will ever discover. The left-rail tray only carries accessories, as a drag source.
 
 ## Panel behaviour in rack mode
 
 - **Header**: undo/redo, auto layout, YAML import/export, MD and live View are hidden. Add Rack, Patch, cable visibility, cable type filter and Import links replace them. PNG export and Save stay.
-- **Left rail**: the design switcher, Device Inventory, Scan History, Settings and Logout stay. The node/zone/text/scan/import block becomes the inventory tray plus Add Rack. The footer counts racks, mounts, cables and free U instead of online/offline nodes.
-- **Right rail**: `RackInspector` replaces `DetailPanel`, and is always visible rather than appearing on selection.
+- **Left rail**: the design switcher, Device Inventory, Scan History, Settings and Logout stay. The node/zone/text/scan/import block becomes the accessory tray plus **+ Device**. Devices themselves are not listed there — they live in the Device Inventory modal. The footer counts racks, mounts, cables and free U instead of online/offline nodes.
+- **Right rail**: none. A mount is edited in `RackDeviceModal`, a rack in `RackSettingsModal`, so the canvas keeps the full width.
 
 ## Known gaps
 
