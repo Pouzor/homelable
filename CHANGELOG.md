@@ -5,6 +5,25 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.1.2] - 2026-08-01
+
+### Features
+
+- Generic OIDC authentication: backend sessions and browser login flow. Thanks @autogpt-elendir. (#306)
+- Brand icon picker for services, in a dedicated add/edit modal. (#313)
+- MCP: lightweight node lookup tools. Thanks @Nebesz. (#312)
+
+### Fixes
+
+- Sync the MCP node and edge type enums with the frontend, gated in CI against drift. Thanks @Nebesz. (#311)
+- Harden OIDC callback validation. (#306)
+- Use the official Homelable logo on the login page. (#306)
+- Clear the seven open dependabot alerts and refresh vulnerable frontend packages. (#317, #306)
+
+### Docs
+
+- Document OIDC setup and configuration. (#306)
+
 ## [3.1.1] - 2026-07-19
 
 ### Features
