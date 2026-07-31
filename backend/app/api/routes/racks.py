@@ -44,6 +44,47 @@ _UNRACKABLE_TYPES = {
 }
 
 
+_COMMON_PORTS = {22, 80, 443}
+
+
+def _service_name(device: PendingDevice) -> str | None:
+    """Name a device after the app it runs, the way the Device Inventory does.
+
+    Ports everyone exposes (ssh, http, https) say nothing, and the generic web
+    category loses to a real match, so "jellyfin" wins over "http".
+    """
+    candidates = [
+        s
+        for s in (device.services or [])
+        if isinstance(s, dict)
+        and s.get("category")
+        and s.get("service_name")
+        and s.get("port") not in _COMMON_PORTS
+    ]
+    if not candidates:
+        return None
+    named = next((s for s in candidates if str(s["category"]).lower() != "web"), candidates[0])
+    name = named.get("service_name")
+    return str(name) if name else None
+
+
+def _device_label(device: PendingDevice) -> str:
+    """Inventory naming, mirrored: friendly name, host, app, IP, IEEE, id.
+
+    Must stay in step with `deviceLabel` in `PendingDevicesModal.tsx` — a device
+    the user picked out of the inventory by one name should not turn up in the
+    rack picker under another.
+    """
+    return (
+        device.friendly_name
+        or device.hostname
+        or _service_name(device)
+        or device.ip
+        or device.ieee_address
+        or device.id
+    )
+
+
 def _ip_tokens(ip: str | None) -> list[str]:
     """Split a device ``ip`` field into individual addresses.
 
@@ -211,7 +252,7 @@ async def rack_inventory(
         items.append(
             RackInventoryItem(
                 id=device.id,
-                label=device.friendly_name or device.hostname or device.ip or device.id,
+                label=_device_label(device),
                 suggested_type=device.suggested_type,
                 ip=device.ip,
                 status=device.status,

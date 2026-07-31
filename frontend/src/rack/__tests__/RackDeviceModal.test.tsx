@@ -58,6 +58,41 @@ describe('RackDeviceModal — adding', () => {
     expect(store().deviceEditor).toBeNull()
   })
 
+  it('labels inventory options without repeating the IP', () => {
+    store().openDeviceEditor()
+    useRackStore.setState({
+      inventory: [
+        {
+          id: 'inv-ip',
+          label: '192.168.1.63',
+          type: 'server',
+          ip: '192.168.1.63',
+          status: 'unknown',
+          nodeId: null,
+          racked: false,
+          suggestedFaceplateId: 'server-1u',
+        },
+        {
+          id: 'inv-named',
+          label: 'pve-01',
+          type: 'proxmox',
+          ip: '192.168.1.10',
+          status: 'unknown',
+          nodeId: null,
+          racked: false,
+          suggestedFaceplateId: 'server-2u-bays',
+        },
+      ],
+    })
+    render(<RackDeviceModal />)
+
+    // Regression: an IP-labelled entry read "192.168.1.63 · 192.168.1.63".
+    expect(screen.getByRole('option', { name: '192.168.1.63 · server' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('option', { name: 'pve-01 · 192.168.1.10 · proxmox' }),
+    ).toBeInTheDocument()
+  })
+
   it('creates a brand new inventory entry from the canvas and mounts it', async () => {
     createPending.mockResolvedValue({ data: { id: 'pending-1' } })
     store().openDeviceEditor()
@@ -174,6 +209,19 @@ describe('RackDeviceModal — editing', () => {
     await waitFor(() =>
       expect(store().devices.find((d) => d.id === 'dev-pve1')!.ports).toHaveLength(before + 1),
     )
+  })
+
+  it('keeps the port name field usable next to the type select', () => {
+    store().openDeviceEditor('dev-pve1')
+    render(<RackDeviceModal />)
+
+    // Regression: both carried `w-full`, so the select ate the row and the name
+    // field collapsed into an unlabelled box.
+    const port = store().devices.find((d) => d.id === 'dev-pve1')!.ports[0]
+    const name = screen.getByLabelText(`Port ${port.label} label`)
+    expect(name).toHaveClass('flex-1', 'min-w-0')
+    expect(name).not.toHaveClass('w-full')
+    expect(name).toHaveAttribute('placeholder', 'Port name')
   })
 
   it('unmounts without dropping the inventory entry', async () => {
