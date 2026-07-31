@@ -20,6 +20,7 @@ import { useRackStore } from '../store'
 import { FaceplatePicker } from './FaceplatePicker'
 import { Faceplate } from './Faceplate'
 import { getFaceplate } from '../faceplates'
+import { findSlot } from '../layout'
 import { generateUUID } from '@/utils/uuid'
 import {
   RACK_COLUMNS,
@@ -72,6 +73,7 @@ export function RackDeviceModal() {
 function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: () => void }) {
   const device = useRackStore((s) => s.devices.find((d) => d.id === deviceId))
   const racks = useRackStore((s) => s.racks)
+  const devices = useRackStore((s) => s.devices)
   const inventory = useRackStore((s) => s.inventory)
   const mountFromInventory = useRackStore((s) => s.mountFromInventory)
   const mountAccessory = useRackStore((s) => s.mountAccessory)
@@ -96,7 +98,12 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
   const [uHeight, setUHeight] = useState(device?.uHeight ?? getFaceplate(faceplateId).uHeight)
   const [colStart, setColStart] = useState(device?.colStart ?? 0)
   const [colSpan, setColSpan] = useState(device?.colSpan ?? getFaceplate(faceplateId).colSpan)
-  const [status, setStatus] = useState<DeviceStatus>(device?.status ?? 'unknown')
+  // The picker preselects the first unracked entry, so seed its status too:
+  // submitting without touching the select used to save `unknown` over the
+  // status the mount had just copied from the inventory.
+  const [status, setStatus] = useState<DeviceStatus>(
+    device?.status ?? unracked[0]?.status ?? 'unknown',
+  )
   const [color, setColor] = useState<string | undefined>(device?.color)
   const [ports, setLocalPorts] = useState<Port[]>(
     device?.ports ?? getFaceplate(faceplateId).ports.map((p) => ({ ...p, id: generateUUID() })),
@@ -119,8 +126,14 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     setUHeight(plate.uHeight)
     setColSpan(plate.colSpan)
     setColStart((c) => Math.min(c, RACK_COLUMNS - plate.colSpan))
-    setLocalPorts(plate.ports.map((p) => ({ ...p, id: generateUUID() })))
-    setPlateChanged(true)
+    // Coming back to the plate the device already wears is not a change: keep
+    // its own ports, ids included. Reseeding them would hand `setPorts` a list
+    // of unknown ids on save and take every cable on the device down with it.
+    const reverted = device && id === device.faceplateId
+    setLocalPorts(
+      reverted ? device.ports : plate.ports.map((p) => ({ ...p, id: generateUUID() })),
+    )
+    setPlateChanged(!reverted)
   }
 
   /** Accessories and devices draw from disjoint halves of the catalog. */
@@ -187,6 +200,11 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
         toast.error('Name the device first')
         return null
       }
+      // `createInventoryDevice` POSTs straight to the Device Inventory, so a
+      // mount that fails afterwards would leave a row behind — and a second one
+      // on every retry. Check the rack has a slot before creating anything.
+      const rack = racks.find((r) => r.id === rackId)
+      if (!rack || !findSlot(rack, devices, geometry)) return noRoom()
       const created = await createInventoryDevice({ label: name, ip: newIp.trim() || null })
       if (!created) {
         toast.error('Could not add the device to the inventory')

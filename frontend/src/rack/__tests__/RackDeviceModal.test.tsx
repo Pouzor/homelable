@@ -3,7 +3,7 @@
  * right rail — so everything the old inspector did has to work from here.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { RackDeviceModal } from '../components/RackDeviceModal'
 import { useRackStore } from '../store'
 
@@ -56,6 +56,65 @@ describe('RackDeviceModal — adding', () => {
     // The mount is a rack row; the inventory entry itself stays, now flagged.
     expect(store().inventory.find((i) => i.id === unracked.id)!.racked).toBe(true)
     expect(store().deviceEditor).toBeNull()
+  })
+
+  it('keeps the preselected entry status instead of saving unknown over it', async () => {
+    store().openDeviceEditor()
+    const first = store().inventory.find((i) => !i.racked)!
+    useRackStore.setState({
+      inventory: store().inventory.map((i) =>
+        i.id === first.id ? { ...i, status: 'online' as const } : i,
+      ),
+    })
+    render(<RackDeviceModal />)
+
+    // The select preselects the first unracked entry, so submitting straight
+    // away is a real path — it used to commit `unknown` over the live status.
+    submit()
+
+    await waitFor(() => expect(store().deviceEditor).toBeNull())
+    expect(store().devices.find((d) => d.deviceId === first.id)!.status).toBe('online')
+  })
+
+  it('creates nothing in the inventory when the rack has no room', async () => {
+    store().openDeviceEditor()
+    const rack = store().racks[0]
+    // A 1U rack with its only slot taken: the mount cannot succeed.
+    useRackStore.setState({
+      racks: [{ ...rack, uHeight: 1 }],
+      devices: [
+        {
+          id: 'blocker',
+          rackId: rack.id,
+          deviceId: null,
+          nodeId: null,
+          label: 'blocker',
+          faceplateId: 'blank-1u',
+          uStart: 1,
+          uHeight: 1,
+          colStart: 0,
+          colSpan: 12,
+          status: 'unknown',
+          ports: [],
+        },
+      ],
+      cables: [],
+    })
+    const inventoryBefore = store().inventory.length
+    render(<RackDeviceModal />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'New device' }))
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'orphan' } })
+    // The submit path is async (it may POST), so let it settle before asserting.
+    await act(async () => submit())
+
+    const { toast } = await import('sonner')
+    expect(toast.error).toHaveBeenCalled()
+    // The row is POSTed before the mount, so a late failure would strand it —
+    // and strand another one on every retry.
+    expect(createPending).not.toHaveBeenCalled()
+    expect(store().inventory).toHaveLength(inventoryBefore)
+    expect(store().deviceEditor).not.toBeNull()
   })
 
   it('labels inventory options without repeating the IP', () => {
@@ -195,6 +254,34 @@ describe('RackDeviceModal — editing', () => {
     const device = store().devices.find((d) => d.id === 'dev-shelf')!
     expect(device.faceplateId).toBe('ups-2u')
     expect(device.uHeight).toBe(2)
+  })
+
+  it('keeps the ports and cables when the plate choice is reverted', async () => {
+    store().openDeviceEditor('dev-pve1')
+    render(<RackDeviceModal />)
+
+    const before = store().devices.find((d) => d.id === 'dev-pve1')!
+    const cablesBefore = store().cables.filter(
+      (c) => c.from.deviceId === 'dev-pve1' || c.to.deviceId === 'dev-pve1',
+    )
+    expect(cablesBefore.length).toBeGreaterThan(0)
+
+    // Browse away and back. The plate is unchanged, so `applyFaceplate` is
+    // skipped on save — reseeded port ids would then reach `setPorts` and take
+    // every cable on the device down with them, with no warning shown.
+    pickFaceplate('NAS 2U — 8 bays')
+    pickFaceplate('Server 2U — 8 bays')
+    expect(screen.queryByText(/replaces its ports/)).not.toBeInTheDocument()
+    submit()
+
+    await waitFor(() => expect(store().deviceEditor).toBeNull())
+    const after = store().devices.find((d) => d.id === 'dev-pve1')!
+    expect(after.ports.map((p) => p.id)).toEqual(before.ports.map((p) => p.id))
+    expect(
+      store().cables.filter(
+        (c) => c.from.deviceId === 'dev-pve1' || c.to.deviceId === 'dev-pve1',
+      ),
+    ).toHaveLength(cablesBefore.length)
   })
 
   it('edits the port list and commits it on save', async () => {

@@ -241,6 +241,16 @@ class TestInventory:
             )
         )
         db_session.add(PendingDevice(id="pd-bare", ip="192.168.1.64", suggested_type="server"))
+        # A portless service is no fingerprint: the inventory skips it, so must
+        # this — `None not in _COMMON_PORTS` is True and used to let it through.
+        db_session.add(
+            PendingDevice(
+                id="pd-portless",
+                ip="192.168.1.65",
+                services=[{"port": None, "category": "media", "service_name": "jellyfin"}],
+                suggested_type="server",
+            )
+        )
         await db_session.commit()
 
         items = (
@@ -249,6 +259,7 @@ class TestInventory:
         assert next(i for i in items if i["id"] == "pd-services")["label"] == "jellyfin"
         # Nothing better to say: the IP stays the label, and the UI stops doubling it.
         assert next(i for i in items if i["id"] == "pd-bare")["label"] == "192.168.1.64"
+        assert next(i for i in items if i["id"] == "pd-portless")["label"] == "192.168.1.65"
 
     async def test_flags_devices_already_mounted(self, client: AsyncClient, headers):
         design_id = await _design(client, headers)
