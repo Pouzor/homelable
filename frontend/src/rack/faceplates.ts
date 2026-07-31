@@ -300,6 +300,62 @@ export const FACEPLATES: FaceplateTemplate[] = [
       ...bank({ type: 'sfp+', count: 1, x: 0.93, w: 0.05, prefix: 'sfp' }),
     ],
   },
+  // Desktop NAS boxes (UGREEN DXP, Synology DS…) sat on a rack shelf: not rack
+  // gear, so they take a third of the width and stand ~3U tall, with their
+  // drive trays side by side. Bays fill the upper half; the name band and the
+  // ports share the lower one, side by side, since the name is always drawn at
+  // mid-height whatever the U count.
+  {
+    id: 'nas-desktop-2',
+    label: 'Desktop NAS — 2 bays',
+    kind: 'device',
+    group: 'Storage',
+    uHeight: 3,
+    colSpan: RACK_COLUMNS / 3,
+    statusLed: true,
+    labelBox: { x: 0.12, w: 0.5 },
+    portSize: 'md',
+    elements: [
+      { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
+      { kind: 'bays', x: 0.14, y: 0.06, w: 0.72, h: 0.42, cols: 2, rows: 1, fill: BLACK_BOX },
+    ],
+    ports: bank({ type: 'rj45', count: 1, x: 0.68, w: 0.24, prefix: 'eth' }),
+  },
+  {
+    id: 'nas-desktop-4',
+    label: 'Desktop NAS — 4 bays',
+    kind: 'device',
+    group: 'Storage',
+    uHeight: 3,
+    colSpan: RACK_COLUMNS / 3,
+    statusLed: true,
+    labelBox: { x: 0.12, w: 0.5 },
+    portSize: 'md',
+    elements: [
+      { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
+      { kind: 'bays', x: 0.1, y: 0.06, w: 0.8, h: 0.42, cols: 4, rows: 1, fill: BLACK_BOX },
+    ],
+    ports: bank({ type: 'rj45', count: 2, x: 0.64, w: 0.3, prefix: 'eth' }),
+  },
+  {
+    id: 'nas-desktop-5',
+    label: 'Desktop NAS — 5 bays',
+    kind: 'device',
+    group: 'Storage',
+    uHeight: 3,
+    colSpan: RACK_COLUMNS / 3,
+    statusLed: true,
+    labelBox: { x: 0.12, w: 0.5 },
+    portSize: 'md',
+    elements: [
+      { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
+      { kind: 'bays', x: 0.08, y: 0.06, w: 0.84, h: 0.42, cols: 5, rows: 1, fill: BLACK_BOX },
+    ],
+    ports: [
+      ...bank({ type: 'rj45', count: 2, x: 0.64, w: 0.22, prefix: 'eth' }),
+      ...bank({ type: 'sfp+', count: 1, x: 0.88, w: 0.1, prefix: 'sfp' }),
+    ],
+  },
   {
     id: 'ups-2u',
     label: 'UPS 2U',
