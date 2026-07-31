@@ -30,6 +30,7 @@ const WIDTH_LABEL: Record<number, string> = {
   [RACK_COLUMNS / 2]: 'Half width',
   [RACK_COLUMNS / 3]: 'Third width',
   [RACK_COLUMNS / 4]: 'Quarter width',
+  [RACK_COLUMNS / 6]: 'Sixth width',
 }
 
 /** Ports carry no id in a template — seed stable ones for the preview only. */
