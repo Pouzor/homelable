@@ -263,6 +263,21 @@ describe('RackDeviceModal — adding', () => {
     expect(columns).toContainElement(screen.getByRole('button', { name: 'Add port' }))
   })
 
+  it('offers a Width option for every plate width in the catalog', async () => {
+    const { FACEPLATES } = await import('../faceplates')
+    store().openDeviceEditor()
+    render(<RackDeviceModal />)
+
+    // A plate whose colSpan has no option (the sixth-width NAS did) leaves the
+    // select blank and the field looks broken.
+    const offered = [...screen.getByLabelText('Width').querySelectorAll('option')].map((o) =>
+      Number(o.getAttribute('value')),
+    )
+    for (const span of new Set(FACEPLATES.map((f) => f.colSpan))) {
+      expect(offered).toContain(span)
+    }
+  })
+
   it('creates a brand new inventory entry from the canvas and mounts it', async () => {
     createPending.mockResolvedValue({ data: { id: 'pending-1' } })
     store().openDeviceEditor()

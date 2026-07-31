@@ -505,6 +505,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                   <option value={RACK_COLUMNS / 2}>Half width</option>
                   <option value={RACK_COLUMNS / 3}>Third width</option>
                   <option value={RACK_COLUMNS / 4}>Quarter width</option>
+                  <option value={RACK_COLUMNS / 6}>Sixth width</option>
                 </select>
               </Field>
             </div>

@@ -81,17 +81,21 @@ describe('faceplate catalog', () => {
     }
   })
 
-  it('keeps the desktop NAS boxes third-width and 3U, one bay column each', () => {
-    const expected: Record<string, number> = {
-      'nas-desktop-2': 2,
-      'nas-desktop-4': 4,
-      'nas-desktop-5': 5,
+  it('keeps the desktop NAS boxes narrow and tall, one bay column each', () => {
+    // Bay count → { bays, colSpan }: two doors is a sixth-width tower, four and
+    // five a third. All the same height — more disks makes a box wider, not
+    // taller — and tall enough that the doors stand up (a U is 24px against a
+    // 456px inner width, so the canvas squashes the vertical axis).
+    const expected: Record<string, { bays: number; colSpan: number }> = {
+      'nas-desktop-2': { bays: 2, colSpan: RACK_COLUMNS / 6 },
+      'nas-desktop-4': { bays: 4, colSpan: RACK_COLUMNS / 3 },
+      'nas-desktop-5': { bays: 5, colSpan: RACK_COLUMNS / 3 },
     }
-    for (const [id, bays] of Object.entries(expected)) {
+    for (const [id, { bays, colSpan }] of Object.entries(expected)) {
       const plate = getFaceplate(id)
-      // Shelf-mounted desktop gear, not rack gear: a third of the width, 3U tall.
-      expect(plate.colSpan).toBe(RACK_COLUMNS / 3)
-      expect(plate.uHeight).toBe(3)
+      // Shelf-mounted desktop gear, not rack gear: a slice of the width, 5U tall.
+      expect(plate.colSpan).toBe(colSpan)
+      expect(plate.uHeight).toBe(5)
       const tray = plate.elements.find((e) => e.kind === 'bays')
       expect(tray).toMatchObject({ cols: bays, rows: 1 })
       expect(plate.ports.length).toBeGreaterThan(0)
@@ -108,6 +112,28 @@ describe('faceplate catalog', () => {
       const doorW = (tray!.kind === 'bays' ? tray.w : 0) / bays
       expect(doorW).toBeLessThan(tray!.kind === 'bays' ? tray.h : 0)
     }
+  })
+
+  it('draws every desktop NAS door the same size — a disk is a disk', () => {
+    // Regression: the stack stretched to fill the plate, so the 2-bay box wore
+    // two doors twice as wide as the 5-bay one's. Unit coordinates are
+    // fractions of the plate, so compare them scaled by the plate's own width —
+    // the 2-bay box is a quarter of the rack, the others a third.
+    const doors = ['nas-desktop-2', 'nas-desktop-4', 'nas-desktop-5'].map((id) => {
+      const plate = getFaceplate(id)
+      const tray = plate.elements.find((e) => e.kind === 'bays')!
+      if (tray.kind !== 'bays') throw new Error('no bays')
+      return { x: tray.x * plate.colSpan, doorW: (tray.w / tray.cols) * plate.colSpan }
+    })
+    for (const door of doors) {
+      expect(door.doorW).toBeCloseTo(doors[0].doorW, 5)
+      // …and the stack starts at the same inset, so the boxes line up on a shelf.
+      expect(door.x).toBeCloseTo(doors[0].x, 5)
+    }
+    // The widest stack still fits the plate.
+    const plate5 = getFaceplate('nas-desktop-5').elements.find((e) => e.kind === 'bays')!
+    if (plate5.kind !== 'bays') throw new Error('no bays')
+    expect(plate5.x + plate5.w).toBeLessThanOrEqual(1)
   })
 
   it('falls back to the first plate on an unknown id', () => {

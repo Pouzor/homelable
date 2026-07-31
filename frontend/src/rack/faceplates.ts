@@ -72,6 +72,44 @@ function nasPorts(ports: Omit<Port, 'id'>[]): Omit<Port, 'id'>[] {
   return ports.map((p) => ({ ...p, y: NAS_BAND }))
 }
 
+/**
+ * Desktop NAS height, in U.
+ *
+ * A U is drawn at 24px while the rack's inner width is 456px, so the canvas
+ * compresses the vertical axis about 1.8x against the real thing. A tower that
+ * measures 3U tall in metal reads as a squat box here — 5U is what makes the
+ * drive doors stand up the way they do on the desk.
+ */
+const NAS_U = 5
+
+/** Plate width the NAS bay figures below are expressed against. */
+const NAS_REF_SPAN = RACK_COLUMNS / 3
+/** Left inset and per-bay width of a desktop NAS drive stack, on a NAS_REF_SPAN plate. */
+const NAS_BAY_X = 0.05
+const NAS_BAY_W = 0.18
+
+/**
+ * A drive door is a 3.5" disk whatever the chassis holds, so the bay stack
+ * grows with the bay count instead of stretching to fill the plate — the 2-bay
+ * box wears two doors the same size as the 5-bay one's, not two fat ones.
+ *
+ * Unit coordinates are fractions of the plate, so a narrower plate needs larger
+ * fractions to draw the same door: `colSpan` scales them back to the reference.
+ */
+function nasBays(cols: number, colSpan: number = NAS_REF_SPAN) {
+  const scale = NAS_REF_SPAN / colSpan
+  return {
+    kind: 'bays' as const,
+    x: NAS_BAY_X * scale,
+    y: 0.07,
+    w: cols * NAS_BAY_W * scale,
+    h: 0.68,
+    cols,
+    rows: 1,
+    fill: BLACK_BOX,
+  }
+}
+
 export const FACEPLATES: FaceplateTemplate[] = [
   // --- Servers ------------------------------------------------------------
   {
@@ -316,30 +354,31 @@ export const FACEPLATES: FaceplateTemplate[] = [
     label: 'Desktop NAS — 2 bays',
     kind: 'device',
     group: 'Storage',
-    uHeight: 3,
-    colSpan: RACK_COLUMNS / 3,
+    uHeight: NAS_U,
+    // Two doors side by side is a slim tower — a sixth of the rack.
+    colSpan: RACK_COLUMNS / 6,
     statusLed: true,
-    labelBox: { x: 0.13, w: 0.42, y: NAS_BAND },
+    labelBox: { x: 0.26, w: 0.4, y: NAS_BAND },
     portSize: 'md',
     elements: [
       { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
-      { kind: 'bays', x: 0.09, y: 0.07, w: 0.82, h: 0.68, cols: 2, rows: 1, fill: BLACK_BOX },
+      nasBays(2, RACK_COLUMNS / 6),
     ],
-    ports: nasPorts(bank({ type: 'rj45', count: 1, x: 0.62, w: 0.3, prefix: 'eth' })),
+    ports: nasPorts(bank({ type: 'rj45', count: 1, x: 0.7, w: 0.26, prefix: 'eth' })),
   },
   {
     id: 'nas-desktop-4',
     label: 'Desktop NAS — 4 bays',
     kind: 'device',
     group: 'Storage',
-    uHeight: 3,
+    uHeight: NAS_U,
     colSpan: RACK_COLUMNS / 3,
     statusLed: true,
     labelBox: { x: 0.13, w: 0.42, y: NAS_BAND },
     portSize: 'md',
     elements: [
       { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
-      { kind: 'bays', x: 0.06, y: 0.07, w: 0.88, h: 0.68, cols: 4, rows: 1, fill: BLACK_BOX },
+      nasBays(4),
     ],
     ports: nasPorts(bank({ type: 'rj45', count: 2, x: 0.6, w: 0.34, prefix: 'eth' })),
   },
@@ -348,14 +387,14 @@ export const FACEPLATES: FaceplateTemplate[] = [
     label: 'Desktop NAS — 5 bays',
     kind: 'device',
     group: 'Storage',
-    uHeight: 3,
+    uHeight: NAS_U,
     colSpan: RACK_COLUMNS / 3,
     statusLed: true,
     labelBox: { x: 0.13, w: 0.42, y: NAS_BAND },
     portSize: 'md',
     elements: [
       { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
-      { kind: 'bays', x: 0.05, y: 0.07, w: 0.9, h: 0.68, cols: 5, rows: 1, fill: BLACK_BOX },
+      nasBays(5),
     ],
     ports: nasPorts([
       ...bank({ type: 'rj45', count: 2, x: 0.58, w: 0.24, prefix: 'eth' }),
