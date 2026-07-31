@@ -95,8 +95,18 @@ describe('faceplate catalog', () => {
       const tray = plate.elements.find((e) => e.kind === 'bays')
       expect(tray).toMatchObject({ cols: bays, rows: 1 })
       expect(plate.ports.length).toBeGreaterThan(0)
-      // Trays own the upper half; the name band and the ports share the lower.
-      expect(tray!.kind === 'bays' && tray.y + tray.h).toBeLessThanOrEqual(0.5)
+
+      // The front is tray doors, portrait, over a thin bottom strip carrying the
+      // badge, the LED and the sockets — not a mid-height band like rack gear.
+      const band = plate.labelBox.y!
+      expect(band).toBeGreaterThan(0.7)
+      const trayBottom = tray!.kind === 'bays' ? tray.y + tray.h : 1
+      expect(trayBottom).toBeLessThan(band)
+      expect(plate.ports.every((p) => p.y === band)).toBe(true)
+      // Doors taller than they are wide, at the plate's real aspect (3U on a
+      // third of the rack is roughly as tall as it is wide).
+      const doorW = (tray!.kind === 'bays' ? tray.w : 0) / bays
+      expect(doorW).toBeLessThan(tray!.kind === 'bays' ? tray.h : 0)
     }
   })
 

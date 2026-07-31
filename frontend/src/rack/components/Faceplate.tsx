@@ -75,6 +75,9 @@ function drawElement(el: FaceplateElement, i: number, w: number, h: number) {
     case 'bays': {
       const cellW = (el.w * w) / el.cols
       const cellH = (el.h * h) / el.rows
+      // Tray doors are rounded; a flat 1.5px radius reads as a square hole once
+      // the cells get big, as they do on a tall desktop NAS.
+      const rx = Math.max(1.5, Math.min(cellW, cellH) * 0.14)
       const cells = []
       for (let r = 0; r < el.rows; r++) {
         for (let c = 0; c < el.cols; c++) {
@@ -85,7 +88,7 @@ function drawElement(el: FaceplateElement, i: number, w: number, h: number) {
               y={el.y * h + r * cellH + 1}
               width={Math.max(2, cellW - 2)}
               height={Math.max(2, cellH - 2)}
-              rx={1.5}
+              rx={rx}
               fill={el.fill ?? '#1b1f26'}
               stroke="#0d1117"
               strokeWidth={0.5}
@@ -191,6 +194,7 @@ export const Faceplate = memo(function Faceplate({
 
   const labelX = template.labelBox.x * width
   const labelW = template.labelBox.w * width
+  const bandY = (template.labelBox.y ?? 0.5) * height
   const fontSize = Math.max(8, Math.min(11, height * 0.42))
   const showLabel = labelW > 24 && height >= 14
 
@@ -225,13 +229,13 @@ export const Faceplate = memo(function Faceplate({
       {template.elements.map((el, i) => drawElement(el, i, width, height))}
 
       {template.statusLed && (
-        <circle cx={LED_X} cy={height / 2} r={LED_R} fill={palette.status[status]} />
+        <circle cx={LED_X} cy={bandY} r={LED_R} fill={palette.status[status]} />
       )}
 
       {showLabel && (
         <text
           x={labelX}
-          y={height / 2}
+          y={bandY}
           clipPath={`url(#${clipId})`}
           fontSize={fontSize}
           fill={palette.text}
