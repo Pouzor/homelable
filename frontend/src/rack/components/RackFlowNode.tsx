@@ -21,6 +21,7 @@ import {
 } from '../layout'
 import { useRackStore } from '../store'
 import { useRackPalette } from '../rackTheme'
+import { resolveDeviceStatus } from '../deviceStatus'
 import { RACK_COLUMNS } from '@/types'
 import { Faceplate } from './Faceplate'
 import { endDrag, getDragPayload, parseDragPayload, startDrag } from './dragPayload'
@@ -38,6 +39,7 @@ export function RackFlowNode({ id }: NodeProps) {
   const rack = useRackStore((s) => s.racks.find((r) => r.id === id))
   const devices = useRackStore((s) => s.devices)
   const cables = useRackStore((s) => s.cables)
+  const inventory = useRackStore((s) => s.inventory)
   const selectedDeviceId = useRackStore((s) => s.selectedDeviceId)
   const selectedRackId = useRackStore((s) => s.selectedRackId)
   const hoveredDeviceId = useRackStore((s) => s.hoveredDeviceId)
@@ -289,7 +291,7 @@ export function RackFlowNode({ id }: NodeProps) {
             <Faceplate
               faceplateId={device.faceplateId}
               label={device.label}
-              status={device.status}
+              status={resolveDeviceStatus(device, inventory)}
               ports={device.ports}
               width={box.width}
               height={box.height}

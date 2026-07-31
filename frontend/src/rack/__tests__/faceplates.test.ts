@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { FACEPLATES, bank, faceplateGroups, getFaceplate } from '../faceplates'
+import {
+  FACEPLATES,
+  bank,
+  deviceTypeForFaceplate,
+  faceplateGroups,
+  getFaceplate,
+  suggestFaceplate,
+} from '../faceplates'
+import { UNRACKABLE_TYPES } from '@/utils/rackable'
 import { RACK_COLUMNS, type PortType } from '@/types'
 
 const ALLOWED_PORT_TYPES: PortType[] = ['rj45', 'sfp', 'sfp+']
@@ -134,6 +142,33 @@ describe('faceplate catalog', () => {
     const plate5 = getFaceplate('nas-desktop-5').elements.find((e) => e.kind === 'bays')!
     if (plate5.kind !== 'bays') throw new Error('no bays')
     expect(plate5.x + plate5.w).toBeLessThanOrEqual(1)
+  })
+
+  it('names the hardware behind every device plate', () => {
+    // A device created from the rack canvas has no discovery behind it: the
+    // plate is the only thing that says what it is, and a row with no type gets
+    // no icon, no role badge and no place in the type filter.
+    for (const plate of FACEPLATES.filter((f) => f.kind === 'device')) {
+      expect(deviceTypeForFaceplate(plate.id), `${plate.id} has no device type`).toBeTruthy()
+    }
+    for (const plate of FACEPLATES.filter((f) => f.kind === 'accessory')) {
+      expect(deviceTypeForFaceplate(plate.id)).toBeNull()
+    }
+    expect(deviceTypeForFaceplate('does-not-exist')).toBeNull()
+  })
+
+  it('keeps rack-only kinds rackable', () => {
+    // Passive gear has no logical node type, so the rack invents two. They must
+    // not collide with an excluded kind — a PDU typed `socket` would vanish from
+    // the rack inventory the moment it was created.
+    const rackOnly = ['patch_panel', 'pdu']
+    for (const type of rackOnly) {
+      expect(UNRACKABLE_TYPES.has(type)).toBe(false)
+      // …and each still proposes a sane plate when re-mounted later.
+      expect(getFaceplate(suggestFaceplate(type)).kind).toBe('device')
+    }
+    expect(suggestFaceplate('pdu')).toBe('pdu-1u')
+    expect(suggestFaceplate('patch_panel')).toBe('patch-24')
   })
 
   it('falls back to the first plate on an unknown id', () => {

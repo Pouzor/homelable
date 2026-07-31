@@ -110,6 +110,13 @@ describe('API → domain', () => {
     expect(toRackDevice({ ...apiDevice, status: 'exploded' }).status).toBe('unknown')
   })
 
+  it('keeps a mount that follows its node check on auto', () => {
+    // `auto` is a mount-only value — an inventory row never carries it, so only
+    // the device mapper widens the narrowing.
+    expect(toRackDevice({ ...apiDevice, status: 'auto' }).status).toBe('auto')
+    expect(fromRackDevice(toRackDevice({ ...apiDevice, status: 'auto' })).status).toBe('auto')
+  })
+
   it('maps a cable into nested endpoints', () => {
     expect(toCable(apiCable)).toMatchObject({
       type: 'fiber',

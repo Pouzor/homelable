@@ -500,6 +500,8 @@ const FACEPLATE_BY_DEVICE_TYPE: Record<string, string> = {
   computer: 'sff-half',
   docker_host: 'server-1u',
   ups: 'ups-2u',
+  pdu: 'pdu-1u',
+  patch_panel: 'patch-24',
   printer: 'shelf-1u',
   camera: 'mini-third',
   iot: 'mini-third',
@@ -508,6 +510,45 @@ const FACEPLATE_BY_DEVICE_TYPE: Record<string, string> = {
 
 export function suggestFaceplate(deviceType: string | null | undefined): string {
   return (deviceType && FACEPLATE_BY_DEVICE_TYPE[deviceType]) || 'server-1u'
+}
+
+/**
+ * The other direction: what kind of hardware a plate represents.
+ *
+ * A device created from the rack canvas has no discovery behind it, so the only
+ * thing that says what it is, is the plate the user picked. Without this the row
+ * landed in the Device Inventory with no type at all — no icon, no role badge,
+ * invisible to the type filter.
+ *
+ * `patch_panel` and `pdu` are rack-only kinds: the logical canvas has no node
+ * type for passive gear, and rack devices are never approved onto one anyway
+ * (`approve` returns 409). They must stay out of `UNRACKABLE_TYPES` — a PDU is
+ * the most rackable thing there is, which is also why it is not `socket`.
+ */
+const DEVICE_TYPE_BY_FACEPLATE: Record<string, string> = {
+  'server-1u': 'server',
+  'server-1u-bays': 'server',
+  'server-2u-bays': 'server',
+  'server-4u-storage': 'server',
+  'sff-half': 'computer',
+  'mini-third': 'computer',
+  'switch-8': 'switch',
+  'switch-24': 'switch',
+  'switch-48': 'switch',
+  'router-1u': 'router',
+  'patch-24': 'patch_panel',
+  'patch-fiber-12': 'patch_panel',
+  'nas-2u': 'nas',
+  'nas-desktop-2': 'nas',
+  'nas-desktop-4': 'nas',
+  'nas-desktop-5': 'nas',
+  'ups-2u': 'ups',
+  'pdu-1u': 'pdu',
+}
+
+/** Null for accessories, which are rack furniture and never inventory rows. */
+export function deviceTypeForFaceplate(faceplateId: string): string | null {
+  return DEVICE_TYPE_BY_FACEPLATE[faceplateId] ?? null
 }
 
 /** Templates grouped for the picker, preserving catalog order. */
