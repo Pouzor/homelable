@@ -81,6 +81,25 @@ describe('faceplate catalog', () => {
     }
   })
 
+  it('keeps the desktop NAS boxes third-width and 3U, one bay column each', () => {
+    const expected: Record<string, number> = {
+      'nas-desktop-2': 2,
+      'nas-desktop-4': 4,
+      'nas-desktop-5': 5,
+    }
+    for (const [id, bays] of Object.entries(expected)) {
+      const plate = getFaceplate(id)
+      // Shelf-mounted desktop gear, not rack gear: a third of the width, 3U tall.
+      expect(plate.colSpan).toBe(RACK_COLUMNS / 3)
+      expect(plate.uHeight).toBe(3)
+      const tray = plate.elements.find((e) => e.kind === 'bays')
+      expect(tray).toMatchObject({ cols: bays, rows: 1 })
+      expect(plate.ports.length).toBeGreaterThan(0)
+      // Trays own the upper half; the name band and the ports share the lower.
+      expect(tray!.kind === 'bays' && tray.y + tray.h).toBeLessThanOrEqual(0.5)
+    }
+  })
+
   it('falls back to the first plate on an unknown id', () => {
     expect(getFaceplate('does-not-exist')).toBe(FACEPLATES[0])
   })
