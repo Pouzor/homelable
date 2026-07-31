@@ -64,6 +64,13 @@ const LABEL_LEFT = { x: 0.055, w: 0.24 }
 const LABEL_TIGHT = { x: 0.05, w: 0.15 }
 /** Half/third-width plates: the LED is proportionally wider, so shift right. */
 const LABEL_SMALL = { x: 0.1, w: 0.4 }
+/** Bottom strip of a desktop NAS: badge, LED and sockets all sit on it. */
+const NAS_BAND = 0.86
+
+/** Drop a bank onto the NAS bottom strip — `bank` centres rows on the plate. */
+function nasPorts(ports: Omit<Port, 'id'>[]): Omit<Port, 'id'>[] {
+  return ports.map((p) => ({ ...p, y: NAS_BAND }))
+}
 
 export const FACEPLATES: FaceplateTemplate[] = [
   // --- Servers ------------------------------------------------------------
@@ -301,10 +308,9 @@ export const FACEPLATES: FaceplateTemplate[] = [
     ],
   },
   // Desktop NAS boxes (UGREEN DXP, Synology DS…) sat on a rack shelf: not rack
-  // gear, so they take a third of the width and stand ~3U tall, with their
-  // drive trays side by side. Bays fill the upper half; the name band and the
-  // ports share the lower one, side by side, since the name is always drawn at
-  // mid-height whatever the U count.
+  // gear, so they take a third of the width and stand ~3U tall. Their front is
+  // drive-tray doors, tall and portrait, filling everything above a thin bottom
+  // strip that carries the badge, the LED and the sockets — hence `labelBox.y`.
   {
     id: 'nas-desktop-2',
     label: 'Desktop NAS — 2 bays',
@@ -313,13 +319,13 @@ export const FACEPLATES: FaceplateTemplate[] = [
     uHeight: 3,
     colSpan: RACK_COLUMNS / 3,
     statusLed: true,
-    labelBox: { x: 0.12, w: 0.5 },
+    labelBox: { x: 0.13, w: 0.42, y: NAS_BAND },
     portSize: 'md',
     elements: [
       { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
-      { kind: 'bays', x: 0.14, y: 0.06, w: 0.72, h: 0.42, cols: 2, rows: 1, fill: BLACK_BOX },
+      { kind: 'bays', x: 0.09, y: 0.07, w: 0.82, h: 0.68, cols: 2, rows: 1, fill: BLACK_BOX },
     ],
-    ports: bank({ type: 'rj45', count: 1, x: 0.68, w: 0.24, prefix: 'eth' }),
+    ports: nasPorts(bank({ type: 'rj45', count: 1, x: 0.62, w: 0.3, prefix: 'eth' })),
   },
   {
     id: 'nas-desktop-4',
@@ -329,13 +335,13 @@ export const FACEPLATES: FaceplateTemplate[] = [
     uHeight: 3,
     colSpan: RACK_COLUMNS / 3,
     statusLed: true,
-    labelBox: { x: 0.12, w: 0.5 },
+    labelBox: { x: 0.13, w: 0.42, y: NAS_BAND },
     portSize: 'md',
     elements: [
       { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
-      { kind: 'bays', x: 0.1, y: 0.06, w: 0.8, h: 0.42, cols: 4, rows: 1, fill: BLACK_BOX },
+      { kind: 'bays', x: 0.06, y: 0.07, w: 0.88, h: 0.68, cols: 4, rows: 1, fill: BLACK_BOX },
     ],
-    ports: bank({ type: 'rj45', count: 2, x: 0.64, w: 0.3, prefix: 'eth' }),
+    ports: nasPorts(bank({ type: 'rj45', count: 2, x: 0.6, w: 0.34, prefix: 'eth' })),
   },
   {
     id: 'nas-desktop-5',
@@ -345,16 +351,16 @@ export const FACEPLATES: FaceplateTemplate[] = [
     uHeight: 3,
     colSpan: RACK_COLUMNS / 3,
     statusLed: true,
-    labelBox: { x: 0.12, w: 0.5 },
+    labelBox: { x: 0.13, w: 0.42, y: NAS_BAND },
     portSize: 'md',
     elements: [
       { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
-      { kind: 'bays', x: 0.08, y: 0.06, w: 0.84, h: 0.42, cols: 5, rows: 1, fill: BLACK_BOX },
+      { kind: 'bays', x: 0.05, y: 0.07, w: 0.9, h: 0.68, cols: 5, rows: 1, fill: BLACK_BOX },
     ],
-    ports: [
-      ...bank({ type: 'rj45', count: 2, x: 0.64, w: 0.22, prefix: 'eth' }),
-      ...bank({ type: 'sfp+', count: 1, x: 0.88, w: 0.1, prefix: 'sfp' }),
-    ],
+    ports: nasPorts([
+      ...bank({ type: 'rj45', count: 2, x: 0.58, w: 0.24, prefix: 'eth' }),
+      ...bank({ type: 'sfp+', count: 1, x: 0.84, w: 0.12, prefix: 'sfp' }),
+    ]),
   },
   {
     id: 'ups-2u',

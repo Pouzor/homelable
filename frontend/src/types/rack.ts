@@ -81,6 +81,14 @@ export type FaceplateKind = 'device' | 'accessory'
 export interface LabelBox {
   x: number
   w: number
+  /**
+   * Vertical centre of the name band, 0..1, default 0.5.
+   *
+   * Rack gear wears its name across the middle. Tall desktop boxes do not —
+   * their front is drive trays, and the badge sits on a strip at the bottom.
+   * The status LED rides the same band.
+   */
+  y?: number
 }
 
 export interface FaceplateTemplate {
