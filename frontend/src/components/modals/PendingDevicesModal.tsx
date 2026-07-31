@@ -19,6 +19,7 @@ import { buildMacProperty } from '@/utils/macProperty'
 import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
 import { getCenteredPosition } from '@/utils/viewportCenter'
 import { sourceBuckets, orderedSources, isRackDevice, SOURCE_META, type SourceBucket } from '@/utils/pendingSources'
+import { isRackable } from '@/utils/rackable'
 
 interface PendingDevicesModalProps {
   open: boolean
@@ -27,6 +28,14 @@ interface PendingDevicesModalProps {
   initialStatus?: 'pending' | 'hidden'
   /** Getting Started tour: render these canned devices and skip the backend fetch. */
   demoDevices?: PendingDevice[]
+  /**
+   * Picker mode. Clicking a card hands the device back instead of opening its
+   * detail modal, so another feature (the rack canvas) can reuse this list —
+   * search, filters, badges and all — rather than reimplementing a `<select>`.
+   */
+  onPick?: (device: PendingDevice) => void
+  /** Start with the Rackable filter on (what the rack picker wants). */
+  initialRackableOnly?: boolean
 }
 
 const PORT_COLORS: Record<number, string> = {
@@ -115,7 +124,7 @@ function injectAutoEdges(edges: AutoEdge[] | undefined) {
   }))
 }
 
-export function PendingDevicesModal({ open, onClose, highlightId, initialStatus = 'pending', demoDevices }: PendingDevicesModalProps) {
+export function PendingDevicesModal({ open, onClose, highlightId, initialStatus = 'pending', demoDevices, onPick, initialRackableOnly = false }: PendingDevicesModalProps) {
   const [devices, setDevices] = useState<PendingDevice[]>([])
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<PendingDevice | null>(null)
@@ -129,6 +138,9 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   const [showOnCanvas, setShowOnCanvas] = useState(true)
   // Optionally restrict to devices that have at least one detected service.
   const [withServicesOnly, setWithServicesOnly] = useState(false)
+  // Hardware only — what a rack can hold. On by default when the rack canvas
+  // opens the inventory to pick a mount.
+  const [rackableOnly, setRackableOnly] = useState(initialRackableOnly)
   const { addNode, scanEventTs } = useCanvasStore()
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const activeDesignId = useDesignStore((s) => s.activeDesignId)
@@ -162,8 +174,11 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       setSearch('')
     } else {
       setStatusFilter(initialStatus)
+      // Reopening from the rack picker must re-arm the filter even if the user
+      // turned it off during the previous visit.
+      setRackableOnly(initialRackableOnly)
     }
-  }, [open, initialStatus])
+  }, [open, initialStatus, initialRackableOnly])
 
   const distinctTypes = useMemo(() => {
     const set = new Set<string>()
@@ -179,6 +194,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       // Inventory-only: optionally hide devices already placed on a canvas.
       if (statusFilter === 'pending' && !showOnCanvas && (d.canvas_count ?? 0) > 0) return false
       if (withServicesOnly && (d.services?.length ?? 0) === 0) return false
+      if (rackableOnly && !isRackable(d)) return false
       if (q) {
         const hay = [
           d.friendly_name, d.hostname, d.ip, d.mac, d.ieee_address, d.vendor, d.model,
@@ -188,7 +204,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       }
       return true
     })
-  }, [devices, search, sourceFilter, typeFilter, statusFilter, showOnCanvas, withServicesOnly])
+  }, [devices, search, sourceFilter, typeFilter, statusFilter, showOnCanvas, withServicesOnly, rackableOnly])
 
   useEffect(() => {
     if (!highlightId || loading || !open) return
@@ -204,6 +220,9 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   }
 
   const handleCardClick = (d: PendingDevice) => {
+    // Picker mode wins over everything else: the caller opened this list to get
+    // one device back, not to approve or hide anything.
+    if (onPick) { onPick(d); return }
     if (selectMode) { toggleSelect(d.id); return }
     if (statusFilter === 'hidden') { handleRestore(d); return }
     setSelected(d)
@@ -459,6 +478,9 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
       }
       if (inField) return
       if (e.key === '/') { e.preventDefault(); searchRef.current?.focus() }
+      // Bulk actions are meaningless in picker mode — the card click returns a
+      // device, so select mode must stay unreachable from the keyboard too.
+      else if (onPick) return
       else if (e.key.toLowerCase() === 's') { e.preventDefault(); if (selectMode) exitSelectMode(); else enterSelectMode() }
       else if (e.key.toLowerCase() === 'a' && selectMode) { e.preventDefault(); selectAllVisible() }
       else if (e.key === 'Enter' && selectMode && selectedIds.size > 0) {
@@ -474,7 +496,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     // statusFilter is included so Enter dispatches the correct bulk action
     // (approve vs restore) even if the device list doesn't change on switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, selectMode, selectedIds, filtered, statusFilter])
+  }, [open, selectMode, selectedIds, filtered, statusFilter, onPick])
 
   return (
     <>
@@ -486,7 +508,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
           <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
             <div className="flex items-center justify-between gap-3">
               <DialogTitle className="text-base font-semibold flex items-center gap-2">
-                {statusFilter === 'pending' ? 'Device Inventory' : 'Hidden Devices'}
+                {onPick ? 'Pick a Device' : statusFilter === 'pending' ? 'Device Inventory' : 'Hidden Devices'}
                 <span className="text-muted-foreground font-normal text-xs">
                   ({filtered.length}{filtered.length !== devices.length && ` of ${devices.length}`})
                 </span>
@@ -495,7 +517,8 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
                 <button onClick={load} className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors" title="Refresh">
                   <RefreshCw size={14} />
                 </button>
-                {statusFilter === 'pending' && devices.length > 0 && (
+                {/* Never offer a destructive bulk clear from a picker. */}
+                {!onPick && statusFilter === 'pending' && devices.length > 0 && (
                   <button
                     onClick={handleClearAll}
                     className="text-muted-foreground hover:text-[#f85149] p-1.5 rounded transition-colors"
@@ -616,12 +639,23 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
               With services
             </button>
             <button
+              onClick={() => setRackableOnly((v) => !v)}
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${rackableOnly ? 'bg-[#39d353]/20 text-[#39d353] border-[#39d353]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
+              title="Only show hardware you could mount in a rack (no VMs, containers or mesh devices)"
+              aria-pressed={rackableOnly}
+            >
+              <Server size={12} />
+              Rackable
+            </button>
+            {!onPick && (
+            <button
               onClick={() => selectMode ? exitSelectMode() : enterSelectMode()}
               className={`text-xs px-2.5 py-1.5 rounded border transition-colors ${selectMode ? 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
               title="Toggle select mode (s)"
             >
               {selectMode ? 'Exit select' : 'Select mode'}
             </button>
+            )}
           </div>
 
           {/* Body */}
