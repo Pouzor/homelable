@@ -21,15 +21,36 @@ import { FaceplatePicker } from './FaceplatePicker'
 import { Faceplate } from './Faceplate'
 import { getFaceplate } from '../faceplates'
 import { generateUUID } from '@/utils/uuid'
-import { RACK_COLUMNS, type DeviceStatus, type Port, type PortType } from '@/types'
+import {
+  RACK_COLUMNS,
+  type DeviceStatus,
+  type InventoryDevice,
+  type Port,
+  type PortType,
+} from '@/types'
 
 const DEFAULT_COLOR = '#2b323c'
 
 type Source = 'inventory' | 'new' | 'accessory'
 
-const inputClass =
-  'w-full rounded border border-[#30363d] bg-[#21262d] px-2 py-1 text-sm text-foreground outline-none focus:border-[#00d4ff]'
+const inputBase =
+  'rounded border border-[#30363d] bg-[#21262d] px-2 py-1 text-sm text-foreground outline-none focus:border-[#00d4ff]'
+const inputClass = `w-full ${inputBase}`
 const fieldLabel = 'text-xs text-muted-foreground'
+
+/**
+ * One line for the inventory picker.
+ *
+ * Entries with no hostname are already labelled with their IP by the backend, so
+ * appending it again printed "192.168.1.63 · 192.168.1.63". Show the IP only
+ * when it adds something, and the type as the tiebreaker between look-alikes.
+ */
+function inventoryOption(item: InventoryDevice): string {
+  const parts = [item.label]
+  if (item.ip && item.ip !== item.label) parts.push(item.ip)
+  if (item.type) parts.push(item.type)
+  return parts.join(' · ')
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -247,8 +268,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                 <option value="">Select a device…</option>
                 {unracked.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.label}
-                    {item.ip ? ` · ${item.ip}` : ''}
+                    {inventoryOption(item)}
                   </option>
                 ))}
               </select>
@@ -438,8 +458,11 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
             {ports.map((port) => (
               <li key={port.id} className="flex items-center gap-1">
                 <input
-                  className={`${inputClass} flex-1`}
+                  // `inputClass` is w-full: without min-w-0 the flex row lets the
+                  // type select win the space and the name field collapses to a box.
+                  className={`${inputBase} min-w-0 flex-1`}
                   aria-label={`Port ${port.label} label`}
+                  placeholder="Port name"
                   value={port.label}
                   onChange={(e) =>
                     setLocalPorts((list) =>
@@ -448,7 +471,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                   }
                 />
                 <select
-                  className={`${inputClass} w-24`}
+                  className={`${inputBase} w-24 shrink-0`}
                   aria-label={`Port ${port.label} type`}
                   value={port.type}
                   onChange={(e) =>

@@ -1,6 +1,8 @@
 import pytest
 from httpx import AsyncClient
 
+from app.db.models import PendingDevice
+
 pytestmark = pytest.mark.asyncio
 
 
@@ -217,6 +219,36 @@ class TestInventory:
         labels = [i["label"] for i in res.json()["items"]]
         assert "pve-01" in labels
         assert "phone" not in labels
+
+    async def test_names_a_device_the_way_the_inventory_does(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """A scan find with no hostname is named after the app it runs, not its IP.
+
+        The rack picker used to show "192.168.1.63 · 192.168.1.63" where the
+        Device Inventory showed "jellyfin".
+        """
+        design_id = await _design(client, headers)
+        db_session.add(
+            PendingDevice(
+                id="pd-services",
+                ip="192.168.1.63",
+                services=[
+                    {"port": 443, "category": "web", "service_name": "https"},
+                    {"port": 8096, "category": "media", "service_name": "jellyfin"},
+                ],
+                suggested_type="server",
+            )
+        )
+        db_session.add(PendingDevice(id="pd-bare", ip="192.168.1.64", suggested_type="server"))
+        await db_session.commit()
+
+        items = (
+            await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)
+        ).json()["items"]
+        assert next(i for i in items if i["id"] == "pd-services")["label"] == "jellyfin"
+        # Nothing better to say: the IP stays the label, and the UI stops doubling it.
+        assert next(i for i in items if i["id"] == "pd-bare")["label"] == "192.168.1.64"
 
     async def test_flags_devices_already_mounted(self, client: AsyncClient, headers):
         design_id = await _design(client, headers)
