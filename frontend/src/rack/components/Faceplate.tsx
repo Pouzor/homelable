@@ -7,6 +7,7 @@
  */
 import { memo, useId } from 'react'
 import { getFaceplate } from '../faceplates'
+import { U_PX } from '../layout'
 import { useRackPalette } from '../rackTheme'
 import type { DeviceStatus, FaceplateElement, Port, PortType } from '@/types'
 
@@ -18,13 +19,17 @@ interface PortShapeSize {
   h: number
 }
 
-/** Fixed-ish port artwork, nudged by plate height so 1U panels stay legible. */
-function portShapeSize(size: 'sm' | 'md', height: number, type: PortType): PortShapeSize {
-  const w =
-    size === 'sm'
-      ? Math.max(5, Math.min(8, height * 0.3))
-      : Math.max(7, Math.min(12, height * 0.42))
-  return type === 'rj45' ? { w, h: w * 0.92 } : { w: w * 1.15, h: w * 0.62 }
+/**
+ * Port artwork is the same size on every plate — a socket is a socket, whether
+ * it sits on a 1U switch or a 4U NAS. The reference is a 1U patch panel, the
+ * densest thing that has to stay legible.
+ */
+const PORT_W = U_PX * 0.3
+
+function portShapeSize(type: PortType): PortShapeSize {
+  return type === 'rj45'
+    ? { w: PORT_W, h: PORT_W * 0.92 }
+    : { w: PORT_W * 1.15, h: PORT_W * 0.62 }
 }
 
 /** RJ45 silhouette: body with the latch slot cut into the top, centred on (0,0). */
@@ -160,12 +165,14 @@ interface Props {
   revealed?: boolean
   /** Fade the plate so cables behind it stay readable. */
   transparent?: boolean
-  /** Ports are clickable (patch mode). */
+  /** Ports take the pointer (patch mode). */
   interactivePorts?: boolean
   /** Port id -> colour of the cable plugged into it. */
   patchedPorts?: Map<string, string>
   draftPortId?: string | null
-  onPortClick?: (portId: string) => void
+  /** Press arms the port; release over another one closes the patch. */
+  onPortPointerDown?: (portId: string) => void
+  onPortPointerUp?: (portId: string) => void
 }
 
 export const Faceplate = memo(function Faceplate({
@@ -182,7 +189,8 @@ export const Faceplate = memo(function Faceplate({
   interactivePorts,
   patchedPorts,
   draftPortId,
-  onPortClick,
+  onPortPointerDown,
+  onPortPointerUp,
 }: Props) {
   const template = getFaceplate(faceplateId)
   const palette = useRackPalette()
@@ -253,7 +261,7 @@ export const Faceplate = memo(function Faceplate({
           const cy = port.y * height
           const patchColor = patchedPorts?.get(port.id)
           const isDraft = draftPortId === port.id
-          const { w, h } = portShapeSize(template.portSize ?? 'md', height, port.type)
+          const { w, h } = portShapeSize(port.type)
           const stroke = isDraft ? palette.accent : patchColor ?? palette.portBezel
 
           return (
@@ -264,15 +272,28 @@ export const Faceplate = memo(function Faceplate({
                 cursor: interactivePorts ? 'crosshair' : undefined,
                 pointerEvents: interactivePorts ? 'auto' : 'none',
               }}
-              onClick={
+              onPointerDown={
+                interactivePorts
+                  ? (e) => {
+                      // Keep the press off the plate: it would start an HTML5
+                      // drag of the mount instead of a cable.
+                      e.stopPropagation()
+                      e.preventDefault()
+                      onPortPointerDown?.(port.id)
+                    }
+                  : undefined
+              }
+              onPointerUp={
                 interactivePorts
                   ? (e) => {
                       e.stopPropagation()
-                      onPortClick?.(port.id)
+                      onPortPointerUp?.(port.id)
                     }
                   : undefined
               }
             >
+              {/* Grab area: a 6px socket is too small to aim a cable at. */}
+              {interactivePorts && <circle r={Math.max(w, h) * 0.85} fill="transparent" />}
               {port.type === 'rj45' ? (
                 <path
                   d={rj45Path(w, h)}

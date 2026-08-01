@@ -6,7 +6,7 @@
  * much of the cabling is on screen.
  */
 import { useState } from 'react'
-import { Cable, Link2, Plus, X } from 'lucide-react'
+import { Cable, Link2, Plus, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useRackStore } from '@/rack/store'
@@ -34,6 +34,8 @@ export function RackToolbarActions() {
   const setCableTypeFilter = useRackStore((s) => s.setCableTypeFilter)
   const cableDraft = useRackStore((s) => s.cableDraft)
   const cancelCableDraft = useRackStore((s) => s.cancelCableDraft)
+  const selectedCableId = useRackStore((s) => s.selectedCableId)
+  const removeSelectedCable = useRackStore((s) => s.removeSelectedCable)
   const importCables = useRackStore((s) => s.importCablesFromNetwork)
   const networkImportDone = useRackStore((s) => s.networkImportDone)
   const designs = useDesignStore((s) => s.designs)
@@ -65,7 +67,7 @@ export function RackToolbarActions() {
         variant="ghost"
         className={`${ghost} ${cableMode ? 'text-[#00d4ff]' : ''}`}
         onClick={toggleCableMode}
-        title="Click a port, then another, to patch. Click a cable to remove it."
+        title="Drag from one port to another to patch, or click both in turn. Click a cable to select it, then Delete to unplug."
       >
         <Cable size={14} /> {cableMode ? 'Exit patching' : 'Patch'}
       </Button>
@@ -78,6 +80,18 @@ export function RackToolbarActions() {
           onClick={cancelCableDraft}
         >
           <X size={14} /> Cancel cable
+        </Button>
+      )}
+
+      {cableMode && selectedCableId && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className={`${ghost} text-[#f85149]`}
+          onClick={removeSelectedCable}
+          title="Unplug the selected cable (Delete)"
+        >
+          <Trash2 size={14} /> Unplug
         </Button>
       )}
 

@@ -50,7 +50,8 @@ export function RackFlowNode({ id }: NodeProps) {
   const selectDevice = useRackStore((s) => s.selectDevice)
   const selectRack = useRackStore((s) => s.selectRack)
   const hoverDevice = useRackStore((s) => s.hoverDevice)
-  const pickPort = useRackStore((s) => s.pickPort)
+  const startCableDrag = useRackStore((s) => s.startCableDrag)
+  const endCableDrag = useRackStore((s) => s.endCableDrag)
   const openDeviceEditor = useRackStore((s) => s.openDeviceEditor)
   const openRackEditor = useRackStore((s) => s.openRackEditor)
   const mountFromInventory = useRackStore((s) => s.mountFromInventory)
@@ -302,7 +303,8 @@ export function RackFlowNode({ id }: NodeProps) {
               interactivePorts={cableMode}
               patchedPorts={patchedPorts}
               draftPortId={isDraftDevice ? cableDraft.portId : null}
-              onPortClick={(portId) => pickPort(device.id, portId)}
+              onPortPointerDown={(portId) => startCableDrag(device.id, portId)}
+              onPortPointerUp={(portId) => endCableDrag({ deviceId: device.id, portId })}
             />
           </div>
         )

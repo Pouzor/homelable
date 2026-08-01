@@ -39,9 +39,17 @@ export function RackCanvas() {
   const setViewport = useRackStore((s) => s.setViewport)
   const addRack = useRackStore((s) => s.addRack)
   const loadDemo = useRackStore((s) => s.loadDemo)
+  const selectCable = useRackStore((s) => s.selectCable)
+  const removeSelectedCable = useRackStore((s) => s.removeSelectedCable)
+  const selectedCableId = useRackStore((s) => s.selectedCableId)
+  const dragging = useRackStore((s) => s.cableDrag != null)
+  const moveCableDrag = useRackStore((s) => s.moveCableDrag)
+  const endCableDrag = useRackStore((s) => s.endCableDrag)
+  const cableDraft = useRackStore((s) => s.cableDraft)
+  const cancelCableDraft = useRackStore((s) => s.cancelCableDraft)
 
   const palette = useRackPalette()
-  const { setViewport: applyViewport } = useReactFlow()
+  const { setViewport: applyViewport, screenToFlowPosition } = useReactFlow()
 
   // Mounts set to "check device" read their LED from the inventory's
   // `node_status`, which only a refetch moves.
@@ -54,6 +62,44 @@ export function RackCanvas() {
     restoredFor.current = designId
     if (storedViewport.zoom > 0) void applyViewport(storedViewport)
   }, [designId, loading, storedViewport, applyViewport])
+
+  // A patch dragged out of a port follows the pointer until it is released.
+  // Both listeners are on the window: the drop target is often a port on
+  // another rack, and a release outside the canvas must still end the drag.
+  useEffect(() => {
+    if (!dragging) return
+    const move = (e: PointerEvent) =>
+      moveCableDrag(screenToFlowPosition({ x: e.clientX, y: e.clientY }))
+    // The port's own pointerup runs first and clears the drag, so reaching here
+    // means the cable was released on nothing.
+    const up = () => endCableDrag(null)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+  }, [dragging, moveCableDrag, endCableDrag, screenToFlowPosition])
+
+  // Delete/Backspace unplugs the selected cable; Escape deselects it, or drops
+  // a half-drawn patch.
+  useEffect(() => {
+    if (!selectedCableId && !cableDraft) return
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+      if (selectedCableId && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault()
+        removeSelectedCable()
+      } else if (e.key === 'Escape') {
+        selectCable(null)
+        cancelCableDraft()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [selectedCableId, cableDraft, removeSelectedCable, selectCable, cancelCableDraft])
 
   const nodes: Node[] = useMemo(
     () =>

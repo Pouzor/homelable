@@ -121,7 +121,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS,
     statusLed: true,
     labelBox: LABEL_LEFT,
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: STEEL, stroke: '#0d1117' },
       { kind: 'vents', x: 0.32, y: 0.22, w: 0.42, h: 0.56, cols: 16, rows: 2, fill: VENT },
@@ -137,7 +136,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS,
     statusLed: true,
     labelBox: LABEL_LEFT,
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: STEEL, stroke: '#0d1117' },
       { kind: 'bays', x: 0.32, y: 0.18, w: 0.42, h: 0.64, cols: 4, rows: 1, fill: BLACK_BOX },
@@ -153,7 +151,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS,
     statusLed: true,
     labelBox: LABEL_LEFT,
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: STEEL, stroke: '#0d1117' },
       { kind: 'bays', x: 0.32, y: 0.12, w: 0.42, h: 0.76, cols: 4, rows: 2, fill: BLACK_BOX },
@@ -172,7 +169,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS,
     statusLed: true,
     labelBox: { x: 0.055, w: 0.18 },
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: STEEL_LIGHT, stroke: '#0d1117' },
       { kind: 'bays', x: 0.26, y: 0.1, w: 0.5, h: 0.8, cols: 4, rows: 3, fill: BLACK_BOX },
@@ -188,7 +184,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS / 2,
     statusLed: true,
     labelBox: LABEL_SMALL,
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: STEEL_LIGHT, stroke: '#0d1117' },
       { kind: 'vents', x: 0.54, y: 0.25, w: 0.24, h: 0.5, cols: 8, rows: 2, fill: VENT },
@@ -204,7 +199,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS / 3,
     statusLed: true,
     labelBox: { x: 0.14, w: 0.42 },
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: STEEL_LIGHT, stroke: '#0d1117' },
       { kind: 'vents', x: 0.6, y: 0.3, w: 0.16, h: 0.4, cols: 5, rows: 2, fill: VENT },
@@ -223,7 +217,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     statusLed: true,
     alwaysShowPorts: true,
     labelBox: LABEL_LEFT,
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: BLACK_BOX, stroke: '#0d1117' },
       { kind: 'strip', x: 0.32, y: 0.16, w: 0.42, h: 0.68, fill: '#11161d' },
@@ -243,7 +236,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     statusLed: true,
     alwaysShowPorts: true,
     labelBox: LABEL_TIGHT,
-    portSize: 'sm',
     elements: [
       { kind: 'panel', fill: BLACK_BOX, stroke: '#0d1117' },
       { kind: 'strip', x: 0.22, y: 0.12, w: 0.55, h: 0.76, fill: '#11161d' },
@@ -263,7 +255,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     statusLed: true,
     alwaysShowPorts: true,
     labelBox: LABEL_TIGHT,
-    portSize: 'sm',
     elements: [
       { kind: 'panel', fill: BLACK_BOX, stroke: '#0d1117' },
       { kind: 'strip', x: 0.21, y: 0.12, w: 0.56, h: 0.76, fill: '#11161d' },
@@ -282,7 +273,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS,
     statusLed: true,
     labelBox: LABEL_LEFT,
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: '#232a34', stroke: '#0d1117' },
       { kind: 'strip', x: 0.34, y: 0.16, w: 0.4, h: 0.68, fill: '#11161d' },
@@ -301,7 +291,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS,
     alwaysShowPorts: true,
     labelBox: { x: 0.02, w: 0.16 },
-    portSize: 'sm',
     elements: [
       { kind: 'panel', fill: '#3a3f47', stroke: '#0d1117' },
       { kind: 'strip', x: 0.2, y: 0.14, w: 0.78, h: 0.72, fill: '#22262c' },
@@ -317,7 +306,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS,
     alwaysShowPorts: true,
     labelBox: { x: 0.02, w: 0.16 },
-    portSize: 'sm',
     elements: [
       { kind: 'panel', fill: '#3a3f47', stroke: '#0d1117' },
       { kind: 'strip', x: 0.2, y: 0.16, w: 0.6, h: 0.68, fill: '#22262c' },
@@ -335,7 +323,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS,
     statusLed: true,
     labelBox: LABEL_LEFT,
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
       { kind: 'bays', x: 0.32, y: 0.12, w: 0.42, h: 0.76, cols: 4, rows: 2, fill: BLACK_BOX },
@@ -359,7 +346,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS / 6,
     statusLed: true,
     labelBox: { x: 0.26, w: 0.4, y: NAS_BAND },
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
       nasBays(2, RACK_COLUMNS / 6),
@@ -375,7 +361,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS / 3,
     statusLed: true,
     labelBox: { x: 0.13, w: 0.42, y: NAS_BAND },
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
       nasBays(4),
@@ -391,7 +376,6 @@ export const FACEPLATES: FaceplateTemplate[] = [
     colSpan: RACK_COLUMNS / 3,
     statusLed: true,
     labelBox: { x: 0.13, w: 0.42, y: NAS_BAND },
-    portSize: 'md',
     elements: [
       { kind: 'panel', fill: '#262c35', stroke: '#0d1117' },
       nasBays(5),

@@ -7,6 +7,7 @@
  */
 import { ViewportPortal } from '@xyflow/react'
 import { portPosition } from '../layout'
+import { useRackPalette } from '../rackTheme'
 import { useRackStore } from '../store'
 import type { Cable, Port, Rack, RackDevice } from '@/types'
 
@@ -32,7 +33,11 @@ export function CableLayer() {
   const hoveredDeviceId = useRackStore((s) => s.hoveredDeviceId)
   const selectedDeviceId = useRackStore((s) => s.selectedDeviceId)
   const cableMode = useRackStore((s) => s.cableMode)
-  const removeCable = useRackStore((s) => s.removeCable)
+  const selectedCableId = useRackStore((s) => s.selectedCableId)
+  const selectCable = useRackStore((s) => s.selectCable)
+  const cableDraft = useRackStore((s) => s.cableDraft)
+  const cableDrag = useRackStore((s) => s.cableDrag)
+  const palette = useRackPalette()
 
   if (visibility === 'hidden' && !cableMode) return null
 
@@ -63,7 +68,12 @@ export function CableLayer() {
     visible.push({ cable, from, to })
   }
 
-  if (visible.length === 0) return null
+  // Rubber band: the patch being dragged out of its source port.
+  const dragFrom = cableDraft && resolve(cableDraft.deviceId, cableDraft.portId)
+  const dragTo = cableDrag?.pointer ?? null
+  const draftLine = dragFrom && dragTo ? { from: dragFrom, to: dragTo } : null
+
+  if (visible.length === 0 && !draftLine) return null
 
   return (
     <ViewportPortal>
@@ -80,35 +90,86 @@ export function CableLayer() {
         }}
       >
         {visible.map(({ cable, from, to }) => {
-          const dimmed = focus != null && cable.from.deviceId !== focus && cable.to.deviceId !== focus
+          const selected = cableMode && cable.id === selectedCableId
+          const dimmed =
+            !selected && focus != null && cable.from.deviceId !== focus && cable.to.deviceId !== focus
+          const d = cablePath(from, to)
           return (
             <g key={cable.id} opacity={dimmed ? 0.28 : 1}>
+              {selected && (
+                <path
+                  d={d}
+                  fill="none"
+                  stroke={palette.accent}
+                  strokeWidth={7}
+                  strokeLinecap="round"
+                  opacity={0.45}
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
               <path
-                d={cablePath(from, to)}
+                d={d}
                 fill="none"
                 stroke="#0d1117"
                 strokeWidth={3.5}
                 strokeLinecap="round"
               />
               <path
-                d={cablePath(from, to)}
+                d={d}
                 fill="none"
-                stroke={cable.color}
-                strokeWidth={1.8}
+                stroke={selected ? palette.accent : cable.color}
+                strokeWidth={selected ? 2.6 : 1.8}
                 strokeLinecap="round"
-                style={{ pointerEvents: cableMode ? 'stroke' : 'none', cursor: cableMode ? 'pointer' : undefined }}
-                onClick={() => cableMode && removeCable(cable.id)}
-              >
-                <title>
-                  {cable.label ? `${cable.label} — ${cable.type}` : cable.type}
-                  {cableMode ? ' (click to remove)' : ''}
-                </title>
-              </path>
-              <circle cx={from.x} cy={from.y} r={2.2} fill={cable.color} />
-              <circle cx={to.x} cy={to.y} r={2.2} fill={cable.color} />
+                style={{ pointerEvents: 'none' }}
+              />
+              {/* Fat invisible hit area — a 1.8px path is hard to hit at low zoom. */}
+              {cableMode && (
+                <path
+                  d={d}
+                  fill="none"
+                  stroke="transparent"
+                  strokeWidth={14}
+                  strokeLinecap="round"
+                  style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                  onClick={(e) => {
+                    // The pane click behind would clear the selection again.
+                    e.stopPropagation()
+                    selectCable(selected ? null : cable.id)
+                  }}
+                >
+                  <title>
+                    {cable.label ? `${cable.label} — ${cable.type}` : cable.type}
+                    {' (click to select, Delete to remove)'}
+                  </title>
+                </path>
+              )}
+              <circle cx={from.x} cy={from.y} r={selected ? 3.2 : 2.2} fill={selected ? palette.accent : cable.color} />
+              <circle cx={to.x} cy={to.y} r={selected ? 3.2 : 2.2} fill={selected ? palette.accent : cable.color} />
             </g>
           )
         })}
+
+        {draftLine && (
+          <g data-testid="cable-draft" style={{ pointerEvents: 'none' }}>
+            <path
+              d={cablePath(draftLine.from, draftLine.to)}
+              fill="none"
+              stroke={palette.accent}
+              strokeWidth={2}
+              strokeDasharray="5 4"
+              strokeLinecap="round"
+            />
+            <circle cx={draftLine.from.x} cy={draftLine.from.y} r={3} fill={palette.accent} />
+            <circle
+              cx={draftLine.to.x}
+              cy={draftLine.to.y}
+              r={3.5}
+              fill="none"
+              stroke={palette.accent}
+              strokeWidth={1.5}
+            />
+          </g>
+        )}
       </svg>
     </ViewportPortal>
   )
