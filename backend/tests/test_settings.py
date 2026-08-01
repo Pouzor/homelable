@@ -38,6 +38,33 @@ async def test_update_settings_saves_interval(client: AsyncClient, headers):
 
 
 @pytest.mark.asyncio
+async def test_update_settings_reschedules_status_checks(client: AsyncClient, headers):
+    """The new interval must reach the running scheduler, not just the config
+    file: otherwise the UI and scan_config.json show the new value while the
+    job keeps firing at the old one until the backend restarts."""
+    with patch("app.api.routes.settings.settings") as mock_settings, \
+            patch("app.api.routes.settings.reschedule_status_checks") as mock_reschedule:
+        mock_settings.save_overrides = lambda: None
+        res = await client.post(
+            "/api/v1/settings",
+            json={"interval_seconds": 120},
+            headers=headers,
+        )
+    assert res.status_code == 200
+    mock_reschedule.assert_called_once_with(120)
+
+
+@pytest.mark.asyncio
+async def test_update_settings_rejects_too_short_status_interval(client: AsyncClient, headers):
+    res = await client.post(
+        "/api/v1/settings",
+        json={"interval_seconds": 5},
+        headers=headers,
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_update_settings_requires_auth(client: AsyncClient):
     res = await client.post("/api/v1/settings", json={"interval_seconds": 30})
     assert res.status_code == 401

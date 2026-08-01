@@ -4,13 +4,19 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import get_current_user
 from app.core.config import settings
-from app.core.scheduler import reschedule_service_checks, set_service_checks_enabled
+from app.core.scheduler import (
+    reschedule_service_checks,
+    reschedule_status_checks,
+    set_service_checks_enabled,
+)
 
 router = APIRouter()
 
 
 class AppSettings(BaseModel):
-    interval_seconds: int
+    # Mirrors the floor enforced by reschedule_status_checks(): rejecting here
+    # returns 422 instead of persisting the value and then failing with a 500.
+    interval_seconds: int = Field(ge=10)
     service_check_enabled: bool = False
     service_check_interval: int = Field(default=300, ge=30)
 
@@ -33,6 +39,10 @@ async def update_settings(
         settings.service_check_enabled = payload.service_check_enabled
         settings.service_check_interval = payload.service_check_interval
         settings.save_overrides()
+        # Apply the status-check schedule live. Without this the new interval is
+        # persisted and shown in the UI, but the running job keeps the old one
+        # until the backend restarts.
+        reschedule_status_checks(payload.interval_seconds)
         # Apply the service-check schedule live.
         set_service_checks_enabled(payload.service_check_enabled)
         if payload.service_check_enabled:
