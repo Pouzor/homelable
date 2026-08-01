@@ -273,10 +273,145 @@ describe('cables', () => {
     expect(store().cables).toHaveLength(before + 1)
   })
 
+  it('patches by dragging from one port to another', () => {
+    const { a, b } = freePorts()
+    const before = store().cables.length
+    store().startCableDrag(a.deviceId, a.portId)
+    expect(store().cableDraft).toEqual(a)
+    store().moveCableDrag({ x: 120, y: 80 })
+    expect(store().cableDrag).toEqual({ pointer: { x: 120, y: 80 }, moved: true })
+    store().endCableDrag(b)
+    expect(store().cables).toHaveLength(before + 1)
+    expect(store().cableDraft).toBeNull()
+    expect(store().cableDrag).toBeNull()
+  })
+
+  it('drops the draft when a drag is released on nothing', () => {
+    const { a } = freePorts()
+    const before = store().cables.length
+    store().startCableDrag(a.deviceId, a.portId)
+    store().moveCableDrag({ x: 10, y: 10 })
+    store().endCableDrag(null)
+    expect(store().cables).toHaveLength(before)
+    expect(store().cableDraft).toBeNull()
+    expect(store().cableDrag).toBeNull()
+  })
+
+  it('keeps the port armed when a press never moved, so click-then-click works', () => {
+    const { a, b } = freePorts()
+    const before = store().cables.length
+    store().startCableDrag(a.deviceId, a.portId)
+    store().endCableDrag(null)
+    expect(store().cableDraft).toEqual(a)
+    expect(store().cableDrag).toBeNull()
+
+    store().startCableDrag(b.deviceId, b.portId)
+    expect(store().cables).toHaveLength(before + 1)
+    expect(store().cableDraft).toBeNull()
+  })
+
+  it('disarms when the armed port is pressed again', () => {
+    const { a } = freePorts()
+    const before = store().cables.length
+    store().startCableDrag(a.deviceId, a.portId)
+    store().startCableDrag(a.deviceId, a.portId)
+    expect(store().cableDraft).toBeNull()
+    expect(store().cables).toHaveLength(before)
+  })
+
+  it('ignores a release with no drag in flight', () => {
+    const { a, b } = freePorts()
+    const before = store().cables.length
+    store().endCableDrag(b)
+    expect(store().cables).toHaveLength(before)
+    expect(store().cableDraft).toBeNull()
+    // And a move without a drag changes nothing.
+    store().moveCableDrag({ x: 1, y: 1 })
+    expect(store().cableDrag).toBeNull()
+    expect(a).toBeTruthy()
+  })
+
+  it('cancels a draft and its drag together', () => {
+    const { a } = freePorts()
+    store().startCableDrag(a.deviceId, a.portId)
+    store().moveCableDrag({ x: 5, y: 5 })
+    store().cancelCableDraft()
+    expect(store().cableDraft).toBeNull()
+    expect(store().cableDrag).toBeNull()
+  })
+
+  it('selects a cable and unplugs it with removeSelectedCable', () => {
+    const cable = store().cables[0]
+    store().selectCable(cable.id)
+    expect(store().selectedCableId).toBe(cable.id)
+    store().removeSelectedCable()
+    expect(store().cables.some((c) => c.id === cable.id)).toBe(false)
+    expect(store().selectedCableId).toBeNull()
+  })
+
+  it('removeSelectedCable is a no-op with nothing selected', () => {
+    const before = store().cables.length
+    store().removeSelectedCable()
+    expect(store().cables).toHaveLength(before)
+  })
+
+  it('clears the cable selection when the cable is removed by id', () => {
+    const cable = store().cables[0]
+    store().selectCable(cable.id)
+    store().removeCable(cable.id)
+    expect(store().selectedCableId).toBeNull()
+  })
+
+  it('keeps the cable selection when another cable is removed', () => {
+    const [first, second] = store().cables
+    store().selectCable(first.id)
+    store().removeCable(second.id)
+    expect(store().selectedCableId).toBe(first.id)
+  })
+
+  it('drops the cable selection when a device or rack is selected', () => {
+    store().selectCable(store().cables[0].id)
+    store().selectDevice(store().devices[0].id)
+    expect(store().selectedCableId).toBeNull()
+
+    store().selectCable(store().cables[0].id)
+    store().selectRack('rack-main')
+    expect(store().selectedCableId).toBeNull()
+  })
+
+  it('drops the cable selection when leaving patch mode', () => {
+    store().toggleCableMode()
+    store().selectCable(store().cables[0].id)
+    store().toggleCableMode()
+    expect(store().cableMode).toBe(false)
+    expect(store().selectedCableId).toBeNull()
+  })
+
   it('turns cables on when entering patch mode', () => {
     expect(store().cableVisibility).toBe('hover')
     store().toggleCableMode()
     expect(store().cableMode).toBe(true)
+    expect(store().cableVisibility).toBe('always')
+  })
+
+  it('restores the previous cable visibility when leaving patch mode', () => {
+    store().toggleCableMode()
+    store().toggleCableMode()
+    expect(store().cableMode).toBe(false)
+    expect(store().cableVisibility).toBe('hover')
+  })
+
+  it('keeps a visibility the user picked while patching', () => {
+    store().toggleCableMode()
+    store().setCableVisibility('hidden')
+    store().toggleCableMode()
+    expect(store().cableVisibility).toBe('hidden')
+  })
+
+  it('leaves an always-on canvas alone across patch mode', () => {
+    store().setCableVisibility('always')
+    store().toggleCableMode()
+    store().toggleCableMode()
     expect(store().cableVisibility).toBe('always')
   })
 

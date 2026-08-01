@@ -112,8 +112,6 @@ export interface FaceplateTemplate {
   alwaysShowPorts?: boolean
   /** Name band. Ports and artwork must stay clear of it. */
   labelBox: LabelBox
-  /** Port artwork size. Dense panels use 'sm'. */
-  portSize?: 'sm' | 'md'
   /** Devices get a status LED; accessories do not. */
   statusLed?: boolean
 }

@@ -93,11 +93,25 @@ interface RackState {
   // UI
   selectedDeviceId: string | null
   selectedRackId: string | null
+  /** Cable picked in patch mode, so Delete/Backspace can unplug it. */
+  selectedCableId: string | null
   hoveredDeviceId: string | null
   cableVisibility: CableVisibility
-  /** Port-picking mode: click a port, then another, to create a cable. */
+  /**
+   * What the visibility was before patch mode forced cables on, so leaving
+   * patch mode puts the canvas back the way the user had it. Cleared as soon
+   * as the user picks a visibility by hand — their choice outlives the mode.
+   */
+  cableVisibilityBeforePatch: CableVisibility | null
+  /** Port-picking mode: drag port to port, or click one then another. */
   cableMode: boolean
   cableDraft: CableDraft | null
+  /**
+   * A patch being dragged out of `cableDraft`'s port. `pointer` is in flow
+   * coordinates, so the rubber band lives in the same space as the cables.
+   * `moved` separates a drag from a plain click on the same port.
+   */
+  cableDrag: { pointer: { x: number; y: number } | null; moved: boolean } | null
   cableTypeFilter: CableType | 'all'
   /**
    * Open editor dialogs. Device and rack settings live in modals, so any
@@ -170,11 +184,22 @@ interface RackState {
   setViewport: (v: Viewport) => void
   selectDevice: (id: string | null) => void
   selectRack: (id: string | null) => void
+  selectCable: (id: string | null) => void
+  /** Unplug whatever is selected. No-op when nothing is. */
+  removeSelectedCable: () => void
   hoverDevice: (id: string | null) => void
   setCableVisibility: (v: CableVisibility) => void
   setCableTypeFilter: (t: CableType | 'all') => void
   toggleCableMode: () => void
   pickPort: (deviceId: string, portId: string) => void
+  /**
+   * Press on a port: arms it as the cable source, or — when another port is
+   * already armed — closes the patch, so click-then-click still works.
+   */
+  startCableDrag: (deviceId: string, portId: string) => void
+  moveCableDrag: (pointer: { x: number; y: number }) => void
+  /** Release: patch onto `target`, or drop the draft if the pointer travelled. */
+  endCableDrag: (target: CableDraft | null) => void
   cancelCableDraft: () => void
   openDeviceEditor: (deviceId?: string | null) => void
   closeDeviceEditor: () => void
@@ -203,10 +228,13 @@ function emptyState() {
     editSeq: 0,
     selectedDeviceId: null,
     selectedRackId: null,
+    selectedCableId: null,
     hoveredDeviceId: null,
     cableVisibility: 'hover' as CableVisibility,
+    cableVisibilityBeforePatch: null,
     cableMode: false,
     cableDraft: null,
+    cableDrag: null,
     cableTypeFilter: 'all' as const,
     networkImportDone: false,
     deviceEditor: null,
@@ -615,7 +643,11 @@ export const useRackStore = create<RackState>((set, get) => {
     updateCable: (id, patch) =>
       edit((s) => ({ cables: s.cables.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
 
-    removeCable: (id) => edit((s) => ({ cables: s.cables.filter((c) => c.id !== id) })),
+    removeCable: (id) =>
+      edit((s) => ({
+        cables: s.cables.filter((c) => c.id !== id),
+        selectedCableId: s.selectedCableId === id ? null : s.selectedCableId,
+      })),
 
     importCablesFromNetwork: (hints) => {
       const { devices, networkImportDone } = get()
@@ -652,18 +684,35 @@ export const useRackStore = create<RackState>((set, get) => {
     // Pan/zoom is persisted, but nudging the view is not an edit worth a Save
     // badge — the logical canvas treats the viewport the same way.
     setViewport: (v) => set({ viewport: v }),
-    selectDevice: (id) => set({ selectedDeviceId: id, selectedRackId: null }),
-    selectRack: (id) => set({ selectedRackId: id, selectedDeviceId: null }),
+    selectDevice: (id) => set({ selectedDeviceId: id, selectedRackId: null, selectedCableId: null }),
+    selectRack: (id) => set({ selectedRackId: id, selectedDeviceId: null, selectedCableId: null }),
+    selectCable: (id) => set({ selectedCableId: id }),
+
+    removeSelectedCable: () => {
+      const id = get().selectedCableId
+      if (!id) return
+      get().removeCable(id)
+    },
     hoverDevice: (id) => set({ hoveredDeviceId: id }),
-    setCableVisibility: (v) => set({ cableVisibility: v }),
+    setCableVisibility: (v) => set({ cableVisibility: v, cableVisibilityBeforePatch: null }),
     setCableTypeFilter: (t) => set({ cableTypeFilter: t }),
 
     toggleCableMode: () =>
-      set((s) => ({
-        cableMode: !s.cableMode,
-        cableDraft: null,
-        cableVisibility: !s.cableMode ? 'always' : s.cableVisibility,
-      })),
+      set((s) => {
+        const entering = !s.cableMode
+        return {
+          cableMode: entering,
+          cableDraft: null,
+          cableDrag: null,
+          selectedCableId: null,
+          // Patch mode forces every cable on; leaving it hands the canvas back
+          // to whatever the user was looking at before.
+          cableVisibility: entering
+            ? 'always'
+            : (s.cableVisibilityBeforePatch ?? s.cableVisibility),
+          cableVisibilityBeforePatch: entering ? s.cableVisibility : null,
+        }
+      }),
 
     pickPort: (deviceId, portId) => {
       const { cableDraft } = get()
@@ -675,7 +724,42 @@ export const useRackStore = create<RackState>((set, get) => {
       set({ cableDraft: null })
     },
 
-    cancelCableDraft: () => set({ cableDraft: null }),
+    startCableDrag: (deviceId, portId) => {
+      const { cableDraft } = get()
+      if (cableDraft) {
+        const samePort = cableDraft.deviceId === deviceId && cableDraft.portId === portId
+        // Pressing the armed port again disarms it; pressing another closes the
+        // patch — that is the click-then-click flow, kept alongside dragging.
+        if (!samePort) get().addCable(cableDraft, { deviceId, portId })
+        set({ cableDraft: null, cableDrag: null })
+        return
+      }
+      set({ cableDraft: { deviceId, portId }, cableDrag: { pointer: null, moved: false } })
+    },
+
+    moveCableDrag: (pointer) => {
+      if (!get().cableDrag) return
+      set({ cableDrag: { pointer, moved: true } })
+    },
+
+    endCableDrag: (target) => {
+      const { cableDrag, cableDraft } = get()
+      if (!cableDrag) return
+      const onAnotherPort =
+        target &&
+        cableDraft &&
+        (target.deviceId !== cableDraft.deviceId || target.portId !== cableDraft.portId)
+      if (onAnotherPort) {
+        get().addCable(cableDraft, target)
+        set({ cableDraft: null, cableDrag: null })
+        return
+      }
+      // A drag released on nothing is a cancel; a press that never moved is the
+      // first half of a click-then-click patch, so the source stays armed.
+      set(cableDrag.moved ? { cableDraft: null, cableDrag: null } : { cableDrag: null })
+    },
+
+    cancelCableDraft: () => set({ cableDraft: null, cableDrag: null }),
 
     openDeviceEditor: (deviceId = null) =>
       set({ deviceEditor: { deviceId }, selectedDeviceId: deviceId }),
