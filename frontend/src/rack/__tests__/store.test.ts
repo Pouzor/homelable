@@ -423,6 +423,19 @@ describe('cables', () => {
     expect(store().importCablesFromNetwork(demoNetworkLinks())).toBe(0)
   })
 
+  it('stays available after an import that matched nothing', () => {
+    // Nothing racked for these hints yet: the run creates nothing, and the user
+    // is told to rack the devices first — so the button has to survive it.
+    expect(store().importCablesFromNetwork([
+      { from: 'node-nowhere-a', to: 'node-nowhere-b', type: 'ethernet' },
+    ])).toBe(0)
+    expect(store().networkImportDone).toBe(false)
+
+    store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 4 })
+    expect(store().importCablesFromNetwork(demoNetworkLinks())).toBeGreaterThan(0)
+    expect(store().networkImportDone).toBe(true)
+  })
+
   it('skips hints whose devices are not racked', () => {
     // inv-jbod is never mounted in the demo, so its hint cannot resolve.
     store().importCablesFromNetwork(demoNetworkLinks())
