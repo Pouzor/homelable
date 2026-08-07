@@ -88,6 +88,14 @@ export const STEPS: TourStep[] = [
     mode: 'all',
   },
   {
+    id: 'rack',
+    title: 'Map the physical side',
+    body: 'A canvas can also be a Rack: real racks, the gear mounted in them, and the patch cables between their ports. Create one from the canvas switcher (New Canvas, Kind: Rack), drop a rack, mount devices with + Device, then hit Patch and drag from one port to another.',
+    anchor: '[data-tour="canvas-switcher"]',
+    placement: 'right',
+    mode: 'all',
+  },
+  {
     id: 'style',
     title: 'Make it yours',
     body: 'Switch the canvas theme from Style, or fine-tune colors, borders and fonts per node type. Your homelab, your look.',

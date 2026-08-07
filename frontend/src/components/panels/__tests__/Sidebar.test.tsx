@@ -284,6 +284,38 @@ describe('Sidebar', () => {
       expect(mockLogout).toHaveBeenCalledOnce()
     })
   })
+
+  // ── Walkthrough anchor ─────────────────────────────────────────────────────
+
+  it('carries the walkthrough anchor the rack tour step spotlights', async () => {
+    const { useDesignStore } = await import('@/stores/designStore')
+    const { STEPS } = await import('@/walkthrough/steps')
+    const before = useDesignStore.getState()
+    useDesignStore.setState({
+      designs: [{
+        id: 'd1', name: 'Main', design_type: 'network', icon: null,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      }],
+      activeDesignId: 'd1',
+      loaded: true,
+    })
+
+    const { unmount } = render(<Sidebar {...defaultProps} />)
+
+    const step = STEPS.find((s) => s.id === 'rack')
+    expect(step?.anchor).toBe('[data-tour="canvas-switcher"]')
+    // The overlay resolves that selector against the DOM — an anchor the sidebar
+    // stops carrying leaves the step spotlighting nothing.
+    expect(document.querySelector(step!.anchor!)).toBeInTheDocument()
+
+    // Unmount before restoring, so the store reset never re-renders the sidebar.
+    unmount()
+    useDesignStore.setState({
+      designs: before.designs,
+      activeDesignId: before.activeDesignId,
+      loaded: before.loaded,
+    })
+  })
 })
 
 // ── Standalone mode ────────────────────────────────────────────────────────────

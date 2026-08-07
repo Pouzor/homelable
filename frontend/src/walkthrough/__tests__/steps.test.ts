@@ -12,11 +12,24 @@ describe('getSteps', () => {
     expect(standalone.length).toBeLessThan(STEPS.length)
     const ids = standalone.map((s) => s.id)
     // Canvas-only steps survive; backend-only steps are filtered out.
-    expect(ids).toEqual(expect.arrayContaining(['welcome', 'nodes', 'grouping', 'style', 'end']))
+    expect(ids).toEqual(expect.arrayContaining(['welcome', 'nodes', 'grouping', 'rack', 'style', 'end']))
     expect(ids).not.toContain('scan')
     expect(ids).not.toContain('scan-history')
     expect(ids).not.toContain('inventory')
     expect(ids).not.toContain('imports')
+  })
+
+  it('keeps the rack step in both modes — a rack canvas needs no backend', () => {
+    const rack = STEPS.find((s) => s.id === 'rack')
+    expect(rack?.mode).toBe('all')
+    expect(rack?.anchor).toBe('[data-tour="canvas-switcher"]')
+    expect(getSteps(true).map((s) => s.id)).toContain('rack')
+  })
+
+  it('introduces the rack canvas before the styling step', () => {
+    const ids = STEPS.map((s) => s.id)
+    expect(ids.indexOf('rack')).toBeGreaterThan(ids.indexOf('nodes'))
+    expect(ids.indexOf('rack')).toBeLessThan(ids.indexOf('style'))
   })
 
   it('ends on a step with a GitHub link (the full-mode recap in standalone)', () => {

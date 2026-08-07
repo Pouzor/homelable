@@ -36,6 +36,20 @@ describe('WalkthroughOverlay', () => {
     expect(screen.getByText('Welcome to Homelable')).toBeInTheDocument()
   })
 
+  it('lets the progress strip give way, not the Next button', () => {
+    renderWithProviders(<WalkthroughOverlay />)
+    startTour()
+
+    const dots = screen.getByTestId('walkthrough-progress')
+    expect(dots.children).toHaveLength(TOTAL)
+    // The card is a fixed 320px, so one dot per step eventually outgrows the
+    // footer. The strip shrinks and clips; the counter and buttons hold their
+    // size, or Next lands outside the card.
+    expect(dots.className).toContain('min-w-0')
+    expect(dots.className).toContain('overflow-hidden')
+    expect(screen.getByText('Next').closest('div')?.className).toContain('shrink-0')
+  })
+
   it('skip closes the overlay', () => {
     renderWithProviders(<WalkthroughOverlay />)
     startTour()

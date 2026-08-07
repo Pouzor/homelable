@@ -207,18 +207,20 @@ export function WalkthroughOverlay() {
         )}
 
         <div className="mt-3 flex items-center justify-between gap-2">
-          {/* Progress dots */}
-          <div className="flex items-center gap-1.5">
+          {/* Progress dots. The strip grows with the step count, so it is the
+              part that gives: it shrinks and clips rather than pushing Next out
+              of the fixed-width card. */}
+          <div data-testid="walkthrough-progress" className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
             {steps.map((s, i) => (
               <span
                 key={s.id}
-                className={`h-1.5 rounded-full transition-all ${
+                className={`h-1.5 shrink-0 rounded-full transition-all ${
                   i === stepIndex ? 'w-4 bg-[#00d4ff]' : 'w-1.5 bg-[#30363d]'
                 }`}
               />
             ))}
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1.5">
             <span className="mr-1 text-[10px] font-mono text-muted-foreground">
               {stepIndex + 1}/{steps.length}
             </span>
