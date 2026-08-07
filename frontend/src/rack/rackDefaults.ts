@@ -14,11 +14,6 @@ export const CABLE_COLORS: Record<CableType, string> = {
   fiber: '#f0a500',
 }
 
-export const CABLE_TYPE_LABELS: Record<CableType, string> = {
-  ethernet: 'Ethernet',
-  fiber: 'Fiber',
-}
-
 /** Cable type implied by the port a patch starts from. */
 export const PORT_CABLE_TYPE: Record<PortType, CableType> = {
   rj45: 'ethernet',

@@ -81,6 +81,15 @@ describe('CableLayer selection', () => {
     expect(band.querySelector('path')!.getAttribute('stroke-dasharray')).toBe('5 4')
   })
 
+  it('draws copper and fibre alike — there is no type filter any more', () => {
+    useRackStore.getState().toggleCableMode()
+    const { cables } = useRackStore.getState()
+    expect(new Set(cables.map((c) => c.type))).toEqual(new Set(['ethernet', 'fiber']))
+
+    const { container } = render(<CableLayer />)
+    expect(hitPaths(container)).toHaveLength(cables.length)
+  })
+
   it('draws the selected cable with a highlight halo', () => {
     useRackStore.getState().toggleCableMode()
     const { container, rerender } = render(<CableLayer />)

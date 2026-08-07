@@ -6,22 +6,29 @@
  * much of the cabling is on screen.
  */
 import { useState } from 'react'
-import { Cable, Link2, Plus, Trash2, X } from 'lucide-react'
+import { Cable, Eye, EyeOff, Link2, MousePointer2, Plus, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useRackStore } from '@/rack/store'
 import { useRackPalette } from '@/rack/rackTheme'
 import { loadNetworkLinks } from '@/rack/networkLinks'
-import { CABLE_TYPE_LABELS } from '@/rack/rackDefaults'
 import { useDesignStore } from '@/stores/designStore'
-import type { CableType, CableVisibility } from '@/types'
+import type { CableVisibility } from '@/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 const ghost =
   'gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]'
-const selectClass =
-  'rounded border border-border bg-[#0d1117] px-2 py-1 text-xs text-foreground outline-none focus:border-[#00d4ff] cursor-pointer'
+/** Reads as one of the ghost buttons around it: no box until you hover it. */
+const triggerClass =
+  'gap-1.5 border-transparent bg-transparent px-2 text-xs font-medium text-muted-foreground hover:bg-[#21262d] hover:text-foreground dark:bg-transparent dark:hover:bg-[#21262d] cursor-pointer'
+
+const VISIBILITY_OPTIONS: { value: CableVisibility; label: string; icon: typeof Eye }[] = [
+  { value: 'hover', label: 'Cables on hover', icon: MousePointer2 },
+  { value: 'always', label: 'Cables always', icon: Eye },
+  { value: 'hidden', label: 'Cables hidden', icon: EyeOff },
+]
 
 export function RackToolbarActions() {
   const palette = useRackPalette()
@@ -30,8 +37,6 @@ export function RackToolbarActions() {
   const toggleCableMode = useRackStore((s) => s.toggleCableMode)
   const cableVisibility = useRackStore((s) => s.cableVisibility)
   const setCableVisibility = useRackStore((s) => s.setCableVisibility)
-  const cableTypeFilter = useRackStore((s) => s.cableTypeFilter)
-  const setCableTypeFilter = useRackStore((s) => s.setCableTypeFilter)
   const cableDraft = useRackStore((s) => s.cableDraft)
   const cancelCableDraft = useRackStore((s) => s.cancelCableDraft)
   const selectedCableId = useRackStore((s) => s.selectedCableId)
@@ -95,30 +100,23 @@ export function RackToolbarActions() {
         </Button>
       )}
 
-      <select
-        className={selectClass}
-        aria-label="Cable visibility"
-        value={cableVisibility}
-        onChange={(e) => setCableVisibility(e.target.value as CableVisibility)}
-      >
-        <option value="hover">Cables on hover</option>
-        <option value="always">Cables always</option>
-        <option value="hidden">Cables hidden</option>
-      </select>
-
-      <select
-        className={selectClass}
-        aria-label="Cable type filter"
-        value={cableTypeFilter}
-        onChange={(e) => setCableTypeFilter(e.target.value as CableType | 'all')}
-      >
-        <option value="all">All types</option>
-        {(Object.keys(CABLE_TYPE_LABELS) as CableType[]).map((t) => (
-          <option key={t} value={t}>
-            {CABLE_TYPE_LABELS[t]}
-          </option>
-        ))}
-      </select>
+      <Select value={cableVisibility} onValueChange={(v) => setCableVisibility(v as CableVisibility)}>
+        <SelectTrigger size="sm" className={triggerClass} aria-label="Cable visibility">
+          <SelectValue>
+            {(() => {
+              const { icon: Icon, label } = VISIBILITY_OPTIONS.find((o) => o.value === cableVisibility)!
+              return <><Icon size={14} /> {label}</>
+            })()}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent className="bg-[#21262d] border-[#30363d]">
+          {VISIBILITY_OPTIONS.map(({ value, icon: Icon, label }) => (
+            <SelectItem key={value} value={value} className="text-xs">
+              <Icon size={14} /> {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       {!STANDALONE && (
         <Button
