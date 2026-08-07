@@ -16,20 +16,21 @@ Here's what Homelable can do. One line on what each feature is, then how to swit
 2. [Groups & Nesting](#2-groups--nesting)
 3. [Text Annotations](#3-text-annotations)
 4. [Multiple Canvases](#4-multiple-canvases)
-5. [Customize Style](#5-customize-style)
-6. [Floor Plan](#6-floor-plan-)
-7. [Network Scanner (IP import)](#7-network-scanner-ip-import-)
-8. [Zigbee Import](#8-zigbee-import-)
-9. [Z-Wave Import](#9-z-wave-import-)
-10. [Proxmox VE Import](#10-proxmox-ve-import-)
-11. [Device Inventory](#11-device-inventory-)
-12. [Live Status Monitoring](#12-live-status-monitoring-)
-13. [Export (PNG / SVG / YAML / Markdown)](#13-export)
-14. [Live View (read-only public canvas)](#14-live-view-)
-15. [Gethomepage Widget](#15-gethomepage-widget-)
-16. [MCP Server (AI integration)](#16-mcp-server-)
-17. [Settings & Shortcuts](#17-settings--shortcuts)
-18. [Authentication (Local / OpenID Connect)](#18-authentication-local--openid-connect-)
+5. [Rack Canvas](#5-rack-canvas)
+6. [Customize Style](#6-customize-style)
+7. [Floor Plan](#7-floor-plan-)
+8. [Network Scanner (IP import)](#8-network-scanner-ip-import-)
+9. [Zigbee Import](#9-zigbee-import-)
+10. [Z-Wave Import](#10-z-wave-import-)
+11. [Proxmox VE Import](#11-proxmox-ve-import-)
+12. [Device Inventory](#12-device-inventory-)
+13. [Live Status Monitoring](#13-live-status-monitoring-)
+14. [Export (PNG / SVG / YAML / Markdown)](#14-export)
+15. [Live View (read-only public canvas)](#15-live-view-)
+16. [Gethomepage Widget](#16-gethomepage-widget-)
+17. [MCP Server (AI integration)](#17-mcp-server-)
+18. [Settings & Shortcuts](#18-settings--shortcuts)
+19. [Authentication (Local / OpenID Connect)](#19-authentication-local--openid-connect-)
 
 ---
 
@@ -74,7 +75,26 @@ Here's what Homelable can do. One line on what each feature is, then how to swit
 
 ---
 
-## 5. Customize Style
+## 5. Rack Canvas
+
+**What:** The physical side of the lab, as its own kind of canvas: racks, the gear mounted in them, and the patch cables between their ports. Where a diagram says what talks to what, a rack says what sits in which U, and which switch port the uplink lands on.
+
+**Use:**
+- **Canvas switcher** → **New Canvas** → Kind **Rack**. A canvas cannot change kind afterwards.
+- **Add Rack** in the header drops a rack; double-click its frame for U height, 19"/10" width, numbering direction, colours and the enclosed/open look.
+- **+ Device** in the sidebar mounts something: an entry from your **Device Inventory** 🔒, a **new device** (which joins the inventory tagged *Rack devices*), or a rack-only **accessory** (blank, shelf, cable manager). Double-click a plate to edit it, and **Unmount** to take it out — the device itself stays in the inventory.
+- Gear occupies a U range and part of a 12-column width grid, so half- and third-width machines share a U. A drop snaps to the nearest free slot, an impossible one previews red, and growing a device relocates it to the nearest slot that fits.
+- The **Faceplate** field opens a visual catalog — servers, switches, routers, patch panels, UPS and PDUs, desktop NAS towers, shelves and blanks — drawn as vector artwork that scales with the rack and follows your theme.
+- **Patch**: drag from one port to another (or click both in turn) to cable them, across racks if you need to. Click a cable to select it, then **Delete** or **Unplug**. A header select controls whether cables show on hover, always, or not at all.
+- **Status**: pin a mount's colour, or set **Check device** 🔒 so it follows the status check already configured on the matching diagram node.
+- **Import links** 🔒 derives patches, once per canvas, from the physical links already drawn on your diagrams.
+- Saving is explicit — **Save Rack** — like any other canvas.
+
+> **Full documentation:** [docs/rack-canvas.md](./docs/rack-canvas.md)
+
+---
+
+## 6. Customize Style
 
 **What:** Repaint the whole thing with a preset theme, or roll your own node and edge colors.
 
@@ -85,7 +105,7 @@ Here's what Homelable can do. One line on what each feature is, then how to swit
 
 ---
 
-## 6. Floor Plan 🔒
+## 7. Floor Plan 🔒
 
 **What:** Put a background image (a house plan, an office layout, a rack diagram) behind a canvas and lay your devices out on top of it.
 
@@ -96,7 +116,7 @@ Here's what Homelable can do. One line on what each feature is, then how to swit
 
 ---
 
-## 7. Network Scanner (IP import) 🔒
+## 8. Network Scanner (IP import) 🔒
 
 **What:** Point `nmap` at your network, fingerprint the services it finds, and turn hosts into nodes.
 
@@ -116,7 +136,7 @@ SCANNER_HTTP_VERIFY_TLS=false
 
 ---
 
-## 8. Zigbee Import 🔒
+## 9. Zigbee Import 🔒
 
 **What:** Pull your **Zigbee2MQTT** topology in over MQTT and drop every device on the canvas as a typed node.
 
@@ -129,7 +149,7 @@ Nodes come in as `zigbee_coordinator` / `zigbee_router` / `zigbee_enddevice`. Th
 
 ---
 
-## 9. Z-Wave Import 🔒
+## 10. Z-Wave Import 🔒
 
 **What:** Same idea for **Z-Wave JS UI**, over the same MQTT broker.
 
@@ -142,7 +162,7 @@ Nodes: `zwave_coordinator` / `zwave_router` / `zwave_enddevice`. The hierarchy c
 
 ---
 
-## 10. Proxmox VE Import 🔒
+## 11. Proxmox VE Import 🔒
 
 **What:** Pull your **Proxmox VE** inventory (hosts, VMs, LXC) in over the Proxmox REST API — typed, named nodes with run state and hardware specs. Optional scheduled **auto-sync**; guest IPs already found by a scan are merged, not duplicated.
 
@@ -156,7 +176,7 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 
 ---
 
-## 11. Device Inventory 🔒
+## 12. Device Inventory 🔒
 
 **What:** The holding pen for everything found by a scan or import that isn't on the canvas yet, plus a separate **Hidden Devices** list.
 
@@ -167,7 +187,7 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 
 ---
 
-## 12. Live Status Monitoring 🔒
+## 13. Live Status Monitoring 🔒
 
 **What:** Keeps checking each node and shows its status (🟢 online / 🔴 offline / ⚫ unknown) right on the canvas.
 
@@ -188,7 +208,7 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 
 ---
 
-## 13. Export
+## 14. Export
 
 **What:** Get your canvas out as a picture or as structured data.
 
@@ -200,7 +220,7 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 
 ---
 
-## 14. Live View 🔒
+## 15. Live View 🔒
 
 **What:** A read-only, no-login snapshot of a canvas you can share on your LAN. Off by default.
 
@@ -212,7 +232,7 @@ Pan and zoom only, no editing. Click a node with an IP and it opens in a new tab
 
 ---
 
-## 15. Gethomepage Widget 🔒
+## 16. Gethomepage Widget 🔒
 
 **What:** A tiny JSON stats endpoint for [gethomepage](https://gethomepage.dev)'s `customapi` widget. Off by default.
 
@@ -224,7 +244,7 @@ Widget snippet lives in the [README](./README.md#gethomepage-widget-read-only-st
 
 ---
 
-## 16. MCP Server 🔒
+## 17. MCP Server 🔒
 
 **What:** A [Model Context Protocol](https://modelcontextprotocol.io) server so an MCP client (Claude Code, Claude Desktop, Open WebUI…) can read and change your topology. Optional, runs as its own service.
 
@@ -242,7 +262,7 @@ The AI can list nodes/edges/canvas/pending/scans, add/update/delete nodes and ed
 
 ---
 
-## 17. Settings & Shortcuts
+## 18. Settings & Shortcuts
 
 **What:** App config and keyboard shortcuts.
 
@@ -253,7 +273,7 @@ The AI can list nodes/edges/canvas/pending/scans, add/update/delete nodes and ed
 
 ---
 
-## 18. Authentication (Local / OpenID Connect) 🔒
+## 19. Authentication (Local / OpenID Connect) 🔒
 
 **What:** Homelable protects the app behind a login. Two exclusive modes, set once in `.env` with `AUTH_MODE`:
 - **`local`** (default) — a single username + bcrypt-hashed password. Nothing changes for existing installs.

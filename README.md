@@ -21,6 +21,7 @@
   <a href="#screenshots">Screenshots</a> ·
   <a href="#features">Features</a> ·
   <a href="#installation">Installation</a> ·
+  <a href="#rack-canvas">Rack Canvas</a> ·
   <a href="#network-scanner">Network Scanner</a> ·
   <a href="#zigbee2mqtt-import">Zigbee / Z-Wave</a> ·
   <a href="#proxmox-ve-import">Proxmox</a> ·
@@ -56,7 +57,7 @@ If you are running  <img width="22" height="22" align="top" alt="New_Home_Assist
 
 ## Features
 
-From one-click **network scans** and **Proxmox / Zigbee / Z-Wave** imports to **live status monitoring**, floor plans, multi-canvas layouts and an **MCP server** for AI assistants — Homelable maps and watches your whole homelab.
+From one-click **network scans** and **Proxmox / Zigbee / Z-Wave** imports to **live status monitoring**, floor plans, **rack canvases** with port-to-port patching, multi-canvas layouts and an **MCP server** for AI assistants — Homelable maps and watches your whole homelab.
 
 Every feature, with how to turn it on and use it, is described in **[FEATURES.md](./FEATURES.md)**.
 
@@ -65,6 +66,24 @@ Every feature, with how to turn it on and use it, is described in **[FEATURES.md
 ## Installation
 
 Docker, Proxmox LXC, build from source, configuration, and development setup are all covered in **[INSTALLATION.md](./INSTALLATION.md)**.
+
+---
+
+## Rack Canvas
+
+Next to the network diagram, Homelable draws the **physical** side of your lab: racks, the gear mounted in them, and the patch cables between their ports. It is a canvas kind of its own — create it from the canvas switcher, **New Canvas → Kind → Rack**.
+
+### Usage
+
+1. **Add Rack** in the header drops a rack; double-click its frame to set U height, 19"/10" width, numbering direction and colours
+2. **+ Device** in the sidebar mounts something — an entry from your Device Inventory, a new device (which joins the inventory), or an accessory (blank, shelf, cable manager)
+3. Pick a **faceplate** from the visual catalog: servers, switches, routers, patch panels, UPS and PDUs, desktop NAS towers, shelves and blanks
+4. Click **Patch**, then drag from one port to another to cable them — across racks if you need to. Click a cable and press Delete to unplug it
+5. **Save Rack** when you're happy; nothing is written behind your back
+
+Gear sits in a U range and part of a 12-column width grid, so half- and third-width machines share a U; a drop snaps to the nearest free slot. A mount can follow the status check of its matching diagram node, and **Import links** derives patches from the links already drawn on your diagrams.
+
+> **Full documentation:** [docs/rack-canvas.md](./docs/rack-canvas.md)
 
 ---
 
