@@ -23,7 +23,7 @@ lands on.
 - **Ports & patching** — RJ45 and SFP ports per device, cabled port-to-port by dragging from one to the other, across racks if needed.
 - **Device Inventory** 🔒 — a mount points at a real inventory entry, so a rack shows the same devices your scans found, and gear you rack by hand joins that inventory.
 - **Live status** 🔒 — a mount can follow the status check already configured on the matching diagram node, and light its plate LED accordingly.
-- **Import links** 🔒 — derive patches in one shot from the physical links already drawn on your diagrams.
+- **Import links** 🔒 — derive patches from the physical links already drawn on your diagrams, as often as you like.
 
 ---
 
@@ -155,7 +155,9 @@ pan and zoom with the canvas and may run from one rack to another.
 
 **Import links** derives patches from the physical links (ethernet, fibre, vlan,
 cluster) already drawn on your diagrams, matching both ends to mounts that point
-at those nodes. It runs **once per canvas** — afterwards, patch by hand.
+at those nodes. Run it as often as you like: a pair of devices already cabled
+is left alone, so a second run after racking more gear only adds what is
+missing.
 
 ---
 

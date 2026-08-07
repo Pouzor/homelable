@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
 import { Sidebar } from '../Sidebar'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -315,6 +315,90 @@ describe('Sidebar', () => {
       activeDesignId: before.activeDesignId,
       loaded: before.loaded,
     })
+  })
+})
+
+// ── Rack canvas ────────────────────────────────────────────────────────────────
+// Same component, a different half of it: the rack branch swaps the view label,
+// the actions, the body and the footer. A mocked canvas store would happily hide
+// all of that, so each branch is asserted rather than assumed.
+describe('Sidebar (rack canvas)', () => {
+  let restore: { designs: Design[]; activeDesignId: string | null; activeDesignType: string }
+
+  beforeEach(async () => {
+    mockStore()
+    mockAuth()
+    const { useDesignStore } = await import('@/stores/designStore')
+    const { useRackStore } = await import('@/rack/store')
+    const s = useDesignStore.getState()
+    restore = { designs: s.designs, activeDesignId: s.activeDesignId, activeDesignType: s.activeDesignType }
+    useDesignStore.setState({ activeDesignType: 'rack' })
+    useRackStore.getState().loadDemo()
+  })
+
+  afterEach(async () => {
+    cleanup()
+    const { useDesignStore } = await import('@/stores/designStore')
+    useDesignStore.setState(restore)
+  })
+
+  it('swaps the view and the actions for their rack equivalents', () => {
+    render(<Sidebar {...defaultProps} />)
+    expect(screen.getByText('Rack view')).toBeInTheDocument()
+    expect(screen.getByText('Add Device')).toBeInTheDocument()
+    expect(screen.getByText('Save Rack')).toBeInTheDocument()
+    expect(screen.queryByText('Canvas')).not.toBeInTheDocument()
+    expect(screen.queryByText('Add Node')).not.toBeInTheDocument()
+    expect(screen.queryByText('Add Zone')).not.toBeInTheDocument()
+    expect(screen.queryByText('Add Text')).not.toBeInTheDocument()
+  })
+
+  it('hides the logical-canvas discovery actions', () => {
+    render(<Sidebar {...defaultProps} />)
+    // Nothing here is scanned onto a rack — those actions belong to a diagram.
+    expect(screen.queryByText('Scan Network')).not.toBeInTheDocument()
+    expect(screen.queryByText('Zigbee Import')).not.toBeInTheDocument()
+    expect(screen.queryByText('Z-Wave Import')).not.toBeInTheDocument()
+    expect(screen.queryByText('Proxmox Import')).not.toBeInTheDocument()
+    // The Device Inventory stays: a rack mounts what the scans found.
+    expect(screen.getByText('Device Inventory')).toBeInTheDocument()
+  })
+
+  it('opens the device editor from + Device', async () => {
+    const { useRackStore } = await import('@/rack/store')
+    render(<Sidebar {...defaultProps} />)
+
+    fireEvent.click(screen.getByText('Add Device'))
+    expect(useRackStore.getState().deviceEditor).toEqual({ deviceId: null })
+  })
+
+  it('counts capacity instead of reachability', async () => {
+    const { useRackStore } = await import('@/rack/store')
+    const { freeUnits } = await import('@/rack/layout')
+    const { racks, devices, cables } = useRackStore.getState()
+    const free = racks.reduce((sum, r) => sum + freeUnits(r, devices), 0)
+    const total = racks.reduce((sum, r) => sum + r.uHeight, 0)
+
+    render(<Sidebar {...defaultProps} />)
+
+    expect(screen.getByText('Racks').nextElementSibling).toHaveTextContent(String(racks.length))
+    expect(screen.getByText('Mounted').nextElementSibling).toHaveTextContent(String(devices.length))
+    expect(screen.getByText('Cables').nextElementSibling).toHaveTextContent(String(cables.length))
+    expect(screen.getByText(`${free}U / ${total}U`)).toBeInTheDocument()
+    expect(screen.queryByText('Online')).not.toBeInTheDocument()
+  })
+
+  it('tracks the rack store for the unsaved badge, not the canvas store', async () => {
+    const { useRackStore } = await import('@/rack/store')
+    useRackStore.setState({ hasUnsavedChanges: true })
+    // The canvas store — mocked clean — must not be what answers here.
+    const { container } = render(<Sidebar {...defaultProps} />)
+    expect(container.querySelector('.bg-\\[\\#e3b341\\]')).toBeInTheDocument()
+
+    cleanup()
+    useRackStore.setState({ hasUnsavedChanges: false })
+    const { container: clean } = render(<Sidebar {...defaultProps} />)
+    expect(clean.querySelector('.bg-\\[\\#e3b341\\]')).toBeNull()
   })
 })
 

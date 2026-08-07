@@ -87,7 +87,7 @@ Here's what Homelable can do. One line on what each feature is, then how to swit
 - The **Faceplate** field opens a visual catalog — servers, switches, routers, patch panels, UPS and PDUs, desktop NAS towers, shelves and blanks — drawn as vector artwork that scales with the rack and follows your theme.
 - **Patch**: drag from one port to another (or click both in turn) to cable them, across racks if you need to. Click a cable to select it, then **Delete** or **Unplug**. A header select controls whether cables show on hover, always, or not at all.
 - **Status**: pin a mount's colour, or set **Check device** 🔒 so it follows the status check already configured on the matching diagram node.
-- **Import links** 🔒 derives patches, once per canvas, from the physical links already drawn on your diagrams.
+- **Import links** 🔒 derives patches from the physical links already drawn on your diagrams. Run it again after racking more gear — pairs already cabled are left alone.
 - Saving is explicit — **Save Rack** — like any other canvas.
 
 > **Full documentation:** [docs/rack-canvas.md](./docs/rack-canvas.md)

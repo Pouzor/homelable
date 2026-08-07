@@ -42,7 +42,6 @@ export function RackToolbarActions() {
   const selectedCableId = useRackStore((s) => s.selectedCableId)
   const removeSelectedCable = useRackStore((s) => s.removeSelectedCable)
   const importCables = useRackStore((s) => s.importCablesFromNetwork)
-  const networkImportDone = useRackStore((s) => s.networkImportDone)
   const designs = useDesignStore((s) => s.designs)
   const [importing, setImporting] = useState(false)
 
@@ -123,7 +122,7 @@ export function RackToolbarActions() {
           size="sm"
           variant="ghost"
           className={ghost}
-          disabled={networkImportDone || importing}
+          disabled={importing}
           onClick={() => void handleImport()}
           title="One-shot: derive patches from the links already drawn on the logical canvases"
         >
