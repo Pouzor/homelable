@@ -112,7 +112,6 @@ interface RackState {
    * `moved` separates a drag from a plain click on the same port.
    */
   cableDrag: { pointer: { x: number; y: number } | null; moved: boolean } | null
-  cableTypeFilter: CableType | 'all'
   /**
    * Open editor dialogs. Device and rack settings live in modals, so any
    * component (sidebar, canvas, header) can open them without prop drilling.
@@ -189,7 +188,6 @@ interface RackState {
   removeSelectedCable: () => void
   hoverDevice: (id: string | null) => void
   setCableVisibility: (v: CableVisibility) => void
-  setCableTypeFilter: (t: CableType | 'all') => void
   toggleCableMode: () => void
   pickPort: (deviceId: string, portId: string) => void
   /**
@@ -235,7 +233,6 @@ function emptyState() {
     cableMode: false,
     cableDraft: null,
     cableDrag: null,
-    cableTypeFilter: 'all' as const,
     networkImportDone: false,
     deviceEditor: null,
     rackEditorId: null,
@@ -695,7 +692,6 @@ export const useRackStore = create<RackState>((set, get) => {
     },
     hoverDevice: (id) => set({ hoveredDeviceId: id }),
     setCableVisibility: (v) => set({ cableVisibility: v, cableVisibilityBeforePatch: null }),
-    setCableTypeFilter: (t) => set({ cableTypeFilter: t }),
 
     toggleCableMode: () =>
       set((s) => {

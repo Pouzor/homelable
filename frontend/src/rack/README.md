@@ -60,7 +60,7 @@ types in `@/types/rack`, narrowing every enum on the way in.
 
 ## Panel behaviour in rack mode
 
-- **Header**: undo/redo, auto layout, YAML import/export, MD and live View are hidden. Add Rack, Patch, cable visibility, cable type filter and Import links replace them. PNG export and Save stay.
+- **Header**: undo/redo, auto layout, YAML import/export, MD and live View are hidden. Add Rack, Patch, cable visibility and Import links replace them. PNG export and Save stay.
 - **Left rail**: the design switcher, Device Inventory, Scan History, Settings and Logout stay. The node/zone/text/scan/import block becomes the accessory tray plus **+ Device**. Devices themselves are not listed there — they live in the Device Inventory modal. The footer counts racks, mounts, cables and free U instead of online/offline nodes.
 - **Right rail**: none. A mount is edited in `RackDeviceModal`, a rack in `RackSettingsModal`, so the canvas keeps the full width.
 

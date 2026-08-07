@@ -29,7 +29,6 @@ export function CableLayer() {
   const devices = useRackStore((s) => s.devices)
   const cables = useRackStore((s) => s.cables)
   const visibility = useRackStore((s) => s.cableVisibility)
-  const typeFilter = useRackStore((s) => s.cableTypeFilter)
   const hoveredDeviceId = useRackStore((s) => s.hoveredDeviceId)
   const selectedDeviceId = useRackStore((s) => s.selectedDeviceId)
   const cableMode = useRackStore((s) => s.cableMode)
@@ -57,7 +56,6 @@ export function CableLayer() {
 
   const visible: Resolved[] = []
   for (const cable of cables) {
-    if (typeFilter !== 'all' && cable.type !== typeFilter) continue
     if (!showAll) {
       if (!focus) continue
       if (cable.from.deviceId !== focus && cable.to.deviceId !== focus) continue
