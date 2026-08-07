@@ -175,9 +175,12 @@ interface RackState {
   ) => string | null
   updateCable: (id: string, patch: Partial<Omit<Cable, 'id'>>) => void
   removeCable: (id: string) => void
-  /** One-shot seed from the logical canvas — offered at creation time only. */
+  /**
+   * Seed patches from the logical canvas. Idempotent: a device pair already
+   * cabled is skipped, so re-running after racking more gear adds only what is
+   * missing instead of doubling what is there.
+   */
   importCablesFromNetwork: (hints: NetworkLinkHint[]) => number
-  networkImportDone: boolean
 
   // UI actions
   setViewport: (v: Viewport) => void
@@ -233,7 +236,6 @@ function emptyState() {
     cableMode: false,
     cableDraft: null,
     cableDrag: null,
-    networkImportDone: false,
     deviceEditor: null,
     rackEditorId: null,
   }
@@ -647,22 +649,33 @@ export const useRackStore = create<RackState>((set, get) => {
       })),
 
     importCablesFromNetwork: (hints) => {
-      const { devices, networkImportDone } = get()
-      if (networkImportDone) return 0
+      const { devices } = get()
+      // Idempotent by construction rather than by a "done" flag: a flag lives in
+      // memory only, so a reload re-armed the import and every logical link got
+      // a second cable on the next free pair of ports. A pair already patched is
+      // skipped instead, whichever ports carry it, which also makes a re-run
+      // after racking more gear do the useful half of the work.
+      const pairKey = (x: string, y: string) => [x, y].sort().join('|')
+      const patched = new Set(get().cables.map((c) => pairKey(c.from.deviceId, c.to.deviceId)))
 
       let created = 0
       for (const hint of hints) {
         const a = devices.find((d) => d.nodeId === hint.from)
         const b = devices.find((d) => d.nodeId === hint.to)
-        if (!a || !b) continue
+        if (!a || !b || patched.has(pairKey(a.id, b.id))) continue
         const usedPorts = new Set(
           get().cables.flatMap((c) => [
             `${c.from.deviceId}:${c.from.portId}`,
             `${c.to.deviceId}:${c.to.portId}`,
           ]),
         )
-        const freePort = (device: typeof a) =>
-          device.ports.find((p) => !usedPorts.has(`${device.id}:${p.id}`))
+        // Prefer a port the cable could actually be plugged into: a fibre link
+        // landing on two RJ45 jacks draws an amber run across copper ports. Any
+        // free port still beats no patch at all when the plate has none.
+        const freePort = (device: typeof a) => {
+          const free = device.ports.filter((p) => !usedPorts.has(`${device.id}:${p.id}`))
+          return free.find((p) => PORT_CABLE_TYPE[p.type] === hint.type) ?? free[0]
+        }
         const pa = freePort(a)
         const pb = freePort(b)
         if (!pa || !pb) continue
@@ -671,12 +684,11 @@ export const useRackStore = create<RackState>((set, get) => {
           { deviceId: b.id, portId: pb.id },
           { type: hint.type, label: hint.label },
         )
-        if (id) created++
+        if (id) {
+          created++
+          patched.add(pairKey(a.id, b.id))
+        }
       }
-      // Only latch on success. An import run before anything is racked matches
-      // nothing and says so — disabling the button then would kill the retry the
-      // toast just asked for.
-      if (created > 0) set({ networkImportDone: true })
       return created
     },
 

@@ -415,25 +415,67 @@ describe('cables', () => {
     expect(store().cableVisibility).toBe('always')
   })
 
-  it('imports links from the network canvas once', () => {
+  it('imports links from the network canvas', () => {
     // Mount the inventory item the hints reference; the other end is racked already.
     store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 4 })
     const first = store().importCablesFromNetwork(demoNetworkLinks())
     expect(first).toBeGreaterThan(0)
-    expect(store().importCablesFromNetwork(demoNetworkLinks())).toBe(0)
   })
 
-  it('stays available after an import that matched nothing', () => {
-    // Nothing racked for these hints yet: the run creates nothing, and the user
-    // is told to rack the devices first — so the button has to survive it.
+  it('re-running the import adds nothing to a pair already patched', () => {
+    // The guard used to be an in-memory flag, so a reload re-armed the import and
+    // every link came back on the next free pair of ports. The pair itself is the
+    // guard now, and it survives a reload because the cables do.
+    store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 4 })
+    const created = store().importCablesFromNetwork(demoNetworkLinks())
+    const after = store().cables.length
+
+    expect(store().importCablesFromNetwork(demoNetworkLinks())).toBe(0)
+    expect(store().cables).toHaveLength(after)
+    expect(created).toBeGreaterThan(0)
+  })
+
+  it('imports what is newly rackable after a run that matched nothing', () => {
+    // Import before racking anything: nothing matches, and the toast tells the
+    // user to rack the devices first. That retry has to still work.
     expect(store().importCablesFromNetwork([
       { from: 'node-nowhere-a', to: 'node-nowhere-b', type: 'ethernet' },
     ])).toBe(0)
-    expect(store().networkImportDone).toBe(false)
 
     store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 4 })
     expect(store().importCablesFromNetwork(demoNetworkLinks())).toBeGreaterThan(0)
-    expect(store().networkImportDone).toBe(true)
+  })
+
+  it('lands a fibre link on fibre ports when both plates have a free one', () => {
+    const used = new Set(
+      store().cables.flatMap((c) => [
+        `${c.from.deviceId}:${c.from.portId}`,
+        `${c.to.deviceId}:${c.to.portId}`,
+      ]),
+    )
+    // Devices that carry both kinds of free port, so the first free one is copper
+    // and picking the fibre one is a real choice rather than the only option.
+    const mixed = store().devices.filter((d) => {
+      const free = d.ports.filter((p) => !used.has(`${d.id}:${p.id}`))
+      return d.nodeId && free.some((p) => p.type === 'rj45') && free.some((p) => p.type !== 'rj45')
+    })
+    const patched = new Set(
+      store().cables.map((c) => [c.from.deviceId, c.to.deviceId].sort().join('|')),
+    )
+    const pair = mixed.flatMap((x, i) =>
+      mixed.slice(i + 1).map((y) => [x, y] as const),
+    ).find(([x, y]) => !patched.has([x.id, y.id].sort().join('|')))
+    expect(pair).toBeDefined()
+    const [a, b] = pair!
+    const before = new Set(store().cables.map((c) => c.id))
+
+    store().importCablesFromNetwork([{ from: a.nodeId!, to: b.nodeId!, type: 'fiber' }])
+
+    const cable = store().cables.find((c) => !before.has(c.id))!
+    const portOf = (deviceId: string, portId: string) =>
+      store().devices.find((d) => d.id === deviceId)!.ports.find((p) => p.id === portId)!
+    expect(portOf(cable.from.deviceId, cable.from.portId).type).not.toBe('rj45')
+    expect(portOf(cable.to.deviceId, cable.to.portId).type).not.toBe('rj45')
   })
 
   it('skips hints whose devices are not racked', () => {

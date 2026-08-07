@@ -55,7 +55,7 @@ types in `@/types/rack`, narrowing every enum on the way in.
 - Double-click empty rack chrome → `RackSettingsModal` (name, location, U height, 19"/10", numbering direction, frame/rail/interior colours, U numbers, enclosed, delete).
 - Growing a device — by hand or by picking a taller plate — relocates it to the nearest slot that takes the new size. Only a rack with no such slot rejects the edit, and says so.
 - **Patch mode**: drag from port A to port B to cable them — a dashed rubber band follows the pointer, exactly like dragging an edge on the logical canvas. Clicking A then B still works; Escape drops a half-drawn patch. Click a cable to select it (it gets an accent halo), then press Delete/Backspace — or the header's Unplug button — to remove it; Escape or a pane click deselects. Rack dragging is disabled while in patch mode.
-- **Import links**: one shot per canvas, guarded by `networkImportDone`. Reads the physical edges (ethernet/fibre/vlan/cluster) of every non-rack design and matches them on `nodeId`.
+- **Import links**: reads the physical edges (ethernet/fibre/vlan/cluster) of every non-rack design and matches them on `nodeId`. Idempotent — a device pair already cabled is skipped, whichever ports carry it, so a re-run after racking more gear adds only what is missing. There is no "done" flag: one lived in memory only, and a reload re-armed the import onto the next free ports.
 - **New device**: the modal's *New device* source adds a Device Inventory entry (tagged `rack`), for gear no scan will ever discover. The left-rail tray only carries accessories, as a drag source.
 
 ## Panel behaviour in rack mode
