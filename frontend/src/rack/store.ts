@@ -673,7 +673,10 @@ export const useRackStore = create<RackState>((set, get) => {
         )
         if (id) created++
       }
-      set({ networkImportDone: true })
+      // Only latch on success. An import run before anything is racked matches
+      // nothing and says so — disabling the button then would kill the retry the
+      // toast just asked for.
+      if (created > 0) set({ networkImportDone: true })
       return created
     },
 
