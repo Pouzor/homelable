@@ -27,7 +27,7 @@
     "clsx": "^2.1.1",
     "dagre": "^0.8.5",
     "html-to-image": "^1.11.13",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^4.3.1",
     "next-themes": "^0.4.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
