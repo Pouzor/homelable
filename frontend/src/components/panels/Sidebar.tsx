@@ -172,6 +172,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
         <div className="px-2 pt-2 pb-1 border-b border-border relative">
           <button
             onClick={() => setDesignSwitcherOpen((o) => !o)}
+            data-tour="canvas-switcher"
             className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium bg-[#21262d] border border-border hover:border-[#30363d] transition-colors cursor-pointer"
           >
             {activeDesignId ? (() => {
