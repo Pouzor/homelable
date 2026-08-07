@@ -22,6 +22,12 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
+          # Lob (a direct-mail API this project does not use) matches any
+          # `test_`-prefixed identifier of ~35 chars and reports it verified,
+          # because Lob test keys authenticate unconditionally. Every pytest
+          # function named at that length trips it — the first was
+          # `test_updates_an_existing_device_in_place`.
+          extra_args: --exclude-detectors=Lob
 
   dependency-audit:
     runs-on: ubuntu-latest
