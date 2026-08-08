@@ -13,6 +13,7 @@ import {
   type ApiRackDevice,
 } from '../rackSerializer'
 import { DEFAULT_RACK_STYLE } from '@/rack/rackDefaults'
+import { RACK_COLUMNS } from '@/types'
 import type { Cable, Rack, RackDevice } from '@/types'
 
 const apiRack: ApiRack = {
@@ -222,7 +223,17 @@ describe('domain → API', () => {
     const device = { ...toRackDevice(apiDevice), colStart: 99, colSpan: 99 }
     const back = fromRackDevice(device)
     expect(back.col_start).toBe(11)
-    expect(back.col_span).toBe(12)
+    // Clamped against the start, not the grid alone: 11 + 12 would span to
+    // column 23 of 12 and the backend 422s the whole save over it.
+    expect(back.col_span).toBe(1)
+    expect(back.col_start + back.col_span).toBeLessThanOrEqual(RACK_COLUMNS)
+  })
+
+  it('keeps a legal column run untouched', () => {
+    const device = { ...toRackDevice(apiDevice), colStart: 6, colSpan: 6 }
+    const back = fromRackDevice(device)
+    expect(back.col_start).toBe(6)
+    expect(back.col_span).toBe(6)
   })
 })
 

@@ -129,7 +129,12 @@ interface RackState {
   // Persistence
   loadDesign: (designId: string) => Promise<void>
   refreshInventory: () => Promise<void>
-  save: () => Promise<boolean>
+  /**
+   * Persist the rack state. `expectedDesignId` guards against saving under a
+   * design the caller did not mean: it returns false, saving nothing, when the
+   * store has moved on to another design.
+   */
+  save: (expectedDesignId?: string | null) => Promise<boolean>
   markSaved: () => void
   /** Add an inventory entry by hand, for hardware no scan can find. */
   createInventoryDevice: (input: NewInventoryDevice) => Promise<InventoryDevice | null>
@@ -330,9 +335,13 @@ export const useRackStore = create<RackState>((set, get) => {
       }
     },
 
-    save: async () => {
+    save: async (expectedDesignId) => {
       const { designId, racks, devices, cables, viewport, inventory } = get()
       if (!designId) return false
+      // The design-switch flow saves the *old* design before loading the new
+      // one. This store writes whatever it currently holds, so a switch landing
+      // mid-flight would persist the wrong design and drop the other's edits.
+      if (expectedDesignId && expectedDesignId !== designId) return false
       try {
         if (STANDALONE) {
           standaloneStorage.saveRackCanvas(designId, { racks, devices, cables, viewport, inventory })

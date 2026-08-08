@@ -157,6 +157,22 @@ describe('save', () => {
     expect(await store().save()).toBe(false)
     expect(store().hasUnsavedChanges).toBe(true)
   })
+
+  it('saves when the design it was told to save is the one loaded', async () => {
+    await store().loadDesign('d1')
+    expect(await store().save('d1')).toBe(true)
+    expect(save.mock.calls[0][0].design_id).toBe('d1')
+  })
+
+  it('writes nothing when the store has moved on to another design', async () => {
+    // The design-switch flow saves the old design; if the store already holds
+    // the new one, saving would persist it under the wrong id.
+    await store().loadDesign('d1')
+    store().addRack()
+    expect(await store().save('d-other')).toBe(false)
+    expect(save).not.toHaveBeenCalled()
+    expect(store().hasUnsavedChanges).toBe(true)
+  })
 })
 
 describe('createInventoryDevice', () => {

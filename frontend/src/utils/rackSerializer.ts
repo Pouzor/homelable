@@ -259,6 +259,7 @@ export function fromRack(rack: Rack): Omit<ApiRack, 'design_id'> {
 }
 
 export function fromRackDevice(device: RackDevice): Omit<ApiRackDevice, 'design_id'> {
+  const colStart = Math.min(Math.max(device.colStart, 0), RACK_COLUMNS - 1)
   return {
     id: device.id,
     rack_id: device.rackId,
@@ -267,8 +268,11 @@ export function fromRackDevice(device: RackDevice): Omit<ApiRackDevice, 'design_
     label: device.label,
     u_start: device.uStart,
     u_height: device.uHeight,
-    col_start: Math.min(Math.max(device.colStart, 0), RACK_COLUMNS - 1),
-    col_span: Math.min(Math.max(device.colSpan, 1), RACK_COLUMNS),
+    col_start: colStart,
+    // Clamped against the start, not against the grid on its own: 11 + 12 is
+    // two legal fields adding up to column 23 of 12, which the backend now
+    // rejects — the whole save 422s over one device.
+    col_span: Math.min(Math.max(device.colSpan, 1), RACK_COLUMNS - colStart),
     faceplate_id: device.faceplateId,
     color: device.color ?? null,
     status: device.status,

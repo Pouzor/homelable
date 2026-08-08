@@ -149,7 +149,9 @@ export default function App() {
       const saveDesignId = designIdOverride ?? activeDesignId
       // Rack canvases own their own state and persistence path.
       if (designTypeOf(saveDesignId) === 'rack') {
-        const ok = await useRackStore.getState().save()
+        // Named explicitly: the design-switch flow saves the *old* design, and
+        // the store refuses rather than writing under whichever one it holds.
+        const ok = await useRackStore.getState().save(saveDesignId)
         if (ok) {
           if (!options?.silent) toast.success('Rack canvas saved')
         } else {
