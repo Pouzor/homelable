@@ -226,6 +226,52 @@ class TestSaveAndLoad:
         res = await client.post("/api/v1/racks/save", json=payload, headers=headers)
         assert res.status_code == 422
 
+    async def test_rejects_a_device_taller_than_its_rack(self, client: AsyncClient, headers):
+        # Each field is legal on its own; only the rack says otherwise. A mount
+        # above the top rail draws outside the chassis with no way to drag it back.
+        design_id = await _design(client, headers)
+        payload = _state(design_id)
+        payload["devices"][0]["u_start"] = 40  # rack is 12U
+        res = await client.post("/api/v1/racks/save", json=payload, headers=headers)
+        assert res.status_code == 422
+
+    async def test_rejects_a_device_whose_height_overruns_the_rack(
+        self, client: AsyncClient, headers
+    ):
+        design_id = await _design(client, headers)
+        payload = _state(design_id)
+        payload["devices"][0].update({"u_start": 11, "u_height": 4})  # 11..14 of 12U
+        res = await client.post("/api/v1/racks/save", json=payload, headers=headers)
+        assert res.status_code == 422
+
+    async def test_accepts_a_device_that_ends_on_the_top_rail(
+        self, client: AsyncClient, headers
+    ):
+        design_id = await _design(client, headers)
+        payload = _state(design_id)
+        payload["devices"][0].update({"u_start": 11, "u_height": 2})  # 11..12 of 12U
+        res = await client.post("/api/v1/racks/save", json=payload, headers=headers)
+        assert res.status_code == 200, res.text
+
+    async def test_rejects_a_span_that_overruns_the_column_grid(
+        self, client: AsyncClient, headers
+    ):
+        design_id = await _design(client, headers)
+        payload = _state(design_id)
+        payload["devices"][0].update({"col_start": 11, "col_span": 12})
+        res = await client.post("/api/v1/racks/save", json=payload, headers=headers)
+        assert res.status_code == 422
+
+    async def test_accepts_a_half_width_pair_sharing_one_u(
+        self, client: AsyncClient, headers
+    ):
+        design_id = await _design(client, headers)
+        payload = _state(design_id)
+        payload["devices"][0].update({"col_start": 0, "col_span": 6})
+        payload["devices"][1].update({"col_start": 6, "col_span": 6})
+        res = await client.post("/api/v1/racks/save", json=payload, headers=headers)
+        assert res.status_code == 200, res.text
+
     async def test_rejects_an_unknown_cable_type(self, client: AsyncClient, headers):
         design_id = await _design(client, headers)
         payload = _state(design_id)

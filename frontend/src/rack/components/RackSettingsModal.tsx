@@ -4,11 +4,13 @@
  * Same reasoning as `RackDeviceModal`: the rack canvas has no right rail, so the
  * settings live in a dialog. Opened by double-clicking a rack's chassis.
  */
+import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { useRackStore } from '../store'
 import { freeUnits } from '../layout'
+import { MAX_RACK_U, MIN_RACK_U } from '../rackDefaults'
 import type { RackNumbering, RackWidthStandard } from '@/types'
 
 const inputClass =
@@ -62,12 +64,18 @@ export function RackSettingsModal() {
           <Field label={`Height — ${used}U used of ${rack.uHeight}U`}>
             <input
               type="number"
-              min={1}
-              max={48}
+              min={MIN_RACK_U}
+              max={MAX_RACK_U}
               className={inputClass}
               aria-label="Rack height"
               value={rack.uHeight}
-              onChange={(e) => updateRack(rack.id, { uHeight: Number(e.target.value) || 1 })}
+              onChange={(e) => {
+                // The store clamps and relocates; it only refuses when a mount
+                // the shrink pushes out has nowhere left to go.
+                if (!updateRack(rack.id, { uHeight: Number(e.target.value) || MIN_RACK_U })) {
+                  toast.error('Not enough room to shrink the rack — unmount something first')
+                }
+              }}
             />
           </Field>
 

@@ -21,7 +21,7 @@ import {
   toRackDevice,
 } from '@/utils/rackSerializer'
 import { getFaceplate, suggestFaceplate } from './faceplates'
-import { canPlace, findSlot, type Placement } from './layout'
+import { canPlace, clamp, findSlot, type Placement } from './layout'
 import {
   RACK_COLUMNS,
   type Cable,
@@ -34,7 +34,13 @@ import {
   type RackStyle,
 } from '@/types'
 import { demoCables, demoDevices, demoInventory, demoRacks } from './demoData'
-import { CABLE_COLORS, DEFAULT_RACK_STYLE, PORT_CABLE_TYPE } from './rackDefaults'
+import {
+  CABLE_COLORS,
+  DEFAULT_RACK_STYLE,
+  MAX_RACK_U,
+  MIN_RACK_U,
+  PORT_CABLE_TYPE,
+} from './rackDefaults'
 
 export { CABLE_COLORS, DEFAULT_RACK_STYLE }
 
@@ -130,7 +136,12 @@ interface RackState {
 
   // Racks
   addRack: (partial?: Partial<Rack>) => string
-  updateRack: (id: string, patch: Partial<Omit<Rack, 'id'>>) => void
+  /**
+   * Edit a rack. `uHeight` is clamped to `[MIN_RACK_U, MAX_RACK_U]`, and a
+   * shrink relocates the mounts it would push above the top rail. Returns false
+   * — leaving the rack untouched — when one of them has nowhere left to go.
+   */
+  updateRack: (id: string, patch: Partial<Omit<Rack, 'id'>>) => boolean
   updateRackStyle: (id: string, patch: Partial<RackStyle>) => void
   moveRack: (id: string, position: { x: number; y: number }) => void
   /** Removes the rack and every device mounted in it (inventory untouched). */
@@ -388,8 +399,48 @@ export const useRackStore = create<RackState>((set, get) => {
       return id
     },
 
-    updateRack: (id, patch) =>
-      edit((s) => ({ racks: s.racks.map((r) => (r.id === id ? { ...r, ...patch } : r)) })),
+    updateRack: (id, patch) => {
+      const { racks, devices } = get()
+      const rack = racks.find((r) => r.id === id)
+      if (!rack) return false
+
+      const next: Rack = { ...rack, ...patch }
+      if (patch.uHeight !== undefined) {
+        // The modal's min/max are hints the browser does not enforce on typed
+        // input, and the height reached the store raw: 999 made every save fail
+        // the backend's 1..100 check with no cause shown, and a shrink left
+        // mounts drawn above the chassis with no way to drag them back.
+        next.uHeight = clamp(Math.round(patch.uHeight) || MIN_RACK_U, MIN_RACK_U, MAX_RACK_U)
+      }
+
+      let relocated = devices
+      if (next.uHeight < rack.uHeight) {
+        const mounted = devices.filter((d) => d.rackId === id)
+        const pushedOut = mounted.filter((d) => d.uStart + d.uHeight - 1 > next.uHeight)
+        if (pushedOut.length > 0) {
+          const moved = new Map<string, RackDevice>()
+          // Place them one at a time against the layout decided so far, so two
+          // relocated mounts cannot be handed the same slot.
+          let settled = mounted.filter((d) => !pushedOut.includes(d))
+          for (const device of pushedOut) {
+            const slot = findSlot(next, settled, { ...device, uStart: next.uHeight }, device.id)
+            // Nowhere left to put it: refuse the whole edit rather than drop a
+            // mount off the rack, the same way a device resize refuses.
+            if (!slot) return false
+            const placed = { ...device, ...slot }
+            settled = [...settled, placed]
+            moved.set(device.id, placed)
+          }
+          relocated = devices.map((d) => moved.get(d.id) ?? d)
+        }
+      }
+
+      edit(() => ({
+        racks: racks.map((r) => (r.id === id ? next : r)),
+        devices: relocated,
+      }))
+      return true
+    },
 
     updateRackStyle: (id, patch) =>
       edit((s) => ({

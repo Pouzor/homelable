@@ -260,3 +260,32 @@ async def test_update_scan_config_persists_deep_scan(client: AsyncClient, header
         )
     assert res.status_code == 200
     assert saved == {"http_ranges": ["9000-9100"], "probe": True}
+
+
+@pytest.mark.asyncio
+async def test_create_pending_normalizes_the_mac(client: AsyncClient, headers):
+    # Dedup compares MACs by equality, so a hand-typed entry in any other
+    # notation would never match the scanned row and approve would build a
+    # duplicate node.
+    res = await client.post(
+        "/api/v1/scan/pending",
+        json={
+            "hostname": "printer",
+            "mac": "AA-BB-CC-11-22-33",
+            "discovery_source": "manual",
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["mac"] == "aa:bb:cc:11:22:33"
+
+
+@pytest.mark.asyncio
+async def test_create_pending_keeps_a_missing_mac_null(client: AsyncClient, headers):
+    res = await client.post(
+        "/api/v1/scan/pending",
+        json={"hostname": "no-mac", "discovery_source": "manual"},
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["mac"] is None

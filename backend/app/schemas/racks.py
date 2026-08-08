@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 # Kept in sync with the frontend rack model (frontend/src/types).
 WIDTH_STANDARDS = {"19", "10"}
@@ -79,6 +79,20 @@ class RackDeviceSave(BaseModel):
             raise ValueError(f"col_span must be between 1 and {RACK_COLUMNS}")
         return v
 
+    @model_validator(mode="after")
+    def _fits_the_column_grid(self) -> "RackDeviceSave":
+        """`col_start` and `col_span` are legal apart and still illegal together.
+
+        11 + 12 spans to column 23 of a 12-column grid — each field passes its
+        own check, and the frontend serializer clamps them independently, so
+        nothing caught it before this.
+        """
+        if self.col_start + self.col_span > RACK_COLUMNS:
+            raise ValueError(
+                f"col_start + col_span must not exceed the {RACK_COLUMNS}-column grid"
+            )
+        return self
+
 
 class RackCableSave(BaseModel):
     id: str
@@ -122,6 +136,29 @@ class RackSaveRequest(BaseModel):
     cables: list[RackCableSave] = []
     # Pan/zoom, stored on the design's shared CanvasState row like the logical canvas.
     viewport: dict[str, Any] = {}
+
+    @model_validator(mode="after")
+    def _devices_fit_their_rack(self) -> "RackSaveRequest":
+        """A mount must fit inside the rack it names.
+
+        `RackDeviceSave` validates each field in isolation and never sees the
+        rack, so `u_start: 40` in a 12U rack passed. A mount above the top rail
+        draws outside the chassis and nothing in the UI can drag it back, so the
+        server refuses to store it. Rack membership itself is checked in the
+        route, which knows what is already persisted.
+        """
+        heights = {r.id: r.u_height for r in self.racks}
+        for device in self.devices:
+            u_height = heights.get(device.rack_id)
+            if u_height is None:
+                continue  # unknown rack — the route reports that with a 400
+            if device.u_start + device.u_height - 1 > u_height:
+                raise ValueError(
+                    f"Device {device.id} does not fit in rack {device.rack_id}: "
+                    f"U {device.u_start}–{device.u_start + device.u_height - 1} "
+                    f"of {u_height}U"
+                )
+        return self
 
 
 class RackResponse(BaseModel):

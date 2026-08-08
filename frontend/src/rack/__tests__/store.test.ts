@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useRackStore } from '../store'
 import { getFaceplate } from '../faceplates'
 import { RACK_COLUMNS } from '@/types'
+import { MAX_RACK_U, MIN_RACK_U } from '../rackDefaults'
 import { demoNetworkLinks } from '../demoData'
 
 const store = () => useRackStore.getState()
@@ -35,6 +36,83 @@ describe('racks', () => {
     const style = store().racks[0].style
     expect(style.showNumbers).toBe(false)
     expect(style.frame).toBeTruthy()
+  })
+
+  /** An empty rack, so a clamp test is not also a relocation test. */
+  const emptyRack = () => {
+    const id = store().addRack()
+    return { id, height: () => store().racks.find((r) => r.id === id)!.uHeight }
+  }
+
+  it('clamps the height to the supported range', () => {
+    // The number input's min/max do not survive a typed value, and the backend
+    // rejects anything over 100 U with a 422 the user cannot read.
+    const rack = emptyRack()
+
+    expect(store().updateRack(rack.id, { uHeight: 999 })).toBe(true)
+    expect(rack.height()).toBe(MAX_RACK_U)
+
+    store().updateRack(rack.id, { uHeight: 0 })
+    expect(rack.height()).toBe(MIN_RACK_U)
+
+    store().updateRack(rack.id, { uHeight: -5 })
+    expect(rack.height()).toBe(MIN_RACK_U)
+  })
+
+  it('rounds a fractional height', () => {
+    const rack = emptyRack()
+    store().updateRack(rack.id, { uHeight: 12.6 })
+    expect(rack.height()).toBe(13)
+  })
+
+  it('relocates the mounts a shrink would push above the top rail', () => {
+    const rack = store().racks[0]
+    const tallest = store().devices
+      .filter((d) => d.rackId === rack.id)
+      .reduce((max, d) => (d.uStart + d.uHeight - 1 > max.uStart + max.uHeight - 1 ? d : max))
+    const next = tallest.uStart - 1
+    const mountedBefore = store().devices.filter((d) => d.rackId === rack.id).length
+
+    expect(store().updateRack(rack.id, { uHeight: next })).toBe(true)
+    expect(store().racks[0].uHeight).toBe(next)
+    // Every mount is inside the chassis, and none was dropped on the way.
+    const after = store().devices.filter((d) => d.rackId === rack.id)
+    expect(after).toHaveLength(mountedBefore)
+    for (const d of after) expect(d.uStart + d.uHeight - 1).toBeLessThanOrEqual(next)
+  })
+
+  it('never stacks two relocated mounts on the same slot', () => {
+    const rack = store().racks[0]
+    store().updateRack(rack.id, { uHeight: 12 })
+    const mounted = store().devices.filter((d) => d.rackId === rack.id)
+    for (const a of mounted) {
+      for (const b of mounted) {
+        if (a.id === b.id) continue
+        const uOverlap = a.uStart < b.uStart + b.uHeight && b.uStart < a.uStart + a.uHeight
+        const colOverlap =
+          a.colStart < b.colStart + b.colSpan && b.colStart < a.colStart + a.colSpan
+        expect(uOverlap && colOverlap).toBe(false)
+      }
+    }
+  })
+
+  it('refuses a shrink that leaves a mount nowhere to go, changing nothing', () => {
+    const rack = store().racks[0]
+    const before = store().devices.map((d) => ({ ...d }))
+
+    expect(store().updateRack(rack.id, { uHeight: 1 })).toBe(false)
+    expect(store().racks[0].uHeight).toBe(rack.uHeight)
+    expect(store().devices).toEqual(before)
+  })
+
+  it('leaves the mounts alone when the rack grows', () => {
+    const before = store().devices.map((d) => ({ ...d }))
+    expect(store().updateRack('rack-main', { uHeight: MAX_RACK_U })).toBe(true)
+    expect(store().devices).toEqual(before)
+  })
+
+  it('returns false for a rack that does not exist', () => {
+    expect(store().updateRack('nope', { name: 'Ghost' })).toBe(false)
   })
 })
 
