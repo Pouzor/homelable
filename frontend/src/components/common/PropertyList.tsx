@@ -62,7 +62,11 @@ export function PropertyList({
 
   const handleRemove = (index: number) => {
     onChange(properties.filter((_, i) => i !== index))
-    if (editingIndex === index) setEditingIndex(null)
+    // `editingIndex` is a position into an array the caller owns, so any
+    // mutation from outside the form invalidates it: removing an earlier row
+    // shifted the open form onto its neighbour, and Save then overwrote the
+    // wrong property. Close the form rather than try to track the move.
+    setEditingIndex(null)
   }
 
   const handleToggleVisible = (index: number) => {
@@ -95,6 +99,8 @@ export function PropertyList({
     const [moved] = reordered.splice(from, 1)
     reordered.splice(to, 0, moved)
     onChange(reordered)
+    // Same positional hazard as a remove — see handleRemove.
+    setEditingIndex(null)
   }
 
   const startAddWith = (key: string) => {

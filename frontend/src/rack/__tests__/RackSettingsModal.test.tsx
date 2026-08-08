@@ -83,6 +83,46 @@ describe('RackSettingsModal', () => {
     expect((height as HTMLInputElement).value).toBe('18')
   })
 
+  it('treats a blanked height as no edit', () => {
+    // Number('') is 0, which used to fall through to 1 U: select-all, Delete,
+    // click elsewhere, and an empty rack silently became 1 U with no undo.
+    store().openRackEditor('rack-main')
+    render(<RackSettingsModal />)
+
+    const height = screen.getByLabelText('Rack height')
+    fireEvent.change(height, { target: { value: '' } })
+    fireEvent.blur(height)
+
+    expect(store().racks[0].uHeight).toBe(18)
+    expect((height as HTMLInputElement).value).toBe('18')
+  })
+
+  it('treats a blanked height as no edit on an empty rack too', () => {
+    // The dangerous case: with no mounts, updateRack has nothing to refuse.
+    const id = store().addRack({ name: 'Empty' })
+    const height = () => store().racks.find((r) => r.id === id)!.uHeight
+    const before = height()
+    store().openRackEditor(id)
+    render(<RackSettingsModal />)
+
+    const field = screen.getByLabelText('Rack height')
+    fireEvent.change(field, { target: { value: '' } })
+    fireEvent.blur(field)
+
+    expect(height()).toBe(before)
+  })
+
+  it('ignores a height that does not parse', () => {
+    store().openRackEditor('rack-main')
+    render(<RackSettingsModal />)
+
+    const height = screen.getByLabelText('Rack height')
+    fireEvent.change(height, { target: { value: 'abc' } })
+    fireEvent.blur(height)
+
+    expect(store().racks[0].uHeight).toBe(18)
+  })
+
   it('commits nothing when the dialog closes on a typed height', () => {
     // Escape closes the dialog; the uncommitted draft dies with the field.
     store().openRackEditor('rack-main')
