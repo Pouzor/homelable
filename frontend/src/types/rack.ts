@@ -5,6 +5,9 @@
  * what the store and components work with; `@/utils/rackSerializer` maps them to
  * and from the snake_case API payloads.
  */
+// Type-only, so the cycle with `./index` (which re-exports this module) is
+// erased at compile time. Cables reuse the logical canvas' property records.
+import type { NodeProperty } from './index'
 
 /** Horizontal grid inside a rack. 12 columns = full width, 6 = half, 4 = third. */
 export const RACK_COLUMNS = 12
@@ -169,11 +172,22 @@ export interface RackDevice {
 
 export type CableType = 'ethernet' | 'fiber'
 
+/**
+ * Extra facts carried by a cable — length, VLAN, patch reference, whatever the
+ * user needs. Same record shape as a node's properties (`key`/`value`/`icon`/
+ * `visible`), and the same rule: `visible` puts it on the canvas.
+ */
+export type CableProperty = NodeProperty
+
 export interface Cable {
   id: string
   type: CableType
   color: string
   label?: string
+  /** Print the label alongside the run on the canvas. Off by default. */
+  labelVisible?: boolean
+  /** Free-form key/value facts; the `visible` ones are drawn on the canvas. */
+  properties?: CableProperty[]
   from: { deviceId: string; portId: string }
   to: { deviceId: string; portId: string }
 }

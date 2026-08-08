@@ -25,10 +25,26 @@ beforeEach(() => {
 })
 
 describe('CableLayer selection', () => {
-  it('offers no click target outside patch mode', () => {
+  it('selects a cable on click outside patch mode too', () => {
+    // A cable is clicked to read and edit it in the rail, not only to unplug it,
+    // so the hit target is not gated on patch mode.
     useRackStore.getState().setCableVisibility('always')
     const { container } = render(<CableLayer />)
-    expect(hitPaths(container)).toHaveLength(0)
+    const paths = hitPaths(container)
+    expect(paths).toHaveLength(useRackStore.getState().cables.length)
+
+    fireEvent.click(paths[0])
+    expect(useRackStore.getState().cableMode).toBe(false)
+    expect(useRackStore.getState().selectedCableId).toBe(useRackStore.getState().cables[0].id)
+  })
+
+  it('keeps the selected cable drawn when visibility is hover and nothing is focused', () => {
+    const store = useRackStore.getState()
+    store.setCableVisibility('hover')
+    store.selectCable(store.cables[0].id)
+
+    const { container } = render(<CableLayer />)
+    expect(hitPaths(container)).toHaveLength(1)
   })
 
   it('selects a cable on click in patch mode', () => {
@@ -88,6 +104,34 @@ describe('CableLayer selection', () => {
 
     const { container } = render(<CableLayer />)
     expect(hitPaths(container)).toHaveLength(cables.length)
+  })
+
+  it('prints nothing beside a cable that has no visible annotation', () => {
+    const store = useRackStore.getState()
+    store.setCableVisibility('always')
+    // A label alone is not enough — it is printed only once the user asks.
+    store.updateCable(store.cables[0].id, { label: 'Uplink', labelVisible: false })
+    const { queryAllByTestId } = render(<CableLayer />)
+    expect(queryAllByTestId('cable-annotation')).toHaveLength(0)
+  })
+
+  it('prints the label and the visible properties on the canvas', () => {
+    const store = useRackStore.getState()
+    store.setCableVisibility('always')
+    store.updateCable(store.cables[0].id, {
+      label: 'Uplink',
+      labelVisible: true,
+      properties: [
+        { key: 'Length', value: '2 m', icon: null, visible: true },
+        { key: 'VLAN', value: '20', icon: null, visible: false },
+      ],
+    })
+
+    const { getAllByTestId } = render(<CableLayer />)
+    const badges = getAllByTestId('cable-annotation')
+    expect(badges).toHaveLength(1)
+    const lines = Array.from(badges[0].querySelectorAll('text')).map((t) => t.textContent)
+    expect(lines).toEqual(['Uplink', 'Length: 2 m'])
   })
 
   it('draws the selected cable with a highlight halo', () => {

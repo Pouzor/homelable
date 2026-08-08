@@ -53,6 +53,7 @@ import { DEMO_SCAN_RUNS, DEMO_PENDING_DEVICES } from '@/walkthrough/demoTourData
 import { useStatusPolling } from '@/hooks/useStatusPolling'
 import { bootstrapAuth } from '@/auth/bootstrap'
 import { RackCanvas } from '@/rack/components/RackCanvas'
+import { RackCablePanel } from '@/rack/components/RackCablePanel'
 import { useRackStore } from '@/rack/store'
 import type { NodeData, EdgeData, CustomStyleDef, DesignType, FloorMapConfig, NodeType } from '@/types'
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
@@ -1049,11 +1050,14 @@ export default function App() {
                   />
                 )}
               </div>
-              {/* Rack designs have no right rail: a mount is edited in its own
-                  modal, so the canvas keeps the full width. */}
-              {!isRackDesign && (selectedNodeId || selectedNodeIds.length > 1) && (
-                <DetailPanel onEdit={handleEditNode} />
-              )}
+              {/* Rack designs keep the full width for mounted gear — a mount is
+                  edited in its own modal — but a selected cable has no plate to
+                  double-click, so it gets the rail. */}
+              {isRackDesign
+                ? <RackCablePanel />
+                : (selectedNodeId || selectedNodeIds.length > 1) && (
+                    <DetailPanel onEdit={handleEditNode} />
+                  )}
             </div>
           </div>
         </div>

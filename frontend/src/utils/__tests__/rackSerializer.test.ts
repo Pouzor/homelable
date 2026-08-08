@@ -55,6 +55,8 @@ const apiCable: ApiRackCable = {
   type: 'fiber',
   color: '#f0a500',
   label: 'SAN',
+  label_visible: true,
+  properties: [{ key: 'Length', value: '3 m', icon: null, visible: true }],
 }
 
 describe('API → domain', () => {
@@ -121,9 +123,34 @@ describe('API → domain', () => {
     expect(toCable(apiCable)).toMatchObject({
       type: 'fiber',
       label: 'SAN',
+      labelVisible: true,
+      properties: [{ key: 'Length', value: '3 m', icon: null, visible: true }],
       from: { deviceId: 'dev1', portId: 'p1' },
       to: { deviceId: 'dev2', portId: 'p2' },
     })
+  })
+
+  it('fills the annotations a cable saved before the feature has no columns for', () => {
+    // Legacy rows read back without the two new keys; the mapper must not
+    // produce `undefined.filter` fodder for the overlay.
+    const legacy = { ...apiCable } as Partial<ApiRackCable>
+    delete legacy.label_visible
+    delete legacy.properties
+
+    const cable = toCable(legacy as ApiRackCable)
+    expect(cable.labelVisible).toBe(false)
+    expect(cable.properties).toEqual([])
+  })
+
+  it('drops cable properties that carry no key', () => {
+    const cable = toCable({
+      ...apiCable,
+      properties: [
+        { key: '', value: 'x', icon: null, visible: true },
+        { key: 'VLAN', value: '20', icon: null, visible: false },
+      ],
+    })
+    expect(cable.properties).toEqual([{ key: 'VLAN', value: '20', icon: null, visible: false }])
   })
 
   it('takes inventory status from the linked node, not the inventory row', () => {
@@ -181,7 +208,14 @@ describe('domain → API', () => {
       from_device_id: 'dev1',
       to_port_id: 'p2',
       type: 'fiber',
+      label_visible: true,
+      properties: [{ key: 'Length', value: '3 m', icon: null, visible: true }],
     })
+  })
+
+  it('sends explicit defaults for a cable that was never annotated', () => {
+    const bare = { ...toCable(apiCable), labelVisible: undefined, properties: undefined }
+    expect(fromCable(bare)).toMatchObject({ label_visible: false, properties: [] })
   })
 
   it('clamps a device back into the column grid', () => {

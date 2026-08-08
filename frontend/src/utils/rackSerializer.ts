@@ -9,6 +9,7 @@ import { suggestFaceplate } from '@/rack/faceplates'
 import { RACK_COLUMNS } from '@/types'
 import type {
   Cable,
+  CableProperty,
   CableType,
   DeviceStatus,
   InventoryDevice,
@@ -64,6 +65,9 @@ export interface ApiRackCable {
   type: string
   color: string
   label: string | null
+  label_visible: boolean
+  /** [{key, value, icon, visible}] — same records the logical canvas uses. */
+  properties: CableProperty[]
 }
 
 export interface ApiRackState {
@@ -155,6 +159,27 @@ function asPorts(raw: unknown[]): Port[] {
   return ports
 }
 
+/**
+ * Cable properties are opaque JSON on the wire. Anything missing a usable
+ * key/value pair is dropped rather than rendered as an empty annotation.
+ */
+function asCableProperties(raw: unknown): CableProperty[] {
+  if (!Array.isArray(raw)) return []
+  const props: CableProperty[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const p = entry as Record<string, unknown>
+    if (typeof p.key !== 'string' || !p.key.trim()) continue
+    props.push({
+      key: p.key,
+      value: typeof p.value === 'string' ? p.value : String(p.value ?? ''),
+      icon: typeof p.icon === 'string' ? p.icon : null,
+      visible: p.visible !== false,
+    })
+  }
+  return props
+}
+
 // ── API → domain ─────────────────────────────────────────────────────────────
 
 export function toRack(api: ApiRack): Rack {
@@ -195,6 +220,8 @@ export function toCable(api: ApiRackCable): Cable {
     type,
     color: api.color || CABLE_COLORS[type],
     label: api.label ?? undefined,
+    labelVisible: api.label_visible === true,
+    properties: asCableProperties(api.properties),
     from: { deviceId: api.from_device_id, portId: api.from_port_id },
     to: { deviceId: api.to_device_id, portId: api.to_port_id },
   }
@@ -259,6 +286,8 @@ export function fromCable(cable: Cable): Omit<ApiRackCable, 'design_id'> {
     type: cable.type,
     color: cable.color || CABLE_COLORS[cable.type],
     label: cable.label ?? null,
+    label_visible: cable.labelVisible === true,
+    properties: cable.properties ?? [],
   }
 }
 

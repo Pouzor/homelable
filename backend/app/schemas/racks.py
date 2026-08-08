@@ -89,6 +89,9 @@ class RackCableSave(BaseModel):
     type: str = "ethernet"
     color: str = "#39d353"
     label: str | None = None
+    label_visible: bool = False
+    # [{key, value, icon, visible}] — free-form, same shape as node properties.
+    properties: list[dict[str, Any]] = []
 
     @field_validator("type")
     @classmethod
@@ -96,6 +99,14 @@ class RackCableSave(BaseModel):
         if v not in CABLE_TYPES:
             raise ValueError(f"type must be one of {sorted(CABLE_TYPES)}")
         return v
+
+    @field_validator("properties", mode="before")
+    @classmethod
+    def _clean_properties(cls, v: Any) -> list[dict[str, Any]]:
+        """Keep only usable records — a property with no key draws an empty badge."""
+        if not isinstance(v, list):
+            return []
+        return [p for p in v if isinstance(p, dict) and str(p.get("key", "")).strip()]
 
 
 class RackSaveRequest(BaseModel):
@@ -167,6 +178,19 @@ class RackCableResponse(BaseModel):
     type: str
     color: str
     label: str | None = None
+    label_visible: bool = False
+    properties: list[dict[str, Any]] = []
+
+    @field_validator("properties", mode="before")
+    @classmethod
+    def _list_properties(cls, v: Any) -> list[dict[str, Any]]:
+        """Rows written before the column existed read back as NULL."""
+        return v if isinstance(v, list) else []
+
+    @field_validator("label_visible", mode="before")
+    @classmethod
+    def _bool_label_visible(cls, v: Any) -> bool:
+        return bool(v)
 
     model_config = {"from_attributes": True}
 

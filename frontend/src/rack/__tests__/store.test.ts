@@ -379,6 +379,41 @@ describe('cables', () => {
     expect(store().selectedCableId).toBeNull()
   })
 
+  it('drops the device and rack selection when a cable is selected', () => {
+    // Both drive the right rail, so the two selections cannot coexist.
+    store().selectDevice(store().devices[0].id)
+    store().selectCable(store().cables[0].id)
+    expect(store().selectedDeviceId).toBeNull()
+    expect(store().selectedRackId).toBeNull()
+  })
+
+  it('keeps the device selection when the cable selection is cleared', () => {
+    store().selectDevice(store().devices[0].id)
+    store().selectCable(null)
+    expect(store().selectedDeviceId).toBe(store().devices[0].id)
+  })
+
+  it('edits a cable label, its canvas visibility and its properties', () => {
+    const cable = store().cables[0]
+    store().updateCable(cable.id, {
+      label: 'Uplink to core',
+      labelVisible: true,
+      properties: [{ key: 'Length', value: '2 m', icon: null, visible: true }],
+    })
+
+    const updated = store().cables.find((c) => c.id === cable.id)!
+    expect(updated.label).toBe('Uplink to core')
+    expect(updated.labelVisible).toBe(true)
+    expect(updated.properties).toEqual([{ key: 'Length', value: '2 m', icon: null, visible: true }])
+    expect(store().hasUnsavedChanges).toBe(true)
+  })
+
+  it('leaves other cables untouched when one is edited', () => {
+    const [first, second] = store().cables
+    store().updateCable(first.id, { color: '#ff00ff' })
+    expect(store().cables.find((c) => c.id === second.id)!.color).toBe(second.color)
+  })
+
   it('drops the cable selection when leaving patch mode', () => {
     store().toggleCableMode()
     store().selectCable(store().cables[0].id)

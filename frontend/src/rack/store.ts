@@ -698,7 +698,10 @@ export const useRackStore = create<RackState>((set, get) => {
     setViewport: (v) => set({ viewport: v }),
     selectDevice: (id) => set({ selectedDeviceId: id, selectedRackId: null, selectedCableId: null }),
     selectRack: (id) => set({ selectedRackId: id, selectedDeviceId: null, selectedCableId: null }),
-    selectCable: (id) => set({ selectedCableId: id }),
+    // A cable and a mount both drive the right rail, so picking one drops the
+    // other — two panels can't share the slot.
+    selectCable: (id) =>
+      set(id ? { selectedCableId: id, selectedDeviceId: null, selectedRackId: null } : { selectedCableId: null }),
 
     removeSelectedCable: () => {
       const id = get().selectedCableId
