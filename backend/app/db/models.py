@@ -195,6 +195,11 @@ class RackCable(Base):
     type: Mapped[str] = mapped_column(String, default="ethernet")
     color: Mapped[str] = mapped_column(String, default="#39d353")
     label: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Print the label next to the run on the canvas.
+    label_visible: Mapped[bool] = mapped_column(Boolean, default=False)
+    # [{key, value, icon, visible}] — same records nodes carry; the visible ones
+    # are drawn beside the cable.
+    properties: Mapped[list[Any]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

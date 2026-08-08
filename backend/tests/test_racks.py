@@ -233,6 +233,83 @@ class TestSaveAndLoad:
         res = await client.post("/api/v1/racks/save", json=payload, headers=headers)
         assert res.status_code == 422
 
+    async def test_round_trips_cable_annotations(self, client: AsyncClient, headers):
+        design_id = await _design(client, headers)
+        payload = _state(design_id)
+        payload["cables"][0].update(
+            {
+                "label": "Uplink to core",
+                "label_visible": True,
+                "properties": [
+                    {"key": "Length", "value": "2 m", "icon": None, "visible": True},
+                    {"key": "VLAN", "value": "20", "icon": None, "visible": False},
+                ],
+            }
+        )
+        assert (
+            await client.post("/api/v1/racks/save", json=payload, headers=headers)
+        ).status_code == 200
+
+        cable = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["cables"][0]
+        assert cable["label"] == "Uplink to core"
+        assert cable["label_visible"] is True
+        assert [p["key"] for p in cable["properties"]] == ["Length", "VLAN"]
+        assert cable["properties"][1]["visible"] is False
+
+    async def test_defaults_cable_annotations_when_absent(
+        self, client: AsyncClient, headers
+    ):
+        # A client that predates the feature sends neither key; the response must
+        # still carry usable values rather than nulls.
+        design_id = await _design(client, headers)
+        assert (
+            await client.post("/api/v1/racks/save", json=_state(design_id), headers=headers)
+        ).status_code == 200
+
+        cable = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["cables"][0]
+        assert cable["label_visible"] is False
+        assert cable["properties"] == []
+
+    async def test_drops_cable_properties_with_no_key(self, client: AsyncClient, headers):
+        design_id = await _design(client, headers)
+        payload = _state(design_id)
+        payload["cables"][0]["properties"] = [
+            {"key": "  ", "value": "orphan", "icon": None, "visible": True},
+            {"key": "Length", "value": "2 m", "icon": None, "visible": True},
+        ]
+        assert (
+            await client.post("/api/v1/racks/save", json=payload, headers=headers)
+        ).status_code == 200
+
+        cable = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["cables"][0]
+        assert [p["key"] for p in cable["properties"]] == ["Length"]
+
+    async def test_updates_cable_annotations_on_a_second_save(
+        self, client: AsyncClient, headers
+    ):
+        design_id = await _design(client, headers)
+        payload = _state(design_id)
+        payload["cables"][0]["properties"] = [
+            {"key": "Length", "value": "2 m", "icon": None, "visible": True}
+        ]
+        await client.post("/api/v1/racks/save", json=payload, headers=headers)
+
+        payload["cables"][0]["properties"] = []
+        payload["cables"][0]["label_visible"] = True
+        await client.post("/api/v1/racks/save", json=payload, headers=headers)
+
+        cable = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["cables"][0]
+        assert cable["properties"] == []
+        assert cable["label_visible"] is True
+
     async def test_requires_auth(self, client: AsyncClient):
         assert (await client.get("/api/v1/racks?design_id=any")).status_code == 401
 

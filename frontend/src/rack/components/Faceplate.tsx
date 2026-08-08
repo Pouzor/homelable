@@ -163,8 +163,6 @@ interface Props {
   selected?: boolean
   /** Hover or selection: reveals the ports of non-patch gear. */
   revealed?: boolean
-  /** Fade the plate so cables behind it stay readable. */
-  transparent?: boolean
   /** Ports take the pointer (patch mode). */
   interactivePorts?: boolean
   /** Port id -> colour of the cable plugged into it. */
@@ -185,7 +183,6 @@ export const Faceplate = memo(function Faceplate({
   colorOverride,
   selected,
   revealed,
-  transparent,
   interactivePorts,
   patchedPorts,
   draftPortId,
@@ -206,12 +203,16 @@ export const Faceplate = memo(function Faceplate({
   const fontSize = Math.max(8, Math.min(11, height * 0.42))
   const showLabel = labelW > 24 && height >= 14
 
+  // Plates stay opaque whatever the cable visibility. Fading them let the rail
+  // strips and the U grid show through the gear, which reads as a rendering
+  // bug; cables are drawn above the plates anyway, so nothing needs to see
+  // through them.
   return (
     <svg
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
-      style={{ opacity: transparent ? 0.4 : 1, display: 'block' }}
+      style={{ display: 'block' }}
     >
       <defs>
         <clipPath id={clipId}>

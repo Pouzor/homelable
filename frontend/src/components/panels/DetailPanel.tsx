@@ -7,7 +7,7 @@ import { useCanvasStore, serviceStatusKey } from '@/stores/canvasStore'
 import { NODE_TYPE_LABELS, STATUS_COLORS, type ServiceInfo, type ServiceStatus, type NodeData, type NodeProperty } from '@/types'
 import { getServiceUrl } from '@/utils/serviceUrl'
 import { splitIps } from '@/utils/maskIp'
-import { PROPERTY_ICONS, PROPERTY_ICON_NAMES, resolvePropertyIcon } from '@/utils/propertyIcons'
+import { PropertyList } from '@/components/common/PropertyList'
 import { formatTimestamp } from '@/utils/timeFormat'
 import { ServiceModal } from '@/components/modals/ServiceModal'
 import { serviceToForm, type ServiceFormData, type ServiceSubmitData } from '@/utils/serviceForm'
@@ -21,9 +21,6 @@ interface DetailPanelProps {
 /** Open service editor: `index === null` means "add a new service". */
 type SvcModalState = { nodeId: string; index: number | null; form?: ServiceFormData }
 
-type PropForm = { key: string; value: string; icon: string | null; visible: boolean }
-const EMPTY_PROP: PropForm = { key: '', value: '', icon: null, visible: true }
-
 export function DetailPanel({ onEdit }: DetailPanelProps) {
   const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup, removeFromGroup, setNodeSize } = useCanvasStore()
   const serviceStatuses = useCanvasStore((s) => s.serviceStatuses)
@@ -32,13 +29,6 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
   const [groupName, setGroupName] = useState('')
   const [creatingGroup, setCreatingGroup] = useState(false)
 
-  // Properties state
-  const [addingProp, setAddingProp] = useState(false)
-  const [newProp, setNewProp] = useState<PropForm>(EMPTY_PROP)
-  const [editingPropIndex, setEditingPropIndex] = useState<number | null>(null)
-  const [editProp, setEditProp] = useState<PropForm>(EMPTY_PROP)
-  const [dragPropIndex, setDragPropIndex] = useState<number | null>(null)
-  const [dragOverPropIndex, setDragOverPropIndex] = useState<number | null>(null)
   const [dragSvcIndex, setDragSvcIndex] = useState<number | null>(null)
   const [dragOverSvcIndex, setDragOverSvcIndex] = useState<number | null>(null)
 
@@ -157,56 +147,9 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
   // --- Property handlers ---
   const properties: NodeProperty[] = data.properties ?? []
 
-  const handleAddProp = () => {
-    if (!newProp.key.trim() || !newProp.value.trim()) return
+  const handleChangeProps = (next: NodeProperty[]) => {
     snapshotHistory()
-    const prop: NodeProperty = { key: newProp.key.trim(), value: newProp.value.trim(), icon: newProp.icon, visible: newProp.visible }
-    updateNode(node.id, { properties: [...properties, prop] })
-    setNewProp(EMPTY_PROP)
-    setAddingProp(false)
-  }
-
-  const handleRemoveProp = (index: number) => {
-    snapshotHistory()
-    updateNode(node.id, { properties: properties.filter((_, i) => i !== index) })
-    if (editingPropIndex === index) setEditingPropIndex(null)
-  }
-
-  const handleTogglePropVisible = (index: number) => {
-    snapshotHistory()
-    updateNode(node.id, {
-      properties: properties.map((p, i) => i === index ? { ...p, visible: !p.visible } : p),
-    })
-  }
-
-  const handleStartEditProp = (index: number) => {
-    const p = properties[index]
-    if (!p) return
-    setEditProp({ key: p.key, value: p.value, icon: p.icon, visible: p.visible })
-    setEditingPropIndex(index)
-    setAddingProp(false)
-  }
-
-  const handleSaveEditProp = () => {
-    if (editingPropIndex === null || !editProp.key.trim() || !editProp.value.trim()) return
-    snapshotHistory()
-    updateNode(node.id, {
-      properties: properties.map((p, i) =>
-        i === editingPropIndex
-          ? { key: editProp.key.trim(), value: editProp.value.trim(), icon: editProp.icon, visible: editProp.visible }
-          : p
-      ),
-    })
-    setEditingPropIndex(null)
-  }
-
-  const handleReorderProp = (from: number, to: number) => {
-    if (from === to || from < 0 || to < 0 || from >= properties.length || to >= properties.length) return
-    snapshotHistory()
-    const reordered = [...properties]
-    const [moved] = reordered.splice(from, 1)
-    reordered.splice(to, 0, moved)
-    updateNode(node.id, { properties: reordered })
+    updateNode(node.id, { properties: next })
   }
 
   return (
@@ -274,64 +217,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
       />
 
       {/* Properties section */}
-      <div className="px-4 py-3 border-t border-border">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground">Properties{properties.length > 0 ? ` (${properties.length})` : ''}</span>
-          <button
-            onClick={() => { setAddingProp((v) => !v); setEditingPropIndex(null) }}
-            className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer"
-          >
-            <Plus size={10} /> Add
-          </button>
-        </div>
-        {addingProp && (
-          <PropertyForm
-            form={newProp}
-            onChange={setNewProp}
-            onConfirm={handleAddProp}
-            onCancel={() => { setAddingProp(false); setNewProp(EMPTY_PROP) }}
-            confirmLabel="Add"
-          />
-        )}
-        {properties.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            {properties.map((prop, i) =>
-              editingPropIndex === i ? (
-                <PropertyForm
-                  key={`edit-${i}`}
-                  form={editProp}
-                  onChange={setEditProp}
-                  onConfirm={handleSaveEditProp}
-                  onCancel={() => setEditingPropIndex(null)}
-                  confirmLabel="Save"
-                />
-              ) : (
-                <PropertyBadge
-                  key={`${prop.key}-${i}`}
-                  prop={prop}
-                  draggable={properties.length > 1}
-                  isDragging={dragPropIndex === i}
-                  isDragOver={dragOverPropIndex === i && dragPropIndex !== i}
-                  onDragStart={() => setDragPropIndex(i)}
-                  onDragEnter={() => { if (dragPropIndex !== null) setDragOverPropIndex(i) }}
-                  onDragEnd={() => { setDragPropIndex(null); setDragOverPropIndex(null) }}
-                  onDrop={() => {
-                    if (dragPropIndex !== null) handleReorderProp(dragPropIndex, i)
-                    setDragPropIndex(null)
-                    setDragOverPropIndex(null)
-                  }}
-                  onToggleVisible={() => handleTogglePropVisible(i)}
-                  onEdit={() => handleStartEditProp(i)}
-                  onRemove={() => handleRemoveProp(i)}
-                />
-              )
-            )}
-          </div>
-        )}
-        {properties.length === 0 && !addingProp && (
-          <p className="text-[10px] text-muted-foreground/50">No properties — click Add to define one.</p>
-        )}
-      </div>
+      <PropertyList properties={properties} onChange={handleChangeProps} />
 
       <div className="px-4 py-3 border-t border-border">
         <div className="flex items-center justify-between mb-2">
@@ -685,138 +571,6 @@ function DetailRow({ label, value, mono }: { label: string; value: string; mono?
       <span className={`text-xs text-right truncate ${mono ? 'font-mono text-[#00d4ff]' : 'text-foreground'}`} title={value}>
         {value}
       </span>
-    </div>
-  )
-}
-
-// --- Property components ---
-
-function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel }: {
-  form: PropForm
-  onChange: (f: PropForm) => void
-  onConfirm: () => void
-  onCancel: () => void
-  confirmLabel: string
-}) {
-  return (
-    <div className="flex flex-col gap-1.5 mb-1 p-2 rounded-md bg-[#0d1117] border border-[#30363d]">
-      <Input
-        value={form.key}
-        onChange={(e) => onChange({ ...form, key: e.target.value })}
-        placeholder="Label (e.g. CPU Model)"
-        className="bg-[#21262d] border-[#30363d] text-xs h-7"
-        autoFocus
-        onKeyDown={(e) => e.key === 'Enter' && onConfirm()}
-      />
-      <Input
-        value={form.value}
-        onChange={(e) => onChange({ ...form, value: e.target.value })}
-        placeholder="Value (e.g. i7-12700K)"
-        className="bg-[#21262d] border-[#30363d] text-xs h-7"
-        onKeyDown={(e) => e.key === 'Enter' && onConfirm()}
-      />
-      {/* Icon picker */}
-      <div className="flex flex-wrap gap-1 pt-0.5">
-        <button
-          onClick={() => onChange({ ...form, icon: null })}
-          title="No icon"
-          className={`w-6 h-6 rounded flex items-center justify-center text-[10px] border transition-colors ${
-            form.icon === null ? 'border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff]' : 'border-[#30363d] text-muted-foreground hover:border-[#8b949e]'
-          }`}
-        >
-          –
-        </button>
-        {PROPERTY_ICON_NAMES.map((name) => {
-          const Icon = PROPERTY_ICONS[name]
-          const active = form.icon === name
-          return (
-            <button
-              key={name}
-              onClick={() => onChange({ ...form, icon: name })}
-              title={name}
-              className={`w-6 h-6 rounded flex items-center justify-center border transition-colors ${
-                active ? 'border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff]' : 'border-[#30363d] text-muted-foreground hover:border-[#8b949e]'
-              }`}
-            >
-              {createElement(Icon, { size: 11 })}
-            </button>
-          )
-        })}
-      </div>
-      {/* Visible toggle */}
-      <label className="flex items-center gap-2 cursor-pointer pt-0.5">
-        <input
-          type="checkbox"
-          checked={form.visible}
-          onChange={(e) => onChange({ ...form, visible: e.target.checked })}
-          className="accent-[#00d4ff] w-3 h-3"
-        />
-        <span className="text-[10px] text-muted-foreground">Show on node</span>
-      </label>
-      <div className="flex gap-1.5">
-        <Button size="sm" className="flex-1 h-6 text-[10px] bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90" onClick={onConfirm}>
-          {confirmLabel}
-        </Button>
-        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={onCancel}>Cancel</Button>
-      </div>
-    </div>
-  )
-}
-
-function PropertyBadge({ prop, draggable, isDragging, isDragOver, onDragStart, onDragEnter, onDragEnd, onDrop, onToggleVisible, onEdit, onRemove }: {
-  prop: NodeProperty
-  draggable: boolean
-  isDragging: boolean
-  isDragOver: boolean
-  onDragStart: () => void
-  onDragEnter: () => void
-  onDragEnd: () => void
-  onDrop: () => void
-  onToggleVisible: () => void
-  onEdit: () => void
-  onRemove: () => void
-}) {
-  const Icon = resolvePropertyIcon(prop.icon)
-  return (
-    <div
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragEnter={onDragEnter}
-      onDragOver={(e) => e.preventDefault()}
-      onDragEnd={onDragEnd}
-      onDrop={(e) => { e.preventDefault(); onDrop() }}
-      className="group flex items-center justify-between gap-2 px-2 py-1.5 rounded-md border text-xs transition-colors"
-      style={{
-        background: '#21262d',
-        borderColor: isDragOver ? '#00d4ff' : '#30363d',
-        opacity: isDragging ? 0.4 : 1,
-      }}
-    >
-      <div className="flex items-center gap-1.5 min-w-0">
-        {draggable && (
-          <span className="shrink-0 cursor-grab active:cursor-grabbing text-[#8b949e] hover:text-[#00d4ff]" title="Drag to reorder">
-            {createElement(GripVertical, { size: 11 })}
-          </span>
-        )}
-        {Icon && createElement(Icon, { size: 11, className: 'shrink-0 text-muted-foreground' })}
-        <span className="font-medium truncate text-foreground" title={prop.key}>{prop.key}</span>
-        <span className="text-muted-foreground truncate" title={prop.value}>· {prop.value}</span>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <button
-          onClick={onToggleVisible}
-          title={prop.visible ? 'Hide on node' : 'Show on node'}
-          className="text-[#8b949e] hover:text-[#00d4ff] transition-colors"
-        >
-          {prop.visible ? <Eye size={10} /> : <EyeOff size={10} />}
-        </button>
-        <button onClick={onEdit} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff]" title="Edit property">
-          <Pencil size={10} />
-        </button>
-        <button onClick={onRemove} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149]" title="Remove property">
-          <X size={10} />
-        </button>
-      </div>
     </div>
   )
 }

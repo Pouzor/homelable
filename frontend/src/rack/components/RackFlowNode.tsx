@@ -299,7 +299,6 @@ export function RackFlowNode({ id }: NodeProps) {
               colorOverride={device.color}
               selected={selectedDeviceId === device.id}
               revealed={revealAll || focused}
-              transparent={cablesOn && !focused}
               interactivePorts={cableMode}
               patchedPorts={patchedPorts}
               draftPortId={isDraftDevice ? cableDraft.portId : null}

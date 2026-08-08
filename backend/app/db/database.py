@@ -286,6 +286,22 @@ async def init_db() -> None:
             logger.warning("canvas_state migration failed: %s", exc)
         # --- end Electrical designs schema migrations --------------------------
 
+        # Rack cables gained editable annotations: a label the user can print on
+        # the canvas, plus the same free-form property records nodes carry.
+        rack_cable_migrations: list[tuple[str, str]] = [
+            (
+                "rack_cables.label_visible",
+                "ALTER TABLE rack_cables ADD COLUMN label_visible BOOLEAN NOT NULL DEFAULT 0",
+            ),
+            ("rack_cables.properties", "ALTER TABLE rack_cables ADD COLUMN properties JSON"),
+        ]
+        for label, sql in rack_cable_migrations:
+            await _try_migrate(conn, sql, label=label)
+        with suppress(OperationalError):
+            await conn.exec_driver_sql(
+                "UPDATE rack_cables SET properties = '[]' WHERE properties IS NULL"
+            )
+
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE edges ADD COLUMN waypoints JSON")
         with suppress(OperationalError):

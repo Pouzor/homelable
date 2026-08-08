@@ -74,6 +74,25 @@ describe('RackFlowNode status', () => {
   })
 })
 
+describe('RackFlowNode plate opacity', () => {
+  /** Every faceplate the rack draws, one <svg> each. */
+  const plateOpacities = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll('svg')).map((s) => s.style.opacity)
+
+  it('keeps plates opaque with cables always on', () => {
+    // A faded plate let the rails and the U grid show through the gear.
+    store().setCableVisibility('always')
+    const { container } = renderRack()
+    expect(plateOpacities(container).every((o) => o === '')).toBe(true)
+  })
+
+  it('keeps plates opaque in patch mode too', () => {
+    store().toggleCableMode()
+    const { container } = renderRack()
+    expect(plateOpacities(container).every((o) => o === '')).toBe(true)
+  })
+})
+
 describe('RackFlowNode patching', () => {
   /** Two mounted ports in this rack that nothing is plugged into yet. */
   function freePorts() {

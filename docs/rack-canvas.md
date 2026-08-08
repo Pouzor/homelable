@@ -148,8 +148,26 @@ To unplug: **click the cable** (it gets an accent halo), then press
 destroys a patch.
 
 A header select controls what you see: cables **on hover**, **always**, or
-**hidden**. With cables shown, plates fade so the patching reads clearly. Cables
-pan and zoom with the canvas and may run from one rack to another.
+**hidden**. Cables
+pan and zoom with the canvas and may run from one rack to another. A cable you
+have selected stays drawn whatever that select says.
+
+### Documenting a cable
+
+**Click a cable** — patching or not — and a panel opens on the right:
+
+| Field | What it does |
+|---|---|
+| Endpoints | The two devices and ports the run connects. Read-only: move a patch by unplugging it and drawing it again. |
+| Type | Ethernet or fibre. A cable still wearing its type's default colour is recoloured to match; a colour you picked yourself is kept. |
+| Colour | The sheath colours you actually have on the shelf, plus a free hex field for anything else. |
+| Label | A name for the run — "Uplink to core", a patch-panel reference. **Show on canvas** prints it next to the cable. |
+| Properties | Anything else worth recording: length, VLAN, speed, category, patch reference. Same editor as a node's properties on a diagram — a label, a value, an optional icon, and an eye that decides whether it shows on the canvas. |
+| Unplug cable | Removes the patch. The devices and their ports stay. |
+
+What you tick as visible is drawn on a small plate at the middle of the run, so a
+rack photo exports with its cable lengths and VLANs on it. Everything else stays
+in the panel, one click away.
 
 ### Import links 🔒
 

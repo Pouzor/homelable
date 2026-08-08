@@ -24,7 +24,8 @@ Create one from **New Canvas → Kind → Rack**.
 | Port visibility | Patch-facing gear (switches, patch panels) shows its ports permanently. Everything else reveals them on hover, on selection, or when cables are on — a cable never ends on an invisible port. |
 | Plate zones | Each template reserves three non-overlapping bands: status LED (fixed left), `labelBox` (name, clipped), then artwork and ports. A test asserts no port lands on the name band. `labelBox.y` (default 0.5) moves the name band *and* the LED off mid-height — desktop NAS boxes are drive doors over a badge strip at the bottom. |
 | Cables | Port-to-port, a relation of their own — not React Flow edges. One cable per port. Drawn in a `ViewportPortal` so they pan/zoom with the canvas and can cross racks. |
-| Cable visibility | Hidden by default; shown on hover/selection, or all-on via patch mode / the header. Plates fade to 40 % when cables are on. Copper vs fibre follows the port the patch starts from. |
+| Cable visibility | Hidden by default; shown on hover/selection, or all-on via patch mode / the header. Plates stay opaque in every mode — fading them to 40 % showed the rails and the U grid through the gear. Copper vs fibre follows the port the patch starts from. A selected cable is drawn whatever the mode — its panel is open on the right, so hiding the run it describes would read as a bug. |
+| Cable annotations | A cable carries a `label` plus `properties` — the same `NodeProperty` records the logical canvas uses (`key`, `value`, `icon`, `visible`), edited with the shared `components/common/PropertyList`. `labelVisible` and each property's `visible` decide what is printed on the canvas: `CableLayer` draws the lines on a small plate at the midpoint of the run (the cubic solved at `t = 0.5`, not `getPointAtLength`, which needs a mounted path). |
 | Colours | `rackTheme.ts` derives the whole rack palette from the active app theme rather than declaring one per theme, so a new theme works here for free. Per-rack chrome (frame, rails, interior) stays user-editable; only its default comes from the theme. |
 
 ## Persistence
@@ -54,7 +55,8 @@ types in `@/types/rack`, narrowing every enum on the way in.
 - Double-click a plate → the same modal in edit mode: label, faceplate, U/height/column/width, status, colour, port list, Unmount. Single click only selects.
 - Double-click empty rack chrome → `RackSettingsModal` (name, location, U height, 19"/10", numbering direction, frame/rail/interior colours, U numbers, enclosed, delete).
 - Growing a device — by hand or by picking a taller plate — relocates it to the nearest slot that takes the new size. Only a rack with no such slot rejects the edit, and says so.
-- **Patch mode**: drag from port A to port B to cable them — a dashed rubber band follows the pointer, exactly like dragging an edge on the logical canvas. Clicking A then B still works; Escape drops a half-drawn patch. Click a cable to select it (it gets an accent halo), then press Delete/Backspace — or the header's Unplug button — to remove it; Escape or a pane click deselects. Rack dragging is disabled while in patch mode.
+- **Patch mode**: drag from port A to port B to cable them — a dashed rubber band follows the pointer, exactly like dragging an edge on the logical canvas. Clicking A then B still works; Escape drops a half-drawn patch. Rack dragging is disabled while in patch mode.
+- **Click a cable** — in patch mode or out of it — to select it: it gets an accent halo and opens `RackCablePanel` on the right (endpoints, type, colour, label, properties, Unplug). Delete/Backspace unplugs the selection; Escape or a pane click deselects. Selecting a cable drops any mount/rack selection and vice versa — one rail, one occupant.
 - **Import links**: reads the physical edges (ethernet/fibre/vlan/cluster) of every non-rack design and matches them on `nodeId`. Idempotent — a device pair already cabled is skipped, whichever ports carry it, so a re-run after racking more gear adds only what is missing. There is no "done" flag: one lived in memory only, and a reload re-armed the import onto the next free ports.
 - **New device**: the modal's *New device* source adds a Device Inventory entry (tagged `rack`), for gear no scan will ever discover. The left-rail tray only carries accessories, as a drag source.
 
@@ -62,7 +64,7 @@ types in `@/types/rack`, narrowing every enum on the way in.
 
 - **Header**: undo/redo, auto layout, YAML import/export, MD and live View are hidden. Add Rack, Patch, cable visibility and Import links replace them. PNG export and Save stay.
 - **Left rail**: the design switcher, Device Inventory, Scan History, Settings and Logout stay. The node/zone/text/scan/import block becomes the accessory tray plus **+ Device**. Devices themselves are not listed there — they live in the Device Inventory modal. The footer counts racks, mounts, cables and free U instead of online/offline nodes.
-- **Right rail**: none. A mount is edited in `RackDeviceModal`, a rack in `RackSettingsModal`, so the canvas keeps the full width.
+- **Right rail**: only for a selected cable (`RackCablePanel`). A mount is edited in `RackDeviceModal` and a rack in `RackSettingsModal` — a cable has no plate to double-click, so it gets the rail instead. With nothing selected the canvas keeps the full width.
 
 ## Known gaps
 
