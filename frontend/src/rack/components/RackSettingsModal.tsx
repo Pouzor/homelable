@@ -4,6 +4,7 @@
  * Same reasoning as `RackDeviceModal`: the rack canvas has no right rail, so the
  * settings live in a dialog. Opened by double-clicking a rack's chassis.
  */
+import { useState } from 'react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -62,21 +63,7 @@ export function RackSettingsModal() {
             />
           </Field>
           <Field label={`Height — ${used}U used of ${rack.uHeight}U`}>
-            <input
-              type="number"
-              min={MIN_RACK_U}
-              max={MAX_RACK_U}
-              className={inputClass}
-              aria-label="Rack height"
-              value={rack.uHeight}
-              onChange={(e) => {
-                // The store clamps and relocates; it only refuses when a mount
-                // the shrink pushes out has nowhere left to go.
-                if (!updateRack(rack.id, { uHeight: Number(e.target.value) || MIN_RACK_U })) {
-                  toast.error('Not enough room to shrink the rack — unmount something first')
-                }
-              }}
-            />
+            <HeightField rackId={rack.id} uHeight={rack.uHeight} />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
@@ -142,6 +129,13 @@ export function RackSettingsModal() {
               type="button"
               variant="ghost"
               onClick={() => {
+                // Takes every mount and every patch touching them with it, and
+                // the rack canvas has no undo. Ask first.
+                const mounted = devices.filter((d) => d.rackId === rack.id).length
+                const warning = mounted
+                  ? `Delete "${rack.name}" and unmount ${mounted} device${mounted > 1 ? 's' : ''}? Their cabling is removed too. The Device Inventory is untouched.`
+                  : `Delete "${rack.name}"?`
+                if (!confirm(warning)) return
                 removeRack(rack.id)
                 close()
               }}
@@ -156,5 +150,58 @@ export function RackSettingsModal() {
         </div>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Rack height, committed on blur or Enter rather than per keystroke.
+ *
+ * Typing into a controlled number input walks through intermediate values —
+ * backspacing "24" yields "2" — and `updateRack` relocates the mounts a shrink
+ * pushes past the top rail. Those relocations are not undone when the digits
+ * come back, and the rack canvas has no undo, so a per-keystroke commit quietly
+ * rearranged the rack. Only the settled value reaches the store.
+ */
+function HeightField({ rackId, uHeight }: { rackId: string; uHeight: number }) {
+  const updateRack = useRackStore((s) => s.updateRack)
+  const [draft, setDraft] = useState(String(uHeight))
+
+  // Follow the store when the height changes elsewhere — a clamp, or another
+  // rack opened into the same field. Adjusted during render rather than in an
+  // effect, which would render the stale draft first.
+  const [seen, setSeen] = useState({ rackId, uHeight })
+  if (seen.rackId !== rackId || seen.uHeight !== uHeight) {
+    setSeen({ rackId, uHeight })
+    setDraft(String(uHeight))
+  }
+
+  const commit = () => {
+    const next = Number(draft) || MIN_RACK_U
+    if (next === uHeight) {
+      setDraft(String(uHeight))
+      return
+    }
+    if (!updateRack(rackId, { uHeight: next })) {
+      toast.error('Not enough room to shrink the rack — unmount something first')
+      setDraft(String(uHeight))
+    }
+  }
+
+  return (
+    <input
+      type="number"
+      min={MIN_RACK_U}
+      max={MAX_RACK_U}
+      className={inputClass}
+      aria-label="Rack height"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      // Escape needs no branch here: the dialog closes on it, and the draft
+      // dies with the field having committed nothing.
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+      }}
+    />
   )
 }

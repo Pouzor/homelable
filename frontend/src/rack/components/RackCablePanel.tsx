@@ -7,6 +7,7 @@
  * the same free-form property records the logical canvas uses for nodes, each
  * with its own "show it on the canvas" toggle.
  */
+import { useState } from 'react'
 import { Cable as CableIcon, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -112,12 +113,10 @@ export function RackCablePanel() {
             />
           ))}
         </div>
-        <Input
+        <HexField
           value={cable.color}
-          onChange={(e) => updateCable(cable.id, { color: e.target.value })}
-          aria-label="Cable colour hex"
-          placeholder="#39d353"
-          className="mt-2 bg-[#21262d] border-[#30363d] text-xs h-7 font-mono"
+          fallback={CABLE_COLORS[cable.type]}
+          onCommit={(color) => updateCable(cable.id, { color })}
         />
       </div>
 
@@ -163,6 +162,53 @@ export function RackCablePanel() {
         </Button>
       </div>
     </aside>
+  )
+}
+
+/**
+ * Free-text colour, committed on blur or Enter once it parses.
+ *
+ * Writing every keystroke into `cable.color` fed partial values (`#39d`) to the
+ * SVG `stroke`, and the run stopped rendering with no feedback. An unparseable
+ * value falls back to the cable type's default rather than leaving an invisible
+ * cable behind.
+ */
+function HexField({ value, fallback, onCommit }: {
+  value: string
+  fallback: string
+  onCommit: (color: string) => void
+}) {
+  const [draft, setDraft] = useState(value)
+
+  // Follow a colour set elsewhere (a swatch, a type change). Adjusted during
+  // render, not in an effect, so the field never shows the stale value first.
+  const [seen, setSeen] = useState(value)
+  if (seen !== value) {
+    setSeen(value)
+    setDraft(value)
+  }
+
+  const commit = () => {
+    const next = draft.trim()
+    const valid = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(next)
+    const color = valid ? next : fallback
+    setDraft(color)
+    if (color !== value) onCommit(color)
+  }
+
+  return (
+    <Input
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') setDraft(value)
+      }}
+      aria-label="Cable colour hex"
+      placeholder="#39d353"
+      className="mt-2 bg-[#21262d] border-[#30363d] text-xs h-7 font-mono"
+    />
   )
 }
 

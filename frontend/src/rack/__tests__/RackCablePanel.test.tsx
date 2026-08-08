@@ -52,8 +52,44 @@ describe('RackCablePanel', () => {
     fireEvent.click(screen.getByLabelText('Cable colour #a855f7'))
     expect(selected().color).toBe('#a855f7')
 
-    fireEvent.change(screen.getByLabelText('Cable colour hex'), { target: { value: '#123456' } })
+    const hex = screen.getByLabelText('Cable colour hex')
+    fireEvent.change(hex, { target: { value: '#123456' } })
+    fireEvent.blur(hex)
     expect(selected().color).toBe('#123456')
+  })
+
+  it('leaves the cable alone while a hex is half-typed', () => {
+    // "#39d" parses as a colour, but "#3" does not — a per-keystroke write fed
+    // the SVG stroke junk and the run stopped rendering.
+    const cable = store().cables[0]
+    store().selectCable(cable.id)
+    render(<RackCablePanel />)
+
+    fireEvent.change(screen.getByLabelText('Cable colour hex'), { target: { value: '#12' } })
+    expect(selected().color).toBe(cable.color)
+  })
+
+  it('falls back to the type default when the hex does not parse', () => {
+    const cable = store().cables.find((c) => c.type === 'ethernet')!
+    store().selectCable(cable.id)
+    render(<RackCablePanel />)
+
+    const hex = screen.getByLabelText('Cable colour hex')
+    fireEvent.change(hex, { target: { value: 'zzz' } })
+    fireEvent.blur(hex)
+
+    expect(selected().color).toBe(CABLE_COLORS.ethernet)
+  })
+
+  it('accepts the three-digit shorthand', () => {
+    store().selectCable(store().cables[0].id)
+    render(<RackCablePanel />)
+
+    const hex = screen.getByLabelText('Cable colour hex')
+    fireEvent.change(hex, { target: { value: '#abc' } })
+    fireEvent.blur(hex)
+
+    expect(selected().color).toBe('#abc')
   })
 
   it('recolours a default-coloured cable when its type changes', () => {
