@@ -176,8 +176,11 @@ function HeightField({ rackId, uHeight }: { rackId: string; uHeight: number }) {
   }
 
   const commit = () => {
-    const next = Number(draft) || MIN_RACK_U
-    if (next === uHeight) {
+    // An empty or unparseable field is "no edit", not "1 U". `Number('')` is 0,
+    // so a select-all + Delete followed by a click elsewhere used to shrink an
+    // empty rack to a single U — silently, with no undo behind it.
+    const next = Number(draft.trim())
+    if (!draft.trim() || !Number.isFinite(next) || next === uHeight) {
       setDraft(String(uHeight))
       return
     }

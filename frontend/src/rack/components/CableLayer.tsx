@@ -66,7 +66,10 @@ export function CableLayer() {
   const cableDrag = useRackStore((s) => s.cableDrag)
   const palette = useRackPalette()
 
-  if (visibility === 'hidden' && !cableMode) return null
+  // `hidden` still draws the selected cable: its panel is open on the right and
+  // editing a run nothing shows reads as a bug. The per-cable filter below is
+  // what decides; this only skips the work when there is nothing to draw.
+  if (visibility === 'hidden' && !cableMode && !selectedCableId) return null
 
   const rackById = new Map<string, Rack>(racks.map((r) => [r.id, r]))
   const deviceById = new Map<string, RackDevice>(devices.map((d) => [d.id, d]))
@@ -87,6 +90,9 @@ export function CableLayer() {
     // A selected cable stays on screen whatever the visibility mode — its panel
     // is open on the right, so hiding the run it describes reads as a bug.
     if (!showAll && cable.id !== selectedCableId) {
+      // `hidden` means hidden: hovering a plate reveals nothing extra, or the
+      // selection would drag its neighbours back on screen with it.
+      if (visibility === 'hidden') continue
       if (!focus) continue
       if (cable.from.deviceId !== focus && cable.to.deviceId !== focus) continue
     }

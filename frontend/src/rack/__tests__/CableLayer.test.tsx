@@ -38,6 +38,33 @@ describe('CableLayer selection', () => {
     expect(useRackStore.getState().selectedCableId).toBe(useRackStore.getState().cables[0].id)
   })
 
+  it('keeps the selected cable drawn when cables are hidden', () => {
+    // Its panel is open on the right; hiding the run being edited reads as a
+    // bug. The header select used to make the selection vanish under the panel.
+    const store = useRackStore.getState()
+    store.selectCable(store.cables[0].id)
+    store.setCableVisibility('hidden')
+
+    const { container } = render(<CableLayer />)
+    expect(hitPaths(container)).toHaveLength(1)
+  })
+
+  it('draws nothing else when cables are hidden, even on hover', () => {
+    const store = useRackStore.getState()
+    store.setCableVisibility('hidden')
+    store.hoverDevice(store.cables[0].from.deviceId)
+    store.selectCable(store.cables[0].id)
+
+    const { container } = render(<CableLayer />)
+    expect(hitPaths(container)).toHaveLength(1)
+  })
+
+  it('draws nothing when cables are hidden and none is selected', () => {
+    useRackStore.getState().setCableVisibility('hidden')
+    const { container } = render(<CableLayer />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
   it('keeps the selected cable drawn when visibility is hover and nothing is focused', () => {
     const store = useRackStore.getState()
     store.setCableVisibility('hover')
