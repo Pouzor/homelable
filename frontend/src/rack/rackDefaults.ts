@@ -9,6 +9,14 @@ export const DEFAULT_RACK_STYLE: RackStyle = {
   enclosed: false,
 }
 
+/**
+ * Capacity a rack may be set to. The backend accepts up to 100 U; the UI stops
+ * at 48 — taller than any cabinet a homelab owns, and the number input's
+ * `min`/`max` are only hints, so the store clamps to these for real.
+ */
+export const MIN_RACK_U = 1
+export const MAX_RACK_U = 48
+
 export const CABLE_COLORS: Record<CableType, string> = {
   ethernet: '#39d353',
   fiber: '#f0a500',

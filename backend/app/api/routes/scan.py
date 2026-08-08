@@ -15,6 +15,7 @@ from app.db.database import AsyncSessionLocal, get_db
 from app.db.models import Design, Edge, Node, PendingDevice, PendingDeviceLink, ScanRun
 from app.schemas.nodes import NodeCreate
 from app.schemas.scan import PendingDeviceCreate, PendingDeviceResponse, ScanRunResponse
+from app.services.mac_utils import normalize_mac
 from app.services.node_dedupe import dedupe_nodes_by_ieee, find_duplicate_node
 from app.services.scanner import DeepScanOptions, _valid_port_range, request_cancel, run_scan
 from app.services.zigbee_service import (
@@ -335,7 +336,10 @@ async def create_pending(
     device = PendingDevice(
         hostname=body.hostname,
         ip=body.ip,
-        mac=body.mac,
+        # Canonical form, like every other write path: dedup compares MACs by
+        # equality, so a hand-typed "AA-BB-CC-11-22-33" would never match the
+        # scanned "aa:bb:cc:11:22:33" and approve would build a duplicate node.
+        mac=normalize_mac(body.mac),
         suggested_type=body.suggested_type,
         model=body.model,
         vendor=body.vendor,
