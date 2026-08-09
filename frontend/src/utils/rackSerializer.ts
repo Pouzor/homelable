@@ -13,6 +13,8 @@ import type {
   CableType,
   DeviceStatus,
   InventoryDevice,
+  InventoryService,
+  LinkedNodeInfo,
   MountStatus,
   Port,
   PortType,
@@ -87,6 +89,22 @@ export interface ApiInventoryItem {
   node_id: string | null
   node_status: string | null
   racked: boolean
+  // Technical detail, added after the first release of the endpoint — optional
+  // so an older backend (or a fixture) still deserializes.
+  mac?: string | null
+  hostname?: string | null
+  os?: string | null
+  services?: { port?: number | null; name?: string | null }[] | null
+  node_label?: string | null
+  node_type?: string | null
+  node_ip?: string | null
+  node_mac?: string | null
+  node_hostname?: string | null
+  node_os?: string | null
+  node_check_method?: string | null
+  node_design_id?: string | null
+  node_design_name?: string | null
+  node_last_seen?: string | null
 }
 
 export interface RackSavePayload {
@@ -227,16 +245,50 @@ export function toCable(api: ApiRackCable): Cable {
   }
 }
 
+/** Drops the records with neither a port nor a name — they print as an empty chip. */
+function asServices(raw: ApiInventoryItem['services']): InventoryService[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((s) => ({
+      port: typeof s?.port === 'number' ? s.port : null,
+      name: s?.name ? String(s.name) : null,
+    }))
+    .filter((s) => s.port !== null || s.name !== null)
+}
+
+/** The node half of an inventory row, when the backend matched one. */
+function asLinkedNode(api: ApiInventoryItem): LinkedNodeInfo | null {
+  if (!api.node_id) return null
+  return {
+    id: api.node_id,
+    label: api.node_label ?? null,
+    type: api.node_type ?? null,
+    ip: api.node_ip ?? null,
+    mac: api.node_mac ?? null,
+    hostname: api.node_hostname ?? null,
+    os: api.node_os ?? null,
+    checkMethod: api.node_check_method ?? null,
+    designId: api.node_design_id ?? null,
+    designName: api.node_design_name ?? null,
+    lastSeen: api.node_last_seen ?? null,
+  }
+}
+
 export function toInventoryDevice(api: ApiInventoryItem): InventoryDevice {
   return {
     id: api.id,
     label: api.label,
     type: api.suggested_type,
     ip: api.ip,
+    mac: api.mac ?? null,
+    hostname: api.hostname ?? null,
+    os: api.os ?? null,
+    services: asServices(api.services),
     // The inventory row itself is only pending/approved; live status comes from
     // the linked canvas node, if any.
     status: asStatus(api.node_status),
     nodeId: api.node_id,
+    node: asLinkedNode(api),
     racked: api.racked,
     suggestedFaceplateId: suggestFaceplate(api.suggested_type),
   }

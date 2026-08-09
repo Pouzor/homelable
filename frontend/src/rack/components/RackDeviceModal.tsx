@@ -21,6 +21,7 @@ import type { PendingDevice } from '@/components/modals/PendingDeviceModal'
 import { useRackStore } from '../store'
 import { FaceplatePicker } from './FaceplatePicker'
 import { Faceplate } from './Faceplate'
+import { LinkedDevicePanel } from './LinkedDevicePanel'
 import { deviceTypeForFaceplate, getFaceplate } from '../faceplates'
 import { findSlot } from '../layout'
 import { canFollowNode, resolveDeviceStatus } from '../deviceStatus'
@@ -581,6 +582,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
             </Field>
             </div>
 
+            <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
                 <Label className={fieldLabel}>Ports ({ports.length})</Label>
@@ -646,6 +648,12 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                   <li className="text-[11px] text-muted-foreground">No port on this plate.</li>
                 )}
               </ul>
+            </div>
+
+            {/* The column below the port list used to be dead space. A mount
+                that stands for an inventory entry fills it with what the
+                logical canvas knows about the same box. */}
+            <LinkedDevicePanel entry={mountEntry} status={previewStatus} />
             </div>
           </div>
 

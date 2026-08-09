@@ -573,4 +573,24 @@ describe('RackDeviceModal — editing', () => {
     await waitFor(() => expect(store().deviceEditor).toBeNull())
     expect(store().devices.find((d) => d.id === 'dev-pve1')!.status).toBe('unknown')
   })
+
+  it('prints what the logical canvas knows about the mounted device', () => {
+    store().openDeviceEditor('dev-pve1')
+    render(<RackDeviceModal />)
+
+    const entry = store().inventory.find((i) => i.id === 'inv-pve1')!
+    const panel = screen.getByLabelText('Logical view')
+    expect(panel).toHaveTextContent(entry.node!.hostname!)
+    expect(panel).toHaveTextContent(entry.ip!)
+    expect(panel).toHaveTextContent(entry.mac!)
+    expect(panel).toHaveTextContent('proxmox')
+  })
+
+  it('leaves an accessory without a logical view — it stands for no device', () => {
+    store().openDeviceEditor('dev-shelf')
+    render(<RackDeviceModal />)
+
+    expect(store().devices.find((d) => d.id === 'dev-shelf')!.deviceId).toBeNull()
+    expect(screen.queryByLabelText('Logical view')).not.toBeInTheDocument()
+  })
 })

@@ -15,6 +15,7 @@ from app.schemas.racks import (
     RackInventoryResponse,
     RackResponse,
     RackSaveRequest,
+    RackServiceInfo,
     RackStateResponse,
 )
 
@@ -86,6 +87,32 @@ def _device_label(device: PendingDevice) -> str:
         or device.ieee_address
         or device.id
     )
+
+
+# A mount prints its services as a short list, not a port scan dump.
+_MAX_SERVICES = 12
+
+
+def _services(raw: Any) -> list[RackServiceInfo]:
+    """Fingerprinted services, deduped and trimmed for the rack's info panel."""
+    out: list[RackServiceInfo] = []
+    seen: set[tuple[int | None, str | None]] = set()
+    for entry in raw or []:
+        if not isinstance(entry, dict):
+            continue
+        raw_port = entry.get("port")
+        port = raw_port if isinstance(raw_port, int) else None
+        raw_name = entry.get("service_name") or entry.get("name")
+        name = str(raw_name) if raw_name else None
+        if port is None and name is None:
+            continue
+        if (port, name) in seen:
+            continue
+        seen.add((port, name))
+        out.append(RackServiceInfo(port=port, name=name))
+        if len(out) == _MAX_SERVICES:
+            break
+    return out
 
 
 def _ip_tokens(ip: str | None) -> list[str]:
@@ -263,6 +290,11 @@ async def rack_inventory(
     for node in nodes:
         for token in _ip_tokens(node.ip):
             by_ip.setdefault(token, node)
+    # Which canvas the matched node lives on — the rack prints it so the user
+    # knows where the logical twin of a mount is drawn.
+    design_names = {
+        d.id: d.name for d in (await db.execute(select(Design))).scalars().all()
+    }
 
     items = []
     for device in devices:
@@ -271,6 +303,12 @@ async def rack_inventory(
         linked: Node | None = by_ieee.get(device.ieee_address) if device.ieee_address else None
         if linked is None:
             linked = next((by_ip[t] for t in _ip_tokens(device.ip) if t in by_ip), None)
+        # The node is the richer record once a device has been approved onto a
+        # canvas; the inventory row is what discovery last saw. Report both and
+        # let the panel prefer the node.
+        services = _services(device.services) or (
+            _services(linked.services) if linked else []
+        )
         items.append(
             RackInventoryItem(
                 id=device.id,
@@ -279,8 +317,24 @@ async def rack_inventory(
                 ip=device.ip,
                 status=device.status,
                 discovery_source=device.discovery_source,
+                mac=device.mac or device.ieee_address,
+                hostname=device.hostname,
+                os=device.os,
+                services=services,
                 node_id=linked.id if linked else None,
                 node_status=linked.status if linked else None,
+                node_label=linked.label if linked else None,
+                node_type=linked.type if linked else None,
+                node_ip=linked.ip if linked else None,
+                node_mac=(linked.mac or linked.ieee_address) if linked else None,
+                node_hostname=linked.hostname if linked else None,
+                node_os=linked.os if linked else None,
+                node_check_method=linked.check_method if linked else None,
+                node_design_id=linked.design_id if linked else None,
+                node_design_name=(
+                    design_names.get(linked.design_id) if linked and linked.design_id else None
+                ),
+                node_last_seen=linked.last_seen if linked else None,
                 racked=device.id in mounted,
             )
         )

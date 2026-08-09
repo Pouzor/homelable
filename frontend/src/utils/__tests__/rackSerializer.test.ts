@@ -186,6 +186,68 @@ describe('API → domain', () => {
     expect(item.status).toBe('unknown')
     expect(item.racked).toBe(true)
   })
+
+  it('carries the linked node detail the rack prints beside a mount', () => {
+    const item = toInventoryDevice({
+      id: 'inv3',
+      label: 'nas',
+      suggested_type: 'nas',
+      ip: '192.168.1.9',
+      status: 'approved',
+      discovery_source: 'arp',
+      mac: 'aa:bb:cc:dd:ee:ff',
+      hostname: 'nas.lan',
+      os: 'TrueNAS',
+      services: [
+        { port: 445, name: 'smb' },
+        // Neither a port nor a name: nothing to print.
+        { port: null, name: null },
+      ],
+      node_id: 'node1',
+      node_status: 'online',
+      node_label: 'nas-truenas',
+      node_type: 'nas',
+      node_ip: '192.168.1.9',
+      node_mac: 'aa:bb:cc:dd:ee:ff',
+      node_hostname: 'nas.lan',
+      node_os: 'TrueNAS SCALE',
+      node_check_method: 'http',
+      node_design_id: 'd1',
+      node_design_name: 'Network',
+      node_last_seen: '2026-08-08T10:00:00Z',
+      racked: false,
+    })
+
+    expect(item.mac).toBe('aa:bb:cc:dd:ee:ff')
+    expect(item.hostname).toBe('nas.lan')
+    expect(item.services).toEqual([{ port: 445, name: 'smb' }])
+    expect(item.node).toMatchObject({
+      id: 'node1',
+      label: 'nas-truenas',
+      os: 'TrueNAS SCALE',
+      checkMethod: 'http',
+      designName: 'Network',
+      lastSeen: '2026-08-08T10:00:00Z',
+    })
+  })
+
+  it('reports no linked node when the backend matched none', () => {
+    // An older backend sends none of the node_* fields at all; the panel must
+    // read that as "not on a canvas", never as an empty node.
+    const item = toInventoryDevice({
+      id: 'inv4',
+      label: 'pdu',
+      suggested_type: null,
+      ip: null,
+      status: 'pending',
+      discovery_source: 'rack',
+      node_id: null,
+      node_status: null,
+      racked: false,
+    })
+    expect(item.node).toBeNull()
+    expect(item.services).toEqual([])
+  })
 })
 
 describe('domain → API', () => {

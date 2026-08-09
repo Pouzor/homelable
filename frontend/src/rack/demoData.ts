@@ -8,7 +8,15 @@
  */
 import { getFaceplate } from './faceplates'
 import { CABLE_COLORS, DEFAULT_RACK_STYLE } from './rackDefaults'
-import type { Cable, CableType, InventoryDevice, Port, Rack, RackDevice } from '@/types'
+import type {
+  Cable,
+  CableType,
+  InventoryDevice,
+  InventoryService,
+  Port,
+  Rack,
+  RackDevice,
+} from '@/types'
 
 let portSeq = 0
 function withIds(ports: Omit<Port, 'id'>[], deviceId: string): Port[] {
@@ -22,12 +30,14 @@ interface DemoInventorySpec {
   ip?: string
   status: InventoryDevice['status']
   suggestedFaceplateId: string
+  os?: string
+  services?: InventoryService[]
   /** Omitted for gear that was never placed on a logical canvas. */
   onCanvas?: false
 }
 
 const DEMO_INVENTORY: DemoInventorySpec[] = [
-  { id: 'inv-pve1', label: 'pve-01', type: 'proxmox', ip: '192.168.1.10', status: 'online', suggestedFaceplateId: 'server-2u-bays' },
+  { id: 'inv-pve1', label: 'pve-01', type: 'proxmox', ip: '192.168.1.10', status: 'online', suggestedFaceplateId: 'server-2u-bays', os: 'Debian 12', services: [{ port: 8006, name: 'proxmox' }, { port: 22, name: 'ssh' }] },
   { id: 'inv-pve2', label: 'pve-02', type: 'proxmox', ip: '192.168.1.11', status: 'online', suggestedFaceplateId: 'server-1u-bays' },
   { id: 'inv-nuc1', label: 'nuc-k3s-a', type: 'server', ip: '192.168.1.21', status: 'online', suggestedFaceplateId: 'sff-half' },
   { id: 'inv-nuc2', label: 'nuc-k3s-b', type: 'server', ip: '192.168.1.22', status: 'online', suggestedFaceplateId: 'sff-half' },
@@ -36,7 +46,7 @@ const DEMO_INVENTORY: DemoInventorySpec[] = [
   { id: 'inv-sw24', label: 'sw-core-24', type: 'switch', ip: '192.168.1.2', status: 'online', suggestedFaceplateId: 'switch-24' },
   { id: 'inv-sw8', label: 'sw-lab-8', type: 'switch', ip: '192.168.1.3', status: 'online', suggestedFaceplateId: 'switch-8' },
   { id: 'inv-fw', label: 'opnsense', type: 'firewall', ip: '192.168.1.1', status: 'online', suggestedFaceplateId: 'router-1u' },
-  { id: 'inv-nas', label: 'nas-truenas', type: 'nas', ip: '192.168.1.40', status: 'online', suggestedFaceplateId: 'nas-2u' },
+  { id: 'inv-nas', label: 'nas-truenas', type: 'nas', ip: '192.168.1.40', status: 'online', suggestedFaceplateId: 'nas-2u', os: 'TrueNAS SCALE', services: [{ port: 445, name: 'smb' }, { port: 443, name: 'https' }] },
   { id: 'inv-jbod', label: 'jbod-shelf', type: 'server', ip: '192.168.1.41', status: 'unknown', suggestedFaceplateId: 'server-4u-storage' },
   { id: 'inv-ups', label: 'ups-eaton', type: 'ups', ip: '192.168.1.50', status: 'online', suggestedFaceplateId: 'ups-2u' },
   // Dumb hardware: documented by hand, never on a logical canvas.
@@ -51,17 +61,49 @@ export function demoNodeId(inventoryId: string): string | null {
   return `node-${inventoryId}`
 }
 
+/** Stable fake MAC, derived from the id so fixtures never shift between runs. */
+function demoMac(index: number): string {
+  const pair = (n: number) => n.toString(16).padStart(2, '0')
+  return `aa:bb:cc:${pair(index)}:${pair(index * 7 + 1)}:${pair(index * 13 + 2)}`
+}
+
 export function demoInventory(): InventoryDevice[] {
-  return DEMO_INVENTORY.map((spec) => ({
-    id: spec.id,
-    label: spec.label,
-    type: spec.type,
-    ip: spec.ip ?? null,
-    status: spec.status,
-    nodeId: demoNodeId(spec.id),
-    racked: false,
-    suggestedFaceplateId: spec.suggestedFaceplateId,
-  }))
+  return DEMO_INVENTORY.map((spec, index) => {
+    const nodeId = demoNodeId(spec.id)
+    const mac = demoMac(index)
+    const hostname = `${spec.label}.lan`
+    return {
+      id: spec.id,
+      label: spec.label,
+      type: spec.type,
+      ip: spec.ip ?? null,
+      mac,
+      hostname,
+      os: spec.os ?? null,
+      services: spec.services ?? [],
+      status: spec.status,
+      nodeId,
+      // The demo canvas the sample gear is drawn on, so the mount's info panel
+      // has something to show without a backend.
+      node: nodeId
+        ? {
+            id: nodeId,
+            label: spec.label,
+            type: spec.type,
+            ip: spec.ip ?? null,
+            mac,
+            hostname,
+            os: spec.os ?? null,
+            checkMethod: 'ping',
+            designId: 'demo-network',
+            designName: 'Network',
+            lastSeen: null,
+          }
+        : null,
+      racked: false,
+      suggestedFaceplateId: spec.suggestedFaceplateId,
+    }
+  })
 }
 
 export function demoRacks(): Rack[] {

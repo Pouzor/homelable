@@ -199,6 +199,36 @@ export type CableVisibility = 'hover' | 'always' | 'hidden'
 // Inventory
 // ---------------------------------------------------------------------------
 
+/** One fingerprinted service, as the mount's info panel prints it. */
+export interface InventoryService {
+  port: number | null
+  name: string | null
+}
+
+/**
+ * The logical-canvas view of the same hardware, read-only in the rack.
+ *
+ * Resolved server-side from the inventory entry (IEEE, then IP). Present only
+ * once the device has been approved onto a canvas.
+ */
+export interface LinkedNodeInfo {
+  id: string
+  label: string | null
+  /** `NodeType` on the canvas; free-form here, the rack only prints it. */
+  type: string | null
+  ip: string | null
+  mac: string | null
+  hostname: string | null
+  os: string | null
+  /** Status check the node runs — what `auto` on a mount actually follows. */
+  checkMethod: string | null
+  /** Canvas the node is drawn on. */
+  designId: string | null
+  designName: string | null
+  /** ISO timestamp of the last successful check, when the node has one. */
+  lastSeen: string | null
+}
+
 /**
  * A Device Inventory entry offered to the rack tray.
  *
@@ -212,10 +242,18 @@ export interface InventoryDevice {
   /** `suggested_type` from discovery; free-form, may be unknown to the UI. */
   type: string | null
   ip?: string | null
+  /** MAC, or the IEEE address for a mesh device. */
+  mac?: string | null
+  hostname?: string | null
+  os?: string | null
+  /** Services discovery fingerprinted, falling back to the canvas node's. */
+  services?: InventoryService[]
   /** Live status of the matching canvas node, `unknown` when there is none. */
   status: DeviceStatus
   /** Matching canvas node, when the device is on a logical canvas. */
   nodeId: string | null
+  /** What that node holds. Null when the device is on no canvas. */
+  node?: LinkedNodeInfo | null
   /** Already mounted somewhere in this rack design. */
   racked: boolean
   /** Faceplate proposed when the device is dropped into a rack. */

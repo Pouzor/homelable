@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, field_validator, model_validator
@@ -239,8 +240,20 @@ class RackStateResponse(BaseModel):
     viewport: dict[str, Any] = {}
 
 
+class RackServiceInfo(BaseModel):
+    """One service fingerprinted on a device, as the rack view prints it."""
+
+    port: int | None = None
+    name: str | None = None
+
+
 class RackInventoryItem(BaseModel):
-    """A Device Inventory entry offered to the rack tray."""
+    """A Device Inventory entry offered to the rack tray.
+
+    Carries the technical facts the logical canvas already knows about the same
+    hardware (`node_*`), so a mount can print them without the user leaving the
+    rack. Everything node-side is read-only here: the logical canvas owns it.
+    """
 
     id: str
     label: str
@@ -248,9 +261,25 @@ class RackInventoryItem(BaseModel):
     ip: str | None = None
     status: str
     discovery_source: str | None = None
+    # Inventory-side technical detail, from discovery.
+    mac: str | None = None
+    hostname: str | None = None
+    os: str | None = None
+    services: list[RackServiceInfo] = []
     # Live status of the matching canvas node, when the device is on one.
     node_id: str | None = None
     node_status: str | None = None
+    # What that node holds — the logical view of the same box.
+    node_label: str | None = None
+    node_type: str | None = None
+    node_ip: str | None = None
+    node_mac: str | None = None
+    node_hostname: str | None = None
+    node_os: str | None = None
+    node_check_method: str | None = None
+    node_design_id: str | None = None
+    node_design_name: str | None = None
+    node_last_seen: datetime | None = None
     # True when this device is already mounted somewhere in this design.
     racked: bool = False
 
