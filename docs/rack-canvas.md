@@ -91,6 +91,17 @@ Then set:
 click only selects it. **Unmount** takes the device out of the rack — it stays in
 the Device Inventory.
 
+### Logical view 🔒
+
+Under the port list, a mount that stands for a real device prints what the
+logical canvas already knows about the same box: canvas name, type, hostname,
+IP, MAC, OS, the status check it runs, the canvas it is drawn on, when it was
+last seen, and the services discovery fingerprinted on it.
+
+It is read-only — edit those facts on the logical canvas, not in the rack. A
+device that is on no logical canvas still shows whatever discovery reported, and
+an accessory shows nothing at all.
+
 ### Placement rules
 
 - A drop **snaps to the nearest free slot**; a placement that cannot work

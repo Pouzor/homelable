@@ -461,6 +461,100 @@ class TestInventory:
         assert entry["node_id"] == node["id"]
         assert entry["node_status"] == "online"
 
+    async def test_reports_what_the_canvas_node_knows(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """The rack prints the logical view's facts, so the endpoint must ship them."""
+        rack_design = await _design(client, headers)
+        network = await _design(client, headers, name="Network", design_type="network")
+        await client.post(
+            "/api/v1/nodes",
+            json={
+                "type": "nas",
+                "label": "nas-truenas",
+                "design_id": network,
+                "ip": "192.168.1.9",
+                "mac": "aa:bb:cc:dd:ee:ff",
+                "hostname": "nas.lan",
+                "os": "TrueNAS SCALE",
+                "status": "online",
+                "check_method": "http",
+            },
+            headers=headers,
+        )
+        # Straight to the table: the manual-create schema carries no os/services,
+        # and a scan find does.
+        db_session.add(
+            PendingDevice(
+                id="pd-nas",
+                hostname="nas",
+                ip="192.168.1.9",
+                mac="aa:bb:cc:dd:ee:ff",
+                os="TrueNAS",
+                suggested_type="nas",
+                services=[{"port": 445, "service_name": "smb", "category": "storage"}],
+            )
+        )
+        await db_session.commit()
+
+        items = (
+            await client.get(f"/api/v1/racks/inventory?design_id={rack_design}", headers=headers)
+        ).json()["items"]
+        entry = next(i for i in items if i["ip"] == "192.168.1.9")
+        assert entry["mac"] == "aa:bb:cc:dd:ee:ff"
+        assert entry["os"] == "TrueNAS"
+        assert entry["services"] == [{"port": 445, "name": "smb"}]
+        assert entry["node_label"] == "nas-truenas"
+        assert entry["node_type"] == "nas"
+        assert entry["node_hostname"] == "nas.lan"
+        assert entry["node_os"] == "TrueNAS SCALE"
+        assert entry["node_check_method"] == "http"
+        assert entry["node_design_id"] == network
+        assert entry["node_design_name"] == "Network"
+
+    async def test_leaves_the_node_fields_empty_without_a_match(
+        self, client: AsyncClient, headers
+    ):
+        design_id = await _design(client, headers)
+        await client.post(
+            "/api/v1/scan/pending",
+            json={"hostname": "pdu-main", "suggested_type": "generic"},
+            headers=headers,
+        )
+
+        items = (
+            await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)
+        ).json()["items"]
+        entry = next(i for i in items if i["label"] == "pdu-main")
+        assert entry["node_id"] is None
+        assert entry["node_label"] is None
+        assert entry["node_design_name"] is None
+        assert entry["services"] == []
+
+    async def test_falls_back_to_the_node_services(self, client: AsyncClient, headers, db_session):
+        """An approved device keeps its fingerprint on the node, not the inventory row."""
+        design_id = await _design(client, headers)
+        await client.post(
+            "/api/v1/nodes",
+            json={
+                "type": "server",
+                "label": "media",
+                "ip": "192.168.1.63",
+                "services": [{"port": 8096, "service_name": "jellyfin", "category": "media"}],
+            },
+            headers=headers,
+        )
+        db_session.add(
+            PendingDevice(id="pd-noservices", ip="192.168.1.63", suggested_type="server")
+        )
+        await db_session.commit()
+
+        items = (
+            await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)
+        ).json()["items"]
+        entry = next(i for i in items if i["id"] == "pd-noservices")
+        assert entry["services"] == [{"port": 8096, "name": "jellyfin"}]
+
     async def test_manual_entry_is_tagged_as_such(self, client: AsyncClient, headers):
         created = (
             await client.post(
