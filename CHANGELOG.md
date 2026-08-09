@@ -5,6 +5,33 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.2.0] - 2026-08-10
+
+### Features
+
+- Rack canvas: a third design type, next to network and electrical, with racks, mounted devices and port-to-port patching. (#315)
+- Declarative SVG faceplates picked from a visual catalog, including desktop NAS enclosures in 2, 4 and 5 bays. (#315)
+- Rack gear is filed in the Device Inventory, and a mount can be picked from the rackable entries. (#315)
+- Cables carry a type, colour, label and properties, printed on the canvas at the midpoint of the run. (#315)
+- Mounted devices follow the status check of the logical node they match, and links can be imported from the logical canvas. (#315)
+- Getting Started walkthrough covers the rack canvas. (#315)
+- Show the logical view of a mounted device, and link a mount to any Device Inventory entry. (#323)
+
+### Fixes
+
+- Guard rack rows against cross-design saves and half-applied faceplates. (#315)
+- A rack height edit no longer orphans its mounts; height and colour commit on blur, and a blanked field no longer shrinks the rack. (#315)
+- Import links is idempotent, and stays usable after a run that matched nothing. (#315)
+- Stop the device modal losing cables, status and inventory rows. (#315)
+- Name rack inventory entries the way the Device Inventory does. (#315)
+- Stamp the linked node's last-seen with an offset. (#323)
+- Bump js-yaml to 4.3.1 for CVE-2026-59870. (#315)
+- CI: stop the secret scan reporting pytest names as Lob keys. (#315)
+
+### Docs
+
+- Document the rack canvas for users. (#315)
+
 ## [3.1.2] - 2026-08-01
 
 ### Features
