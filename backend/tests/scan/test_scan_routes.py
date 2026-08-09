@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
-from app.db.models import PendingDevice
+from app.db.models import InventoryDevice
 from tests.scan.helpers import _add_design, _node
 
 
@@ -91,7 +91,7 @@ async def test_canvas_count_counts_distinct_designs_by_ip(client, headers, db_se
 
 @pytest.mark.asyncio
 async def test_canvas_count_correlates_by_ieee(client, headers, db_session):
-    device = PendingDevice(
+    device = InventoryDevice(
         id=str(uuid.uuid4()), ieee_address="0x00124b001", discovery_source="zigbee",
         suggested_type="zigbee_enddevice", services=[], status="pending",
     )
@@ -289,3 +289,82 @@ async def test_create_pending_keeps_a_missing_mac_null(client: AsyncClient, head
     )
     assert res.status_code == 201, res.text
     assert res.json()["mac"] is None
+
+
+@pytest.mark.asyncio
+async def test_delete_pending_removes_one_entry(client: AsyncClient, headers, pending_device):
+    # The rack canvas drops the placeholder it created for a plate once that
+    # plate is pointed at a real inventory row.
+    res = await client.delete(f"/api/v1/scan/pending/{pending_device.id}", headers=headers)
+    assert res.status_code == 200, res.text
+    assert res.json() == {"deleted": True}
+
+    listed = (await client.get("/api/v1/scan/pending", headers=headers)).json()
+    assert listed == []
+
+
+@pytest.mark.asyncio
+async def test_delete_pending_unknown_is_404(client: AsyncClient, headers):
+    res = await client.delete(f"/api/v1/scan/pending/{uuid.uuid4()}", headers=headers)
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_pending_requires_auth(client: AsyncClient, pending_device):
+    res = await client.delete(f"/api/v1/scan/pending/{pending_device.id}")
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_delete_pending_refuses_a_mounted_device(client: AsyncClient, headers, pending_device):
+    # `rack_devices.device_id` is ON DELETE SET NULL: without this guard the
+    # delete would strip the mount of its device instead of erroring.
+    design = (
+        await client.post(
+            "/api/v1/designs",
+            json={"name": "Rack Room", "icon": "server", "design_type": "rack"},
+            headers=headers,
+        )
+    ).json()["id"]
+    saved = await client.post(
+        "/api/v1/racks/save",
+        json={
+            "design_id": design,
+            "racks": [
+                {
+                    "id": "rack-1",
+                    "name": "Main",
+                    "u_height": 12,
+                    "width_standard": "19",
+                    "numbering": "bottom-up",
+                    "style": {},
+                    "pos_x": 0,
+                    "pos_y": 0,
+                }
+            ],
+            "devices": [
+                {
+                    "id": "dev-1",
+                    "rack_id": "rack-1",
+                    "device_id": pending_device.id,
+                    "label": "my-server",
+                    "u_start": 1,
+                    "u_height": 1,
+                    "col_start": 0,
+                    "col_span": 12,
+                    "faceplate_id": "server-1u",
+                    "status": "unknown",
+                    "ports": [],
+                }
+            ],
+            "cables": [],
+            "viewport": {"x": 0, "y": 0, "zoom": 1},
+        },
+        headers=headers,
+    )
+    assert saved.status_code == 200, saved.text
+
+    res = await client.delete(f"/api/v1/scan/pending/{pending_device.id}", headers=headers)
+    assert res.status_code == 409
+    listed = (await client.get("/api/v1/scan/pending", headers=headers)).json()
+    assert [d["id"] for d in listed] == [pending_device.id]

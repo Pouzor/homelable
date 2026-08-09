@@ -32,7 +32,7 @@ import { TextModal, type TextFormData } from '@/components/modals/TextModal'
 import { ThemeModal } from '@/components/modals/ThemeModal'
 import { CustomStyleModal } from '@/components/modals/CustomStyleModal'
 import { SearchModal } from '@/components/modals/SearchModal'
-import { PendingDevicesModal } from '@/components/modals/PendingDevicesModal'
+import { DeviceInventoryModal } from '@/components/modals/DeviceInventoryModal'
 import { ScanHistoryModal } from '@/components/modals/ScanHistoryModal'
 import { ShortcutsModal } from '@/components/modals/ShortcutsModal'
 import { ConfirmAddToGroupModal } from '@/components/modals/ConfirmAddToGroupModal'
@@ -49,7 +49,7 @@ import { decideCanvasLoad, isNewUserCanvas } from '@/utils/canvasLoadDecision'
 import { WalkthroughActionsProvider, type WalkthroughActionApi } from '@/walkthrough/actions'
 import { WalkthroughInvite } from '@/walkthrough/WalkthroughInvite'
 import { WalkthroughOverlay } from '@/walkthrough/WalkthroughOverlay'
-import { DEMO_SCAN_RUNS, DEMO_PENDING_DEVICES } from '@/walkthrough/demoTourData'
+import { DEMO_SCAN_RUNS, DEMO_INVENTORY_DEVICES } from '@/walkthrough/demoTourData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
 import { bootstrapAuth } from '@/auth/bootstrap'
 import { RackCanvas } from '@/rack/components/RackCanvas'
@@ -116,14 +116,14 @@ export default function App() {
   const [styleEditorType, setStyleEditorType] = useState<NodeType | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [scanHistoryOpen, setScanHistoryOpen] = useState(false)
-  const [pendingModalOpen, setPendingModalOpen] = useState(false)
-  const [pendingModalStatus, setPendingModalStatus] = useState<'pending' | 'hidden'>('pending')
-  const [pendingHighlightId, setPendingHighlightId] = useState<string | undefined>(undefined)
-  const openPendingModal = useCallback((deviceId?: string, status: 'pending' | 'hidden' = 'pending') => {
-    setPendingHighlightId(undefined)
-    setPendingModalStatus(status)
-    setPendingModalOpen(true)
-    if (deviceId) setTimeout(() => setPendingHighlightId(deviceId), 0)
+  const [inventoryModalOpen, setInventoryModalOpen] = useState(false)
+  const [inventoryModalStatus, setInventoryModalStatus] = useState<'pending' | 'hidden'>('pending')
+  const [inventoryHighlightId, setInventoryHighlightId] = useState<string | undefined>(undefined)
+  const openInventoryModal = useCallback((deviceId?: string, status: 'pending' | 'hidden' = 'pending') => {
+    setInventoryHighlightId(undefined)
+    setInventoryModalStatus(status)
+    setInventoryModalOpen(true)
+    if (deviceId) setTimeout(() => setInventoryHighlightId(deviceId), 0)
   }, [])
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [addNodeOpen, setAddNodeOpen] = useState(false)
@@ -352,7 +352,7 @@ export default function App() {
       setScanConfigOpen(false)
       setScanHistoryOpen(false)
       setTourScanHistoryDemo(false)
-      setPendingModalOpen(false)
+      setInventoryModalOpen(false)
       setTourInventoryDemo(false)
       setEditNodeId(null)
       setThemeModalOpen(false)
@@ -371,7 +371,7 @@ export default function App() {
     },
     openInventoryDemo: () => {
       setTourInventoryDemo(true)
-      openPendingModal(undefined, 'pending')
+      openInventoryModal(undefined, 'pending')
     },
     editFirstNode: () => {
       const first = useCanvasStore.getState().nodes.find((n) => n.data.type !== 'groupRect' && n.data.type !== 'text')
@@ -392,7 +392,7 @@ export default function App() {
     },
     openStyle: () => setThemeModalOpen(true),
     openZigbeeImport: () => setZigbeeImportOpen(true),
-  }), [openPendingModal])
+  }), [openInventoryModal])
 
   // Load designs + canvas on auth (or immediately in standalone mode, which has
   // no auth gate).
@@ -1005,7 +1005,7 @@ export default function App() {
             onSave={handleSave}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenHistory={() => setScanHistoryOpen(true)}
-            onOpenPending={openPendingModal}
+            onOpenInventory={openInventoryModal}
           />
           <div className="flex flex-col flex-1 min-w-0">
             {loadError && (
@@ -1048,7 +1048,7 @@ export default function App() {
                     onNodeDragStart={snapshotHistory}
                     onRequestAddToGroup={setPendingGroupAdd}
                     onRequestAddToContainer={setPendingContainerAdd}
-                    onOpenPending={(deviceId) => openPendingModal(deviceId)}
+                    onOpenInventory={(deviceId) => openInventoryModal(deviceId)}
                   />
                 )}
               </div>
@@ -1137,7 +1137,7 @@ export default function App() {
             open={zigbeeImportOpen}
             onClose={() => setZigbeeImportOpen(false)}
             onAddToCanvas={handleZigbeeAddToCanvas}
-            onPendingImported={() => {
+            onInventoryImported={() => {
               toast.success('Zigbee import started — check Scan History for results')
             }}
           />
@@ -1148,7 +1148,7 @@ export default function App() {
             open={zwaveImportOpen}
             onClose={() => setZwaveImportOpen(false)}
             onAddToCanvas={handleZwaveAddToCanvas}
-            onPendingImported={() => {
+            onInventoryImported={() => {
               toast.success('Z-Wave import started — check Scan History for results')
             }}
           />
@@ -1159,7 +1159,7 @@ export default function App() {
             open={proxmoxImportOpen}
             onClose={() => setProxmoxImportOpen(false)}
             onAddToCanvas={handleProxmoxAddToCanvas}
-            onPendingImported={() => {
+            onInventoryImported={() => {
               toast.success('Proxmox import started — check Scan History for results')
             }}
           />
@@ -1258,7 +1258,7 @@ export default function App() {
         <SearchModal
           open={searchOpen}
           onClose={() => setSearchOpen(false)}
-          onOpenPending={(deviceId) => openPendingModal(deviceId)}
+          onOpenInventory={(deviceId) => openInventoryModal(deviceId)}
         />
         <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
@@ -1289,12 +1289,12 @@ export default function App() {
             but canvas prefs (snap, hide-IP) still apply. */}
         <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-        <PendingDevicesModal
-          open={pendingModalOpen}
-          onClose={() => setPendingModalOpen(false)}
-          highlightId={pendingHighlightId}
-          initialStatus={pendingModalStatus}
-          demoDevices={tourInventoryDemo ? DEMO_PENDING_DEVICES : undefined}
+        <DeviceInventoryModal
+          open={inventoryModalOpen}
+          onClose={() => setInventoryModalOpen(false)}
+          highlightId={inventoryHighlightId}
+          initialStatus={inventoryModalStatus}
+          demoDevices={tourInventoryDemo ? DEMO_INVENTORY_DEVICES : undefined}
         />
 
         <ExportModal

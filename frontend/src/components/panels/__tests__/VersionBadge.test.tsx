@@ -29,7 +29,7 @@ vi.mock('@/components/ui/tooltip', () => ({
   TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   TooltipContent: () => null,
 }))
-vi.mock('@/components/modals/PendingDeviceModal', () => ({ PendingDeviceModal: () => null }))
+vi.mock('@/components/modals/InventoryDeviceModal', () => ({ InventoryDeviceModal: () => null }))
 vi.mock('@/components/modals/StatusTimelineModal', () => ({ StatusTimelineModal: () => null }))
 
 vi.mock('@/hooks/useLatestRelease', () => ({

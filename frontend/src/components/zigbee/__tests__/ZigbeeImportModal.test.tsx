@@ -191,16 +191,16 @@ describe('ZigbeeImportModal', () => {
         error: null,
       },
     } as never)
-    const onPendingImported = vi.fn()
+    const onInventoryImported = vi.fn()
 
-    render(<ZigbeeImportModal {...defaultProps} onPendingImported={onPendingImported} />)
+    render(<ZigbeeImportModal {...defaultProps} onInventoryImported={onInventoryImported} />)
     const hostInput = screen.getByPlaceholderText('192.168.1.x or mqtt.local')
     fireEvent.change(hostInput, { target: { value: '192.168.1.100' } })
     fireEvent.click(screen.getByRole('button', { name: /import to pending/i }))
 
     await waitFor(() => {
       expect(zigbeeApi.importToPending).toHaveBeenCalled()
-      expect(onPendingImported).toHaveBeenCalled()
+      expect(onInventoryImported).toHaveBeenCalled()
       expect(defaultProps.onClose).toHaveBeenCalled()
     })
     expect(zigbeeApi.importNetwork).not.toHaveBeenCalled()

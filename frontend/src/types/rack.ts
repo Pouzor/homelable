@@ -241,6 +241,15 @@ export interface InventoryDevice {
   label: string
   /** `suggested_type` from discovery; free-form, may be unknown to the UI. */
   type: string | null
+  /**
+   * How the entry got into the inventory: `arp`, `proxmox`, `zigbee`, `manual`,
+   * or `rack` for gear the rack canvas created itself.
+   *
+   * The rack only reads it to know which rows it owns: relinking a mount to
+   * another entry discards the placeholder it created, and never a row
+   * discovery or the user put there.
+   */
+  discoverySource?: string | null
   ip?: string | null
   /** MAC, or the IEEE address for a mesh device. */
   mac?: string | null

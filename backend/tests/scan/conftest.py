@@ -3,13 +3,13 @@ import uuid
 
 import pytest
 
-from app.db.models import PendingDevice
+from app.db.models import InventoryDevice
 
 
 @pytest.fixture
 async def pending_device(db_session):
     import uuid
-    device = PendingDevice(
+    device = InventoryDevice(
         id=str(uuid.uuid4()),
         ip="192.168.1.100",
         mac="aa:bb:cc:dd:ee:ff",
@@ -39,10 +39,10 @@ async def mem_db():
 
 
 @pytest.fixture
-async def two_pending_devices(db_session):
+async def two_device_inventory(db_session):
     devices = []
     for i in range(2):
-        d = PendingDevice(
+        d = InventoryDevice(
             id=str(uuid.uuid4()),
             ip=f"192.168.1.{10 + i}",
             mac=None,
@@ -62,7 +62,7 @@ async def two_pending_devices(db_session):
 
 @pytest.fixture
 async def zigbee_pending_device(db_session):
-    device = PendingDevice(
+    device = InventoryDevice(
         id=str(uuid.uuid4()),
         ip=None,
         mac=None,

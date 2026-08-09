@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { PendingDeviceModal, type PendingDevice } from '../PendingDeviceModal'
+import { InventoryDeviceModal, type InventoryEntry } from '../InventoryDeviceModal'
 
-function makeDevice(overrides: Partial<PendingDevice> = {}): PendingDevice {
+function makeDevice(overrides: Partial<InventoryEntry> = {}): InventoryEntry {
   return {
     id: 'dev-1',
     ip: '192.168.1.100',
@@ -17,19 +17,19 @@ function makeDevice(overrides: Partial<PendingDevice> = {}): PendingDevice {
   }
 }
 
-describe('PendingDeviceModal', () => {
+describe('InventoryDeviceModal', () => {
   // ── Visibility ────────────────────────────────────────────────────────────
 
   it('renders nothing when device is null', () => {
     const { container } = render(
-      <PendingDeviceModal device={null} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={null} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     expect(container.querySelector('[role="dialog"]')).toBeNull()
   })
 
   it('renders dialog when device is provided', () => {
     render(
-      <PendingDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     expect(screen.getByRole('dialog')).toBeDefined()
   })
@@ -38,7 +38,7 @@ describe('PendingDeviceModal', () => {
 
   it('shows hostname as title when available', () => {
     render(
-      <PendingDeviceModal device={makeDevice({ hostname: 'myserver.local' })} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={makeDevice({ hostname: 'myserver.local' })} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     // hostname appears in both title and info row — check at least one match
     expect(screen.getAllByText('myserver.local').length).toBeGreaterThan(0)
@@ -46,7 +46,7 @@ describe('PendingDeviceModal', () => {
 
   it('falls back to IP as title when hostname is null', () => {
     render(
-      <PendingDeviceModal device={makeDevice({ hostname: null })} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={makeDevice({ hostname: null })} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     // IP appears in both title and info row when hostname is absent
     expect(screen.getAllByText('192.168.1.100').length).toBeGreaterThan(0)
@@ -54,28 +54,28 @@ describe('PendingDeviceModal', () => {
 
   it('shows IP address', () => {
     render(
-      <PendingDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     expect(screen.getByText('192.168.1.100')).toBeDefined()
   })
 
   it('shows MAC address when present', () => {
     render(
-      <PendingDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     expect(screen.getByText('aa:bb:cc:dd:ee:ff')).toBeDefined()
   })
 
   it('shows OS when present', () => {
     render(
-      <PendingDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     expect(screen.getByText('Linux')).toBeDefined()
   })
 
   it('does not show hostname row when hostname is null', () => {
     render(
-      <PendingDeviceModal device={makeDevice({ hostname: null })} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={makeDevice({ hostname: null })} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     // "Hostname" label should not appear in the info rows
     expect(screen.queryByText('Hostname')).toBeNull()
@@ -83,7 +83,7 @@ describe('PendingDeviceModal', () => {
 
   it('shows suggested type when present', () => {
     render(
-      <PendingDeviceModal device={makeDevice({ suggested_type: 'proxmox' })} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={makeDevice({ suggested_type: 'proxmox' })} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     expect(screen.getByText('proxmox')).toBeDefined()
   })
@@ -92,7 +92,7 @@ describe('PendingDeviceModal', () => {
 
   it('shows "No services detected" when services list is empty', () => {
     render(
-      <PendingDeviceModal device={makeDevice({ services: [] })} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={makeDevice({ services: [] })} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     expect(screen.getByText('No services detected')).toBeDefined()
   })
@@ -105,7 +105,7 @@ describe('PendingDeviceModal', () => {
       ],
     })
     render(
-      <PendingDeviceModal device={device} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={device} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     expect(screen.getByText('Services found (2)')).toBeDefined()
     expect(screen.getByText('HTTP')).toBeDefined()
@@ -119,7 +119,7 @@ describe('PendingDeviceModal', () => {
       services: [{ port: 8006, protocol: 'tcp', service_name: 'Proxmox Web', category: 'hypervisor' }],
     })
     render(
-      <PendingDeviceModal device={device} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={device} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     expect(screen.getByText('hypervisor')).toBeDefined()
   })
@@ -131,7 +131,7 @@ describe('PendingDeviceModal', () => {
     const onApprove = vi.fn()
     const onClose = vi.fn()
     render(
-      <PendingDeviceModal device={device} onClose={onClose} onApprove={onApprove} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={device} onClose={onClose} onApprove={onApprove} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
     expect(onApprove).toHaveBeenCalledWith(device)
@@ -143,7 +143,7 @@ describe('PendingDeviceModal', () => {
     const onHide = vi.fn()
     const onClose = vi.fn()
     render(
-      <PendingDeviceModal device={device} onClose={onClose} onApprove={vi.fn()} onHide={onHide} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={device} onClose={onClose} onApprove={vi.fn()} onHide={onHide} onIgnore={vi.fn()} />
     )
     fireEvent.click(screen.getByRole('button', { name: 'Hide' }))
     expect(onHide).toHaveBeenCalledWith(device)
@@ -155,7 +155,7 @@ describe('PendingDeviceModal', () => {
     const onIgnore = vi.fn()
     const onClose = vi.fn()
     render(
-      <PendingDeviceModal device={device} onClose={onClose} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={onIgnore} />
+      <InventoryDeviceModal device={device} onClose={onClose} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={onIgnore} />
     )
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     expect(onIgnore).toHaveBeenCalledWith(device)
@@ -163,7 +163,7 @@ describe('PendingDeviceModal', () => {
   })
 })
 
-describe('PendingDeviceModal — rack gear', () => {
+describe('InventoryDeviceModal — rack gear', () => {
   const rackDevice = makeDevice({
     id: 'dev-rack',
     hostname: 'patch-house',
@@ -174,7 +174,7 @@ describe('PendingDeviceModal — rack gear', () => {
 
   it('offers no Approve button — rack gear never lands on a logical canvas', () => {
     render(
-      <PendingDeviceModal device={rackDevice} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={rackDevice} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
     // Hide and Delete still apply: the entry is inventory like any other.
@@ -184,7 +184,7 @@ describe('PendingDeviceModal — rack gear', () => {
 
   it('keeps Approve for a scanned device', () => {
     render(
-      <PendingDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
+      <InventoryDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
     expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
   })

@@ -338,7 +338,7 @@ async def test_persist_pending_import_coordinator_goes_to_pending(
     from sqlalchemy import select
 
     from app.api.routes.zigbee import _persist_pending_import
-    from app.db.models import Node, PendingDevice
+    from app.db.models import InventoryDevice, Node
 
     result = await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
     assert result.device_count == 3
@@ -354,7 +354,7 @@ async def test_persist_pending_import_coordinator_goes_to_pending(
     # Coordinator sits in the pending inventory.
     coord = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "0xCOORD")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "0xCOORD")
         )
     ).scalar_one()
     assert coord.status == "pending"
@@ -385,14 +385,14 @@ async def test_persist_pending_import_replaces_links(db_session) -> None:
     from sqlalchemy import select
 
     from app.api.routes.zigbee import _persist_pending_import
-    from app.db.models import PendingDeviceLink
+    from app.db.models import InventoryDeviceLink
 
     await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
 
     new_edges = [{"source": "0xCOORD", "target": "0xR1"}]
     await _persist_pending_import(db_session, _PENDING_NODES[:2], new_edges)
 
-    rows = (await db_session.execute(select(PendingDeviceLink))).scalars().all()
+    rows = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
     assert len(rows) == 1
     assert (rows[0].source_ieee, rows[0].target_ieee) == ("0xCOORD", "0xR1")
 
@@ -403,7 +403,7 @@ async def test_persist_pending_import_sets_coordinator_pending_fields(db_session
     from sqlalchemy import select
 
     from app.api.routes.zigbee import _persist_pending_import
-    from app.db.models import PendingDevice
+    from app.db.models import InventoryDevice
 
     nodes_with_meta = [dict(n) for n in _PENDING_NODES]
     nodes_with_meta[0]["vendor"] = "TI"
@@ -413,7 +413,7 @@ async def test_persist_pending_import_sets_coordinator_pending_fields(db_session
 
     coord = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "0xCOORD")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "0xCOORD")
         )
     ).scalar_one()
     assert coord.vendor == "TI"
@@ -432,10 +432,10 @@ async def test_persist_pending_import_backfills_inventory_for_approved_node(
     from sqlalchemy import select
 
     from app.api.routes.zigbee import _persist_pending_import
-    from app.db.models import Node, PendingDevice
+    from app.db.models import InventoryDevice, Node
 
     # Simulate: router was approved earlier → exists as a canvas Node, but with
-    # no matching pending_devices row (e.g. a legacy auto-placed device).
+    # no matching device_inventory row (e.g. a legacy auto-placed device).
     approved = Node(
         label="router_1",
         type="zigbee_router",
@@ -455,7 +455,7 @@ async def test_persist_pending_import_backfills_inventory_for_approved_node(
     # An inventory row is backfilled as "approved" (it is on a canvas).
     inv = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "0xR1")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "0xR1")
         )
     ).scalar_one()
     assert inv.status == "approved"
@@ -481,13 +481,13 @@ async def test_persist_pending_import_preserves_hidden_inventory_for_approved_no
     from sqlalchemy import select
 
     from app.api.routes.zigbee import _persist_pending_import
-    from app.db.models import Node, PendingDevice
+    from app.db.models import InventoryDevice, Node
 
     db_session.add(Node(
         label="router_1", type="zigbee_router", status="online",
         check_method="none", ieee_address="0xR1", services=[], properties=[],
     ))
-    db_session.add(PendingDevice(
+    db_session.add(InventoryDevice(
         ieee_address="0xR1", friendly_name="router_1", suggested_type="zigbee_router",
         device_subtype="Router", status="hidden", discovery_source="zigbee",
     ))
@@ -497,7 +497,7 @@ async def test_persist_pending_import_preserves_hidden_inventory_for_approved_no
 
     inv = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "0xR1")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "0xR1")
         )
     ).scalar_one()
     assert inv.status == "hidden"  # stays hidden
@@ -509,7 +509,7 @@ async def test_persist_pending_import_revives_orphaned_approved_device(
 ) -> None:
     """Regression for #167: approve → delete node → re-import must re-list device.
 
-    When a device was approved (PendingDevice.status="approved") and its canvas
+    When a device was approved (InventoryDevice.status="approved") and its canvas
     Node was later deleted, the orphaned "approved" row must be reset to
     "pending" on re-import so it shows up in the Pending list again — instead of
     being silently swallowed (re-import reports "found" but Pending stays empty).
@@ -517,11 +517,11 @@ async def test_persist_pending_import_revives_orphaned_approved_device(
     from sqlalchemy import select
 
     from app.api.routes.zigbee import _persist_pending_import
-    from app.db.models import PendingDevice
+    from app.db.models import InventoryDevice
 
-    # Simulate prior approve: a PendingDevice marked approved, but NO matching
+    # Simulate prior approve: a InventoryDevice marked approved, but NO matching
     # Node exists (the user deleted the canvas node afterwards).
-    orphan = PendingDevice(
+    orphan = InventoryDevice(
         ieee_address="0xR1",
         friendly_name="router_1",
         hostname="router_1",
@@ -541,7 +541,7 @@ async def test_persist_pending_import_revives_orphaned_approved_device(
     # No new row created for 0xR1 — the existing one was updated/revived.
     revived = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "0xR1")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "0xR1")
         )
     ).scalar_one()
     assert revived.status == "pending"
@@ -552,7 +552,7 @@ async def test_persist_pending_import_revives_orphaned_approved_device(
     # It is now visible to the Pending list (status filter == "pending").
     listed = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.status == "pending")
+            select(InventoryDevice).where(InventoryDevice.status == "pending")
         )
     ).scalars().all()
     assert {p.ieee_address for p in listed} == {"0xCOORD", "0xR1", "0xE1"}
@@ -566,9 +566,9 @@ async def test_persist_pending_import_keeps_hidden_hidden_on_reimport(
     from sqlalchemy import select
 
     from app.api.routes.zigbee import _persist_pending_import
-    from app.db.models import PendingDevice
+    from app.db.models import InventoryDevice
 
-    hidden = PendingDevice(
+    hidden = InventoryDevice(
         ieee_address="0xR1",
         friendly_name="router_1",
         suggested_type="zigbee_router",
@@ -583,7 +583,7 @@ async def test_persist_pending_import_keeps_hidden_hidden_on_reimport(
 
     still_hidden = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "0xR1")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "0xR1")
         )
     ).scalar_one()
     assert still_hidden.status == "hidden"
@@ -644,9 +644,9 @@ async def test_persist_pending_import_refreshes_approved_coordinator_node(
     from sqlalchemy import select
 
     from app.api.routes.zigbee import _persist_pending_import
-    from app.db.models import Node, PendingDevice
+    from app.db.models import InventoryDevice, Node
 
-    # Legacy: coordinator auto-placed as a canvas Node, no pending_devices row.
+    # Legacy: coordinator auto-placed as a canvas Node, no device_inventory row.
     db_session.add(Node(
         label="Coordinator", type="zigbee_coordinator", status="online",
         check_method="none", ieee_address="0xCOORD", services=[], properties=[],
@@ -669,7 +669,7 @@ async def test_persist_pending_import_refreshes_approved_coordinator_node(
     # Inventory row backfilled as approved → now visible in the inventory list.
     inv = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "0xCOORD")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "0xCOORD")
         )
     ).scalar_one()
     assert inv.status == "approved"

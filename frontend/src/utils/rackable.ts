@@ -13,7 +13,7 @@
  * the backend suite when the two drift. Keeping them equal is what makes the
  * inventory modal's Rackable filter show exactly the rows the rack tray offers.
  */
-import type { PendingDevice } from '@/components/modals/PendingDeviceModal'
+import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 
 export const UNRACKABLE_TYPES = new Set([
   'vm',
@@ -35,6 +35,6 @@ export const UNRACKABLE_TYPES = new Set([
   'zwave_enddevice',
 ])
 
-export function isRackable(device: PendingDevice): boolean {
+export function isRackable(device: InventoryEntry): boolean {
   return !device.suggested_type || !UNRACKABLE_TYPES.has(device.suggested_type)
 }

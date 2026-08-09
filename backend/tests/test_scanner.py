@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.db.database import Base
-from app.db.models import Node, PendingDevice, ScanRun
+from app.db.models import InventoryDevice, Node, ScanRun
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -588,7 +588,7 @@ async def test_run_scan_adds_nmap_devices_as_pending(mem_db):
             await run_scan(["192.168.1.0/24"], session, run_id)
 
     async with mem_db() as session:
-        result = await session.execute(sa_select(PendingDevice))
+        result = await session.execute(sa_select(InventoryDevice))
         devices = result.scalars().all()
 
     assert any(d.ip == "192.168.1.5" for d in devices)
@@ -674,7 +674,7 @@ async def test_run_scan_leaves_last_scan_untouched_on_unmatched_node(mem_db):
 
 @pytest.mark.asyncio
 async def test_run_scan_mdns_only_device_added(mem_db):
-    """Devices found only by mDNS (not nmap) should appear in pending_devices."""
+    """Devices found only by mDNS (not nmap) should appear in device_inventory."""
     from app.services.scanner import run_scan
 
     run_id = _make_run_id()
@@ -691,7 +691,7 @@ async def test_run_scan_mdns_only_device_added(mem_db):
             await run_scan(["192.168.1.0/24"], session, run_id)
 
     async with mem_db() as session:
-        result = await session.execute(sa_select(PendingDevice).where(PendingDevice.ip == "192.168.1.80"))
+        result = await session.execute(sa_select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.80"))
         device = result.scalar_one_or_none()
 
     assert device is not None
@@ -709,7 +709,7 @@ async def test_run_scan_merges_proxmox_row_by_mac(mem_db):
     async with mem_db() as session:
         session.add(_make_scan_run(run_id))
         # Previously imported from Proxmox: no IP, known NIC MAC, vm type.
-        session.add(PendingDevice(
+        session.add(InventoryDevice(
             id="pve-row", ieee_address="pve-pve1-101", ip=None,
             mac="bc:24:11:aa:bb:cc", suggested_type="vm", status="pending",
             discovery_source="proxmox", discovery_sources=["proxmox"],
@@ -727,7 +727,7 @@ async def test_run_scan_merges_proxmox_row_by_mac(mem_db):
             await run_scan(["192.168.1.0/24"], session, run_id)
 
     async with mem_db() as session:
-        rows = (await session.execute(sa_select(PendingDevice))).scalars().all()
+        rows = (await session.execute(sa_select(InventoryDevice))).scalars().all()
 
     assert len(rows) == 1                                  # merged, not duplicated
     row = rows[0]
@@ -756,7 +756,7 @@ async def test_run_scan_mdns_skipped_if_already_in_nmap(mem_db):
             await run_scan(["192.168.1.0/24"], session, run_id)
 
     async with mem_db() as session:
-        result = await session.execute(sa_select(PendingDevice).where(PendingDevice.ip == "192.168.1.10"))
+        result = await session.execute(sa_select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.10"))
         devices = result.scalars().all()
 
     assert len(devices) == 1  # not duplicated
@@ -787,7 +787,7 @@ async def test_run_scan_keeps_canvas_nodes(mem_db):
             await run_scan(["192.168.1.0/24"], session, run_id)
 
     async with mem_db() as session:
-        result = await session.execute(sa_select(PendingDevice).where(PendingDevice.ip == "192.168.1.100"))
+        result = await session.execute(sa_select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.100"))
         device = result.scalar_one_or_none()
         assert device is not None
         assert device.status == "pending"
@@ -801,7 +801,7 @@ async def test_run_scan_skips_hidden_devices(mem_db):
     run_id = _make_run_id()
     async with mem_db() as session:
         session.add(_make_scan_run(run_id))
-        hidden = PendingDevice(ip="192.168.1.55", status="hidden")
+        hidden = InventoryDevice(ip="192.168.1.55", status="hidden")
         session.add(hidden)
         await session.commit()
 
@@ -815,7 +815,7 @@ async def test_run_scan_skips_hidden_devices(mem_db):
 
     async with mem_db() as session:
         result = await session.execute(
-            sa_select(PendingDevice).where(PendingDevice.ip == "192.168.1.55", PendingDevice.status == "pending")
+            sa_select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.55", InventoryDevice.status == "pending")
         )
         assert result.scalar_one_or_none() is None
 
@@ -943,7 +943,7 @@ async def test_run_scan_probe_enriches_services(mem_db):
             )
 
     async with mem_db() as session:
-        result = await session.execute(sa_select(PendingDevice).where(PendingDevice.ip == "192.168.1.50"))
+        result = await session.execute(sa_select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.50"))
         device = result.scalar_one_or_none()
 
     assert device is not None

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { sourceBuckets, orderedSources, isRackDevice } from '../pendingSources'
-import type { PendingDevice } from '@/components/modals/PendingDeviceModal'
+import { sourceBuckets, orderedSources, isRackDevice } from '../deviceSources'
+import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 
-function device(overrides: Partial<PendingDevice> = {}): PendingDevice {
+function device(overrides: Partial<InventoryEntry> = {}): InventoryEntry {
   return {
     id: 'd1',
     ip: null,

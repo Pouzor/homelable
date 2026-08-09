@@ -279,6 +279,7 @@ export function toInventoryDevice(api: ApiInventoryItem): InventoryDevice {
     id: api.id,
     label: api.label,
     type: api.suggested_type,
+    discoverySource: api.discovery_source,
     ip: api.ip,
     mac: api.mac ?? null,
     hostname: api.hostname ?? null,

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.database import get_db
-from app.db.models import CanvasState, Design, Node, PendingDevice, Rack, RackCable, RackDevice
+from app.db.models import CanvasState, Design, InventoryDevice, Node, Rack, RackCable, RackDevice
 from app.schemas.racks import (
     RackCableResponse,
     RackDeviceResponse,
@@ -48,7 +48,7 @@ _UNRACKABLE_TYPES = {
 _COMMON_PORTS = {22, 80, 443}
 
 
-def _service_name(device: PendingDevice) -> str | None:
+def _service_name(device: InventoryDevice) -> str | None:
     """Name a device after the app it runs, the way the Device Inventory does.
 
     Ports everyone exposes (ssh, http, https) say nothing, and the generic web
@@ -72,10 +72,10 @@ def _service_name(device: PendingDevice) -> str | None:
     return str(name) if name else None
 
 
-def _device_label(device: PendingDevice) -> str:
+def _device_label(device: InventoryDevice) -> str:
     """Inventory naming, mirrored: friendly name, host, app, IP, IEEE, id.
 
-    Must stay in step with `deviceLabel` in `PendingDevicesModal.tsx` — a device
+    Must stay in step with `deviceLabel` in `InventoryDevicesModal.tsx` — a device
     the user picked out of the inventory by one name should not turn up in the
     rack picker under another.
     """
@@ -265,26 +265,30 @@ async def rack_inventory(
 ) -> RackInventoryResponse:
     """Device Inventory entries that can be racked, flagged with what is already mounted.
 
-    Reads `pending_devices` — the inventory survives approval and node deletion,
+    Reads `device_inventory` — the inventory survives approval and node deletion,
     so unracking or deleting a canvas node never removes the entry here.
     """
     await _require_design(db, design_id)
 
     devices = (
-        await db.execute(select(PendingDevice).where(PendingDevice.status != "hidden"))
+        await db.execute(select(InventoryDevice).where(InventoryDevice.status != "hidden"))
     ).scalars().all()
-    mounted = {
-        row
-        for row in (
-            await db.execute(
-                select(RackDevice.device_id).where(RackDevice.design_id == design_id)
+    mounts = (
+        await db.execute(
+            select(RackDevice.device_id, RackDevice.node_id).where(
+                RackDevice.design_id == design_id
             )
-        ).scalars().all()
-        if row
-    }
+        )
+    ).all()
+    mounted = {device_id for device_id, _ in mounts if device_id}
+    # A mount can name its canvas node itself, when the user linked one by hand
+    # in the rack. That beats the IEEE/IP guess below: the guess is what failed
+    # to find anything in the first place.
+    pinned = {device_id: node_id for device_id, node_id in mounts if device_id and node_id}
 
     # Correlate against canvas nodes for live status: IEEE first (stable), then IP.
     nodes = (await db.execute(select(Node))).scalars().all()
+    by_id = {n.id: n for n in nodes}
     by_ieee = {n.ieee_address: n for n in nodes if n.ieee_address}
     by_ip: dict[str, Node] = {}
     for node in nodes:
@@ -300,7 +304,11 @@ async def rack_inventory(
     for device in devices:
         if device.suggested_type in _UNRACKABLE_TYPES:
             continue
-        linked: Node | None = by_ieee.get(device.ieee_address) if device.ieee_address else None
+        # A node the user linked by hand wins; a deleted one falls back to the
+        # guess rather than reporting a node that no longer exists.
+        linked: Node | None = by_id.get(pinned.get(device.id) or "")
+        if linked is None and device.ieee_address:
+            linked = by_ieee.get(device.ieee_address)
         if linked is None:
             linked = next((by_ip[t] for t in _ip_tokens(device.ip) if t in by_ip), None)
         # The node is the richer record once a device has been approved onto a

@@ -13,7 +13,7 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.scheduler import reschedule_zwave_sync, set_zwave_sync_enabled
 from app.db.database import AsyncSessionLocal, get_db
-from app.db.models import Node, PendingDevice, PendingDeviceLink, ScanRun
+from app.db.models import InventoryDevice, InventoryDeviceLink, Node, ScanRun
 from app.schemas.scan import ScanRunResponse
 from app.schemas.zwave import (
     ZwaveConfig,
@@ -182,7 +182,7 @@ async def _persist_pending_import(
     nodes_raw: list[dict[str, Any]],
     edges_raw: list[dict[str, Any]],
 ) -> ZwaveImportPendingResponse:
-    """Upsert nodes/edges into pending_devices + pending_device_links.
+    """Upsert nodes/edges into device_inventory + device_inventory_links.
 
     Coordinator auto-approves to a canvas Node. Other devices upsert by Z-Wave
     identity. All zwave-source links are wiped and re-inserted from the new map.
@@ -225,12 +225,12 @@ async def _persist_pending_import(
                 )
             inv = (
                 await db.execute(
-                    select(PendingDevice).where(PendingDevice.ieee_address == ieee)
+                    select(InventoryDevice).where(InventoryDevice.ieee_address == ieee)
                 )
             ).scalar_one_or_none()
             if inv is None:
                 db.add(
-                    PendingDevice(
+                    InventoryDevice(
                         ieee_address=ieee,
                         friendly_name=n.get("friendly_name"),
                         hostname=n.get("friendly_name"),
@@ -257,12 +257,12 @@ async def _persist_pending_import(
             continue
 
         result = await db.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == ieee)
+            select(InventoryDevice).where(InventoryDevice.ieee_address == ieee)
         )
         pending = result.scalar_one_or_none()
         if pending is None:
             db.add(
-                PendingDevice(
+                InventoryDevice(
                     ieee_address=ieee,
                     friendly_name=n.get("friendly_name"),
                     hostname=n.get("friendly_name"),
@@ -292,7 +292,7 @@ async def _persist_pending_import(
 
     # Replace all zwave-source links with the freshly discovered set.
     await db.execute(
-        sa_delete(PendingDeviceLink).where(PendingDeviceLink.discovery_source == "zwave")
+        sa_delete(InventoryDeviceLink).where(InventoryDeviceLink.discovery_source == "zwave")
     )
 
     links_recorded = 0
@@ -304,7 +304,7 @@ async def _persist_pending_import(
             continue
         seen.add((src, tgt))
         db.add(
-            PendingDeviceLink(
+            InventoryDeviceLink(
                 source_ieee=src,
                 target_ieee=tgt,
                 discovery_source="zwave",

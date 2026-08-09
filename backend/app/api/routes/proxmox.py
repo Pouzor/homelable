@@ -21,7 +21,7 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.scheduler import reschedule_proxmox_sync, set_proxmox_sync_enabled
 from app.db.database import AsyncSessionLocal, get_db
-from app.db.models import Node, PendingDevice, PendingDeviceLink, ScanRun
+from app.db.models import InventoryDevice, InventoryDeviceLink, Node, ScanRun
 from app.schemas.proxmox import (
     ProxmoxConfig,
     ProxmoxConnectionRequest,
@@ -245,7 +245,7 @@ async def _persist_pending_import(
     nodes_raw: list[dict[str, Any]],
     edges_raw: list[dict[str, Any]],
 ) -> ProxmoxImportPendingResponse:
-    """Upsert Proxmox nodes/edges into pending_devices + pending_device_links.
+    """Upsert Proxmox nodes/edges into device_inventory + device_inventory_links.
 
     Two-tier identity (order matters):
       1. Match an existing canvas Node or pending row by **IP** (merge into a
@@ -328,14 +328,14 @@ async def _persist_pending_import(
 
 async def _find_pending(
     db: AsyncSession, ieee: str, ip: str | None, mac: str | None
-) -> PendingDevice | None:
-    filters = [PendingDevice.ieee_address == ieee]
+) -> InventoryDevice | None:
+    filters = [InventoryDevice.ieee_address == ieee]
     if ip:
-        filters.append(PendingDevice.ip == ip)
+        filters.append(InventoryDevice.ip == ip)
     if mac:
-        filters.append(PendingDevice.mac == mac)
+        filters.append(InventoryDevice.mac == mac)
     return (
-        await db.execute(select(PendingDevice).where(or_(*filters)))
+        await db.execute(select(InventoryDevice).where(or_(*filters)))
     ).scalars().first()
 
 
@@ -346,8 +346,8 @@ def _new_pending(
     n: dict[str, Any],
     props: list[dict[str, Any]],
     status: str,
-) -> PendingDevice:
-    return PendingDevice(
+) -> InventoryDevice:
+    return InventoryDevice(
         ieee_address=ieee,
         ip=ip,
         mac=mac,
@@ -363,7 +363,7 @@ def _new_pending(
     )
 
 
-def _sources_after_merge(row: PendingDevice) -> list[str]:
+def _sources_after_merge(row: InventoryDevice) -> list[str]:
     """Discovery sources for an inventory row after a Proxmox import merges in.
 
     Must run BEFORE the ``pve-`` ieee is adopted onto the row, so it can tell
@@ -381,7 +381,7 @@ def _sources_after_merge(row: PendingDevice) -> list[str]:
 
 
 def _refresh_pending(
-    pending: PendingDevice,
+    pending: InventoryDevice,
     ieee: str,
     ip: str | None,
     mac: str | None,
@@ -441,8 +441,8 @@ async def _replace_links(
     (``proxmox_cluster`` → 'cluster' edges).
     """
     await db.execute(
-        sa_delete(PendingDeviceLink).where(
-            PendingDeviceLink.discovery_source.in_([_PROXMOX_GUEST_SOURCE, _PROXMOX_CLUSTER_SOURCE])
+        sa_delete(InventoryDeviceLink).where(
+            InventoryDeviceLink.discovery_source.in_([_PROXMOX_GUEST_SOURCE, _PROXMOX_CLUSTER_SOURCE])
         )
     )
     recorded = 0
@@ -453,7 +453,7 @@ async def _replace_links(
         if not src or not tgt or (src, tgt) in seen:
             return
         seen.add((src, tgt))
-        db.add(PendingDeviceLink(source_ieee=src, target_ieee=tgt, discovery_source=source))
+        db.add(InventoryDeviceLink(source_ieee=src, target_ieee=tgt, discovery_source=source))
         recorded += 1
 
     for e in edges_raw:

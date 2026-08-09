@@ -1,5 +1,5 @@
 import type { ScanRun } from '@/components/modals/ScanHistoryModal'
-import type { PendingDevice } from '@/components/modals/PendingDeviceModal'
+import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 
 /**
  * Canned data injected into the real modals during the tour, so the demo steps
@@ -29,7 +29,7 @@ export const DEMO_SCAN_RUNS: ScanRun[] = [
   },
 ]
 
-export const DEMO_PENDING_DEVICES: PendingDevice[] = [
+export const DEMO_INVENTORY_DEVICES: InventoryEntry[] = [
   {
     id: 'tour-dev-1',
     ip: '192.168.1.20',

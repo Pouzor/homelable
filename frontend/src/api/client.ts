@@ -61,7 +61,29 @@ export const mediaApi = {
   delete: (filename: string) => api.delete(`/media/${filename}`),
 }
 
+/**
+ * A canvas node as `GET /nodes` reports it — the fields a reader needs to tell
+ * two hosts apart. The canvas itself keeps its own richer React Flow shape; this
+ * is only for pickers and lookups.
+ */
+export interface ApiCanvasNode {
+  id: string
+  design_id: string | null
+  label: string
+  type: string
+  ip: string | null
+  mac: string | null
+  hostname: string | null
+  os: string | null
+  status: string
+  check_method: string | null
+  last_seen: string | null
+}
+
 export const nodesApi = {
+  /** Every node, across every design. `label` filters case-insensitively. */
+  list: (label?: string) =>
+    api.get<ApiCanvasNode[]>('/nodes', { params: label ? { label } : {} }),
   create: (data: object) => api.post('/nodes', data),
   update: (id: string, data: object) => api.patch(`/nodes/${id}`, data),
   delete: (id: string) => api.delete(`/nodes/${id}`),
@@ -106,6 +128,14 @@ export interface DuplicateNodeConflict {
   value: string
 }
 
+/**
+ * The Device Inventory rides the scan routes.
+ *
+ * `/scan/pending/*` is what the table was called when it was a queue of finds
+ * awaiting approval; the rows are the Device Inventory now, but the paths are a
+ * published contract the MCP server also calls, so they stay. The method names
+ * follow the paths rather than the concept, so a route is easy to find.
+ */
 export const scanApi = {
   trigger: (deepScan?: Partial<DeepScanConfig>) => api.post('/scan/trigger', deepScan ?? {}),
   pending: () => api.get('/scan/pending'),
@@ -123,6 +153,8 @@ export const scanApi = {
   hidden: () => api.get('/scan/hidden'),
   runs: () => api.get('/scan/runs'),
   clearPending: () => api.delete('/scan/pending'),
+  /** Remove one inventory entry. 409 when a rack still mounts it. */
+  deletePending: (id: string) => api.delete<{ deleted: boolean }>(`/scan/pending/${id}`),
   approve: (id: string, nodeData: object) =>
     api.post<{
       approved: boolean

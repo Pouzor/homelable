@@ -3,24 +3,24 @@ import { useReactFlow } from '@xyflow/react'
 import { Search } from 'lucide-react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { scanApi } from '@/api/client'
-import type { PendingDevice } from '@/components/modals/PendingDeviceModal'
+import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 
 interface SearchModalProps {
   open: boolean
   onClose: () => void
-  onOpenPending: (deviceId: string) => void
+  onOpenInventory: (deviceId: string) => void
 }
 
-export function SearchModal({ open, onClose, onOpenPending }: SearchModalProps) {
+export function SearchModal({ open, onClose, onOpenInventory }: SearchModalProps) {
   const [query, setQuery] = useState('')
-  const [pendingDevices, setPendingDevices] = useState<PendingDevice[]>([])
+  const [inventoryDevices, setInventoryEntrys] = useState<InventoryEntry[]>([])
   const nodes = useCanvasStore((s) => s.nodes)
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const { fitView } = useReactFlow()
 
   useEffect(() => {
     if (!open) return
-    scanApi.pending().then((res) => setPendingDevices(res.data)).catch(() => {})
+    scanApi.pending().then((res) => setInventoryEntrys(res.data)).catch(() => {})
   }, [open])
 
   const searchable = nodes.filter((n) => n.data.type !== 'groupRect')
@@ -32,7 +32,7 @@ export function SearchModal({ open, onClose, onOpenPending }: SearchModalProps) 
     n.data.hostname?.toLowerCase().includes(q)
   ).slice(0, 6)
 
-  const pendingResults = q.length === 0 ? [] : pendingDevices.filter((d) =>
+  const pendingResults = q.length === 0 ? [] : inventoryDevices.filter((d) =>
     d.ip?.toLowerCase().includes(q) ||
     d.hostname?.toLowerCase().includes(q) ||
     d.friendly_name?.toLowerCase().includes(q) ||
@@ -52,11 +52,11 @@ export function SearchModal({ open, onClose, onOpenPending }: SearchModalProps) 
     setQuery('')
   }, [fitView, setSelectedNode, onClose])
 
-  const handleSelectPending = useCallback((deviceId: string) => {
-    onOpenPending(deviceId)
+  const handleSelectInventoryDevice = useCallback((deviceId: string) => {
+    onOpenInventory(deviceId)
     onClose()
     setQuery('')
-  }, [onOpenPending, onClose])
+  }, [onOpenInventory, onClose])
 
   if (!open) return null
 
@@ -77,7 +77,7 @@ export function SearchModal({ open, onClose, onOpenPending }: SearchModalProps) 
             onKeyDown={(e) => {
               if (e.key === 'Escape') { onClose(); setQuery('') }
               if (e.key === 'Enter' && nodeResults.length > 0) handleSelectNode(nodeResults[0].id)
-              if (e.key === 'Enter' && nodeResults.length === 0 && pendingResults.length > 0) handleSelectPending(pendingResults[0].id)
+              if (e.key === 'Enter' && nodeResults.length === 0 && pendingResults.length > 0) handleSelectInventoryDevice(pendingResults[0].id)
             }}
           />
           <kbd className="text-[10px] text-muted-foreground border border-border rounded px-1">ESC</kbd>
@@ -109,7 +109,7 @@ export function SearchModal({ open, onClose, onOpenPending }: SearchModalProps) 
                 <li
                   key={device.id}
                   className="flex items-center gap-3 px-4 py-2 hover:bg-[#21262d] cursor-pointer"
-                  onClick={() => handleSelectPending(device.id)}
+                  onClick={() => handleSelectInventoryDevice(device.id)}
                 >
                   <span className="text-xs font-mono text-[#e3b341] w-16 shrink-0">pending</span>
                   <span className="text-sm text-foreground font-medium flex-1 truncate font-mono">{device.hostname ?? device.ip}</span>

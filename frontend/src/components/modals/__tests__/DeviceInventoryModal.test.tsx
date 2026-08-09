@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { PendingDevicesModal } from '../PendingDevicesModal'
+import { DeviceInventoryModal } from '../DeviceInventoryModal'
 import { useCanvasStore } from '@/stores/canvasStore'
 
 vi.mock('@/stores/canvasStore')
@@ -33,8 +33,8 @@ vi.mock('@/api/client', () => ({
 
 vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 
-vi.mock('@/components/modals/PendingDeviceModal', () => ({
-  PendingDeviceModal: ({ device, onApprove }: { device: unknown; onApprove: (d: unknown) => void }) =>
+vi.mock('@/components/modals/InventoryDeviceModal', () => ({
+  InventoryDeviceModal: ({ device, onApprove }: { device: unknown; onApprove: (d: unknown) => void }) =>
     device ? (
       <div data-testid="approval-modal">
         <button data-testid="do-approve" onClick={() => onApprove(device)}>approve</button>
@@ -161,29 +161,29 @@ const baseProps = {
   onClose: vi.fn(),
 }
 
-describe('PendingDevicesModal', () => {
+describe('DeviceInventoryModal', () => {
   it('loads and renders pending devices on open', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     expect(screen.getByText('living-room-bulb')).toBeInTheDocument()
   })
 
   it('closes via the X button (routes through DialogClose, not a raw onClick)', async () => {
     const onClose = vi.fn()
-    render(<PendingDevicesModal open onClose={onClose} />)
+    render(<DeviceInventoryModal open onClose={onClose} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('shows source chip ZIGBEE for zigbee device', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     expect(screen.getByText('ZIGBEE')).toBeInTheDocument()
   })
 
   it('filters by search query', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.change(screen.getByPlaceholderText(/Search/), { target: { value: 'living' } })
     expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
@@ -191,7 +191,7 @@ describe('PendingDevicesModal', () => {
   })
 
   it('filters by source (zigbee only)', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Zigbee' }))
     expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
@@ -200,14 +200,14 @@ describe('PendingDevicesModal', () => {
 
   it('shows source chip Z-WAVE for zwave device', async () => {
     mockPending.mockResolvedValue({ data: [DEVICE_IP, DEVICE_ZWAVE] })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-c')).toBeInTheDocument())
     expect(screen.getByText('Z-WAVE')).toBeInTheDocument()
   })
 
   it('colours the role badge with the node-type accent, not flat grey', async () => {
     mockPending.mockResolvedValue({ data: [DEVICE_ZWAVE] })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     const card = await waitFor(() => screen.getByTestId('pending-card-dev-c'))
     // zwave_router accent from the default theme = #e3b341 (amber), applied to
     // both the text colour and a translucent background.
@@ -219,7 +219,7 @@ describe('PendingDevicesModal', () => {
 
   it('filters by source (zwave only)', async () => {
     mockPending.mockResolvedValue({ data: [DEVICE_IP, DEVICE_ZWAVE] })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Z-Wave' }))
     expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
@@ -228,7 +228,7 @@ describe('PendingDevicesModal', () => {
 
   it('shows source chip PROXMOX for a proxmox device (not zigbee despite ieee)', async () => {
     mockPending.mockResolvedValue({ data: [DEVICE_PROXMOX] })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-d')).toBeInTheDocument())
     expect(screen.getByText('PROXMOX')).toBeInTheDocument()
     expect(screen.queryByText('ZIGBEE')).not.toBeInTheDocument()
@@ -236,7 +236,7 @@ describe('PendingDevicesModal', () => {
 
   it('filters by source (proxmox only)', async () => {
     mockPending.mockResolvedValue({ data: [DEVICE_IP, DEVICE_PROXMOX] })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Proxmox' }))
     expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
@@ -244,7 +244,7 @@ describe('PendingDevicesModal', () => {
   })
 
   it('filters by suggested type', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.change(screen.getByLabelText('Type filter'), { target: { value: 'server' } })
     expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument()
@@ -255,7 +255,7 @@ describe('PendingDevicesModal', () => {
     mockHidden.mockResolvedValue({
       data: [{ ...DEVICE_IP, id: 'h1', hostname: 'hidden-host', status: 'hidden' }],
     })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Hidden' }))
     await waitFor(() => expect(screen.getByTestId('pending-card-h1')).toBeInTheDocument())
@@ -263,7 +263,7 @@ describe('PendingDevicesModal', () => {
   })
 
   it('opens approval modal when card is clicked outside select mode', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     expect(screen.getByTestId('approval-modal')).toBeInTheDocument()
@@ -286,7 +286,7 @@ describe('PendingDevicesModal', () => {
 
   it('single approve prompts instead of failing when the host is already on the design', async () => {
     mockApprove.mockRejectedValueOnce(DUP_409)
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     fireEvent.click(screen.getByTestId('do-approve'))
@@ -300,7 +300,7 @@ describe('PendingDevicesModal', () => {
 
   it('"Add duplicate anyway" retries the approve with force=true', async () => {
     mockApprove.mockRejectedValueOnce(DUP_409)
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     fireEvent.click(screen.getByTestId('do-approve'))
@@ -313,7 +313,7 @@ describe('PendingDevicesModal', () => {
   it('"Go to existing node" selects the existing node and closes the modal', async () => {
     mockApprove.mockRejectedValueOnce(DUP_409)
     const onClose = vi.fn()
-    render(<PendingDevicesModal {...baseProps} onClose={onClose} />)
+    render(<DeviceInventoryModal {...baseProps} onClose={onClose} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     fireEvent.click(screen.getByTestId('do-approve'))
@@ -324,7 +324,7 @@ describe('PendingDevicesModal', () => {
   })
 
   it('toggles selection in select mode instead of opening approval', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
@@ -333,7 +333,7 @@ describe('PendingDevicesModal', () => {
   })
 
   it('select all visible selects only filtered devices', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.change(screen.getByPlaceholderText(/Search/), { target: { value: 'host-a' } })
@@ -342,7 +342,7 @@ describe('PendingDevicesModal', () => {
   })
 
   it('bulk approve calls API with selected ids', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
@@ -360,7 +360,7 @@ describe('PendingDevicesModal', () => {
         skipped_devices: [{ device_id: 'dev-a', label: 'host-a', match: 'ip', value: '192.168.1.10', existing_node_id: 'n-existing' }],
       },
     })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
@@ -382,7 +382,7 @@ describe('PendingDevicesModal', () => {
         { ...DEVICE_IP, canvas_count: 1 },
         { ...DEVICE_ZIGBEE, canvas_count: 1 },
       ] })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
@@ -396,7 +396,7 @@ describe('PendingDevicesModal', () => {
   })
 
   it('bulk approve carries the scanned MAC onto the canvas node (#168)', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
@@ -424,7 +424,7 @@ describe('PendingDevicesModal', () => {
   })
 
   it('bulk hide calls API with selected ids', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
@@ -433,20 +433,20 @@ describe('PendingDevicesModal', () => {
   })
 
   it('does not load when closed', () => {
-    render(<PendingDevicesModal {...baseProps} open={false} />)
+    render(<DeviceInventoryModal {...baseProps} open={false} />)
     expect(mockPending).not.toHaveBeenCalled()
   })
 
   it('respects initialStatus=hidden', async () => {
     mockHidden.mockResolvedValue({ data: [{ ...DEVICE_IP, hostname: 'hidden-host', status: 'hidden' }] })
-    render(<PendingDevicesModal {...baseProps} initialStatus="hidden" />)
+    render(<DeviceInventoryModal {...baseProps} initialStatus="hidden" />)
     await waitFor(() => expect(mockHidden).toHaveBeenCalled())
     expect(mockPending).not.toHaveBeenCalled()
   })
 
   it('clicking a hidden card restores it instead of opening approval', async () => {
     mockHidden.mockResolvedValue({ data: [{ ...DEVICE_IP, status: 'hidden' }] })
-    render(<PendingDevicesModal {...baseProps} initialStatus="hidden" />)
+    render(<DeviceInventoryModal {...baseProps} initialStatus="hidden" />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     await waitFor(() => expect(mockRestore).toHaveBeenCalledWith('dev-a'))
@@ -455,7 +455,7 @@ describe('PendingDevicesModal', () => {
 
   it('bulk restore in hidden mode calls API with selected ids', async () => {
     mockHidden.mockResolvedValue({ data: [{ ...DEVICE_IP, status: 'hidden' }] })
-    render(<PendingDevicesModal {...baseProps} initialStatus="hidden" />)
+    render(<DeviceInventoryModal {...baseProps} initialStatus="hidden" />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
@@ -464,7 +464,7 @@ describe('PendingDevicesModal', () => {
   })
 
   it('Enter confirms approve in pending select mode', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
@@ -475,7 +475,7 @@ describe('PendingDevicesModal', () => {
 
   it('Enter restores (not approves) in hidden select mode', async () => {
     mockHidden.mockResolvedValue({ data: [{ ...DEVICE_IP, status: 'hidden' }] })
-    render(<PendingDevicesModal {...baseProps} initialStatus="hidden" />)
+    render(<DeviceInventoryModal {...baseProps} initialStatus="hidden" />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
@@ -487,21 +487,21 @@ describe('PendingDevicesModal', () => {
   // --- Device Inventory: rename, canvas badge, on-canvas filter ---
 
   it('titles the pending view "Device Inventory"', async () => {
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     expect(screen.getByText('Device Inventory')).toBeInTheDocument()
   })
 
   it('shows "Hidden Devices" title in hidden mode', async () => {
     mockHidden.mockResolvedValue({ data: [{ ...DEVICE_IP, status: 'hidden' }] })
-    render(<PendingDevicesModal {...baseProps} initialStatus="hidden" />)
+    render(<DeviceInventoryModal {...baseProps} initialStatus="hidden" />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     expect(screen.getByText('Hidden Devices')).toBeInTheDocument()
   })
 
   it('renders a corner canvas-count when canvas_count > 0', async () => {
     mockPending.mockResolvedValue({ data: [{ ...DEVICE_IP, canvas_count: 2 }] })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     const corner = screen.getByLabelText('On 2 canvases')
     expect(corner).toHaveTextContent('2')
@@ -509,21 +509,21 @@ describe('PendingDevicesModal', () => {
 
   it('uses singular "canvas" for a single canvas', async () => {
     mockPending.mockResolvedValue({ data: [{ ...DEVICE_IP, canvas_count: 1 }] })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     expect(screen.getByLabelText('On 1 canvas')).toHaveTextContent('1')
   })
 
   it('does not render the canvas-count corner when canvas_count is 0', async () => {
     mockPending.mockResolvedValue({ data: [{ ...DEVICE_IP, canvas_count: 0 }] })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     expect(screen.queryByLabelText(/On \d+ canvas/)).not.toBeInTheDocument()
   })
 
   it('filters to devices with detected services when "With services" is on', async () => {
     // dev-a has an http service; dev-b (zigbee) has none.
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-b')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /With services/ }))
     expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument()
@@ -534,7 +534,7 @@ describe('PendingDevicesModal', () => {
     mockPending.mockResolvedValue({
       data: [DEVICE_IP, { ...DEVICE_ZIGBEE, canvas_count: 1 }],
     })
-    render(<PendingDevicesModal {...baseProps} />)
+    render(<DeviceInventoryModal {...baseProps} />)
     // Default: both visible (on-canvas shown).
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-b')).toBeInTheDocument())
     expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument()
@@ -556,7 +556,7 @@ describe('PendingDevicesModal', () => {
           node_last_seen: '2026-06-25T09:15:00Z',
         }],
       })
-      render(<PendingDevicesModal {...baseProps} />)
+      render(<DeviceInventoryModal {...baseProps} />)
       const card = await screen.findByTestId('pending-card-dev-a')
       const inCard = within(card)
       expect(inCard.getByText('Created')).toBeInTheDocument()
@@ -569,7 +569,7 @@ describe('PendingDevicesModal', () => {
 
     it('falls back to Discovered for devices not on any canvas', async () => {
       mockPending.mockResolvedValue({ data: [DEVICE_IP] })
-      render(<PendingDevicesModal {...baseProps} />)
+      render(<DeviceInventoryModal {...baseProps} />)
       const card = await screen.findByTestId('pending-card-dev-a')
       const inCard = within(card)
       expect(inCard.getByText('Discovered')).toBeInTheDocument()
@@ -585,7 +585,7 @@ describe('PendingDevicesModal', () => {
     })
 
     it('filters them into their own section', async () => {
-      render(<PendingDevicesModal {...baseProps} />)
+      render(<DeviceInventoryModal {...baseProps} />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
       fireEvent.click(screen.getByRole('button', { name: 'Rack devices' }))
       expect(screen.getByTestId('pending-card-dev-rack')).toBeInTheDocument()
@@ -594,7 +594,7 @@ describe('PendingDevicesModal', () => {
 
     it('refuses to approve one onto a logical canvas', async () => {
       const { toast } = await import('sonner')
-      render(<PendingDevicesModal {...baseProps} />)
+      render(<DeviceInventoryModal {...baseProps} />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-rack')).toBeInTheDocument())
       fireEvent.click(screen.getByTestId('pending-card-dev-rack'))
       fireEvent.click(screen.getByTestId('do-approve'))
@@ -605,7 +605,7 @@ describe('PendingDevicesModal', () => {
 
     it('drops them from a bulk approve and says how many', async () => {
       const { toast } = await import('sonner')
-      render(<PendingDevicesModal {...baseProps} />)
+      render(<DeviceInventoryModal {...baseProps} />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
       fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
       fireEvent.click(screen.getByTestId('pending-card-dev-a'))
@@ -617,13 +617,13 @@ describe('PendingDevicesModal', () => {
     })
 
     it('keeps rack gear in the rackable list — it is hardware', async () => {
-      render(<PendingDevicesModal {...baseProps} initialRackableOnly />)
+      render(<DeviceInventoryModal {...baseProps} initialRackableOnly />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-rack')).toBeInTheDocument())
       expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument()
     })
 
     it('approves nothing when the whole selection is rack gear', async () => {
-      render(<PendingDevicesModal {...baseProps} />)
+      render(<DeviceInventoryModal {...baseProps} />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-rack')).toBeInTheDocument())
       fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
       fireEvent.click(screen.getByTestId('pending-card-dev-rack'))
@@ -641,7 +641,7 @@ describe('PendingDevicesModal', () => {
     })
 
     it('drops virtual and mesh kinds when the filter is on', async () => {
-      render(<PendingDevicesModal {...baseProps} />)
+      render(<DeviceInventoryModal {...baseProps} />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-vm')).toBeInTheDocument())
 
       fireEvent.click(screen.getByRole('button', { name: 'Rackable' }))
@@ -650,7 +650,7 @@ describe('PendingDevicesModal', () => {
     })
 
     it('starts filtered when the caller asks for it', async () => {
-      render(<PendingDevicesModal {...baseProps} initialRackableOnly />)
+      render(<DeviceInventoryModal {...baseProps} initialRackableOnly />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
       expect(screen.queryByTestId('pending-card-dev-vm')).not.toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Rackable' })).toHaveAttribute(
@@ -660,20 +660,20 @@ describe('PendingDevicesModal', () => {
     })
 
     it('re-arms the filter when reopened after the user turned it off', async () => {
-      const { rerender } = render(<PendingDevicesModal {...baseProps} initialRackableOnly />)
+      const { rerender } = render(<DeviceInventoryModal {...baseProps} initialRackableOnly />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
       fireEvent.click(screen.getByRole('button', { name: 'Rackable' }))
       expect(screen.getByTestId('pending-card-dev-vm')).toBeInTheDocument()
 
-      rerender(<PendingDevicesModal {...baseProps} open={false} initialRackableOnly />)
-      rerender(<PendingDevicesModal {...baseProps} initialRackableOnly />)
+      rerender(<DeviceInventoryModal {...baseProps} open={false} initialRackableOnly />)
+      rerender(<DeviceInventoryModal {...baseProps} initialRackableOnly />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
       expect(screen.queryByTestId('pending-card-dev-vm')).not.toBeInTheDocument()
     })
 
     it('hands the card back instead of opening the approval modal', async () => {
       const onPick = vi.fn()
-      render(<PendingDevicesModal {...baseProps} onPick={onPick} />)
+      render(<DeviceInventoryModal {...baseProps} onPick={onPick} />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
 
       fireEvent.click(screen.getByTestId('pending-card-dev-a'))
@@ -682,7 +682,7 @@ describe('PendingDevicesModal', () => {
     })
 
     it('hides the bulk and clear controls a picker has no business offering', async () => {
-      render(<PendingDevicesModal {...baseProps} onPick={vi.fn()} />)
+      render(<DeviceInventoryModal {...baseProps} onPick={vi.fn()} />)
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
 
       expect(screen.queryByRole('button', { name: 'Select mode' })).not.toBeInTheDocument()

@@ -15,7 +15,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import Node, PendingDevice, ScanRun
+from app.db.models import InventoryDevice, Node, ScanRun
 from app.services.discovery_sources import add_source
 from app.services.fingerprint import fingerprint_ports, suggest_node_type
 from app.services.http_probe import probe_open_ports
@@ -476,12 +476,12 @@ async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
     otherwise the oldest row, and deletes the rest. Returns the number deleted.
     """
     rows = (await db.execute(
-        select(PendingDevice)
-        .where(PendingDevice.status != "hidden", PendingDevice.ip.isnot(None))
-        .order_by(PendingDevice.discovered_at)
+        select(InventoryDevice)
+        .where(InventoryDevice.status != "hidden", InventoryDevice.ip.isnot(None))
+        .order_by(InventoryDevice.discovered_at)
     )).scalars().all()
 
-    by_ip: dict[str, list[PendingDevice]] = {}
+    by_ip: dict[str, list[InventoryDevice]] = {}
     for row in rows:
         if row.ip is None:  # guarded by the query, but keeps the type checker happy
             continue
@@ -507,7 +507,7 @@ async def run_scan(
     run_id: str,
     deep_scan: DeepScanOptions | None = None,
 ) -> None:
-    """Execute scan for given CIDR ranges and populate pending_devices."""
+    """Execute scan for given CIDR ranges and populate device_inventory."""
     from app.api.routes.status import broadcast_scan_update
 
     deep_scan = deep_scan or DeepScanOptions()
@@ -527,7 +527,7 @@ async def run_scan(
         # Devices already on a canvas are intentionally NOT suppressed: they stay
         # in the inventory and are badged "In N canvas" via per-request correlation.
         hidden_ips_result = await db.execute(
-            select(PendingDevice.ip).where(PendingDevice.status == "hidden")
+            select(InventoryDevice.ip).where(InventoryDevice.status == "hidden")
         )
         hidden_ips: set[str] = {row[0] for row in hidden_ips_result.fetchall()}
 
@@ -570,13 +570,13 @@ async def run_scan(
             # a duplicate — and so a device previously imported from Proxmox (which
             # may have no IP but a known NIC MAC) reconciles with this scan instead
             # of doubling up. Hidden rows are already skipped above.
-            match_cond = [PendingDevice.ip == ip]
+            match_cond = [InventoryDevice.ip == ip]
             if norm_mac:
-                match_cond.append(PendingDevice.mac == norm_mac)
+                match_cond.append(InventoryDevice.mac == norm_mac)
             existing_rows = (await db.execute(
-                select(PendingDevice)
-                .where(or_(*match_cond), PendingDevice.status != "hidden")
-                .order_by(PendingDevice.discovered_at)
+                select(InventoryDevice)
+                .where(or_(*match_cond), InventoryDevice.status != "hidden")
+                .order_by(InventoryDevice.discovered_at)
             )).scalars().all()
 
             if existing_rows:
@@ -600,7 +600,7 @@ async def run_scan(
                 keep.discovery_sources = add_source(keep.discovery_sources, discovery_source)
                 # status preserved — an approved device stays approved.
             else:
-                db.add(PendingDevice(
+                db.add(InventoryDevice(
                     ip=ip,
                     mac=norm_mac,
                     hostname=host.get("hostname"),

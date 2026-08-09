@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import BaseModel, field_validator
 
 
-class PendingDeviceResponse(BaseModel):
+class InventoryDeviceResponse(BaseModel):
     id: str
     ip: str | None
     mac: str | None
@@ -56,7 +56,7 @@ on the network, so they are never placed on a logical canvas.
 MANUAL_SOURCES = {"manual", "rack"}
 
 
-class PendingDeviceCreate(BaseModel):
+class InventoryDeviceCreate(BaseModel):
     """Manually add an entry to the Device Inventory.
 
     Used when the user documents hardware no scan can find — a dumb switch, a

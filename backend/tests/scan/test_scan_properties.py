@@ -5,7 +5,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.db.models import Node, PendingDevice
+from app.db.models import InventoryDevice, Node
 from tests.scan.helpers import _add_design, _seed_zigbee_pending_pair
 
 
@@ -184,7 +184,7 @@ async def test_approve_zigbee_skips_duplicate_edge(
     """Re-running the resolution does not create a second edge for the same pair."""
     from sqlalchemy import select
 
-    from app.db.models import Edge, PendingDevice, PendingDeviceLink
+    from app.db.models import Edge, InventoryDevice, InventoryDeviceLink
 
     coord, pending = await _seed_zigbee_pending_pair(db_session)
     body = {"label": "router_1", "type": "zigbee_router", "ip": None, "status": "unknown", "services": []}
@@ -193,7 +193,7 @@ async def test_approve_zigbee_skips_duplicate_edge(
     # Simulate a second pending row + link between same coord and a new device,
     # but keep an existing edge in place to verify dedupe also handles
     # the swapped-direction case.
-    new_pending = PendingDevice(
+    new_pending = InventoryDevice(
         ieee_address="0xR1B",
         friendly_name="r1b",
         suggested_type="zigbee_router",
@@ -202,7 +202,7 @@ async def test_approve_zigbee_skips_duplicate_edge(
     )
     db_session.add(new_pending)
     db_session.add(
-        PendingDeviceLink(source_ieee="0xCOORD", target_ieee="0xR1B", discovery_source="zigbee")
+        InventoryDeviceLink(source_ieee="0xCOORD", target_ieee="0xR1B", discovery_source="zigbee")
     )
     await db_session.commit()
     res = await client.post(
@@ -220,16 +220,16 @@ async def test_approve_zigbee_skips_when_other_endpoint_still_pending(
     """Both endpoints pending → no edge yet, link row preserved for later."""
     from sqlalchemy import select
 
-    from app.db.models import Edge, PendingDevice, PendingDeviceLink
+    from app.db.models import Edge, InventoryDevice, InventoryDeviceLink
 
-    a = PendingDevice(
+    a = InventoryDevice(
         ieee_address="0xA",
         friendly_name="a",
         suggested_type="zigbee_router",
         status="pending",
         discovery_source="zigbee",
     )
-    b = PendingDevice(
+    b = InventoryDevice(
         ieee_address="0xB",
         friendly_name="b",
         suggested_type="zigbee_enddevice",
@@ -238,7 +238,7 @@ async def test_approve_zigbee_skips_when_other_endpoint_still_pending(
     )
     db_session.add_all([a, b])
     db_session.add(
-        PendingDeviceLink(source_ieee="0xA", target_ieee="0xB", discovery_source="zigbee")
+        InventoryDeviceLink(source_ieee="0xA", target_ieee="0xB", discovery_source="zigbee")
     )
     await db_session.commit()
 
@@ -258,7 +258,7 @@ async def test_approve_zigbee_skips_when_other_endpoint_still_pending(
 
     edges = (await db_session.execute(select(Edge))).scalars().all()
     assert edges == []
-    links = (await db_session.execute(select(PendingDeviceLink))).scalars().all()
+    links = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
     assert len(links) == 1  # preserved for later resolution
 
 
@@ -271,16 +271,16 @@ async def test_approve_zigbee_resolves_link_after_second_approval(
     be re-approved onto another canvas — it's topology, wiped only on reimport."""
     from sqlalchemy import select
 
-    from app.db.models import Edge, PendingDevice, PendingDeviceLink
+    from app.db.models import Edge, InventoryDevice, InventoryDeviceLink
 
-    a = PendingDevice(
+    a = InventoryDevice(
         ieee_address="0xA",
         friendly_name="a",
         suggested_type="zigbee_router",
         status="pending",
         discovery_source="zigbee",
     )
-    b = PendingDevice(
+    b = InventoryDevice(
         ieee_address="0xB",
         friendly_name="b",
         suggested_type="zigbee_enddevice",
@@ -289,7 +289,7 @@ async def test_approve_zigbee_resolves_link_after_second_approval(
     )
     db_session.add_all([a, b])
     db_session.add(
-        PendingDeviceLink(source_ieee="0xA", target_ieee="0xB", discovery_source="zigbee")
+        InventoryDeviceLink(source_ieee="0xA", target_ieee="0xB", discovery_source="zigbee")
     )
     await db_session.commit()
 
@@ -300,14 +300,14 @@ async def test_approve_zigbee_resolves_link_after_second_approval(
 
     edges = (await db_session.execute(select(Edge))).scalars().all()
     assert len(edges) == 1
-    links = (await db_session.execute(select(PendingDeviceLink))).scalars().all()
+    links = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
     assert len(links) == 1  # retained for re-approval onto other canvases
 
 
 @pytest.mark.asyncio
 async def test_single_approve_zwave_sets_wireless_fields(client, headers, db_session):
     active = await _add_design(db_session, "zwave")
-    dev = PendingDevice(
+    dev = InventoryDevice(
         id=str(uuid.uuid4()),
         ieee_address="zwave-H-9",
         friendly_name="Door Sensor",

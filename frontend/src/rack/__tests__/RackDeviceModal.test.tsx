@@ -9,6 +9,7 @@ import { useRackStore } from '../store'
 
 const createPending = vi.fn()
 const pendingList = vi.fn()
+const deletePending = vi.fn()
 
 vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 vi.mock('@/api/client', () => ({
@@ -19,6 +20,8 @@ vi.mock('@/api/client', () => ({
     // reads `pending_devices` itself rather than the rack's mirrored list.
     pending: (...args: unknown[]) => pendingList(...args),
     hidden: vi.fn().mockResolvedValue({ data: [] }),
+    // Cleanup after a relink: the placeholder the rack created is dropped.
+    deletePending: (...args: unknown[]) => deletePending(...args),
   },
 }))
 
@@ -28,6 +31,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   store().loadDemo()
   pendingList.mockResolvedValue({ data: [] })
+  deletePending.mockResolvedValue({ data: { deleted: true } })
 })
 
 /** Shape the Device Inventory modal expects for one of the rack's entries. */
@@ -579,7 +583,7 @@ describe('RackDeviceModal — editing', () => {
     render(<RackDeviceModal />)
 
     const entry = store().inventory.find((i) => i.id === 'inv-pve1')!
-    const panel = screen.getByLabelText('Logical view')
+    const panel = screen.getByLabelText('Linked device')
     expect(panel).toHaveTextContent(entry.node!.hostname!)
     expect(panel).toHaveTextContent(entry.ip!)
     expect(panel).toHaveTextContent(entry.mac!)
@@ -591,6 +595,91 @@ describe('RackDeviceModal — editing', () => {
     render(<RackDeviceModal />)
 
     expect(store().devices.find((d) => d.id === 'dev-shelf')!.deviceId).toBeNull()
-    expect(screen.queryByLabelText('Logical view')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Linked device')).not.toBeInTheDocument()
+  })
+
+  /** A discovered row, offered in the inventory the picker reads. */
+  function offerScannedRow() {
+    useRackStore.setState((s) => ({
+      inventory: [
+        ...s.inventory,
+        {
+          id: 'inv-scanned',
+          label: 'pdu-real',
+          type: 'pdu',
+          discoverySource: 'arp',
+          ip: '192.168.1.60',
+          mac: null,
+          hostname: 'pdu.lan',
+          os: null,
+          services: [],
+          status: 'online' as const,
+          nodeId: 'node-pdu',
+          node: {
+            id: 'node-pdu',
+            label: 'pdu-main',
+            type: 'pdu',
+            ip: '192.168.1.60',
+            mac: null,
+            hostname: 'pdu.lan',
+            os: null,
+            checkMethod: 'ping',
+            designId: 'demo-network',
+            designName: 'Network',
+            lastSeen: null,
+          },
+          racked: false,
+          suggestedFaceplateId: 'pdu-1u',
+        },
+      ],
+    }))
+  }
+
+  it('repoints a mount at the inventory device the user picks', async () => {
+    // `dev-pdu` was created from the rack: its entry is a placeholder with a
+    // name and nothing else, and no IEEE or IP for the backend to guess from.
+    store().openDeviceEditor('dev-pdu')
+    render(<RackDeviceModal />)
+    expect(screen.getByLabelText('Linked device')).not.toHaveTextContent('pdu.lan')
+
+    act(() => offerScannedRow())
+    fireEvent.click(screen.getByRole('button', { name: /Link to another device/ }))
+    // By role: the plate preview draws the same label in its SVG artwork.
+    const row = await screen.findByRole('button', { name: /pdu-real/ })
+    await act(async () => {
+      fireEvent.click(row)
+    })
+
+    const mount = store().devices.find((d) => d.id === 'dev-pdu')!
+    expect(mount.deviceId).toBe('inv-scanned')
+    expect(mount.nodeId).toBe('node-pdu')
+    expect(screen.getByLabelText('Linked device')).toHaveTextContent('pdu.lan')
+    // The form follows the plate's new name rather than saving the old one back.
+    expect(screen.getByLabelText('Label')).toHaveValue('pdu-real')
+  })
+
+  it('offers "Check device" once a device with a node has been linked', async () => {
+    store().openDeviceEditor('dev-pdu')
+    render(<RackDeviceModal />)
+
+    expect(screen.queryByRole('option', { name: /Check device/ })).not.toBeInTheDocument()
+
+    act(() => offerScannedRow())
+    await act(async () => {
+      await store().relinkDevice('dev-pdu', 'inv-scanned')
+    })
+
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: /Check device/ })).toBeInTheDocument(),
+    )
+  })
+
+  it('does not offer linking while the mount is still being created', async () => {
+    store().openDeviceEditor()
+    render(<RackDeviceModal />)
+    await pickFromInventory('inv-pdu')
+
+    // Nothing to hang a link on yet: the mount does not exist.
+    expect(screen.queryByRole('button', { name: /Link to/ })).not.toBeInTheDocument()
   })
 })

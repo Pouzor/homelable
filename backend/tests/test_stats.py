@@ -9,7 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import Node, PendingDevice, ScanRun
+from app.db.models import InventoryDevice, Node, ScanRun
 
 
 @pytest.fixture(autouse=True)
@@ -75,9 +75,9 @@ async def test_summary_aggregates_counts(
         Node(type="server", label="D", status="unknown"),
         Node(type="iot",    label="Z1", status="online", ieee_address="0x1"),
         Node(type="iot",    label="Z2", status="online", ieee_address="0x2"),
-        PendingDevice(ip="10.0.0.1", status="pending"),
-        PendingDevice(ip="10.0.0.2", status="pending"),
-        PendingDevice(ip="10.0.0.3", status="hidden"),  # excluded
+        InventoryDevice(ip="10.0.0.1", status="pending"),
+        InventoryDevice(ip="10.0.0.2", status="pending"),
+        InventoryDevice(ip="10.0.0.3", status="hidden"),  # excluded
         ScanRun(status="success", finished_at=finished),
         ScanRun(status="success",
                 finished_at=datetime(2026, 5, 13, 10, 0, tzinfo=timezone.utc)),

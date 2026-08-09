@@ -18,7 +18,7 @@ const defaultProps = {
   open: true,
   onClose: vi.fn(),
   onAddToCanvas: vi.fn(),
-  onPendingImported: vi.fn(),
+  onInventoryImported: vi.fn(),
 }
 
 const sampleNodes = [
@@ -44,7 +44,7 @@ describe('ProxmoxImportModal', () => {
     vi.mocked(toast.info).mockReset()
     defaultProps.onClose.mockReset()
     defaultProps.onAddToCanvas.mockReset()
-    defaultProps.onPendingImported.mockReset()
+    defaultProps.onInventoryImported.mockReset()
   })
 
   it('renders nothing when closed', () => {
@@ -85,7 +85,7 @@ describe('ProxmoxImportModal', () => {
     fireEvent.change(screen.getByPlaceholderText('192.168.1.x or pve.local'), { target: { value: 'pve' } })
     fireEvent.click(screen.getByRole('button', { name: /import to pending/i }))
     await waitFor(() => expect(proxmoxApi.importToPending).toHaveBeenCalled())
-    expect(defaultProps.onPendingImported).toHaveBeenCalled()
+    expect(defaultProps.onInventoryImported).toHaveBeenCalled()
     expect(proxmoxApi.importNetwork).not.toHaveBeenCalled()
   })
 

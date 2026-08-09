@@ -12,7 +12,7 @@ interface ZwaveImportModalProps {
   open: boolean
   onClose: () => void
   onAddToCanvas: (nodes: ZwaveNode[], edges: ZwaveEdge[]) => void
-  onPendingImported?: (
+  onInventoryImported?: (
     coordinator?: { id: string; label: string; ieee_address: string } | null,
   ) => void
 }
@@ -63,7 +63,7 @@ const DEVICE_TYPE_COLOR = {
   zwave_enddevice: '#e3b341',
 } as const
 
-export function ZwaveImportModal({ open, onClose, onAddToCanvas, onPendingImported }: ZwaveImportModalProps) {
+export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImported }: ZwaveImportModalProps) {
   const [form, setForm] = useState<ConnectionForm>(DEFAULT_FORM)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [connectionMsg, setConnectionMsg] = useState('')
@@ -145,7 +145,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onPendingImport
       if (importMode === 'pending') {
         await zwaveApi.importToPending(buildPayload())
         toast.success('Z-Wave import started — track progress in Scan History')
-        onPendingImported?.(null)
+        onInventoryImported?.(null)
         handleClose()
       } else {
         const res = await zwaveApi.importNetwork(buildPayload())

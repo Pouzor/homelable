@@ -294,7 +294,7 @@ async def test_persist_coordinator_goes_to_pending(db_session) -> None:
     from sqlalchemy import select
 
     from app.api.routes.zwave import _persist_pending_import
-    from app.db.models import Node, PendingDevice
+    from app.db.models import InventoryDevice, Node
 
     result = await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
     assert result.device_count == 3
@@ -308,7 +308,7 @@ async def test_persist_coordinator_goes_to_pending(db_session) -> None:
     assert nodes == []
     coord = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "zwave-0xh-1")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "zwave-0xh-1")
         )
     ).scalar_one()
     assert coord.status == "pending"
@@ -333,12 +333,12 @@ async def test_persist_replaces_links(db_session) -> None:
     from sqlalchemy import select
 
     from app.api.routes.zwave import _persist_pending_import
-    from app.db.models import PendingDeviceLink
+    from app.db.models import InventoryDeviceLink
 
     await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
     new_edges = [{"source": "zwave-0xh-1", "target": "zwave-0xh-2"}]
     await _persist_pending_import(db_session, _PENDING_NODES[:2], new_edges)
-    rows = (await db_session.execute(select(PendingDeviceLink))).scalars().all()
+    rows = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
     assert len(rows) == 1
     assert (rows[0].source_ieee, rows[0].target_ieee) == ("zwave-0xh-1", "zwave-0xh-2")
 
@@ -349,7 +349,7 @@ async def test_persist_sets_coordinator_pending_fields(db_session) -> None:
     from sqlalchemy import select
 
     from app.api.routes.zwave import _persist_pending_import
-    from app.db.models import PendingDevice
+    from app.db.models import InventoryDevice
 
     nodes = [dict(n) for n in _PENDING_NODES]
     nodes[0]["vendor"] = "Aeotec"
@@ -357,7 +357,7 @@ async def test_persist_sets_coordinator_pending_fields(db_session) -> None:
     await _persist_pending_import(db_session, nodes, _PENDING_EDGES)
     coord = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "zwave-0xh-1")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "zwave-0xh-1")
         )
     ).scalar_one()
     assert coord.vendor == "Aeotec"
@@ -372,7 +372,7 @@ async def test_persist_backfills_inventory_for_approved_node(db_session) -> None
     from sqlalchemy import select
 
     from app.api.routes.zwave import _persist_pending_import
-    from app.db.models import Node, PendingDevice
+    from app.db.models import InventoryDevice, Node
 
     approved = Node(
         label="Wall Plug",
@@ -390,7 +390,7 @@ async def test_persist_backfills_inventory_for_approved_node(db_session) -> None
 
     inv = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "zwave-0xh-2")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "zwave-0xh-2")
         )
     ).scalar_one()
     assert inv.status == "approved"
@@ -407,9 +407,9 @@ async def test_persist_revives_orphaned_approved_device(db_session) -> None:
     from sqlalchemy import select
 
     from app.api.routes.zwave import _persist_pending_import
-    from app.db.models import PendingDevice
+    from app.db.models import InventoryDevice
 
-    orphan = PendingDevice(
+    orphan = InventoryDevice(
         ieee_address="zwave-0xh-2",
         friendly_name="Wall Plug",
         suggested_type="zwave_router",
@@ -423,7 +423,7 @@ async def test_persist_revives_orphaned_approved_device(db_session) -> None:
     result = await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
     revived = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "zwave-0xh-2")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "zwave-0xh-2")
         )
     ).scalar_one()
     assert revived.status == "pending"
@@ -437,9 +437,9 @@ async def test_persist_keeps_hidden_hidden(db_session) -> None:
     from sqlalchemy import select
 
     from app.api.routes.zwave import _persist_pending_import
-    from app.db.models import PendingDevice
+    from app.db.models import InventoryDevice
 
-    hidden = PendingDevice(
+    hidden = InventoryDevice(
         ieee_address="zwave-0xh-2",
         friendly_name="Wall Plug",
         suggested_type="zwave_router",
@@ -453,7 +453,7 @@ async def test_persist_keeps_hidden_hidden(db_session) -> None:
     await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
     still_hidden = (
         await db_session.execute(
-            select(PendingDevice).where(PendingDevice.ieee_address == "zwave-0xh-2")
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "zwave-0xh-2")
         )
     ).scalar_one()
     assert still_hidden.status == "hidden"

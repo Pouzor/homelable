@@ -152,9 +152,9 @@ describe('ZwaveImportModal', () => {
         error: null,
       },
     } as never)
-    const onPendingImported = vi.fn()
+    const onInventoryImported = vi.fn()
 
-    render(<ZwaveImportModal {...defaultProps} onPendingImported={onPendingImported} />)
+    render(<ZwaveImportModal {...defaultProps} onInventoryImported={onInventoryImported} />)
     fireEvent.change(screen.getByPlaceholderText('192.168.1.x or mqtt.local'), {
       target: { value: '192.168.1.100' },
     })
@@ -162,7 +162,7 @@ describe('ZwaveImportModal', () => {
 
     await waitFor(() => {
       expect(zwaveApi.importToPending).toHaveBeenCalled()
-      expect(onPendingImported).toHaveBeenCalled()
+      expect(onInventoryImported).toHaveBeenCalled()
       expect(defaultProps.onClose).toHaveBeenCalled()
     })
     expect(zwaveApi.importNetwork).not.toHaveBeenCalled()

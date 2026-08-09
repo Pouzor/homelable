@@ -12,7 +12,7 @@ interface ProxmoxImportModalProps {
   open: boolean
   onClose: () => void
   onAddToCanvas: (nodes: ProxmoxNode[], edges: ProxmoxEdge[]) => void
-  onPendingImported?: () => void
+  onInventoryImported?: () => void
 }
 
 type ImportMode = 'pending' | 'canvas'
@@ -53,7 +53,7 @@ const DEVICE_TYPE_COLOR: Record<ProxmoxNodeType, string> = {
   lxc: '#39d353',
 }
 
-export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onPendingImported }: ProxmoxImportModalProps) {
+export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onInventoryImported }: ProxmoxImportModalProps) {
   const [form, setForm] = useState<ConnectionForm>(DEFAULT_FORM)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [connectionMsg, setConnectionMsg] = useState('')
@@ -101,7 +101,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onPendingImpo
       if (importMode === 'pending') {
         await proxmoxApi.importToPending(buildPayload())
         toast.success('Proxmox import started — track progress in Scan History')
-        onPendingImported?.()
+        onInventoryImported?.()
         handleClose()
       } else {
         const res = await proxmoxApi.importNetwork(buildPayload())

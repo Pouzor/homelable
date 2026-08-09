@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { isRackable, UNRACKABLE_TYPES } from '../rackable'
-import type { PendingDevice } from '@/components/modals/PendingDeviceModal'
+import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 
-function device(suggested_type: string | null): PendingDevice {
+function device(suggested_type: string | null): InventoryEntry {
   return {
     id: 'd1',
     ip: null,

@@ -171,6 +171,29 @@ interface RackState {
    * the rack had no room at all and nothing changed.
    */
   updateDevice: (id: string, patch: Partial<Omit<RackDevice, 'id' | 'ports'>>) => boolean
+  /**
+   * Point a mount at another Device Inventory entry, picked by hand.
+   *
+   * A mount created from the rack carries a placeholder entry of its own, and
+   * discovery only *guesses* the canvas node behind an entry (IEEE, then IP) —
+   * so the way to give a plate real facts is to point it at the inventory row
+   * discovery already filled in. The mount adopts that row's node, status and
+   * (unless the user renamed the plate) label.
+   *
+   * The placeholder left behind is deleted when the rack created it and no
+   * other mount uses it; a row from discovery or from the user is never touched.
+   * `false` means the target is not a device mount, the entry is unknown, or it
+   * is already mounted elsewhere in this design.
+   */
+  relinkDevice: (deviceId: string, entryId: string) => Promise<boolean>
+  /**
+   * Drop an inventory entry the rack created and no longer mounts.
+   *
+   * Deletes the Device Inventory row for real, so it stops showing under the
+   * **Rack devices** filter. Refuses any row the rack did not create, and any
+   * row a mount still stands for. Not an edit of the canvas — nothing to save.
+   */
+  discardInventoryDevice: (entryId: string) => Promise<boolean>
   /** Unmounts from the rack. The inventory entry survives. */
   unmountDevice: (id: string) => void
   /** Swaps the plate, resizing to its U height — relocating if need be. */
@@ -362,6 +385,9 @@ export const useRackStore = create<RackState>((set, get) => {
         id: generateUUID(),
         label,
         type,
+        // What the POST below files it under, mirrored locally so a relink can
+        // tell this placeholder from a row discovery or the user owns.
+        discoverySource: 'rack',
         ip,
         status: 'unknown',
         nodeId: null,
@@ -575,6 +601,69 @@ export const useRackStore = create<RackState>((set, get) => {
         Object.assign(next, slot)
       }
       edit((s) => ({ devices: s.devices.map((d) => (d.id === id ? next : d)) }))
+      return true
+    },
+
+    relinkDevice: async (deviceId, entryId) => {
+      const { devices, inventory } = get()
+      const device = devices.find((d) => d.id === deviceId)
+      // Accessories are rack furniture with no inventory row behind them, so
+      // there is nothing to repoint.
+      if (!device?.deviceId) return false
+      const entry = inventory.find((i) => i.id === entryId)
+      if (!entry) return false
+      if (entry.id === device.deviceId) return true
+      // One inventory entry, one mount: two plates claiming the same device
+      // would both follow its status and both answer to its links.
+      if (devices.some((d) => d.id !== deviceId && d.deviceId === entry.id)) return false
+
+      const previous = inventory.find((i) => i.id === device.deviceId)
+      edit((s) => {
+        const next = s.devices.map((d) =>
+          d.id === deviceId
+            ? {
+                ...d,
+                deviceId: entry.id,
+                nodeId: entry.nodeId,
+                // A plate the user renamed keeps its name; one still wearing the
+                // old entry's name follows the new entry, or the rename would
+                // have to be undone by hand every time.
+                label: !previous || d.label === previous.label ? entry.label : d.label,
+                // `auto` is a choice about *how* to resolve the status, not a
+                // status — it survives the swap; a pinned colour follows the
+                // entry, as it did when the mount was created.
+                status: d.status === 'auto' ? d.status : entry.status,
+              }
+            : d,
+        )
+        return { devices: next, inventory: withRackedFlags(s.inventory, next) }
+      })
+
+      // The placeholder the rack created for this plate now stands for nothing.
+      // `discardInventoryDevice` re-reads the state this edit just wrote, so it
+      // sees the mount already repointed and only the rows it owns.
+      if (previous) await get().discardInventoryDevice(previous.id)
+      return true
+    },
+
+    discardInventoryDevice: async (entryId) => {
+      const { devices, inventory } = get()
+      const entry = inventory.find((i) => i.id === entryId)
+      // Never delete a row another plate still stands for, and never one the
+      // rack did not create — discovery and the user own theirs.
+      if (!entry || entry.discoverySource !== 'rack') return false
+      if (devices.some((d) => d.deviceId === entryId)) return false
+
+      if (!STANDALONE) {
+        try {
+          await scanApi.deletePending(entryId)
+        } catch {
+          // The row survives in the Device Inventory, where the user can remove
+          // it; the relink that triggered this already stands.
+          return false
+        }
+      }
+      set((s) => ({ inventory: s.inventory.filter((i) => i.id !== entryId) }))
       return true
     },
 

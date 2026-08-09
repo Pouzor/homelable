@@ -5,7 +5,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.db.models import Design, Node, PendingDevice
+from app.db.models import Design, InventoryDevice, Node
 from tests.scan.helpers import _add_design, _node
 
 
@@ -62,7 +62,7 @@ async def test_approve_device_conflicts_on_existing_ieee_same_design(
         services=[], design_id=design.id,
     )
     db_session.add(existing)
-    device = PendingDevice(
+    device = InventoryDevice(
         id=str(uuid.uuid4()), ieee_address="0xZZZ", suggested_type="zigbee_enddevice",
         status="pending", discovery_source="zigbee",
     )
@@ -103,7 +103,7 @@ async def test_approve_device_force_creates_duplicate_ieee(
         label="sensor", type="zigbee_enddevice", ieee_address="0xZZZ",
         services=[], design_id=design.id,
     ))
-    device = PendingDevice(
+    device = InventoryDevice(
         id=str(uuid.uuid4()), ieee_address="0xZZZ", suggested_type="zigbee_enddevice",
         status="pending", discovery_source="zigbee",
     )
@@ -274,7 +274,7 @@ async def test_approve_device_places_already_approved_on_another_design(
     target = await _add_design(db_session, "Network Topology")
     # Device is on `other` already (its global status is "approved").
     db_session.add(_node(other, ieee="0x00158d0005292b83"))
-    device = PendingDevice(
+    device = InventoryDevice(
         id=str(uuid.uuid4()), ieee_address="0x00158d0005292b83",
         suggested_type="zigbee_enddevice", status="approved",
         discovery_source="zigbee",
@@ -399,8 +399,8 @@ async def test_ignore_device(client: AsyncClient, headers, pending_device):
 
 
 @pytest.mark.asyncio
-async def test_bulk_approve_approves_devices(client: AsyncClient, headers, two_pending_devices):
-    ids = [d.id for d in two_pending_devices]
+async def test_bulk_approve_approves_devices(client: AsyncClient, headers, two_device_inventory):
+    ids = [d.id for d in two_device_inventory]
     res = await client.post("/api/v1/scan/pending/bulk-approve", json={"device_ids": ids}, headers=headers)
     assert res.status_code == 200
     data = res.json()
@@ -418,7 +418,7 @@ async def test_bulk_approve_approves_devices(client: AsyncClient, headers, two_p
 
 @pytest.mark.asyncio
 async def test_bulk_approve_places_already_approved_device_on_another_design(
-    client: AsyncClient, headers, db_session, two_pending_devices
+    client: AsyncClient, headers, db_session, two_device_inventory
 ):
     """Regression: a device already approved (status='approved', e.g. placed on
     another canvas) must still get a node on the design being approved onto.
@@ -426,7 +426,7 @@ async def test_bulk_approve_places_already_approved_device_on_another_design(
     Previously bulk-approve filtered status=='pending', so selecting an
     already-approved device created no node — the user saw fewer nodes than
     they selected."""
-    ids = [d.id for d in two_pending_devices]
+    ids = [d.id for d in two_device_inventory]
     design_a = await _add_design(db_session, "Canvas A")
     design_b = await _add_design(db_session, "Canvas B")
 
@@ -458,10 +458,10 @@ async def test_bulk_approve_places_already_approved_device_on_another_design(
 
 @pytest.mark.asyncio
 async def test_bulk_approve_skips_device_already_on_target_design(
-    client: AsyncClient, headers, db_session, two_pending_devices
+    client: AsyncClient, headers, db_session, two_device_inventory
 ):
     """A device already on the target canvas (same ip) is not placed twice."""
-    ids = [d.id for d in two_pending_devices]
+    ids = [d.id for d in two_device_inventory]
     design = await _add_design(db_session, "Canvas")
     # First device already sits on the canvas (matched by ip).
     db_session.add(_node(design, ip="192.168.1.10"))
@@ -487,11 +487,11 @@ async def test_bulk_approve_skips_device_already_on_target_design(
 
 @pytest.mark.asyncio
 async def test_bulk_approve_skips_device_matching_ip_in_comma_list(
-    client: AsyncClient, headers, db_session, two_pending_devices
+    client: AsyncClient, headers, db_session, two_device_inventory
 ):
     """The on-canvas node's ip holds an IPv6 before the IPv4; the device scanned
     as the plain IPv4 is still recognised as already placed (issue #258)."""
-    ids = [d.id for d in two_pending_devices]
+    ids = [d.id for d in two_device_inventory]
     design = await _add_design(db_session, "Canvas")
     db_session.add(_node(design, ip="fe80::1, 192.168.1.10"))
     await db_session.commit()
@@ -509,11 +509,11 @@ async def test_bulk_approve_skips_device_matching_ip_in_comma_list(
 
 @pytest.mark.asyncio
 async def test_bulk_approve_reports_skipped_devices(
-    client: AsyncClient, headers, db_session, two_pending_devices
+    client: AsyncClient, headers, db_session, two_device_inventory
 ):
     """Bulk can't prompt per-device, so it reports each duplicate it skipped
     (with the existing node id) instead of silently dropping it."""
-    ids = [d.id for d in two_pending_devices]
+    ids = [d.id for d in two_device_inventory]
     design = await _add_design(db_session, "Canvas")
     existing = _node(design, ip="192.168.1.10")
     db_session.add(existing)
@@ -568,7 +568,7 @@ async def test_bulk_approve_copies_mac_to_node_and_properties(
     from sqlalchemy import select
 
     from app.db.models import Node as NodeModel
-    device = PendingDevice(
+    device = InventoryDevice(
         id=str(uuid.uuid4()),
         ip="192.168.1.55",
         mac="11:22:33:44:55:66",
@@ -597,12 +597,12 @@ async def test_bulk_approve_copies_mac_to_node_and_properties(
 
 
 @pytest.mark.asyncio
-async def test_bulk_approve_sets_default_check_method(client: AsyncClient, headers, two_pending_devices, db_session):
+async def test_bulk_approve_sets_default_check_method(client: AsyncClient, headers, two_device_inventory, db_session):
     """Approved devices with an IP must default to ping; otherwise scheduler skips them."""
     from sqlalchemy import select
 
     from app.db.models import Node as NodeModel
-    ids = [d.id for d in two_pending_devices]
+    ids = [d.id for d in two_device_inventory]
     res = await client.post("/api/v1/scan/pending/bulk-approve", json={"device_ids": ids}, headers=headers)
     assert res.status_code == 200
     nodes = (await db_session.execute(select(NodeModel))).scalars().all()
@@ -628,8 +628,8 @@ async def test_approve_device_sets_default_check_method(client: AsyncClient, hea
 
 
 @pytest.mark.asyncio
-async def test_bulk_approve_skips_already_approved(client: AsyncClient, headers, two_pending_devices):
-    ids = [d.id for d in two_pending_devices]
+async def test_bulk_approve_skips_already_approved(client: AsyncClient, headers, two_device_inventory):
+    ids = [d.id for d in two_device_inventory]
     # Approve first device individually first
     await client.post(
         f"/api/v1/scan/pending/{ids[0]}/approve",
@@ -645,15 +645,15 @@ async def test_bulk_approve_skips_already_approved(client: AsyncClient, headers,
 
 
 @pytest.mark.asyncio
-async def test_bulk_approve_requires_auth(client: AsyncClient, two_pending_devices):
-    ids = [d.id for d in two_pending_devices]
+async def test_bulk_approve_requires_auth(client: AsyncClient, two_device_inventory):
+    ids = [d.id for d in two_device_inventory]
     res = await client.post("/api/v1/scan/pending/bulk-approve", json={"device_ids": ids})
     assert res.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_bulk_hide_hides_devices(client: AsyncClient, headers, two_pending_devices):
-    ids = [d.id for d in two_pending_devices]
+async def test_bulk_hide_hides_devices(client: AsyncClient, headers, two_device_inventory):
+    ids = [d.id for d in two_device_inventory]
     res = await client.post("/api/v1/scan/pending/bulk-hide", json={"device_ids": ids}, headers=headers)
     assert res.status_code == 200
     data = res.json()
@@ -665,8 +665,8 @@ async def test_bulk_hide_hides_devices(client: AsyncClient, headers, two_pending
 
 
 @pytest.mark.asyncio
-async def test_bulk_hide_skips_non_pending(client: AsyncClient, headers, two_pending_devices):
-    ids = [d.id for d in two_pending_devices]
+async def test_bulk_hide_skips_non_pending(client: AsyncClient, headers, two_device_inventory):
+    ids = [d.id for d in two_device_inventory]
     # Hide first device individually first
     await client.post(f"/api/v1/scan/pending/{ids[0]}/hide", headers=headers)
     # Bulk hide both — first is already hidden (not pending anymore)
@@ -678,8 +678,8 @@ async def test_bulk_hide_skips_non_pending(client: AsyncClient, headers, two_pen
 
 
 @pytest.mark.asyncio
-async def test_bulk_hide_requires_auth(client: AsyncClient, two_pending_devices):
-    ids = [d.id for d in two_pending_devices]
+async def test_bulk_hide_requires_auth(client: AsyncClient, two_device_inventory):
+    ids = [d.id for d in two_device_inventory]
     res = await client.post("/api/v1/scan/pending/bulk-hide", json={"device_ids": ids})
     assert res.status_code == 401
 
@@ -690,7 +690,7 @@ async def test_bulk_approve_targets_requested_design(client, headers, db_session
     first design — otherwise approved devices land on the wrong canvas."""
     first = await _add_design(db_session, "Default")  # first design (fallback)
     active = await _add_design(db_session, "zwave")    # the design the user is on
-    dev = PendingDevice(
+    dev = InventoryDevice(
         id=str(uuid.uuid4()),
         ieee_address="zwave-H-2",
         friendly_name="Living Room Plug",

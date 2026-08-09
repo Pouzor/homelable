@@ -17,7 +17,7 @@ from app.api.routes.proxmox import (
 )
 from app.api.routes.scan import _is_proxmox_cluster_member, _resolve_pending_links_for_ieee
 from app.core.config import settings
-from app.db.models import Design, Edge, Node, PendingDevice, PendingDeviceLink
+from app.db.models import Design, Edge, InventoryDevice, InventoryDeviceLink, Node
 
 
 @pytest.fixture(autouse=True)
@@ -212,7 +212,7 @@ async def test_persist_creates_pending(db_session) -> None:
     result = await _persist_pending_import(db_session, nodes, edges)
     assert result.pending_created == 2
     assert result.links_recorded == 1
-    rows = (await db_session.execute(select(PendingDevice))).scalars().all()
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
     assert {r.suggested_type for r in rows} == {"proxmox", "vm"}
     # Specs carried as properties.
     vm = next(r for r in rows if r.suggested_type == "vm")
@@ -239,14 +239,14 @@ async def test_persist_merges_existing_scanned_node_by_ip(db_session) -> None:
     assert merged.cpu_count == 2
     assert any(p["key"] == "CPU Cores" for p in (merged.properties or []))
     # Inventory row exists as approved (already on canvas).
-    inv = (await db_session.execute(select(PendingDevice).where(PendingDevice.ieee_address == "pve-pve1-101"))).scalar_one()
+    inv = (await db_session.execute(select(InventoryDevice).where(InventoryDevice.ieee_address == "pve-pve1-101"))).scalar_one()
     assert inv.status == "approved"
 
 
 @pytest.mark.asyncio
 async def test_persist_merges_pending_scan_row_by_mac(db_session) -> None:
     # Device previously found by an IP scan: arp source, MAC known, no ieee.
-    db_session.add(PendingDevice(
+    db_session.add(InventoryDevice(
         id=str(uuid.uuid4()), ip="10.0.0.5", mac="bc:24:11:aa:bb:cc",
         suggested_type="generic", status="pending",
         discovery_source="arp", discovery_sources=["arp"],
@@ -257,7 +257,7 @@ async def test_persist_merges_pending_scan_row_by_mac(db_session) -> None:
     # different casing. Must merge, not duplicate.
     await _persist_pending_import(db_session, [_guest_node(101, None, mac="BC:24:11:AA:BB:CC")], [])
 
-    rows = (await db_session.execute(select(PendingDevice))).scalars().all()
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
     assert len(rows) == 1
     row = rows[0]
     assert row.ieee_address == "pve-pve1-101"          # adopted proxmox identity
@@ -269,7 +269,7 @@ async def test_persist_merges_pending_scan_row_by_mac(db_session) -> None:
 async def test_persist_preserves_ip_tag_for_legacy_null_source_row(db_session) -> None:
     # Legacy inventory row from an old IP scan, before discovery_source(s) were
     # recorded: scalar NULL, sources empty — but it has an IP + MAC.
-    db_session.add(PendingDevice(
+    db_session.add(InventoryDevice(
         id=str(uuid.uuid4()), ip="192.168.1.108", mac="bc:24:11:6c:96:52",
         suggested_type="lxc", status="pending",
         discovery_source=None, discovery_sources=[],
@@ -280,7 +280,7 @@ async def test_persist_preserves_ip_tag_for_legacy_null_source_row(db_session) -
         db_session, [_guest_node(108, "192.168.1.108", mac="BC:24:11:6C:96:52")], []
     )
 
-    rows = (await db_session.execute(select(PendingDevice))).scalars().all()
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
     assert len(rows) == 1
     # The IP tag must survive the proxmox merge even with no recorded origin.
     assert set(rows[0].discovery_sources) == {"arp", "proxmox"}
@@ -295,7 +295,7 @@ async def test_persist_preserves_ip_tag_on_canvas_merge_legacy_row(db_session) -
         ip="192.168.1.108", mac="bc:24:11:6c:96:52",
         status="online", pos_x=0, pos_y=0,
     )
-    inv = PendingDevice(
+    inv = InventoryDevice(
         id=str(uuid.uuid4()), ip="192.168.1.108", mac="bc:24:11:6c:96:52",
         suggested_type="lxc", status="approved",
         discovery_source=None, discovery_sources=[],
@@ -308,7 +308,7 @@ async def test_persist_preserves_ip_tag_on_canvas_merge_legacy_row(db_session) -
     )
 
     inv_row = (await db_session.execute(
-        select(PendingDevice).where(PendingDevice.mac == "bc:24:11:6c:96:52")
+        select(InventoryDevice).where(InventoryDevice.mac == "bc:24:11:6c:96:52")
     )).scalar_one()
     assert set(inv_row.discovery_sources) == {"arp", "proxmox"}
 
@@ -320,7 +320,7 @@ async def test_persist_does_not_add_ip_tag_to_pure_proxmox_guest(db_session) -> 
     await _persist_pending_import(db_session, [_guest_node(101, "10.0.0.5")], [])
     await _persist_pending_import(db_session, [_guest_node(101, "10.0.0.5")], [])  # re-sync
     row = (await db_session.execute(
-        select(PendingDevice).where(PendingDevice.ieee_address == "pve-pve1-101")
+        select(InventoryDevice).where(InventoryDevice.ieee_address == "pve-pve1-101")
     )).scalar_one()
     assert set(row.discovery_sources) == {"proxmox"}
 
@@ -351,27 +351,27 @@ async def test_persist_resync_updates_in_place(db_session) -> None:
     await _persist_pending_import(db_session, nodes, [])
     # Second sync: same device, new IP. Should update, not duplicate.
     await _persist_pending_import(db_session, [_guest_node(101, "10.0.0.9")], [])
-    rows = (await db_session.execute(select(PendingDevice).where(PendingDevice.ieee_address == "pve-pve1-101"))).scalars().all()
+    rows = (await db_session.execute(select(InventoryDevice).where(InventoryDevice.ieee_address == "pve-pve1-101"))).scalars().all()
     assert len(rows) == 1
     assert rows[0].ip == "10.0.0.9"
 
 
 @pytest.mark.asyncio
 async def test_persist_keeps_hidden_hidden(db_session) -> None:
-    db_session.add(PendingDevice(
+    db_session.add(InventoryDevice(
         id=str(uuid.uuid4()), ieee_address="pve-pve1-101", ip="10.0.0.5",
         suggested_type="vm", status="hidden", discovery_source="proxmox",
     ))
     await db_session.commit()
     await _persist_pending_import(db_session, [_guest_node(101, "10.0.0.5")], [])
-    row = (await db_session.execute(select(PendingDevice).where(PendingDevice.ieee_address == "pve-pve1-101"))).scalar_one()
+    row = (await db_session.execute(select(InventoryDevice).where(InventoryDevice.ieee_address == "pve-pve1-101"))).scalar_one()
     assert row.status == "hidden"
 
 
 @pytest.mark.asyncio
 async def test_pending_endpoint_tolerates_legacy_null_properties(client: AsyncClient, headers: dict, db_session) -> None:
     # Legacy row: properties column NULL (added by migration on older DBs).
-    dev = PendingDevice(
+    dev = InventoryDevice(
         id=str(uuid.uuid4()), ip="192.168.1.9", suggested_type="server",
         status="pending", discovery_source="arp",
     )
@@ -396,7 +396,7 @@ async def test_persist_records_cluster_links_between_hosts(db_session) -> None:
     edges = [{"source": "pve-node-pve1", "target": "pve-pve1-101"}]
     await _persist_pending_import(db_session, nodes, edges)
 
-    links = (await db_session.execute(select(PendingDeviceLink))).scalars().all()
+    links = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
     cluster = [ln for ln in links if ln.discovery_source == "proxmox_cluster"]
     assert len(cluster) == 1
     assert (cluster[0].source_ieee, cluster[0].target_ieee) == ("pve-node-a", "pve-node-b")
@@ -410,7 +410,7 @@ async def test_persist_records_cluster_links_between_hosts(db_session) -> None:
 async def test_single_host_records_no_cluster_link(db_session) -> None:
     await _persist_pending_import(db_session, [_host_node()], [])
     links = (await db_session.execute(
-        select(PendingDeviceLink).where(PendingDeviceLink.discovery_source == "proxmox_cluster")
+        select(InventoryDeviceLink).where(InventoryDeviceLink.discovery_source == "proxmox_cluster")
     )).scalars().all()
     assert links == []
 
@@ -427,7 +427,7 @@ async def test_cluster_link_resolves_to_cluster_edge(db_session) -> None:
              status="online", pos_x=0, pos_y=0, design_id=design.id,
              left_handles=1, right_handles=1)
     db_session.add_all([a, b])
-    db_session.add(PendingDeviceLink(
+    db_session.add(InventoryDeviceLink(
         id=str(uuid.uuid4()), source_ieee="pve-node-a", target_ieee="pve-node-b",
         discovery_source="proxmox_cluster",
     ))
@@ -459,7 +459,7 @@ async def test_link_survives_and_resolves_onto_second_design(db_session) -> None
             Node(id=str(uuid.uuid4()), type="iot", label="y", ieee_address="0xBBBB",
                  status="online", pos_x=0, pos_y=0, design_id=d.id),
         ])
-    db_session.add(PendingDeviceLink(
+    db_session.add(InventoryDeviceLink(
         id=str(uuid.uuid4()), source_ieee="0xAAAA", target_ieee="0xBBBB",
         discovery_source="zigbee",
     ))
@@ -476,7 +476,7 @@ async def test_link_survives_and_resolves_onto_second_design(db_session) -> None
     assert {e.design_id for e in edges} == {da.id, db_.id}
     assert all(e.type == "iot" for e in edges)
     # The link row is still present for any further design.
-    assert (await db_session.execute(select(PendingDeviceLink))).scalars().one()
+    assert (await db_session.execute(select(InventoryDeviceLink))).scalars().one()
 
 
 @pytest.mark.asyncio
@@ -484,6 +484,6 @@ async def test_persist_never_deletes(db_session) -> None:
     await _persist_pending_import(db_session, [_guest_node(101, "10.0.0.5")], [])
     # A later sync that no longer includes vm101 must not remove it.
     await _persist_pending_import(db_session, [_guest_node(202, "10.0.0.6")], [])
-    rows = (await db_session.execute(select(PendingDevice))).scalars().all()
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
     ieees = {r.ieee_address for r in rows}
     assert "pve-pve1-101" in ieees and "pve-pve1-202" in ieees

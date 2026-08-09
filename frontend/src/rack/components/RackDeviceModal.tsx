@@ -16,12 +16,13 @@ import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { PendingDevicesModal } from '@/components/modals/PendingDevicesModal'
-import type { PendingDevice } from '@/components/modals/PendingDeviceModal'
+import { DeviceInventoryModal } from '@/components/modals/DeviceInventoryModal'
+import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 import { useRackStore } from '../store'
 import { FaceplatePicker } from './FaceplatePicker'
 import { Faceplate } from './Faceplate'
 import { LinkedDevicePanel } from './LinkedDevicePanel'
+import { DevicePickerModal } from './DevicePickerModal'
 import { deviceTypeForFaceplate, getFaceplate } from '../faceplates'
 import { findSlot } from '../layout'
 import { canFollowNode, resolveDeviceStatus } from '../deviceStatus'
@@ -85,6 +86,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
   const createInventoryDevice = useRackStore((s) => s.createInventoryDevice)
   const applyFaceplate = useRackStore((s) => s.applyFaceplate)
   const updateDevice = useRackStore((s) => s.updateDevice)
+  const relinkDevice = useRackStore((s) => s.relinkDevice)
   const unmountDevice = useRackStore((s) => s.unmountDevice)
   const setPorts = useRackStore((s) => s.setPorts)
 
@@ -111,6 +113,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
   const [plateChanged, setPlateChanged] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [inventoryPickerOpen, setInventoryPickerOpen] = useState(false)
+  const [devicePickerOpen, setDevicePickerOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
   // The inventory lives in the Device Inventory, which the user can edit from
@@ -172,7 +175,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
    * (added since this form opened, or a kind no rack can hold). Refetch once
    * before refusing, and never mount a device twice in the same design.
    */
-  async function handlePickFromInventory(picked: PendingDevice) {
+  async function handlePickFromInventory(picked: InventoryEntry) {
     let entry = inventory.find((i) => i.id === picked.id)
     if (!entry) {
       await refreshInventory()
@@ -188,6 +191,33 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     }
     applyInventoryItem(entry)
     setInventoryPickerOpen(false)
+  }
+
+  /**
+   * Repointing needs a mount to repoint: a device being created has none yet,
+   * and an accessory stands for no hardware at all.
+   */
+  const canRelink = isEdit && !!device?.deviceId
+
+  /**
+   * Another inventory entry, picked by hand.
+   *
+   * Applied straight away rather than on Save: the panel, the Status select and
+   * the plate LED all read the link from the store, and the picker is an
+   * explicit action of its own. It is persisted with the rest of the canvas on
+   * the next save, like every other rack edit.
+   */
+  async function handleRelink(entry: InventoryDevice) {
+    setDevicePickerOpen(false)
+    if (!device) return
+    if (await relinkDevice(device.id, entry.id)) {
+      // The plate may have taken the entry's name; keep the open form in step.
+      const next = useRackStore.getState().devices.find((d) => d.id === device.id)
+      if (next) setLabel(next.label)
+      toast.success(`Linked to ${entry.label}`)
+    } else {
+      toast.error(`${entry.label} is already mounted in this design`)
+    }
   }
 
   /**
@@ -405,7 +435,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                 {/* Rendered inside this DialogContent on purpose: an open Base UI
                     dialog marks outside content inert, so a sibling overlay would
                     be unclickable. */}
-                <PendingDevicesModal
+                <DeviceInventoryModal
                   open={inventoryPickerOpen}
                   onClose={() => setInventoryPickerOpen(false)}
                   onPick={(d) => void handlePickFromInventory(d)}
@@ -653,7 +683,22 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
             {/* The column below the port list used to be dead space. A mount
                 that stands for an inventory entry fills it with what the
                 logical canvas knows about the same box. */}
-            <LinkedDevicePanel entry={mountEntry} status={previewStatus} />
+            <LinkedDevicePanel
+              entry={mountEntry}
+              status={previewStatus}
+              onLink={canRelink ? () => setDevicePickerOpen(true) : undefined}
+            />
+            {canRelink && devicePickerOpen && (
+              /* Inside this DialogContent for the same reason as the inventory
+                 picker: an open Base UI dialog makes outside content inert.
+                 Mounted per opening, so the inventory is fetched fresh. */
+              <DevicePickerModal
+                open={devicePickerOpen}
+                value={device?.deviceId}
+                onPick={handleRelink}
+                onClose={() => setDevicePickerOpen(false)}
+              />
+            )}
             </div>
           </div>
 

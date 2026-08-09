@@ -7,7 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Node, PendingDevice, ScanRun
+from app.db.models import InventoryDevice, Node, ScanRun
 from app.services.scanner import _cancelled_runs, request_cancel, run_scan
 
 
@@ -118,7 +118,7 @@ async def test_run_scan_creates_new_pending_device(db_session: AsyncSession):
         await run_scan(["192.168.1.0/24"], db_session, run_id)
 
     result = await db_session.execute(
-        select(PendingDevice).where(PendingDevice.ip == "192.168.1.50")
+        select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.50")
     )
     device = result.scalar_one_or_none()
     assert device is not None
@@ -141,7 +141,7 @@ async def test_run_scan_keeps_stale_pending_for_canvas_nodes(db_session: AsyncSe
         pos_x=0.0,
         pos_y=0.0,
     )
-    stale = PendingDevice(
+    stale = InventoryDevice(
         id=str(uuid.uuid4()),
         ip="192.168.1.50",
         mac=None,
@@ -167,7 +167,7 @@ async def test_run_scan_keeps_stale_pending_for_canvas_nodes(db_session: AsyncSe
         await run_scan(["192.168.1.0/24"], db_session, run_id)
 
     result = await db_session.execute(
-        select(PendingDevice).where(PendingDevice.ip == "192.168.1.50")
+        select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.50")
     )
     assert result.scalar_one_or_none() is not None
 
@@ -201,7 +201,7 @@ async def test_run_scan_records_ip_already_in_canvas(db_session: AsyncSession):
         await run_scan(["192.168.1.0/24"], db_session, run_id)
 
     result = await db_session.execute(
-        select(PendingDevice).where(PendingDevice.ip == "192.168.1.50")
+        select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.50")
     )
     device = result.scalar_one_or_none()
     assert device is not None
@@ -212,7 +212,7 @@ async def test_run_scan_records_ip_already_in_canvas(db_session: AsyncSession):
 async def test_run_scan_refreshes_approved_device_without_duplicating(db_session: AsyncSession):
     """Re-scanning an already-approved device updates its row in place instead of
     spawning a fresh pending duplicate, and keeps it approved."""
-    approved = PendingDevice(
+    approved = InventoryDevice(
         id=str(uuid.uuid4()), ip="192.168.1.50", mac=None, hostname="old",
         os=None, services=[], suggested_type="server", status="approved",
     )
@@ -228,7 +228,7 @@ async def test_run_scan_refreshes_approved_device_without_duplicating(db_session
         await run_scan(["192.168.1.0/24"], db_session, run_id)
 
     rows = (await db_session.execute(
-        select(PendingDevice).where(PendingDevice.ip == "192.168.1.50")
+        select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.50")
     )).scalars().all()
     assert len(rows) == 1
     assert rows[0].status == "approved"
@@ -240,7 +240,7 @@ async def test_run_scan_collapses_existing_duplicate_rows(db_session: AsyncSessi
     """Pre-existing duplicate inventory rows for one IP are collapsed to a single
     row at scan start, even if the device is not re-discovered."""
     for status in ("approved", "pending", "pending"):
-        db_session.add(PendingDevice(
+        db_session.add(InventoryDevice(
             id=str(uuid.uuid4()), ip="192.168.1.77", mac=None, hostname=None,
             os=None, services=[], suggested_type="server", status=status,
         ))
@@ -255,7 +255,7 @@ async def test_run_scan_collapses_existing_duplicate_rows(db_session: AsyncSessi
         await run_scan(["192.168.1.0/24"], db_session, run_id)
 
     rows = (await db_session.execute(
-        select(PendingDevice).where(PendingDevice.ip == "192.168.1.77")
+        select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.77")
     )).scalars().all()
     assert len(rows) == 1
     assert rows[0].status == "approved"  # approved row is the one kept
@@ -264,7 +264,7 @@ async def test_run_scan_collapses_existing_duplicate_rows(db_session: AsyncSessi
 @pytest.mark.asyncio
 async def test_run_scan_skips_hidden_device(db_session: AsyncSession):
     """Devices previously hidden by the user must not re-appear in pending on re-scan."""
-    hidden = PendingDevice(
+    hidden = InventoryDevice(
         id=str(uuid.uuid4()),
         ip="192.168.1.50",
         mac=None,
@@ -289,9 +289,9 @@ async def test_run_scan_skips_hidden_device(db_session: AsyncSession):
         await run_scan(["192.168.1.0/24"], db_session, run_id)
 
     result = await db_session.execute(
-        select(PendingDevice).where(
-            PendingDevice.ip == "192.168.1.50",
-            PendingDevice.status == "pending",
+        select(InventoryDevice).where(
+            InventoryDevice.ip == "192.168.1.50",
+            InventoryDevice.status == "pending",
         )
     )
     assert result.scalar_one_or_none() is None
@@ -395,7 +395,7 @@ async def test_run_scan_cancelled_mid_scan_skips_remaining_cidrs(db_session: Asy
 async def test_run_scan_updates_existing_pending_device(db_session: AsyncSession):
     """Re-scanning the same IP updates services instead of creating a duplicate."""
     # Pre-existing pending device with no services
-    existing = PendingDevice(
+    existing = InventoryDevice(
         id=str(uuid.uuid4()),
         ip="192.168.1.50",
         mac=None,
@@ -421,7 +421,7 @@ async def test_run_scan_updates_existing_pending_device(db_session: AsyncSession
 
     # Should still be only one device
     result = await db_session.execute(
-        select(PendingDevice).where(PendingDevice.ip == "192.168.1.50")
+        select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.50")
     )
     devices = list(result.scalars().all())
     assert len(devices) == 1

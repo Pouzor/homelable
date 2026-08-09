@@ -5,7 +5,7 @@
  * raw list to the UI's filter/badge buckets so a merged device shows under each
  * matching filter and renders one badge per source.
  */
-import type { PendingDevice } from '@/components/modals/PendingDeviceModal'
+import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 
 export type SourceBucket = 'ip' | 'zigbee' | 'zwave' | 'proxmox' | 'rack'
 
@@ -22,7 +22,7 @@ const SOURCE_ORDER: SourceBucket[] = ['ip', 'proxmox', 'zigbee', 'zwave', 'rack'
 
 /** Every source bucket that has observed this device. A device found by both an
  *  IP scan and a Proxmox import returns {ip, proxmox}. */
-export function sourceBuckets(d: PendingDevice): Set<SourceBucket> {
+export function sourceBuckets(d: InventoryEntry): Set<SourceBucket> {
   const raw = d.discovery_sources && d.discovery_sources.length > 0
     ? d.discovery_sources
     : d.discovery_source ? [d.discovery_source] : []
@@ -49,12 +49,12 @@ export function sourceBuckets(d: PendingDevice): Set<SourceBucket> {
  * patch panel, a shelf), so it is never placed on a logical canvas — the
  * approve paths refuse it on both sides of the wire.
  */
-export function isRackDevice(d: PendingDevice): boolean {
+export function isRackDevice(d: InventoryEntry): boolean {
   return sourceBuckets(d).has('rack')
 }
 
 /** Ordered bucket list for badge rendering. */
-export function orderedSources(d: PendingDevice): SourceBucket[] {
+export function orderedSources(d: InventoryEntry): SourceBucket[] {
   const buckets = sourceBuckets(d)
   return SOURCE_ORDER.filter((b) => buckets.has(b))
 }

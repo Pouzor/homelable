@@ -10,7 +10,7 @@ import { useDesignStore } from '@/stores/designStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { toast } from 'sonner'
-import { PendingDeviceModal, type PendingDevice } from '@/components/modals/PendingDeviceModal'
+import { InventoryDeviceModal, type InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 import type { NodeType, ServiceInfo } from '@/types'
 import { applyAutoEdges, type AutoEdge } from '@/utils/autoEdges'
 import { buildZigbeeProperties, isZigbeeType } from '@/utils/zigbeeProperties'
@@ -18,22 +18,22 @@ import { buildZwaveProperties, isZwaveType } from '@/utils/zwaveProperties'
 import { buildMacProperty } from '@/utils/macProperty'
 import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
 import { getCenteredPosition } from '@/utils/viewportCenter'
-import { sourceBuckets, orderedSources, isRackDevice, SOURCE_META, type SourceBucket } from '@/utils/pendingSources'
+import { sourceBuckets, orderedSources, isRackDevice, SOURCE_META, type SourceBucket } from '@/utils/deviceSources'
 import { isRackable } from '@/utils/rackable'
 
-interface PendingDevicesModalProps {
+interface DeviceInventoryModalProps {
   open: boolean
   onClose: () => void
   highlightId?: string
   initialStatus?: 'pending' | 'hidden'
   /** Getting Started tour: render these canned devices and skip the backend fetch. */
-  demoDevices?: PendingDevice[]
+  demoDevices?: InventoryEntry[]
   /**
    * Picker mode. Clicking a card hands the device back instead of opening its
    * detail modal, so another feature (the rack canvas) can reuse this list —
    * search, filters, badges and all — rather than reimplementing a `<select>`.
    */
-  onPick?: (device: PendingDevice) => void
+  onPick?: (device: InventoryEntry) => void
   /** Start with the Rackable filter on (what the rack picker wants). */
   initialRackableOnly?: boolean
 }
@@ -91,7 +91,7 @@ type StatusFilter = 'pending' | 'hidden'
 
 const COMMON_PORTS = new Set([22, 80, 443])
 
-function specialServiceName(d: PendingDevice): string | undefined {
+function specialServiceName(d: InventoryEntry): string | undefined {
   const candidates = (d.services ?? []).filter(
     (s) => s.category != null && s.port != null && !COMMON_PORTS.has(s.port) && s.service_name,
   )
@@ -100,7 +100,7 @@ function specialServiceName(d: PendingDevice): string | undefined {
   return (nonWeb ?? candidates[0])?.service_name ?? undefined
 }
 
-function deviceLabel(d: PendingDevice): string {
+function deviceLabel(d: InventoryEntry): string {
   return d.friendly_name ?? d.hostname ?? specialServiceName(d) ?? d.ip ?? d.ieee_address ?? 'device'
 }
 
@@ -124,10 +124,10 @@ function injectAutoEdges(edges: AutoEdge[] | undefined) {
   }))
 }
 
-export function PendingDevicesModal({ open, onClose, highlightId, initialStatus = 'pending', demoDevices, onPick, initialRackableOnly = false }: PendingDevicesModalProps) {
-  const [devices, setDevices] = useState<PendingDevice[]>([])
+export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus = 'pending', demoDevices, onPick, initialRackableOnly = false }: DeviceInventoryModalProps) {
+  const [devices, setDevices] = useState<InventoryEntry[]>([])
   const [loading, setLoading] = useState(false)
-  const [selected, setSelected] = useState<PendingDevice | null>(null)
+  const [selected, setSelected] = useState<InventoryEntry | null>(null)
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
@@ -147,7 +147,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
   const highlightRef = useRef<HTMLButtonElement>(null)
   // Set when a single approve is refused because the same host is already on
   // this design — the user decides: link to the existing node or duplicate.
-  const [dupPrompt, setDupPrompt] = useState<{ device: PendingDevice; conflict: DuplicateNodeConflict } | null>(null)
+  const [dupPrompt, setDupPrompt] = useState<{ device: InventoryEntry; conflict: DuplicateNodeConflict } | null>(null)
 
   const load = useCallback(async () => {
     // Tour/demo mode: show injected devices, never touch the backend.
@@ -219,7 +219,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     })
   }
 
-  const handleCardClick = (d: PendingDevice) => {
+  const handleCardClick = (d: InventoryEntry) => {
     // Picker mode wins over everything else: the caller opened this list to get
     // one device back, not to approve or hide anything.
     if (onPick) { onPick(d); return }
@@ -228,7 +228,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     setSelected(d)
   }
 
-  const handleRestore = async (device: PendingDevice) => {
+  const handleRestore = async (device: InventoryEntry) => {
     try {
       await scanApi.restore(device.id)
       setDevices((prev) => prev.filter((d) => d.id !== device.id))
@@ -294,7 +294,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
 
   // force=true is sent only after the user confirms they want a duplicate node
   // on this design (the backend otherwise 409s to let us ask).
-  const approveDevice = async (device: PendingDevice, force = false) => {
+  const approveDevice = async (device: InventoryEntry, force = false) => {
     // Rack gear documents a mount, not a host: it stays out of logical canvases.
     // The backend refuses it too — this is the friendly half of the guard.
     if (isRackDevice(device)) {
@@ -354,7 +354,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     }
   }
 
-  const handleApprove = (device: PendingDevice) => approveDevice(device, false)
+  const handleApprove = (device: InventoryEntry) => approveDevice(device, false)
 
   const goToExistingNode = (nodeId: string) => {
     setSelectedNode(nodeId)
@@ -363,7 +363,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     onClose()
   }
 
-  const handleHide = async (device: PendingDevice) => {
+  const handleHide = async (device: InventoryEntry) => {
     try {
       await scanApi.hide(device.id)
       setDevices((prev) => prev.filter((d) => d.id !== device.id))
@@ -374,7 +374,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
     }
   }
 
-  const handleIgnore = async (device: PendingDevice) => {
+  const handleIgnore = async (device: InventoryEntry) => {
     try {
       await scanApi.ignore(device.id)
       setDevices((prev) => prev.filter((d) => d.id !== device.id))
@@ -792,7 +792,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
         </DialogContent>
       </Dialog>
 
-      <PendingDeviceModal
+      <InventoryDeviceModal
         device={selected}
         onClose={() => setSelected(null)}
         onApprove={handleApprove}
@@ -804,7 +804,7 @@ export function PendingDevicesModal({ open, onClose, highlightId, initialStatus 
 }
 
 interface DeviceCardProps {
-  device: PendingDevice
+  device: InventoryEntry
   selected: boolean
   selectMode: boolean
   highlighted: boolean
