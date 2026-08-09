@@ -12,7 +12,7 @@ interface ZigbeeImportModalProps {
   open: boolean
   onClose: () => void
   onAddToCanvas: (nodes: ZigbeeNode[], edges: ZigbeeEdge[]) => void
-  onPendingImported?: (
+  onInventoryImported?: (
     coordinator?: { id: string; label: string; ieee_address: string } | null,
   ) => void
 }
@@ -59,7 +59,7 @@ const DEVICE_TYPE_COLOR = {
   zigbee_enddevice: '#e3b341',
 } as const
 
-export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onPendingImported }: ZigbeeImportModalProps) {
+export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImported }: ZigbeeImportModalProps) {
   const [form, setForm] = useState<ConnectionForm>(DEFAULT_FORM)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [connectionMsg, setConnectionMsg] = useState('')
@@ -140,7 +140,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onPendingImpor
       if (importMode === 'pending') {
         await zigbeeApi.importToPending(buildPayload())
         toast.success('Zigbee import started — track progress in Scan History')
-        onPendingImported?.(null)
+        onInventoryImported?.(null)
         handleClose()
       } else {
         const res = await zigbeeApi.importNetwork(buildPayload())

@@ -2,7 +2,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 
-from app.db.models import PendingDevice
+from app.db.models import InventoryDevice
 
 pytestmark = pytest.mark.asyncio
 
@@ -390,7 +390,7 @@ class TestInventory:
         """
         design_id = await _design(client, headers)
         db_session.add(
-            PendingDevice(
+            InventoryDevice(
                 id="pd-services",
                 ip="192.168.1.63",
                 services=[
@@ -400,11 +400,11 @@ class TestInventory:
                 suggested_type="server",
             )
         )
-        db_session.add(PendingDevice(id="pd-bare", ip="192.168.1.64", suggested_type="server"))
+        db_session.add(InventoryDevice(id="pd-bare", ip="192.168.1.64", suggested_type="server"))
         # A portless service is no fingerprint: the inventory skips it, so must
         # this — `None not in _COMMON_PORTS` is True and used to let it through.
         db_session.add(
-            PendingDevice(
+            InventoryDevice(
                 id="pd-portless",
                 ip="192.168.1.65",
                 services=[{"port": None, "category": "media", "service_name": "jellyfin"}],
@@ -486,7 +486,7 @@ class TestInventory:
         # Straight to the table: the manual-create schema carries no os/services,
         # and a scan find does.
         db_session.add(
-            PendingDevice(
+            InventoryDevice(
                 id="pd-nas",
                 hostname="nas",
                 ip="192.168.1.9",
@@ -525,7 +525,7 @@ class TestInventory:
                 headers=headers,
             )
         ).json()
-        db_session.add(PendingDevice(id="pd-seen", ip="192.168.1.77", suggested_type="server"))
+        db_session.add(InventoryDevice(id="pd-seen", ip="192.168.1.77", suggested_type="server"))
         await db_session.execute(
             text("UPDATE nodes SET last_seen = :ts WHERE id = :id"),
             {"ts": "2026-08-08 10:00:00.000000", "id": node["id"]},
@@ -537,6 +537,79 @@ class TestInventory:
         ).json()["items"]
         entry = next(i for i in items if i["id"] == "pd-seen")
         assert entry["node_last_seen"].endswith(("Z", "+00:00"))
+
+    async def test_prefers_the_node_the_mount_names(self, client: AsyncClient, headers):
+        """A link the user picked in the rack beats the IEEE/IP guess.
+
+        The guess is what failed on gear with no MAC and no address, and it is
+        wrong — not merely absent — when two hosts have swapped IPs.
+        """
+        design_id = await _design(client, headers)
+        picked = (
+            await client.post(
+                "/api/v1/nodes",
+                json={"type": "pdu", "label": "pdu-main", "status": "online"},
+                headers=headers,
+            )
+        ).json()
+        guessed = (
+            await client.post(
+                "/api/v1/nodes",
+                json={"type": "server", "label": "someone-else", "ip": "192.168.1.90"},
+                headers=headers,
+            )
+        ).json()
+        device = (
+            await client.post(
+                "/api/v1/scan/pending",
+                json={"hostname": "pdu", "ip": "192.168.1.90", "suggested_type": "generic"},
+                headers=headers,
+            )
+        ).json()
+
+        payload = _state(design_id)
+        payload["devices"][0]["device_id"] = device["id"]
+        payload["devices"][0]["node_id"] = picked["id"]
+        await client.post("/api/v1/racks/save", json=payload, headers=headers)
+
+        items = (
+            await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)
+        ).json()["items"]
+        entry = next(i for i in items if i["id"] == device["id"])
+        assert entry["node_id"] == picked["id"] != guessed["id"]
+        assert entry["node_label"] == "pdu-main"
+        assert entry["node_status"] == "online"
+
+    async def test_falls_back_when_the_named_node_is_gone(self, client: AsyncClient, headers):
+        """A mount keeps its `node_id` in the payload the client last sent, so a
+        node deleted meanwhile must not report a node that no longer exists.
+        """
+        design_id = await _design(client, headers)
+        guessed = (
+            await client.post(
+                "/api/v1/nodes",
+                json={"type": "server", "label": "nas", "ip": "192.168.1.91"},
+                headers=headers,
+            )
+        ).json()
+        device = (
+            await client.post(
+                "/api/v1/scan/pending",
+                json={"hostname": "nas", "ip": "192.168.1.91", "suggested_type": "nas"},
+                headers=headers,
+            )
+        ).json()
+
+        payload = _state(design_id)
+        payload["devices"][0]["device_id"] = device["id"]
+        payload["devices"][0]["node_id"] = "node-that-was-deleted"
+        await client.post("/api/v1/racks/save", json=payload, headers=headers)
+
+        items = (
+            await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)
+        ).json()["items"]
+        entry = next(i for i in items if i["id"] == device["id"])
+        assert entry["node_id"] == guessed["id"]
 
     async def test_leaves_the_node_fields_empty_without_a_match(
         self, client: AsyncClient, headers
@@ -571,7 +644,7 @@ class TestInventory:
             headers=headers,
         )
         db_session.add(
-            PendingDevice(id="pd-noservices", ip="192.168.1.63", suggested_type="server")
+            InventoryDevice(id="pd-noservices", ip="192.168.1.63", suggested_type="server")
         )
         await db_session.commit()
 

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.database import get_db
-from app.db.models import Node, PendingDevice, ScanRun
+from app.db.models import InventoryDevice, Node, ScanRun
 
 router = APIRouter()
 
@@ -38,8 +38,8 @@ async def summary(
     pending = (
         await db.execute(
             select(func.count())
-            .select_from(PendingDevice)
-            .where(PendingDevice.status == "pending")
+            .select_from(InventoryDevice)
+            .where(InventoryDevice.status == "pending")
         )
     ).scalar_one()
 
@@ -58,6 +58,8 @@ async def summary(
         "online": counts.get("online", 0),
         "offline": counts.get("offline", 0),
         "unknown": counts.get("unknown", 0),
+        # Wire key kept from before the table was renamed to `device_inventory`:
+        # the stats payload is a published contract, and the MCP server reads it.
         "pending_devices": pending,
         "zigbee_devices": zigbee,
         "last_scan_at": last_scan_at.isoformat() if last_scan_at else None,

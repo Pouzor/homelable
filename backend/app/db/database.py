@@ -60,9 +60,67 @@ def _backup_db() -> None:
         logger.warning("Could not create DB backup at %s", backup_path)
 
 
+# Tables renamed in 3.2.0. "Pending devices" was the scanner's word for a queue
+# of finds awaiting approval; the same rows outlive approval, are edited by hand
+# and are what a rack mounts, so the product calls them the Device Inventory.
+# Only the names moved — every column, every row and every route is unchanged.
+_RENAMED_TABLES: list[tuple[str, str]] = [
+    ("pending_devices", "device_inventory"),
+    ("pending_device_links", "device_inventory_links"),
+]
+
+
+async def _rename_legacy_tables(conn: AsyncConnection) -> None:
+    """Rename the pre-3.2.0 inventory tables. Must run before `create_all`.
+
+    Order matters: `create_all` would otherwise create an empty
+    `device_inventory` beside the populated `pending_devices`, and every device
+    the user ever scanned would look lost.
+
+    Foreign keys are switched on for the rename so SQLite rewrites the
+    ``REFERENCES pending_devices`` clause in `rack_devices` too; enforcement is
+    off at runtime, so a missed rewrite costs nothing today, but it would leave
+    the schema naming a table that no longer exists.
+    """
+    for old, new in _RENAMED_TABLES:
+        rows = (
+            await conn.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name IN (?, ?)",
+                (old, new),
+            )
+        ).fetchall()
+        names = {r[0] for r in rows}
+        if old not in names:
+            continue  # Fresh install, or already migrated.
+        if new in names:
+            # A start that ran `create_all` before this migration existed left an
+            # empty new table beside the populated old one, and the app read the
+            # empty one. Clear it out of the way rather than stranding the data;
+            # a new table with rows in it means the rename already happened and
+            # something re-created the old one, which is not ours to resolve.
+            count = (await conn.exec_driver_sql(f"SELECT COUNT(*) FROM {new}")).scalar()
+            if count:
+                logger.warning(
+                    "Both %s and %s hold rows; leaving them alone. Merge them by hand.", old, new
+                )
+                continue
+            logger.info("Dropping the empty %s left by an earlier start", new)
+            await _try_migrate(conn, f"DROP TABLE {new}", label=f"{new}.drop_empty")
+        logger.info("Migrating table %s -> %s", old, new)
+        with suppress(OperationalError):
+            await conn.exec_driver_sql("PRAGMA foreign_keys = ON")
+        await _try_migrate(conn, f"ALTER TABLE {old} RENAME TO {new}", label=f"{new}.rename")
+    # The index rides the rename under its old name; the model asks for the new
+    # one, so drop the stale duplicate rather than carrying both.
+    await _try_migrate(
+        conn, "DROP INDEX IF EXISTS ix_pending_devices_ieee_address", label="device_inventory.index",
+    )
+
+
 async def init_db() -> None:
     _backup_db()
     async with engine.begin() as conn:
+        await _rename_legacy_tables(conn)
         await conn.run_sync(Base.metadata.create_all)
         # Add columns introduced after initial schema (idempotent)
         with suppress(OperationalError):
@@ -114,11 +172,11 @@ async def init_db() -> None:
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE nodes ADD COLUMN right_handles INTEGER NOT NULL DEFAULT 0")
         with suppress(OperationalError):
-            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN discovery_source TEXT")
+            await conn.exec_driver_sql("ALTER TABLE device_inventory ADD COLUMN discovery_source TEXT")
         with suppress(OperationalError):
-            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN properties JSON")
+            await conn.exec_driver_sql("ALTER TABLE device_inventory ADD COLUMN properties JSON")
         with suppress(OperationalError):
-            await conn.exec_driver_sql("UPDATE pending_devices SET properties = '[]' WHERE properties IS NULL")
+            await conn.exec_driver_sql("UPDATE device_inventory SET properties = '[]' WHERE properties IS NULL")
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE scan_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'ip'")
         # --- Zigbee schema migrations (logged variant per CLAUDE.md feedback) ---
@@ -128,32 +186,32 @@ async def init_db() -> None:
                 "nodes.ieee_address.index",
                 "CREATE INDEX IF NOT EXISTS ix_nodes_ieee_address ON nodes(ieee_address)",
             ),
-            ("pending_devices.ieee_address", "ALTER TABLE pending_devices ADD COLUMN ieee_address TEXT"),
+            ("device_inventory.ieee_address", "ALTER TABLE device_inventory ADD COLUMN ieee_address TEXT"),
             (
-                "pending_devices.ieee_address.index",
-                "CREATE INDEX IF NOT EXISTS ix_pending_devices_ieee_address "
-                "ON pending_devices(ieee_address)",
+                "device_inventory.ieee_address.index",
+                "CREATE INDEX IF NOT EXISTS ix_device_inventory_ieee_address "
+                "ON device_inventory(ieee_address)",
             ),
-            ("pending_devices.friendly_name", "ALTER TABLE pending_devices ADD COLUMN friendly_name TEXT"),
-            ("pending_devices.device_subtype", "ALTER TABLE pending_devices ADD COLUMN device_subtype TEXT"),
-            ("pending_devices.model", "ALTER TABLE pending_devices ADD COLUMN model TEXT"),
-            ("pending_devices.vendor", "ALTER TABLE pending_devices ADD COLUMN vendor TEXT"),
-            ("pending_devices.lqi", "ALTER TABLE pending_devices ADD COLUMN lqi INTEGER"),
+            ("device_inventory.friendly_name", "ALTER TABLE device_inventory ADD COLUMN friendly_name TEXT"),
+            ("device_inventory.device_subtype", "ALTER TABLE device_inventory ADD COLUMN device_subtype TEXT"),
+            ("device_inventory.model", "ALTER TABLE device_inventory ADD COLUMN model TEXT"),
+            ("device_inventory.vendor", "ALTER TABLE device_inventory ADD COLUMN vendor TEXT"),
+            ("device_inventory.lqi", "ALTER TABLE device_inventory ADD COLUMN lqi INTEGER"),
         ]
         for label, sql in zigbee_migrations:
             await _try_migrate(conn, sql, label=label)
-        # Drop NOT NULL on pending_devices.ip (Zigbee devices have no IP).
+        # Drop NOT NULL on device_inventory.ip (Zigbee devices have no IP).
         # SQLite can't ALTER column nullability — rebuild the table if needed.
         try:
-            info = await conn.exec_driver_sql("PRAGMA table_info(pending_devices)")
+            info = await conn.exec_driver_sql("PRAGMA table_info(device_inventory)")
             cols = info.fetchall()
             ip_col = next((c for c in cols if c[1] == "ip"), None)
             # PRAGMA table_info row layout: (cid, name, type, notnull, dflt, pk)
             if ip_col and ip_col[3] == 1:
-                logger.info("Migrating pending_devices: dropping NOT NULL on ip column")
+                logger.info("Migrating device_inventory: dropping NOT NULL on ip column")
                 await conn.exec_driver_sql("PRAGMA foreign_keys = OFF")
                 await conn.exec_driver_sql(
-                    "CREATE TABLE pending_devices_new ("
+                    "CREATE TABLE device_inventory_new ("
                     "id VARCHAR PRIMARY KEY,"
                     "ip VARCHAR,"
                     "mac VARCHAR, hostname VARCHAR, os VARCHAR, services JSON,"
@@ -171,25 +229,25 @@ async def init_db() -> None:
                     ")"
                 )
                 await conn.exec_driver_sql(
-                    "INSERT INTO pending_devices_new "
+                    "INSERT INTO device_inventory_new "
                     "(id, ip, mac, hostname, os, services, suggested_type, status, "
                     "discovery_source, ieee_address, friendly_name, device_subtype, "
                     "model, vendor, lqi, discovered_at) "
                     "SELECT id, ip, mac, hostname, os, services, suggested_type, status, "
                     "discovery_source, ieee_address, friendly_name, device_subtype, "
-                    "model, vendor, lqi, discovered_at FROM pending_devices"
+                    "model, vendor, lqi, discovered_at FROM device_inventory"
                 )
-                await conn.exec_driver_sql("DROP TABLE pending_devices")
+                await conn.exec_driver_sql("DROP TABLE device_inventory")
                 await conn.exec_driver_sql(
-                    "ALTER TABLE pending_devices_new RENAME TO pending_devices"
+                    "ALTER TABLE device_inventory_new RENAME TO device_inventory"
                 )
                 await conn.exec_driver_sql(
-                    "CREATE INDEX IF NOT EXISTS ix_pending_devices_ieee_address "
-                    "ON pending_devices(ieee_address)"
+                    "CREATE INDEX IF NOT EXISTS ix_device_inventory_ieee_address "
+                    "ON device_inventory(ieee_address)"
                 )
                 await conn.exec_driver_sql("PRAGMA foreign_keys = ON")
         except OperationalError as exc:
-            logger.warning("pending_devices ip-nullable rebuild failed: %s", exc)
+            logger.warning("device_inventory ip-nullable rebuild failed: %s", exc)
         # --- end Zigbee schema migrations -------------------------------------
         # --- Electrical designs schema migrations -----------------------------
         # Create designs table (idempotent)
@@ -341,28 +399,28 @@ async def init_db() -> None:
         # Proxmox import carries every source. Backfill from the legacy single
         # discovery_source so existing rows show under their filter.
         with suppress(OperationalError):
-            await conn.exec_driver_sql("ALTER TABLE pending_devices ADD COLUMN discovery_sources JSON")
+            await conn.exec_driver_sql("ALTER TABLE device_inventory ADD COLUMN discovery_sources JSON")
         with suppress(OperationalError):
             await conn.exec_driver_sql(
-                "UPDATE pending_devices SET discovery_sources = json_array(discovery_source) "
+                "UPDATE device_inventory SET discovery_sources = json_array(discovery_source) "
                 "WHERE discovery_sources IS NULL AND discovery_source IS NOT NULL"
             )
         # Legacy IP-scanned rows predating discovery_source have a NULL scalar
         # but a real IP — treat them as an ARP scan so they keep the IP tag.
         with suppress(OperationalError):
             await conn.exec_driver_sql(
-                "UPDATE pending_devices SET discovery_sources = json_array('arp') "
+                "UPDATE device_inventory SET discovery_sources = json_array('arp') "
                 "WHERE discovery_sources IS NULL AND discovery_source IS NULL AND ip IS NOT NULL"
             )
         with suppress(OperationalError):
             await conn.exec_driver_sql(
-                "UPDATE pending_devices SET discovery_sources = '[]' WHERE discovery_sources IS NULL"
+                "UPDATE device_inventory SET discovery_sources = '[]' WHERE discovery_sources IS NULL"
             )
         # Canonicalize stored MACs (lowercase, ':' separators) so cross-source
         # dedup can match a Proxmox NIC MAC against an ARP-scanned one by equality.
         with suppress(OperationalError):
             await conn.exec_driver_sql(
-                "UPDATE pending_devices SET mac = lower(replace(mac, '-', ':')) WHERE mac IS NOT NULL"
+                "UPDATE device_inventory SET mac = lower(replace(mac, '-', ':')) WHERE mac IS NOT NULL"
             )
         with suppress(OperationalError):
             await conn.exec_driver_sql(

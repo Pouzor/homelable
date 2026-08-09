@@ -1,7 +1,7 @@
 import { Globe, Router, Server, Layers, Box, Container, HardDrive, Cpu, Wifi, Circle, Network } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { isRackDevice } from '@/utils/pendingSources'
+import { isRackDevice } from '@/utils/deviceSources'
 import type { NodeProperty } from '@/types'
 
 interface Service {
@@ -12,7 +12,7 @@ interface Service {
   category?: string | null
 }
 
-export interface PendingDevice {
+export interface InventoryEntry {
   id: string
   ip: string | null
   mac: string | null
@@ -45,12 +45,12 @@ export interface PendingDevice {
   node_last_seen?: string | null
 }
 
-interface PendingDeviceModalProps {
-  device: PendingDevice | null
+interface InventoryDeviceModalProps {
+  device: InventoryEntry | null
   onClose: () => void
-  onApprove: (device: PendingDevice) => void
-  onHide: (device: PendingDevice) => void
-  onIgnore: (device: PendingDevice) => void
+  onApprove: (device: InventoryEntry) => void
+  onHide: (device: InventoryEntry) => void
+  onIgnore: (device: InventoryEntry) => void
 }
 
 const TYPE_ICONS: Record<string, React.ElementType> = {
@@ -95,7 +95,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function PendingDeviceModal({ device, onClose, onApprove, onHide, onIgnore }: PendingDeviceModalProps) {
+export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgnore }: InventoryDeviceModalProps) {
   if (!device) return null
 
   const TypeIcon = TYPE_ICONS[device.suggested_type ?? 'generic'] ?? Circle

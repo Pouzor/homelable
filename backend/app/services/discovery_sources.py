@@ -1,4 +1,4 @@
-"""Helpers for the multi-valued ``PendingDevice.discovery_sources`` set.
+"""Helpers for the multi-valued ``InventoryDevice.discovery_sources`` set.
 
 A device discovered by more than one path (e.g. an IP scan *and* a Proxmox
 import) accumulates every source that has seen it, so it surfaces under each

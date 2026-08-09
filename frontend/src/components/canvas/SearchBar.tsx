@@ -4,23 +4,23 @@ import { Search, X } from 'lucide-react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { scanApi } from '@/api/client'
 import { NODE_TYPE_LABELS } from '@/types'
-import type { PendingDevice } from '@/components/modals/PendingDeviceModal'
+import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 
 interface SearchBarProps {
-  onOpenPending?: (deviceId: string) => void
+  onOpenInventory?: (deviceId: string) => void
 }
 
-export function SearchBar({ onOpenPending }: SearchBarProps) {
+export function SearchBar({ onOpenInventory }: SearchBarProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [pendingDevices, setPendingDevices] = useState<PendingDevice[]>([])
+  const [inventoryDevices, setInventoryEntrys] = useState<InventoryEntry[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
   const { nodes, setSelectedNode } = useCanvasStore()
   const { setCenter } = useReactFlow()
 
   useEffect(() => {
     if (!open) return
-    scanApi.pending().then((res) => setPendingDevices(res.data)).catch(() => {})
+    scanApi.pending().then((res) => setInventoryEntrys(res.data)).catch(() => {})
   }, [open])
 
   useEffect(() => {
@@ -86,7 +86,7 @@ export function SearchBar({ onOpenPending }: SearchBarProps) {
     : []
 
   const pendingResults = q
-    ? pendingDevices.filter((d) =>
+    ? inventoryDevices.filter((d) =>
         d.ip?.toLowerCase().includes(q) ||
         d.hostname?.toLowerCase().includes(q) ||
         d.friendly_name?.toLowerCase().includes(q) ||
@@ -215,7 +215,7 @@ export function SearchBar({ onOpenPending }: SearchBarProps) {
               return (
                 <button
                   key={d.id}
-                  onClick={() => { onOpenPending?.(d.id); setOpen(false); setQuery('') }}
+                  onClick={() => { onOpenInventory?.(d.id); setOpen(false); setQuery('') }}
                   style={{
                     width: '100%',
                     display: 'flex',

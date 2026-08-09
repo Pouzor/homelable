@@ -138,7 +138,7 @@ class RackDevice(Base):
 
     Two independent, both-optional links back to the rest of the app:
 
-    * `device_id` — the Device Inventory entry (`pending_devices`). This is the
+    * `device_id` — the Device Inventory entry (`device_inventory`). This is the
       primary link: inventory rows survive approval *and* node deletion, so
       unracking or deleting a canvas node never removes the inventory entry.
     * `node_id` — the logical-canvas node, when one exists. Only used to resolve
@@ -154,7 +154,7 @@ class RackDevice(Base):
     design_id: Mapped[str] = mapped_column(String, ForeignKey("designs.id", ondelete="CASCADE"), nullable=False)
     rack_id: Mapped[str] = mapped_column(String, ForeignKey("racks.id", ondelete="CASCADE"), nullable=False)
     device_id: Mapped[str | None] = mapped_column(
-        String, ForeignKey("pending_devices.id", ondelete="SET NULL"), nullable=True
+        String, ForeignKey("device_inventory.id", ondelete="SET NULL"), nullable=True
     )
     node_id: Mapped[str | None] = mapped_column(String, ForeignKey("nodes.id", ondelete="SET NULL"), nullable=True)
     label: Mapped[str] = mapped_column(String, nullable=False)
@@ -203,8 +203,8 @@ class RackCable(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
-class PendingDevice(Base):
-    __tablename__ = "pending_devices"
+class InventoryDevice(Base):
+    __tablename__ = "device_inventory"
     # Permit the plain (non-Mapped[]) annotations on the transient request-only
     # attributes below; without this SQLAlchemy 2.0 tries to map them as columns.
     __allow_unmapped__ = True
@@ -247,16 +247,16 @@ class PendingDevice(Base):
     node_last_seen: datetime | None = None
 
 
-class PendingDeviceLink(Base):
+class InventoryDeviceLink(Base):
     """Link between two Zigbee endpoints discovered during import.
 
     Endpoints are addressed by IEEE (stable across re-imports). Either side may
     already exist as a canvas Node (resolved via Node.ieee_address) or still be
-    a PendingDevice. On approval, the matching Edge is auto-created when both
+    a InventoryDevice. On approval, the matching Edge is auto-created when both
     endpoints exist as canvas Nodes.
     """
 
-    __tablename__ = "pending_device_links"
+    __tablename__ = "device_inventory_links"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
     source_ieee: Mapped[str] = mapped_column(String, nullable=False, index=True)

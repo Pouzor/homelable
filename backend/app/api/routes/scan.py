@@ -12,9 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.db.database import AsyncSessionLocal, get_db
-from app.db.models import Design, Edge, Node, PendingDevice, PendingDeviceLink, ScanRun
+from app.db.models import (
+    Design,
+    Edge,
+    InventoryDevice,
+    InventoryDeviceLink,
+    Node,
+    RackDevice,
+    ScanRun,
+)
 from app.schemas.nodes import NodeCreate
-from app.schemas.scan import PendingDeviceCreate, PendingDeviceResponse, ScanRunResponse
+from app.schemas.scan import InventoryDeviceCreate, InventoryDeviceResponse, ScanRunResponse
 from app.services.mac_utils import normalize_mac
 from app.services.node_dedupe import dedupe_nodes_by_ieee, find_duplicate_node
 from app.services.scanner import DeepScanOptions, _valid_port_range, request_cancel, run_scan
@@ -39,7 +47,7 @@ def _ip_tokens(ip: str | None) -> list[str]:
     return [t.strip() for t in ip.split(",") if t.strip()] if ip else []
 
 
-def _is_rack_only(device: PendingDevice) -> bool:
+def _is_rack_only(device: InventoryDevice) -> bool:
     """True for inventory entries created from a rack canvas.
 
     They describe a mount — a patch panel, a shelf, a chassis — not a host to
@@ -234,7 +242,7 @@ def _agg(values: list[datetime], *, newest: bool) -> datetime | None:
 
 
 async def _canvas_correlation(
-    db: AsyncSession, devices: list[PendingDevice]
+    db: AsyncSession, devices: list[InventoryDevice]
 ) -> dict[str, dict[str, Any]]:
     """Correlate each device to existing canvas nodes by ``ieee_address``, ``mac``
     or ``ip``.
@@ -300,8 +308,8 @@ async def _canvas_correlation(
 
 
 async def _with_canvas_counts(
-    db: AsyncSession, devices: list[PendingDevice]
-) -> list[PendingDevice]:
+    db: AsyncSession, devices: list[InventoryDevice]
+) -> list[InventoryDevice]:
     """Attach transient canvas count + linked-node timestamps for the response."""
     info = await _canvas_correlation(db, devices)
     for d in devices:
@@ -314,26 +322,26 @@ async def _with_canvas_counts(
     return devices
 
 
-@router.get("/pending", response_model=list[PendingDeviceResponse])
-async def list_pending(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[PendingDevice]:
+@router.get("/pending", response_model=list[InventoryDeviceResponse])
+async def list_pending(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[InventoryDevice]:
     # Inventory: every scanned device except the user-hidden ones. Approved devices
     # stay listed so they keep showing with a canvas-presence badge.
-    result = await db.execute(select(PendingDevice).where(PendingDevice.status != "hidden"))
+    result = await db.execute(select(InventoryDevice).where(InventoryDevice.status != "hidden"))
     return await _with_canvas_counts(db, list(result.scalars().all()))
 
 
-@router.post("/pending", response_model=PendingDeviceResponse, status_code=201)
+@router.post("/pending", response_model=InventoryDeviceResponse, status_code=201)
 async def create_pending(
-    body: PendingDeviceCreate,
+    body: InventoryDeviceCreate,
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
-) -> PendingDevice:
+) -> InventoryDevice:
     """Add an inventory entry by hand, for hardware no scan can discover.
 
     Lands as ``status="pending"`` like a discovery would, so the existing approve
     / hide / restore flows apply unchanged.
     """
-    device = PendingDevice(
+    device = InventoryDevice(
         hostname=body.hostname,
         ip=body.ip,
         # Canonical form, like every other write path: dedup compares MACs by
@@ -360,14 +368,45 @@ async def clear_pending(
     _: str = Depends(get_current_user),
 ) -> dict[str, int]:
     from sqlalchemy import delete as sa_delete
-    result = await db.execute(sa_delete(PendingDevice).where(PendingDevice.status == "pending"))
+    result = await db.execute(sa_delete(InventoryDevice).where(InventoryDevice.status == "pending"))
     await db.commit()
     return {"deleted": result.rowcount}
 
 
-@router.get("/hidden", response_model=list[PendingDeviceResponse])
-async def list_hidden(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[PendingDevice]:
-    result = await db.execute(select(PendingDevice).where(PendingDevice.status == "hidden"))
+@router.delete("/pending/{device_id}", response_model=dict)
+async def delete_pending(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> dict[str, bool]:
+    """Remove one inventory entry.
+
+    Used by the rack canvas to drop the placeholder it created for a plate once
+    that plate is pointed at a real inventory row. Refuses while a rack still
+    mounts the device: SQLite runs with foreign keys off here, so the mount's
+    ``device_id`` would be left naming a row that no longer exists rather than
+    being cleared by the ``ON DELETE SET NULL`` the schema declares.
+    """
+    device = (
+        await db.execute(select(InventoryDevice).where(InventoryDevice.id == device_id))
+    ).scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    mounted = (
+        await db.execute(select(RackDevice.id).where(RackDevice.device_id == device_id).limit(1))
+    ).scalar_one_or_none()
+    if mounted:
+        raise HTTPException(status_code=409, detail="Device is mounted in a rack")
+
+    await db.delete(device)
+    await db.commit()
+    return {"deleted": True}
+
+
+@router.get("/hidden", response_model=list[InventoryDeviceResponse])
+async def list_hidden(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[InventoryDevice]:
+    result = await db.execute(select(InventoryDevice).where(InventoryDevice.status == "hidden"))
     return await _with_canvas_counts(db, list(result.scalars().all()))
 
 
@@ -392,9 +431,9 @@ async def bulk_approve_devices(
     # node was later deleted) must still be placeable on THIS design. Duplicates
     # are guarded per-design below, not by the global status flag.
     result = await db.execute(
-        select(PendingDevice).where(
-            PendingDevice.id.in_(payload.device_ids),
-            PendingDevice.status != "hidden",
+        select(InventoryDevice).where(
+            InventoryDevice.id.in_(payload.device_ids),
+            InventoryDevice.status != "hidden",
         )
     )
     devices = result.scalars().all()
@@ -420,7 +459,7 @@ async def bulk_approve_devices(
     placed_ieee: dict[str, Any] = {ieee: nid for nid, _, _, ieee in existing if ieee}
 
     created_nodes: list[Node] = []
-    approved_devices: list[PendingDevice] = []
+    approved_devices: list[InventoryDevice] = []
     skipped_devices: list[dict[str, Any]] = []
     for device in devices:
         # Rack-only gear belongs to a rack canvas, never to a logical one.
@@ -527,9 +566,9 @@ async def bulk_hide_devices(
     _: str = Depends(get_current_user),
 ) -> dict[str, Any]:
     result = await db.execute(
-        select(PendingDevice).where(
-            PendingDevice.id.in_(payload.device_ids),
-            PendingDevice.status == "pending",
+        select(InventoryDevice).where(
+            InventoryDevice.id.in_(payload.device_ids),
+            InventoryDevice.status == "pending",
         )
     )
     devices = result.scalars().all()
@@ -545,7 +584,7 @@ async def restore_device(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ) -> dict[str, Any]:
-    device = await db.get(PendingDevice, device_id)
+    device = await db.get(InventoryDevice, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     if device.status != "hidden":
@@ -562,9 +601,9 @@ async def bulk_restore_devices(
     _: str = Depends(get_current_user),
 ) -> dict[str, Any]:
     result = await db.execute(
-        select(PendingDevice).where(
-            PendingDevice.id.in_(payload.device_ids),
-            PendingDevice.status == "hidden",
+        select(InventoryDevice).where(
+            InventoryDevice.id.in_(payload.device_ids),
+            InventoryDevice.status == "hidden",
         )
     )
     devices = result.scalars().all()
@@ -587,7 +626,7 @@ async def approve_device(
         first = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
         node_design_id = first.id if first else None
 
-    device = await db.get(PendingDevice, device_id)
+    device = await db.get(InventoryDevice, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     # A device's status is GLOBAL — it flips to "approved" the moment it lands on
@@ -676,10 +715,10 @@ async def _is_proxmox_cluster_member(db: AsyncSession, ieee: str | None) -> bool
         return False
     found = (
         await db.execute(
-            select(PendingDeviceLink.id)
+            select(InventoryDeviceLink.id)
             .where(
-                PendingDeviceLink.discovery_source == "proxmox_cluster",
-                (PendingDeviceLink.source_ieee == ieee) | (PendingDeviceLink.target_ieee == ieee),
+                InventoryDeviceLink.discovery_source == "proxmox_cluster",
+                (InventoryDeviceLink.source_ieee == ieee) | (InventoryDeviceLink.target_ieee == ieee),
             )
             .limit(1)
         )
@@ -690,7 +729,7 @@ async def _is_proxmox_cluster_member(db: AsyncSession, ieee: str | None) -> bool
 async def _resolve_pending_links_for_ieee(
     db: AsyncSession, ieee: str | None, design_id: str | None
 ) -> list[dict[str, str]]:
-    """Materialize edges for any pending_device_links involving ``ieee`` on the
+    """Materialize edges for any device_inventory_links involving ``ieee`` on the
     canvas identified by ``design_id``.
 
     For each link where the other endpoint already exists as a Node *on this
@@ -704,9 +743,9 @@ async def _resolve_pending_links_for_ieee(
         return []
 
     links_q = await db.execute(
-        select(PendingDeviceLink).where(
-            (PendingDeviceLink.source_ieee == ieee)
-            | (PendingDeviceLink.target_ieee == ieee)
+        select(InventoryDeviceLink).where(
+            (InventoryDeviceLink.source_ieee == ieee)
+            | (InventoryDeviceLink.target_ieee == ieee)
         )
     )
     links = list(links_q.scalars().all())
@@ -806,7 +845,7 @@ async def _resolve_pending_links_for_ieee(
 async def hide_device(
     device_id: str, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)
 ) -> dict[str, bool]:
-    device = await db.get(PendingDevice, device_id)
+    device = await db.get(InventoryDevice, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     device.status = "hidden"
@@ -818,7 +857,7 @@ async def hide_device(
 async def ignore_device(
     device_id: str, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)
 ) -> dict[str, bool]:
-    device = await db.get(PendingDevice, device_id)
+    device = await db.get(InventoryDevice, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     await db.delete(device)

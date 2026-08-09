@@ -1,7 +1,7 @@
 """Shared builders for scan test suite (pure helpers, no fixtures)."""
 import uuid
 
-from app.db.models import Design, Node, PendingDevice
+from app.db.models import Design, InventoryDevice, Node
 
 
 async def _add_design(db_session, name: str) -> str:
@@ -21,7 +21,7 @@ def _node(design_id: str, *, ip=None, ieee=None, mac=None) -> Node:
 
 async def _seed_zigbee_pending_pair(db_session):
     """Create a coordinator Node + a pending device + a link between them."""
-    from app.db.models import Node, PendingDeviceLink
+    from app.db.models import InventoryDeviceLink, Node
 
     coord = Node(
         label="Coordinator",
@@ -31,7 +31,7 @@ async def _seed_zigbee_pending_pair(db_session):
     )
     db_session.add(coord)
 
-    pending = PendingDevice(
+    pending = InventoryDevice(
         ieee_address="0xR1",
         friendly_name="router_1",
         suggested_type="zigbee_router",
@@ -42,7 +42,7 @@ async def _seed_zigbee_pending_pair(db_session):
     db_session.add(pending)
 
     db_session.add(
-        PendingDeviceLink(
+        InventoryDeviceLink(
             source_ieee="0xCOORD",
             target_ieee="0xR1",
             discovery_source="zigbee",

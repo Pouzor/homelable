@@ -78,7 +78,7 @@ const defaultProps = {
   onSave: vi.fn(),
   onOpenSettings: vi.fn(),
   onOpenHistory: vi.fn(),
-  onOpenPending: vi.fn(),
+  onOpenInventory: vi.fn(),
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -244,16 +244,16 @@ describe('Sidebar', () => {
 
   // ── Pending / Hidden open modal ────────────────────────────────────────────
 
-  it('calls onOpenPending with pending status when Device Inventory is clicked', () => {
+  it('calls onOpenInventory with pending status when Device Inventory is clicked', () => {
     render(<Sidebar {...defaultProps} />)
     fireEvent.click(screen.getByText('Device Inventory'))
-    expect(defaultProps.onOpenPending).toHaveBeenCalledWith(undefined, 'pending')
+    expect(defaultProps.onOpenInventory).toHaveBeenCalledWith(undefined, 'pending')
   })
 
-  it('calls onOpenPending with hidden status when Hidden Devices is clicked', () => {
+  it('calls onOpenInventory with hidden status when Hidden Devices is clicked', () => {
     render(<Sidebar {...defaultProps} />)
     fireEvent.click(screen.getByText('Hidden Devices'))
-    expect(defaultProps.onOpenPending).toHaveBeenCalledWith(undefined, 'hidden')
+    expect(defaultProps.onOpenInventory).toHaveBeenCalledWith(undefined, 'hidden')
   })
 
   it('calls onOpenHistory when Scan History nav item is clicked', () => {

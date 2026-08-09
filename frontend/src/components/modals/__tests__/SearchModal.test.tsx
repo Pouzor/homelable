@@ -14,7 +14,7 @@ vi.mock('@/api/client', () => ({
   scanApi: { pending: vi.fn().mockResolvedValue({ data: [] }) },
 }))
 
-const mockOnOpenPending = vi.fn()
+const mockOnOpenInventory = vi.fn()
 
 function makeNode(id: string, overrides: Partial<NodeData> = {}): Node<NodeData> {
   return {
@@ -38,23 +38,23 @@ describe('SearchModal', () => {
   })
 
   it('renders nothing when closed', () => {
-    render(<SearchModal open={false} onClose={vi.fn()} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open={false} onClose={vi.fn()} onOpenInventory={mockOnOpenInventory} />)
     expect(screen.queryByPlaceholderText(/search nodes/i)).toBeNull()
   })
 
   it('renders search input when open', () => {
-    render(<SearchModal open onClose={vi.fn()} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={vi.fn()} onOpenInventory={mockOnOpenInventory} />)
     expect(screen.getByPlaceholderText(/search nodes/i)).toBeDefined()
   })
 
   it('shows "Type to search" hint when query is empty', () => {
-    render(<SearchModal open onClose={vi.fn()} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={vi.fn()} onOpenInventory={mockOnOpenInventory} />)
     expect(screen.getByText(/type to search/i)).toBeDefined()
   })
 
   it('shows no results message when query has no matches', () => {
     useCanvasStore.setState({ nodes: [makeNode('router', { label: 'Router' })] })
-    render(<SearchModal open onClose={vi.fn()} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={vi.fn()} onOpenInventory={mockOnOpenInventory} />)
     fireEvent.change(screen.getByPlaceholderText(/search nodes/i), { target: { value: 'zzz' } })
     expect(screen.getByText(/no results match/i)).toBeDefined()
   })
@@ -63,7 +63,7 @@ describe('SearchModal', () => {
     useCanvasStore.setState({
       nodes: [makeNode('n1', { label: 'My Router' }), makeNode('n2', { label: 'NAS Server' })],
     })
-    render(<SearchModal open onClose={vi.fn()} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={vi.fn()} onOpenInventory={mockOnOpenInventory} />)
     fireEvent.change(screen.getByPlaceholderText(/search nodes/i), { target: { value: 'router' } })
     expect(screen.getByText('My Router')).toBeDefined()
     expect(screen.queryByText('NAS Server')).toBeNull()
@@ -76,7 +76,7 @@ describe('SearchModal', () => {
         makeNode('n2', { label: 'Box B', ip: '10.0.0.1' }),
       ],
     })
-    render(<SearchModal open onClose={vi.fn()} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={vi.fn()} onOpenInventory={mockOnOpenInventory} />)
     fireEvent.change(screen.getByPlaceholderText(/search nodes/i), { target: { value: '192.168' } })
     expect(screen.getByText('Box A')).toBeDefined()
     expect(screen.queryByText('Box B')).toBeNull()
@@ -89,7 +89,7 @@ describe('SearchModal', () => {
         makeNode('n2', { label: 'B', hostname: 'nas.local' }),
       ],
     })
-    render(<SearchModal open onClose={vi.fn()} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={vi.fn()} onOpenInventory={mockOnOpenInventory} />)
     fireEvent.change(screen.getByPlaceholderText(/search nodes/i), { target: { value: 'pve' } })
     expect(screen.getByText('A')).toBeDefined()
     expect(screen.queryByText('B')).toBeNull()
@@ -102,7 +102,7 @@ describe('SearchModal', () => {
         makeNode('g1', { label: 'Zone A', type: 'groupRect' }),
       ],
     })
-    render(<SearchModal open onClose={vi.fn()} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={vi.fn()} onOpenInventory={mockOnOpenInventory} />)
     fireEvent.change(screen.getByPlaceholderText(/search nodes/i), { target: { value: 'zone' } })
     expect(screen.getByText(/no results match/i)).toBeDefined()
   })
@@ -111,7 +111,7 @@ describe('SearchModal', () => {
     useCanvasStore.setState({
       nodes: Array.from({ length: 12 }, (_, i) => makeNode(`n${i}`, { label: `Server ${i}` })),
     })
-    render(<SearchModal open onClose={vi.fn()} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={vi.fn()} onOpenInventory={mockOnOpenInventory} />)
     fireEvent.change(screen.getByPlaceholderText(/search nodes/i), { target: { value: 'server' } })
     const items = screen.getAllByText(/Server \d/)
     expect(items).toHaveLength(6)
@@ -120,7 +120,7 @@ describe('SearchModal', () => {
   it('selects node and closes on result click', () => {
     const onClose = vi.fn()
     useCanvasStore.setState({ nodes: [makeNode('n1', { label: 'Proxmox' })] })
-    render(<SearchModal open onClose={onClose} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={onClose} onOpenInventory={mockOnOpenInventory} />)
     fireEvent.change(screen.getByPlaceholderText(/search nodes/i), { target: { value: 'prox' } })
     fireEvent.click(screen.getByText('Proxmox'))
     expect(useCanvasStore.getState().selectedNodeId).toBe('n1')
@@ -131,7 +131,7 @@ describe('SearchModal', () => {
   it('selects first result and closes on Enter key', () => {
     const onClose = vi.fn()
     useCanvasStore.setState({ nodes: [makeNode('n1', { label: 'Switch' })] })
-    render(<SearchModal open onClose={onClose} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={onClose} onOpenInventory={mockOnOpenInventory} />)
     const input = screen.getByPlaceholderText(/search nodes/i)
     fireEvent.change(input, { target: { value: 'switch' } })
     fireEvent.keyDown(input, { key: 'Enter' })
@@ -141,14 +141,14 @@ describe('SearchModal', () => {
 
   it('closes on Escape key', () => {
     const onClose = vi.fn()
-    render(<SearchModal open onClose={onClose} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={onClose} onOpenInventory={mockOnOpenInventory} />)
     fireEvent.keyDown(screen.getByPlaceholderText(/search nodes/i), { key: 'Escape' })
     expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('closes when clicking backdrop', () => {
     const onClose = vi.fn()
-    render(<SearchModal open onClose={onClose} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={onClose} onOpenInventory={mockOnOpenInventory} />)
     // The backdrop is the fixed inset div — clicking it fires onClose
     const backdrop = document.querySelector('.fixed.inset-0') as HTMLElement
     fireEvent.click(backdrop)
@@ -157,14 +157,14 @@ describe('SearchModal', () => {
 
   it('does not close when clicking inside the search box', () => {
     const onClose = vi.fn()
-    render(<SearchModal open onClose={onClose} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={onClose} onOpenInventory={mockOnOpenInventory} />)
     fireEvent.click(screen.getByPlaceholderText(/search nodes/i))
     expect(onClose).not.toHaveBeenCalled()
   })
 
   it('search is case-insensitive', () => {
     useCanvasStore.setState({ nodes: [makeNode('n1', { label: 'My NAS' })] })
-    render(<SearchModal open onClose={vi.fn()} onOpenPending={mockOnOpenPending} />)
+    render(<SearchModal open onClose={vi.fn()} onOpenInventory={mockOnOpenInventory} />)
     fireEvent.change(screen.getByPlaceholderText(/search nodes/i), { target: { value: 'MY NAS' } })
     expect(screen.getByText('My NAS')).toBeDefined()
   })

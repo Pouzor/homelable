@@ -91,16 +91,27 @@ Then set:
 click only selects it. **Unmount** takes the device out of the rack — it stays in
 the Device Inventory.
 
-### Logical view 🔒
+### Linked device 🔒
 
-Under the port list, a mount that stands for a real device prints what the
-logical canvas already knows about the same box: canvas name, type, hostname,
-IP, MAC, OS, the status check it runs, the canvas it is drawn on, when it was
-last seen, and the services discovery fingerprinted on it.
+Under the port list, a mount that stands for a real device prints what is known
+about that box: name, type, hostname, IP, MAC, OS, the status check it runs, the
+canvas it is drawn on, when it was last seen, and the services discovery
+fingerprinted on it.
 
-It is read-only — edit those facts on the logical canvas, not in the rack. A
-device that is on no logical canvas still shows whatever discovery reported, and
-an accessory shows nothing at all.
+It is read-only — edit those facts in the Device Inventory or on the logical
+canvas, not in the rack — and an accessory shows nothing at all. A device that is
+on no diagram still prints everything discovery found about it; only the
+canvas-side lines go missing, and the panel says *Not on a logical canvas.*
+
+**Link to another device…** points the plate at a different Device Inventory
+entry — the whole inventory, not just the devices you approved onto a diagram.
+Use it when you created the gear from the rack (the entry starts empty, with just
+a name) or when the plate ended up on the wrong twin of two look-alike hosts. The
+plate takes the entry's IP, MAC, services, status and — unless you renamed it —
+its name, **Check device** becomes available if that device is on a diagram, and
+the link is saved with the rest of the canvas. A device already mounted elsewhere
+in the design is not offered: one entry, one plate. The empty placeholder the
+rack created for the plate is removed from the inventory once nothing uses it.
 
 ### Placement rules
 

@@ -34,10 +34,10 @@ interface SidebarProps {
   onSave: () => void
   onOpenSettings: () => void
   onOpenHistory: () => void
-  onOpenPending: (deviceId?: string, status?: 'pending' | 'hidden') => void
+  onOpenInventory: (deviceId?: string, status?: 'pending' | 'hidden') => void
 }
 
-export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onZwaveImport, onProxmoxImport, onSave, onOpenSettings, onOpenHistory, onOpenPending }: SidebarProps) {
+export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onZwaveImport, onProxmoxImport, onSave, onOpenSettings, onOpenHistory, onOpenInventory }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const logout = useAuthStore((s) => s.logout)
   const { designs, activeDesignId, activeDesignType, setActiveDesign, addDesign, updateDesign, removeDesign } = useDesignStore()
@@ -251,7 +251,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
             icon={t.icon}
             label={t.label}
             collapsed={collapsed}
-            onClick={() => onOpenPending(undefined, t.kind)}
+            onClick={() => onOpenInventory(undefined, t.kind)}
           />
         ))}
         {!STANDALONE && (

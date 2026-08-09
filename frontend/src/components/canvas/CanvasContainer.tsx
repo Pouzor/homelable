@@ -34,10 +34,10 @@ interface CanvasContainerProps {
   onNodeDragStart?: () => void
   onRequestAddToGroup?: (payload: { nodeId: string; groupId: string }) => void
   onRequestAddToContainer?: (payload: { nodeId: string; containerId: string }) => void
-  onOpenPending?: (deviceId: string) => void
+  onOpenInventory?: (deviceId: string) => void
 }
 
-export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDoubleClick, onNodeDragStart, onRequestAddToGroup, onRequestAddToContainer, onOpenPending }: CanvasContainerProps) {
+export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDoubleClick, onNodeDragStart, onRequestAddToGroup, onRequestAddToContainer, onOpenInventory }: CanvasContainerProps) {
   const [lassoMode, setLassoMode] = useState(true)
   const {
     nodes, edges,
@@ -202,7 +202,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
           color={theme.colors.canvasDotColor}
         />
         <FloorMapLayer />
-        <SearchBar onOpenPending={onOpenPending} />
+        <SearchBar onOpenInventory={onOpenInventory} />
         <AlignmentGuides guides={guides} />
         <Controls>
           <ControlButton

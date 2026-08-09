@@ -1,11 +1,21 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useRackStore } from '../store'
 import { getFaceplate } from '../faceplates'
-import { RACK_COLUMNS } from '@/types'
+import { RACK_COLUMNS, type InventoryDevice } from '@/types'
 import { MAX_RACK_U, MIN_RACK_U } from '../rackDefaults'
 import { demoNetworkLinks } from '../demoData'
 
 const store = () => useRackStore.getState()
+
+/**
+ * Dropping an inventory entry is the one store action that talks to the
+ * backend; the rest of the demo state is local, so only that call is stubbed.
+ */
+const deletePending = vi.hoisted(() => vi.fn())
+vi.mock('@/api/client', () => ({
+  racksApi: { load: vi.fn(), inventory: vi.fn(), save: vi.fn() },
+  scanApi: { deletePending, createPending: vi.fn() },
+}))
 
 beforeEach(() => {
   useRackStore.getState().loadDemo()
@@ -183,6 +193,147 @@ describe('mounting', () => {
     expect(
       store().cables.some((c) => c.from.deviceId === 'dev-nas' || c.to.deviceId === 'dev-nas'),
     ).toBe(false)
+  })
+})
+
+describe('relinking a mount to another inventory entry', () => {
+  /** A row discovery filled in: an IP, a MAC and a canvas node behind it. */
+  const scanned: InventoryDevice = {
+    id: 'inv-scanned',
+    label: 'pdu-real',
+    type: 'pdu',
+    discoverySource: 'arp',
+    ip: '192.168.1.60',
+    mac: 'aa:bb:cc:dd:ee:ff',
+    hostname: 'pdu.lan',
+    os: null,
+    services: [],
+    status: 'online',
+    nodeId: 'node-scanned',
+    node: {
+      id: 'node-scanned',
+      label: 'pdu-real',
+      type: 'pdu',
+      ip: '192.168.1.60',
+      mac: 'aa:bb:cc:dd:ee:ff',
+      hostname: 'pdu.lan',
+      os: null,
+      checkMethod: 'ping',
+      designId: 'demo-network',
+      designName: 'Network',
+      lastSeen: null,
+    },
+    racked: false,
+    suggestedFaceplateId: 'pdu-1u',
+  }
+
+  /** Offer `scanned` in the inventory the store holds. */
+  function offer(extra: Partial<InventoryDevice> = {}) {
+    useRackStore.setState((s) => ({ inventory: [...s.inventory, { ...scanned, ...extra }] }))
+  }
+
+  /** Turn `dev-pdu`'s entry into a placeholder the rack created. */
+  function placeholder() {
+    useRackStore.setState((s) => ({
+      inventory: s.inventory.map((i) =>
+        i.id === 'inv-pdu' ? { ...i, discoverySource: 'rack' } : i,
+      ),
+    }))
+  }
+
+  beforeEach(() => {
+    deletePending.mockClear()
+    deletePending.mockResolvedValue({ data: { deleted: true } })
+  })
+
+  it('points the mount at the entry, with its node, status and label', async () => {
+    // `dev-pdu` is dumb hardware: the backend has no IEEE and no IP to guess a
+    // canvas node from, so the link can only ever come from the user.
+    expect(store().devices.find((d) => d.id === 'dev-pdu')!.nodeId).toBeNull()
+    offer()
+
+    expect(await store().relinkDevice('dev-pdu', 'inv-scanned')).toBe(true)
+
+    const mount = store().devices.find((d) => d.id === 'dev-pdu')!
+    expect(mount.deviceId).toBe('inv-scanned')
+    expect(mount.nodeId).toBe('node-scanned')
+    expect(mount.label).toBe('pdu-real')
+    expect(mount.status).toBe('online')
+    // The entry is now taken, so it stops being offered as a fresh mount.
+    expect(store().inventory.find((i) => i.id === 'inv-scanned')!.racked).toBe(true)
+    expect(store().inventory.find((i) => i.id === 'inv-pdu')!.racked).toBe(false)
+  })
+
+  it('keeps a plate the user renamed', async () => {
+    store().updateDevice('dev-pdu', { label: 'PDU (left)' })
+    offer()
+    await store().relinkDevice('dev-pdu', 'inv-scanned')
+    expect(store().devices.find((d) => d.id === 'dev-pdu')!.label).toBe('PDU (left)')
+  })
+
+  it('keeps `auto`, which is a choice about how to resolve the status', async () => {
+    store().updateDevice('dev-pdu', { status: 'auto' })
+    offer()
+    await store().relinkDevice('dev-pdu', 'inv-scanned')
+    expect(store().devices.find((d) => d.id === 'dev-pdu')!.status).toBe('auto')
+  })
+
+  it('marks the canvas dirty, so the link is saved with the rest', async () => {
+    offer()
+    store().markSaved()
+    await store().relinkDevice('dev-pdu', 'inv-scanned')
+    expect(store().hasUnsavedChanges).toBe(true)
+  })
+
+  it('refuses an accessory, which stands for no device', async () => {
+    offer()
+    const id = store().mountAccessory('shelf-1u', 'rack-main', { uStart: 20 })!
+    expect(await store().relinkDevice(id, 'inv-scanned')).toBe(false)
+    expect(store().devices.find((d) => d.id === id)!.deviceId).toBeNull()
+  })
+
+  it('refuses an entry another plate already stands for', async () => {
+    const taken = store().devices.find((d) => d.id === 'dev-nas')!.deviceId!
+    expect(await store().relinkDevice('dev-pdu', taken)).toBe(false)
+    expect(store().devices.find((d) => d.id === 'dev-pdu')!.deviceId).toBe('inv-pdu')
+  })
+
+  it('refuses an entry the inventory does not hold', async () => {
+    expect(await store().relinkDevice('dev-pdu', 'inv-ghost')).toBe(false)
+  })
+
+  it('deletes the placeholder the rack created and left behind', async () => {
+    placeholder()
+    offer()
+    await store().relinkDevice('dev-pdu', 'inv-scanned')
+
+    expect(deletePending).toHaveBeenCalledWith('inv-pdu')
+    expect(store().inventory.some((i) => i.id === 'inv-pdu')).toBe(false)
+  })
+
+  it('keeps a discovered entry the mount leaves behind', async () => {
+    offer()
+    await store().relinkDevice('dev-pdu', 'inv-scanned')
+
+    expect(deletePending).not.toHaveBeenCalled()
+    // Still there, and free to be mounted again.
+    expect(store().inventory.find((i) => i.id === 'inv-pdu')!.racked).toBe(false)
+  })
+
+  it('keeps the placeholder when the backend refuses to delete it', async () => {
+    deletePending.mockRejectedValue(new Error('409'))
+    placeholder()
+    offer()
+
+    // The relink itself still stands — only the cleanup failed.
+    expect(await store().relinkDevice('dev-pdu', 'inv-scanned')).toBe(true)
+    expect(store().inventory.some((i) => i.id === 'inv-pdu')).toBe(true)
+  })
+
+  it('refuses to discard an entry a plate still stands for', async () => {
+    placeholder()
+    expect(await store().discardInventoryDevice('inv-pdu')).toBe(false)
+    expect(deletePending).not.toHaveBeenCalled()
   })
 })
 
