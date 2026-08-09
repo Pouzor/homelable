@@ -1,5 +1,6 @@
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import text
 
 from app.db.models import PendingDevice
 
@@ -511,6 +512,31 @@ class TestInventory:
         assert entry["node_check_method"] == "http"
         assert entry["node_design_id"] == network
         assert entry["node_design_name"] == "Network"
+
+    async def test_stamps_last_seen_with_an_offset(self, client: AsyncClient, headers, db_session):
+        """SQLite reads `last_seen` back naive, and a naive ISO string is *local*
+        time to `new Date()` — the panel printed it shifted by the viewer's offset.
+        """
+        design_id = await _design(client, headers)
+        node = (
+            await client.post(
+                "/api/v1/nodes",
+                json={"type": "server", "label": "seen", "ip": "192.168.1.77"},
+                headers=headers,
+            )
+        ).json()
+        db_session.add(PendingDevice(id="pd-seen", ip="192.168.1.77", suggested_type="server"))
+        await db_session.execute(
+            text("UPDATE nodes SET last_seen = :ts WHERE id = :id"),
+            {"ts": "2026-08-08 10:00:00.000000", "id": node["id"]},
+        )
+        await db_session.commit()
+
+        items = (
+            await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)
+        ).json()["items"]
+        entry = next(i for i in items if i["id"] == "pd-seen")
+        assert entry["node_last_seen"].endswith(("Z", "+00:00"))
 
     async def test_leaves_the_node_fields_empty_without_a_match(
         self, client: AsyncClient, headers

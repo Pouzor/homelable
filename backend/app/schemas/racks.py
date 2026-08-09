@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, field_validator, model_validator
@@ -282,6 +282,20 @@ class RackInventoryItem(BaseModel):
     node_last_seen: datetime | None = None
     # True when this device is already mounted somewhere in this design.
     racked: bool = False
+
+    @field_validator("node_last_seen")
+    @classmethod
+    def _utc(cls, v: datetime | None) -> datetime | None:
+        """Stamp UTC on a naive timestamp before it goes on the wire.
+
+        SQLite has no timezone type: an aware datetime written to `last_seen`
+        reads back naive, and Pydantic then serializes it without an offset.
+        `new Date("2026-08-08T10:00:00")` in the browser is *local* time, so the
+        rack printed a last-seen shifted by the viewer's offset.
+        """
+        if v is not None and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
 
 class RackInventoryResponse(BaseModel):
