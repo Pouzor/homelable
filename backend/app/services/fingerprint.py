@@ -213,12 +213,16 @@ def suggest_node_type(open_ports: list[dict[str, Any]], mac: str | None = None) 
     if mac_type == "iot":
         return "iot"
 
-    priority = ["proxmox", "nas", "router", "lxc", "vm", "ap", "camera", "iot", "server", "switch"]
+    priority = [
+        "proxmox", "nas", "kvm", "router", "lxc", "vm", "ap", "camera", "iot", "server", "switch",
+    ]
     found: set[str] = set()
     for p in open_ports:
         port = p["port"]
         proto = p.get("protocol", "tcp")
-        sig = match_port(port, proto)
+        # Pass the HTTP-probe signals through: port-agnostic signatures (port: null,
+        # e.g. PiKVM, Unraid) match on title/headers alone and are invisible otherwise.
+        sig = match_service(port, proto, p.get("banner"), p.get("http_signals"))
         if sig and sig.get("suggested_node_type"):
             found.add(sig["suggested_node_type"])
         if port in _PORT_TYPE_HINTS:

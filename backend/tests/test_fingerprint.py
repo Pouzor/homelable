@@ -124,6 +124,41 @@ def test_suggest_node_type_priority_proxmox_over_server():
     assert result == "proxmox"
 
 
+# A port-agnostic signature: only an HTTP probe can ever match it.
+KVM_SIGNATURE = {
+    "port": None, "protocol": "tcp", "banner_regex": None, "http_regex": "PiKVM",
+    "service_name": "PiKVM", "icon": "monitorcog", "category": "kvm",
+    "suggested_node_type": "kvm",
+}
+
+
+def test_suggest_node_type_kvm_from_http_title():
+    # An IP-KVM answers on 443 like any web app; only the probed title identifies it.
+    with patch("app.services.fingerprint._load", return_value=[*MOCK_SIGNATURES, KVM_SIGNATURE]):
+        result = suggest_node_type([
+            {"port": 443, "protocol": "tcp", "http_signals": {"title": "PiKVM", "headers": {}}},
+        ])
+    assert result == "kvm"
+
+
+def test_suggest_node_type_priority_kvm_over_server():
+    # The same host also answers on 80 (→ server); the KVM signal outranks it.
+    with patch("app.services.fingerprint._load", return_value=[*MOCK_SIGNATURES, KVM_SIGNATURE]):
+        result = suggest_node_type([
+            {"port": 80, "protocol": "tcp"},
+            {"port": 443, "protocol": "tcp", "http_signals": {"title": "PiKVM", "headers": {}}},
+        ])
+    assert result == "kvm"
+
+
+def test_suggest_node_type_ignores_port_agnostic_sig_without_probe():
+    # No http_signals (probe disabled) → port-agnostic entries can't match and the
+    # port-only guess stands, unchanged from pre-probe behaviour.
+    with patch("app.services.fingerprint._load", return_value=[*MOCK_SIGNATURES, KVM_SIGNATURE]):
+        result = suggest_node_type([{"port": 443, "protocol": "tcp"}])
+    assert result == "server"
+
+
 def test_suggest_node_type_camera_from_rtsp_port():
     # RTSP port 554 → camera (via _PORT_TYPE_HINTS)
     result = suggest_node_type([{"port": 554, "protocol": "tcp"}])

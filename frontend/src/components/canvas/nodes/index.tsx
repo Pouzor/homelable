@@ -1,7 +1,7 @@
 import { type NodeProps, type Node } from '@xyflow/react'
 import {
   Globe, Router, Network, Server, Layers, Box, Container,
-  HardDrive, Cpu, Wifi, Circle, Cctv, Printer, Monitor, Laptop, Smartphone, PlugZap, Anchor, Package, Flame, Radio, Antenna, RadioTower, Share2,
+  HardDrive, Cpu, Wifi, Circle, Cctv, Printer, Monitor, MonitorCog, Laptop, Smartphone, PlugZap, Anchor, Package, Flame, Radio, Antenna, RadioTower, Share2,
   Grid3x3, Battery, Fuel, Sun, Repeat2, Split, ToggleLeft, Lightbulb, Gauge, Combine, Cable, Zap,
 } from 'lucide-react'
 import { BaseNode } from './BaseNode'
@@ -18,6 +18,7 @@ export const ProxmoxNode = (props: N) => <BaseNode {...props} icon={Layers} />
 export const VmNode      = (props: N) => <BaseNode {...props} icon={Box} />
 export const LxcNode     = (props: N) => <BaseNode {...props} icon={Container} />
 export const NasNode     = (props: N) => <BaseNode {...props} icon={HardDrive} />
+export const KvmNode     = (props: N) => <BaseNode {...props} icon={MonitorCog} />
 export const IotNode     = (props: N) => <BaseNode {...props} icon={Cpu} />
 export const ApNode      = (props: N) => <BaseNode {...props} icon={Wifi} />
 export const CameraNode   = (props: N) => <BaseNode {...props} icon={Cctv} />

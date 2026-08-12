@@ -7,7 +7,7 @@ from app.services.fingerprint import _load, match_service
 
 _NODE_TYPES = {
     "isp", "router", "switch", "server", "proxmox", "vm", "lxc",
-    "nas", "iot", "ap", "camera", "generic",
+    "nas", "kvm", "iot", "ap", "camera", "generic",
 }
 
 
@@ -41,6 +41,13 @@ def test_popular_apps_have_port_agnostic_signatures(signatures):
         "AdGuard Home", "Grafana", "Nextcloud", "Vaultwarden", "Sonarr",
     }:
         assert expected in names, f"missing port-agnostic signature for {expected}"
+
+
+@pytest.mark.parametrize("title", ["PiKVM", "TinyPilot", "JetKVM", "NanoKVM"])
+def test_ip_kvm_titles_suggest_kvm_node_type(title):
+    sig = match_service(80, "tcp", banner=None, http_signals={"title": title, "headers": {}})
+    assert sig is not None
+    assert sig["suggested_node_type"] == "kvm"
 
 
 @pytest.mark.parametrize(("title", "expected"), [

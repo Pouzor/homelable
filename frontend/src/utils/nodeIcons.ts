@@ -5,7 +5,7 @@ import {
   // Media
   Play, Film, Tv, Tv2, Music, Camera, Video, Headphones, Clapperboard, Cctv,
   // Monitoring & Observability
-  Activity, BarChart2, LineChart, Eye, Bell, Gauge, Monitor,
+  Activity, BarChart2, LineChart, Eye, Bell, Gauge, Monitor, MonitorCog,
   // Storage & Databases
   Database, Archive, Cloud, FolderOpen,
   // Security & Auth
@@ -48,6 +48,7 @@ export const ICON_REGISTRY: IconEntry[] = [
   { key: 'box',        label: 'VM',                   category: 'Infrastructure', icon: Box },
   { key: 'container',  label: 'Container / LXC',      category: 'Infrastructure', icon: Container },
   { key: 'harddrive',  label: 'NAS / Storage',        category: 'Infrastructure', icon: HardDrive },
+  { key: 'monitorcog', label: 'KVM Switch',           category: 'Infrastructure', icon: MonitorCog },
   { key: 'cpu',        label: 'IoT / Embedded',       category: 'Infrastructure', icon: Cpu },
   { key: 'wifi',       label: 'Access Point',         category: 'Infrastructure', icon: Wifi },
   { key: 'circle',     label: 'Generic',              category: 'Infrastructure', icon: Circle },
@@ -165,6 +166,7 @@ export const NODE_TYPE_DEFAULT_ICONS: Record<NodeType, LucideIcon> = {
   vm:               Box,
   lxc:              Container,
   nas:              HardDrive,
+  kvm:              MonitorCog,
   iot:              Cpu,
   ap:               Wifi,
   camera:           Cctv,
