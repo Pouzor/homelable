@@ -19,14 +19,18 @@ export const SIDES: readonly Side[] = ['top', 'bottom', 'left', 'right']
 
 export const MAX_HANDLES = 64
 
+/** Every side can go down to zero connection points. */
+export const MIN_HANDLES = 0
+
 // Back-compat aliases (bottom was the original, only, multi-handle side).
-export const MIN_BOTTOM_HANDLES = 1
+export const MIN_BOTTOM_HANDLES = MIN_HANDLES
 export const MAX_BOTTOM_HANDLES = MAX_HANDLES
 
 /**
- * Minimum (and default) count for a side.
+ * Default count for a side when the node carries no explicit value.
  * Top/Bottom default to 1 (their historical single handle); Left/Right default
  * to 0 so existing diagrams gain no side handles unless the user opts in.
+ * This is a default, not a minimum — see MIN_HANDLES.
  */
 export function sideDefault(side: Side): number {
   return side === 'top' || side === 'bottom' ? 1 : 0
@@ -47,12 +51,15 @@ export function handleId(side: Side, idx: number): string {
   return idx === 0 ? side : `${side}-${idx + 1}`
 }
 
-/** Clamp a raw count into the supported range for a side (min = sideDefault, max = 64). */
+/**
+ * Clamp a raw count into the supported range (0..64) for a side.
+ * A non-numeric / non-finite input falls back to the side default, so a missing
+ * or corrupt field still yields the historical count; an explicit 0 is honoured.
+ */
 export function clampHandles(side: Side, n: unknown): number {
-  const min = sideDefault(side)
-  if (typeof n !== 'number' || !Number.isFinite(n)) return min
+  if (typeof n !== 'number' || !Number.isFinite(n)) return sideDefault(side)
   const i = Math.floor(n)
-  if (i < min) return min
+  if (i < MIN_HANDLES) return MIN_HANDLES
   if (i > MAX_HANDLES) return MAX_HANDLES
   return i
 }

@@ -507,15 +507,29 @@ describe('NodeModal', () => {
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).right_handles).toBe(2)
   })
 
-  it('disables the − button at the side minimum (0 for left/right, 1 for top/bottom)', () => {
+  it('disables the − button at 0, the minimum for every side', () => {
     renderModal({ initial: BASE })
     expect((screen.getByRole('button', { name: 'Decrease Left connection points' }) as HTMLButtonElement).disabled).toBe(true)
+    // Top starts at its default of 1, so it can still go down to 0.
+    expect((screen.getByRole('button', { name: 'Decrease Top connection points' }) as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Decrease Top connection points' }))
     expect((screen.getByRole('button', { name: 'Decrease Top connection points' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('left/right min is 0, top/bottom min is 1; max is 64 everywhere', () => {
+  it('takes top/bottom down to 0 connection points', () => {
+    const { onSubmit } = renderModal({ initial: BASE })
+    fireEvent.change(screen.getByLabelText('Top connection points'), { target: { value: '0' } })
+    fireEvent.change(screen.getByLabelText('Bottom connection points'), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    const submitted = onSubmit.mock.calls[0][0] as Partial<NodeData>
+    expect(submitted.top_handles).toBe(0)
+    expect(submitted.bottom_handles).toBe(0)
+  })
+
+  it('min is 0 on every side; max is 64 everywhere', () => {
     renderModal({ initial: BASE })
-    expect((screen.getByLabelText('Bottom connection points') as HTMLInputElement).min).toBe('1')
+    expect((screen.getByLabelText('Bottom connection points') as HTMLInputElement).min).toBe('0')
+    expect((screen.getByLabelText('Top connection points') as HTMLInputElement).min).toBe('0')
     expect((screen.getByLabelText('Left connection points') as HTMLInputElement).min).toBe('0')
     for (const label of ['Top', 'Right', 'Bottom', 'Left']) {
       expect((screen.getByLabelText(`${label} connection points`) as HTMLInputElement).max).toBe('64')

@@ -12,7 +12,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
 import { IconPickerPanel } from './IconPickerPanel'
-import { MAX_HANDLES, clampHandles, sideDefault, handleCountField, type Side } from '@/utils/handleUtils'
+import { MAX_HANDLES, MIN_HANDLES, clampHandles, sideDefault, handleCountField, type Side } from '@/utils/handleUtils'
 import { getValidParentTypes } from '@/utils/virtualEdgeParent'
 
 const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
@@ -44,7 +44,7 @@ function CPStepper({ label, side, value, onChange }: {
   value: number
   onChange: (v: number) => void
 }) {
-  const min = sideDefault(side)
+  const min = MIN_HANDLES
   const labelEl = <span className="text-[10px] text-muted-foreground/80 leading-none">{label}</span>
   const belowLabel = side === 'bottom'
   const btn = 'w-6 h-full flex items-center justify-center text-sm text-muted-foreground hover:text-foreground hover:bg-[#21262d] disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-default'

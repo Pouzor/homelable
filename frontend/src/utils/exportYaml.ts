@@ -28,11 +28,11 @@ function makeConnection(
   return conn
 }
 
-/** Write each side's handle count onto the entry when it exceeds the side default. */
+/** Write each side's handle count onto the entry when it differs from the side default (0 included). */
 function attachHandleCounts(entry: YamlNode, data: NodeData): void {
   for (const side of SIDES) {
     const count = sideHandleCount(data, side)
-    if (count > sideDefault(side)) {
+    if (count !== sideDefault(side)) {
       entry[`${side}Handles` as 'topHandles' | 'bottomHandles' | 'leftHandles' | 'rightHandles'] =
         count
     }
