@@ -204,6 +204,11 @@
   {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Syncthing",                "service_name": "Syncthing",           "icon": "refresh-cw",  "category": "storage",    "suggested_node_type": "server"},
   {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Gitea",                    "service_name": "Gitea",               "icon": "git-branch",  "category": "dev",        "suggested_node_type": "server"},
 
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "[Pp]i[Kk]VM",              "service_name": "PiKVM",               "icon": "monitorcog",  "category": "kvm",        "suggested_node_type": "kvm"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "TinyPilot",                "service_name": "TinyPilot",           "icon": "monitorcog",  "category": "kvm",        "suggested_node_type": "kvm"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "JetKVM",                   "service_name": "JetKVM",              "icon": "monitorcog",  "category": "kvm",        "suggested_node_type": "kvm"},
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "NanoKVM",                  "service_name": "NanoKVM",             "icon": "monitorcog",  "category": "kvm",        "suggested_node_type": "kvm"},
+
   {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "openmediavault",           "service_name": "OpenMediaVault",      "icon": "hard-drive",  "category": "nas",        "suggested_node_type": "nas"},
   {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Unraid",                   "service_name": "Unraid",              "icon": "hard-drive",  "category": "nas",        "suggested_node_type": "nas"},
   {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Cockpit",                  "service_name": "Cockpit",             "icon": "monitor",     "category": "nas",        "suggested_node_type": "server"}

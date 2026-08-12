@@ -9,7 +9,7 @@ from .backend_client import backend
 # group/groupRect/text are canvas annotations created via dedicated UI actions, not create_node).
 # Sync is enforced automatically by test_node_types_in_sync_with_frontend (mcp/tests/test_node_types_sync.py).
 NODE_TYPES = [
-    "isp", "router", "firewall", "switch", "server", "proxmox", "vm", "lxc", "nas", "iot", "ap",
+    "isp", "router", "firewall", "switch", "server", "proxmox", "vm", "lxc", "nas", "kvm", "iot", "ap",
     "camera", "printer", "computer", "laptop", "mobile", "cpl", "docker_host", "docker_container",
     "generic", "zigbee_coordinator", "zigbee_router", "zigbee_enddevice",
     "zwave_coordinator", "zwave_router", "zwave_enddevice", "grid", "ups", "battery", "generator",

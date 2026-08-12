@@ -288,7 +288,7 @@ describe('NodeModal', () => {
   // ── Container mode ─────────────────────────────────────────────────────
 
   const containerModeTypes = ['proxmox', 'vm', 'lxc', 'docker_host'] as const
-  const nonContainerModeTypes = ['isp', 'router', 'switch', 'server', 'nas', 'ap', 'printer', 'iot', 'camera', 'cpl', 'computer', 'generic', 'docker_container', 'groupRect', 'group'] as const
+  const nonContainerModeTypes = ['isp', 'router', 'switch', 'server', 'nas', 'kvm', 'ap', 'printer', 'iot', 'camera', 'cpl', 'computer', 'generic', 'docker_container', 'groupRect', 'group'] as const
 
   it.each(containerModeTypes)('shows Container Mode toggle for %s type', (type) => {
     renderModal({ initial: { ...BASE, type } })
