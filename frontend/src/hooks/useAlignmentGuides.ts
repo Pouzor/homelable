@@ -11,14 +11,54 @@ import type { NodeData } from '@/types'
 
 type NodeDrag = OnNodeDrag<Node<NodeData>>
 
-function nodeBox(n: Node<NodeData>): Box | null {
-  // Skip parented nodes — alignment between absolute and parent-relative
-  // coordinates is misleading. Top-level nodes only for v1.
-  if (n.parentId) return null
+// Absolute canvas position of a node: React Flow stores a parented node's
+// position relative to its parent, so we walk the parentId chain and sum.
+// `seen` guards against a corrupted cycle in the hierarchy.
+function absolutePosition(
+  n: Node<NodeData>,
+  byId: Map<string, Node<NodeData>>,
+): { x: number; y: number } {
+  let x = n.position.x
+  let y = n.position.y
+  const seen = new Set<string>([n.id])
+  let parentId = n.parentId
+  while (parentId && !seen.has(parentId)) {
+    seen.add(parentId)
+    const parent = byId.get(parentId)
+    if (!parent) break
+    x += parent.position.x
+    y += parent.position.y
+    parentId = parent.parentId
+  }
+  return { x, y }
+}
+
+// Boxes are expressed in absolute canvas coordinates so a node inside a group
+// or a container_mode node aligns against siblings *and* outside nodes.
+function nodeBox(n: Node<NodeData>, byId: Map<string, Node<NodeData>>): Box | null {
   const width = n.measured?.width ?? n.width ?? null
   const height = n.measured?.height ?? n.height ?? null
   if (width == null || height == null) return null
-  return { id: n.id, x: n.position.x, y: n.position.y, width, height }
+  const { x, y } = absolutePosition(n, byId)
+  return { id: n.id, x, y, width, height }
+}
+
+// True when any ancestor of `n` is itself being dragged — such a node follows
+// its parent, so it must not be snapped again (double-shift) nor act as an
+// alignment candidate (it moves with the drag).
+function hasDraggedAncestor(
+  n: Node<NodeData>,
+  byId: Map<string, Node<NodeData>>,
+  draggedIds: Set<string>,
+): boolean {
+  const seen = new Set<string>([n.id])
+  let parentId = n.parentId
+  while (parentId && !seen.has(parentId)) {
+    if (draggedIds.has(parentId)) return true
+    seen.add(parentId)
+    parentId = byId.get(parentId)?.parentId
+  }
+  return false
 }
 
 /**
@@ -74,27 +114,35 @@ export function useAlignmentGuides() {
       return
     }
     const all = getNodes()
+    const byId = new Map(all.map((n) => [n.id, n]))
     const draggedIds = new Set((dragNodes.length > 0 ? dragNodes : [dragNode]).map((n) => n.id))
-    // Restrict the snap to top-level dragged nodes. nodeBox returns null for
-    // parented nodes; if we kept their ids in pendingSnap, onNodeDragStop
-    // would shift their parent-relative position by the same delta the parent
-    // already moves by, double-snapping the child. Children follow the parent
-    // automatically; no extra shift needed.
+    // A dragged node whose parent is also dragged already moves with that
+    // parent; snapping it too would shift its parent-relative position by the
+    // same delta twice. Its box still joins the union bbox (it is part of what
+    // the user sees moving), it just never lands in pendingSnap.ids.
     const draggedBoxEntries = all
       .filter((n) => draggedIds.has(n.id))
-      .map((n) => ({ id: n.id, box: nodeBox(n) }))
-      .filter((e): e is { id: string; box: Box } => e.box !== null)
+      .map((n) => ({
+        id: n.id,
+        box: nodeBox(n, byId),
+        follows: hasDraggedAncestor(n, byId, draggedIds),
+      }))
+      .filter((e): e is { id: string; box: Box; follows: boolean } => e.box !== null)
     if (draggedBoxEntries.length === 0) {
       clearState()
       return
     }
-    const snapIds = new Set(draggedBoxEntries.map((e) => e.id))
+    const snapIds = new Set(draggedBoxEntries.filter((e) => !e.follows).map((e) => e.id))
+    if (snapIds.size === 0) {
+      clearState()
+      return
+    }
     const boxes = draggedBoxEntries.map((e) => e.box)
     const dragged = boxes.length === 1 ? boxes[0] : unionBox(boxes)
     if (!dragged) return
     const candidates = all
-      .filter((n) => !draggedIds.has(n.id))
-      .map(nodeBox)
+      .filter((n) => !draggedIds.has(n.id) && !hasDraggedAncestor(n, byId, draggedIds))
+      .map((n) => nodeBox(n, byId))
       .filter((b): b is Box => b !== null)
     const result = computeSnap(dragged, candidates, settings.threshold)
     setGuides(result.guides)
