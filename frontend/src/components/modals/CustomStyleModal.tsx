@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
-import { clampHandles, sideDefault } from '@/utils/handleUtils'
+import { MIN_HANDLES, clampHandles, sideDefault } from '@/utils/handleUtils'
 import { THEMES } from '@/utils/themes'
 import { applyOpacity } from '@/utils/colorUtils'
 import type {
@@ -229,7 +229,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
               <span className="text-xs text-[#8b949e] w-12">{label}</span>
               <input
                 type="number"
-                min={sideDefault(side)}
+                min={MIN_HANDLES}
                 max={64}
                 step={1}
                 value={style[key] ?? sideDefault(side)}

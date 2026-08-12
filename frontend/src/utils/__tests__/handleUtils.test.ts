@@ -3,6 +3,8 @@ import {
   MIN_BOTTOM_HANDLES,
   MAX_BOTTOM_HANDLES,
   MAX_HANDLES,
+  MIN_HANDLES,
+  sideHandleCount,
   bottomHandleId,
   bottomHandlePositions,
   clampBottomHandles,
@@ -36,6 +38,7 @@ describe('clampBottomHandles', () => {
   it('clamps below MIN to MIN', () => {
     expect(clampBottomHandles(0)).toBe(MIN_BOTTOM_HANDLES)
     expect(clampBottomHandles(-5)).toBe(MIN_BOTTOM_HANDLES)
+    expect(MIN_BOTTOM_HANDLES).toBe(0)
   })
 
   it('supports at least 52 ports (issue #20 — Cisco 48+4 SFP)', () => {
@@ -47,11 +50,11 @@ describe('clampBottomHandles', () => {
     expect(clampBottomHandles(9999)).toBe(MAX_BOTTOM_HANDLES)
   })
 
-  it('returns MIN for non-finite or non-number', () => {
-    expect(clampBottomHandles(NaN)).toBe(MIN_BOTTOM_HANDLES)
-    expect(clampBottomHandles(Infinity)).toBe(MIN_BOTTOM_HANDLES)
-    expect(clampBottomHandles('4' as unknown)).toBe(MIN_BOTTOM_HANDLES)
-    expect(clampBottomHandles(undefined)).toBe(MIN_BOTTOM_HANDLES)
+  it('returns the side default for non-finite or non-number', () => {
+    expect(clampBottomHandles(NaN)).toBe(1)
+    expect(clampBottomHandles(Infinity)).toBe(1)
+    expect(clampBottomHandles('4' as unknown)).toBe(1)
+    expect(clampBottomHandles(undefined)).toBe(1)
   })
 
   it('floors fractional values', () => {
@@ -113,7 +116,8 @@ describe('bottomHandlePositions — uniform spacing for ≥5', () => {
   })
 
   it('clamps out-of-range counts before computing', () => {
-    expect(bottomHandlePositions(0)).toEqual([50])
+    expect(bottomHandlePositions(0)).toEqual([])
+    expect(bottomHandlePositions(-2)).toEqual([])
     expect(bottomHandlePositions(99)).toHaveLength(MAX_BOTTOM_HANDLES)
   })
 })
@@ -226,9 +230,11 @@ describe('handleId', () => {
 })
 
 describe('clampHandles', () => {
-  it('min is the side default (0 for L/R, 1 for T/B)', () => {
-    expect(clampHandles('top', 0)).toBe(1)
-    expect(clampHandles('bottom', -3)).toBe(1)
+  it('min is 0 for every side, top/bottom included', () => {
+    expect(clampHandles('top', 0)).toBe(0)
+    expect(clampHandles('bottom', 0)).toBe(0)
+    expect(clampHandles('top', -3)).toBe(0)
+    expect(clampHandles('bottom', -3)).toBe(0)
     expect(clampHandles('left', -3)).toBe(0)
     expect(clampHandles('right', 0)).toBe(0)
   })
@@ -236,9 +242,10 @@ describe('clampHandles', () => {
     expect(clampHandles('top', 9999)).toBe(MAX_HANDLES)
     expect(clampHandles('left', 65)).toBe(64)
   })
-  it('non-finite / non-number falls back to side min', () => {
+  it('non-finite / non-number falls back to the side default', () => {
     expect(clampHandles('left', NaN)).toBe(0)
     expect(clampHandles('top', undefined)).toBe(1)
+    expect(clampHandles('bottom', NaN)).toBe(1)
     expect(clampHandles('right', '4' as unknown)).toBe(0)
   })
   it('floors fractional values', () => {
@@ -259,9 +266,9 @@ describe('handlePositions', () => {
     expect(handlePositions('left', 0)).toEqual([])
     expect(handlePositions('right', 0)).toEqual([])
   })
-  it('top/bottom clamp 0 up to 1 (never empty)', () => {
-    expect(handlePositions('top', 0)).toEqual([50])
-    expect(handlePositions('bottom', 0)).toEqual([50])
+  it('top/bottom accept 0 and render nothing', () => {
+    expect(handlePositions('top', 0)).toEqual([])
+    expect(handlePositions('bottom', 0)).toEqual([])
   })
 })
 
@@ -305,5 +312,32 @@ describe('removedHandleIds — all sides', () => {
 describe('SIDES', () => {
   it('lists all four sides', () => {
     expect([...SIDES].sort()).toEqual(['bottom', 'left', 'right', 'top'])
+  })
+})
+
+describe('zero connection points on top/bottom (issue: min was 1)', () => {
+  it('MIN_HANDLES is 0', () => {
+    expect(MIN_HANDLES).toBe(0)
+  })
+
+  it('sideHandleCount honours an explicit 0 on top and bottom', () => {
+    const data = { label: 'n', top_handles: 0, bottom_handles: 0 } as never
+    expect(sideHandleCount(data, 'top')).toBe(0)
+    expect(sideHandleCount(data, 'bottom')).toBe(0)
+  })
+
+  it('still defaults top/bottom to 1 when the field is missing', () => {
+    const data = { label: 'n' } as never
+    expect(sideHandleCount(data, 'top')).toBe(1)
+    expect(sideHandleCount(data, 'bottom')).toBe(1)
+  })
+
+  it('renders no handle position for a 0-count top/bottom side', () => {
+    expect(handlePositions('top', 0)).toEqual([])
+    expect(handlePositions('bottom', 0)).toEqual([])
+  })
+
+  it('removes every top handle when going 2 → 0', () => {
+    expect(removedHandleIds('top', 2, 0)).toEqual(new Set(['top', 'top-2']))
   })
 })

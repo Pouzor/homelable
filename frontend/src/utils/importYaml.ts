@@ -75,10 +75,12 @@ export function parseYamlToCanvas(
       ...(hasHardware ? { show_hardware: true } : {}),
       // Restore custom connection-point counts so the edges below attach to the
       // slots they were exported on instead of collapsing onto slot 0.
-      ...(yn.topHandles ? { top_handles: yn.topHandles } : {}),
-      ...(yn.bottomHandles ? { bottom_handles: yn.bottomHandles } : {}),
-      ...(yn.leftHandles ? { left_handles: yn.leftHandles } : {}),
-      ...(yn.rightHandles ? { right_handles: yn.rightHandles } : {}),
+      // A count of 0 is meaningful (side with no connection point), so test for
+      // a number rather than truthiness.
+      ...(typeof yn.topHandles === 'number' ? { top_handles: yn.topHandles } : {}),
+      ...(typeof yn.bottomHandles === 'number' ? { bottom_handles: yn.bottomHandles } : {}),
+      ...(typeof yn.leftHandles === 'number' ? { left_handles: yn.leftHandles } : {}),
+      ...(typeof yn.rightHandles === 'number' ? { right_handles: yn.rightHandles } : {}),
       // Restore the port-number toggle (issue #272).
       ...(yn.showPortNumbers ? { show_port_numbers: true } : {}),
     }
