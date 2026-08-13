@@ -784,7 +784,7 @@ describe('DetailPanel', () => {
     it('paints a service red when its live status is offline', () => {
       setupStore(
         { ip: '192.168.1.10', services: [{ port: 8080, protocol: 'tcp', service_name: 'nginx', path: '' }] },
-        { 'n1:8080/tcp': 'offline' },
+        { 'n1:8080/tcp@': 'offline' },
       )
       render(<DetailPanel onEdit={vi.fn()} />)
       expect(screen.getByRole('link', { name: 'nginx' }).style.color).toBe('rgb(248, 81, 73)') // #f85149
@@ -793,10 +793,26 @@ describe('DetailPanel', () => {
     it('keeps the category colour when the live status is online', () => {
       setupStore(
         { ip: '192.168.1.10', services: [{ port: 8080, protocol: 'tcp', service_name: 'nginx', path: '' }] },
-        { 'n1:8080/tcp': 'online' },
+        { 'n1:8080/tcp@': 'online' },
       )
       render(<DetailPanel onEdit={vi.fn()} />)
       expect(screen.getByRole('link', { name: 'nginx' }).style.color).toBe('rgb(0, 212, 255)') // #00d4ff (web)
+    })
+
+    it('paints only the offline vhost red when two services share a port', () => {
+      setupStore(
+        {
+          ip: '192.168.1.10',
+          services: [
+            { port: 443, protocol: 'tcp', service_name: 'blog', host: 'blog.example.com', path: '' },
+            { port: 443, protocol: 'tcp', service_name: 'shop', host: 'shop.example.com', path: '' },
+          ],
+        },
+        { 'n1:443/tcp@shop.example.com': 'offline' },
+      )
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByRole('link', { name: 'blog' }).style.color).toBe('rgb(0, 212, 255)') // #00d4ff (web)
+      expect(screen.getByRole('link', { name: 'shop' }).style.color).toBe('rgb(248, 81, 73)') // #f85149
     })
   })
 

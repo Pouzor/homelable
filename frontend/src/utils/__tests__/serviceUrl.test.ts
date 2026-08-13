@@ -109,6 +109,14 @@ describe('getServiceUrl', () => {
       expect(getServiceUrl(withHost('blog.example.com', 3000, 'admin'), '192.168.1.10')).toBe('http://blog.example.com:3000/admin')
     })
 
+    it('returns null for a scheme-only override instead of throwing', () => {
+      expect(getServiceUrl(withHost('https://', 443), '192.168.1.10')).toBeNull()
+    })
+
+    it('lets the service port override the port carried by the override host', () => {
+      expect(getServiceUrl(withHost('blog.example.com:8443', 3000), '192.168.1.10')).toBe('http://blog.example.com:3000')
+    })
+
     it('still returns null for a UDP service', () => {
       expect(getServiceUrl({ ...svc(53, 'udp', 'dns'), host: 'dns.example.com' }, '192.168.1.10')).toBeNull()
     })

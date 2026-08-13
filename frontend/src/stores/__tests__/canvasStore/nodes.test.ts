@@ -34,8 +34,19 @@ describe('canvasStore — nodes', () => {
       { port: 443, protocol: 'tcp', status: 'online' },
     ])
     const { serviceStatuses } = useCanvasStore.getState()
-    expect(serviceStatuses['node-1:80/tcp']).toBe('offline')
-    expect(serviceStatuses['node-1:443/tcp']).toBe('online')
+    expect(serviceStatuses['node-1:80/tcp@']).toBe('offline')
+    expect(serviceStatuses['node-1:443/tcp@']).toBe('online')
+  })
+
+  it('setServiceStatuses keys vhosts sharing a port apart by host', () => {
+    const { setServiceStatuses } = useCanvasStore.getState()
+    setServiceStatuses('node-1', [
+      { port: 443, protocol: 'tcp', host: 'blog.example.com', status: 'online' },
+      { port: 443, protocol: 'tcp', host: 'shop.example.com', status: 'offline' },
+    ])
+    const { serviceStatuses } = useCanvasStore.getState()
+    expect(serviceStatuses['node-1:443/tcp@blog.example.com']).toBe('online')
+    expect(serviceStatuses['node-1:443/tcp@shop.example.com']).toBe('offline')
   })
 
   it('setServiceStatuses merges without dropping other nodes', () => {
@@ -43,8 +54,8 @@ describe('canvasStore — nodes', () => {
     setServiceStatuses('node-1', [{ port: 80, protocol: 'tcp', status: 'online' }])
     setServiceStatuses('node-2', [{ port: 22, protocol: 'tcp', status: 'offline' }])
     const { serviceStatuses } = useCanvasStore.getState()
-    expect(serviceStatuses['node-1:80/tcp']).toBe('online')
-    expect(serviceStatuses['node-2:22/tcp']).toBe('offline')
+    expect(serviceStatuses['node-1:80/tcp@']).toBe('online')
+    expect(serviceStatuses['node-2:22/tcp@']).toBe('offline')
   })
 
   it('does not mark canvas unsaved on a service status update', () => {

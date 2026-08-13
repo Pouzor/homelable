@@ -467,9 +467,78 @@ async def test_check_services_returns_status_per_service():
     with patch("app.services.status_checker._http_get", new_callable=AsyncMock, return_value=True):
         results = await check_services("10.0.0.1", services)
     assert results == [
-        {"port": 80, "protocol": "tcp", "status": "online"},
-        {"port": 5432, "protocol": "tcp", "status": "unknown"},
+        {"port": 80, "protocol": "tcp", "host": None, "status": "online"},
+        {"port": 5432, "protocol": "tcp", "host": None, "status": "unknown"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_check_services_echoes_the_host_override():
+    services = [{"port": 443, "protocol": "tcp", "service_name": "blog", "host": "blog.example.com"}]
+    with patch("app.services.status_checker._http_get", new_callable=AsyncMock, return_value=True):
+        results = await check_services("10.0.0.1", services)
+    assert results == [
+        {"port": 443, "protocol": "tcp", "host": "blog.example.com", "status": "online"},
+    ]
+
+
+# --- Per-service host override ---
+
+
+async def _captured_url(svc, host):
+    captured = {}
+
+    async def fake_http_get(url, verify=False):
+        captured["url"] = url
+        return True
+
+    with patch("app.services.status_checker._http_get", side_effect=fake_http_get):
+        await check_service(svc, host)
+    return captured.get("url")
+
+
+@pytest.mark.asyncio
+async def test_check_service_uses_the_host_override():
+    svc = {"port": 8080, "protocol": "tcp", "service_name": "blog", "host": "blog.example.com"}
+    assert await _captured_url(svc, "10.0.0.1") == "http://blog.example.com:8080"
+
+
+@pytest.mark.asyncio
+async def test_check_service_falls_back_to_the_node_host_when_override_is_blank():
+    svc = {"port": 8080, "protocol": "tcp", "service_name": "blog", "host": "   "}
+    assert await _captured_url(svc, "10.0.0.1") == "http://10.0.0.1:8080"
+
+
+@pytest.mark.asyncio
+async def test_check_service_honours_a_scheme_in_the_override():
+    svc = {"protocol": "tcp", "service_name": "blog", "host": "https://blog.example.com"}
+    assert await _captured_url(svc, "10.0.0.1") == "https://blog.example.com"
+
+
+@pytest.mark.asyncio
+async def test_check_service_takes_the_port_from_the_override():
+    svc = {"protocol": "tcp", "service_name": "blog", "host": "blog.example.com:8443"}
+    assert await _captured_url(svc, "10.0.0.1") == "https://blog.example.com:8443"
+
+
+@pytest.mark.asyncio
+async def test_check_service_lets_the_service_port_beat_the_override_port():
+    svc = {"port": 3000, "protocol": "tcp", "service_name": "blog", "host": "blog.example.com:8443"}
+    assert await _captured_url(svc, "10.0.0.1") == "http://blog.example.com:3000"
+
+
+@pytest.mark.asyncio
+async def test_check_service_brackets_an_ipv6_override():
+    svc = {"port": 80, "protocol": "tcp", "service_name": "http", "host": "[2001:db8::1]:8080"}
+    assert await _captured_url(svc, "10.0.0.1") == "http://[2001:db8::1]:80"
+
+
+@pytest.mark.asyncio
+async def test_check_service_skips_a_non_http_port_behind_an_override():
+    svc = {"port": 5432, "protocol": "tcp", "service_name": "postgres", "host": "db.example.com"}
+    with patch("app.services.status_checker._http_get", new_callable=AsyncMock) as mock_get:
+        assert await check_service(svc, "10.0.0.1") == "unknown"
+    mock_get.assert_not_called()
 
 
 @pytest.mark.asyncio
