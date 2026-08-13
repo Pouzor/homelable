@@ -798,6 +798,12 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
         onApprove={handleApprove}
         onHide={handleHide}
         onIgnore={handleIgnore}
+        onSaved={(saved) => {
+          // Patch in place rather than refetch: the grid keeps its scroll
+          // position and the open detail modal keeps showing the same device.
+          setDevices((prev) => prev.map((d) => (d.id === saved.id ? saved : d)))
+          setSelected(saved)
+        }}
       />
     </>
   )

@@ -426,6 +426,55 @@ async def init_db() -> None:
             await conn.exec_driver_sql(
                 "UPDATE nodes SET mac = lower(replace(mac, '-', ':')) WHERE mac IS NOT NULL"
             )
+        # 3.3.0 — the inventory row owns the device facts, the canvas node only
+        # owns how it is drawn. These columns receive what used to live solely on
+        # `nodes`. Additive here; `nodes` keeps its copies until the backfill has
+        # run and been verified.
+        inventory_device_migrations: list[tuple[str, str]] = [
+            ("device_inventory.label", "ALTER TABLE device_inventory ADD COLUMN label TEXT"),
+            ("device_inventory.type", "ALTER TABLE device_inventory ADD COLUMN type TEXT"),
+            ("device_inventory.notes", "ALTER TABLE device_inventory ADD COLUMN notes TEXT"),
+            ("device_inventory.cpu_count", "ALTER TABLE device_inventory ADD COLUMN cpu_count INTEGER"),
+            ("device_inventory.cpu_model", "ALTER TABLE device_inventory ADD COLUMN cpu_model TEXT"),
+            ("device_inventory.ram_gb", "ALTER TABLE device_inventory ADD COLUMN ram_gb FLOAT"),
+            ("device_inventory.disk_gb", "ALTER TABLE device_inventory ADD COLUMN disk_gb FLOAT"),
+            (
+                "device_inventory.show_hardware",
+                "ALTER TABLE device_inventory ADD COLUMN show_hardware BOOLEAN DEFAULT 0",
+            ),
+            ("device_inventory.check_method", "ALTER TABLE device_inventory ADD COLUMN check_method TEXT"),
+            ("device_inventory.check_target", "ALTER TABLE device_inventory ADD COLUMN check_target TEXT"),
+            (
+                "device_inventory.status_live",
+                "ALTER TABLE device_inventory ADD COLUMN status_live TEXT DEFAULT 'unknown'",
+            ),
+            ("device_inventory.last_seen", "ALTER TABLE device_inventory ADD COLUMN last_seen DATETIME"),
+            ("device_inventory.last_scan", "ALTER TABLE device_inventory ADD COLUMN last_scan DATETIME"),
+            (
+                "device_inventory.response_time_ms",
+                "ALTER TABLE device_inventory ADD COLUMN response_time_ms INTEGER",
+            ),
+            ("device_inventory.updated_at", "ALTER TABLE device_inventory ADD COLUMN updated_at DATETIME"),
+        ]
+        for label, sql in inventory_device_migrations:
+            await _try_migrate(conn, sql, label=label)
+        # Backfill the columns that carry a non-NULL default in the model, so a
+        # legacy row round-trips through Pydantic without tripping the validators.
+        for label, sql in (
+            (
+                "device_inventory.status_live.backfill",
+                "UPDATE device_inventory SET status_live = 'unknown' WHERE status_live IS NULL",
+            ),
+            (
+                "device_inventory.show_hardware.backfill",
+                "UPDATE device_inventory SET show_hardware = 0 WHERE show_hardware IS NULL",
+            ),
+            (
+                "device_inventory.updated_at.backfill",
+                "UPDATE device_inventory SET updated_at = discovered_at WHERE updated_at IS NULL",
+            ),
+        ):
+            await _try_migrate(conn, sql, label=label)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

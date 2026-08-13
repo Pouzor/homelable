@@ -22,7 +22,12 @@ from app.db.models import (
     ScanRun,
 )
 from app.schemas.nodes import NodeCreate
-from app.schemas.scan import InventoryDeviceCreate, InventoryDeviceResponse, ScanRunResponse
+from app.schemas.scan import (
+    InventoryDeviceCreate,
+    InventoryDeviceResponse,
+    InventoryDeviceUpdate,
+    ScanRunResponse,
+)
 from app.services.mac_utils import normalize_mac
 from app.services.node_dedupe import dedupe_nodes_by_ieee, find_duplicate_node
 from app.services.scanner import DeepScanOptions, _valid_port_range, request_cancel, run_scan
@@ -355,8 +360,53 @@ async def create_pending(
         status="pending",
         discovery_source=body.discovery_source,
         discovery_sources=[body.discovery_source],
+        os=body.os,
+        services=body.services,
+        friendly_name=body.friendly_name,
+        device_subtype=body.device_subtype,
+        label=body.label,
+        type=body.type,
+        notes=body.notes,
+        cpu_count=body.cpu_count,
+        cpu_model=body.cpu_model,
+        ram_gb=body.ram_gb,
+        disk_gb=body.disk_gb,
+        show_hardware=body.show_hardware,
+        check_method=body.check_method,
+        check_target=body.check_target,
     )
     db.add(device)
+    await db.commit()
+    await db.refresh(device)
+    return (await _with_canvas_counts(db, [device]))[0]
+
+
+@router.patch("/pending/{device_id}", response_model=InventoryDeviceResponse)
+async def update_pending(
+    device_id: str,
+    body: InventoryDeviceUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> InventoryDevice:
+    """Edit an inventory row — the device facts, not its lifecycle.
+
+    The inventory row owns what a device *is*; a canvas node only owns how it is
+    drawn. This is the write path behind the device detail modal, and applies
+    only the fields the client actually sent.
+    """
+    device = (
+        await db.execute(select(InventoryDevice).where(InventoryDevice.id == device_id))
+    ).scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    data = body.model_dump(exclude_unset=True)
+    if "mac" in data:
+        # Same reason as create_pending: dedup matches MACs by equality.
+        data["mac"] = normalize_mac(data["mac"])
+    for field, value in data.items():
+        setattr(device, field, value)
+
     await db.commit()
     await db.refresh(device)
     return (await _with_canvas_counts(db, [device]))[0]

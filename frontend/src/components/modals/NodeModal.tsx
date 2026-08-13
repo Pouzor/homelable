@@ -14,17 +14,7 @@ import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, 
 import { IconPickerPanel } from './IconPickerPanel'
 import { MAX_HANDLES, MIN_HANDLES, clampHandles, sideDefault, handleCountField, type Side } from '@/utils/handleUtils'
 import { isValidParentNode } from '@/utils/virtualEdgeParent'
-
-const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
-  { label: 'Hardware',       types: ['isp', 'router', 'firewall', 'switch', 'server', 'nas', 'kvm', 'ap', 'printer'] },
-  { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker_host', 'docker_container'] },
-  { label: 'IoT',            types: ['iot', 'camera', 'cpl'] },
-  { label: 'Zigbee',         types: ['zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice'] },
-  { label: 'Z-Wave',         types: ['zwave_coordinator', 'zwave_router', 'zwave_enddevice'] },
-  { label: 'Personal',       types: ['computer', 'laptop', 'mobile'] },
-  { label: 'Electrical',     types: ['grid', 'ups', 'battery', 'generator', 'solar_panel', 'inverter', 'circuit_breaker', 'contactor', 'electrical_switch', 'socket', 'light', 'meter', 'transformer', 'load'] },
-  { label: 'Generic',        types: ['generic', 'groupRect'] },
-]
+import { NODE_TYPE_GROUPS } from '@/utils/nodeTypeGroups'
 
 // Maps a side to its per-type default field on NodeTypeStyle.
 const SIDE_STYLE_KEY: Record<Side, keyof NodeTypeStyle> = {
