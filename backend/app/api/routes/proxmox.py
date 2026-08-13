@@ -35,7 +35,7 @@ from app.schemas.proxmox import (
 from app.schemas.scan import ScanRunResponse
 from app.services.discovery_sources import add_source
 from app.services.mac_utils import normalize_mac
-from app.services.node_dedupe import dedupe_nodes_by_ieee
+from app.services.node_dedupe import dedupe_nodes_by_device
 from app.services.proxmox_service import (
     build_proxmox_cluster_links,
     build_proxmox_properties,
@@ -254,7 +254,7 @@ async def _persist_pending_import(
 
     Update-in-place only. Nothing is ever deleted; hidden rows stay hidden.
     """
-    await dedupe_nodes_by_ieee(db)
+    await dedupe_nodes_by_device(db)
 
     cluster_pairs = build_proxmox_cluster_links(nodes_raw)
     cluster_members = {ieee for pair in cluster_pairs for ieee in pair}
@@ -270,50 +270,43 @@ async def _persist_pending_import(
         mac = normalize_mac(n.get("mac"))
         props = build_proxmox_properties(n)
 
-        # 1) Already on a canvas? Match by ieee OR ip OR mac (the cross-source
-        # dedup key — a stopped VM has no IP but its configured NIC MAC still
-        # matches an ARP-scanned node). Refresh in place: merge properties, adopt
-        # the pve identity onto a scanned node, backfill blank specs/hostname/mac.
-        # Do NOT stomp user-set type/status.
-        node_filter = [Node.ieee_address == ieee]
-        if ip:
-            node_filter.append(Node.ip == ip)
-        if mac:
-            node_filter.append(Node.mac == mac)
-        existing_nodes = (
-            await db.execute(select(Node).where(or_(*node_filter)).order_by(Node.id))
-        ).scalars().all()
-
-        if existing_nodes:
-            for en in existing_nodes:
-                en.properties = merge_proxmox_properties(en.properties, props)
-                if not en.ieee_address:
-                    en.ieee_address = ieee
-                if ip and not en.ip:
-                    en.ip = ip
-                if mac and not en.mac:
-                    en.mac = mac
-                en.hostname = en.hostname or n.get("hostname")
-                en.cpu_count = en.cpu_count or n.get("cpu_count")
-                en.ram_gb = en.ram_gb or n.get("ram_gb")
-                en.disk_gb = en.disk_gb or n.get("disk_gb")
-                # A cluster host needs one left + one right handle for the
-                # cluster edge endpoints (both default to 0).
-                if ieee in cluster_members:
-                    en.left_handles = max(en.left_handles or 0, 1)
-                    en.right_handles = max(en.right_handles or 0, 1)
-            await _ensure_inventory_row(db, ieee, ip, mac, n, props, approved=True)
-            pending_updated += 1
-            continue
-
-        # 2) Not on canvas — upsert the pending inventory row.
+        # Match by ieee OR ip OR mac (the cross-source dedup key — a stopped VM
+        # has no IP but its configured NIC MAC still matches an ARP-scanned
+        # device). The inventory row owns the facts, so the import merges into
+        # it whether or not the device is drawn anywhere; a node only needs its
+        # cluster handles adjusted. Do NOT stomp user-set type/status.
         pending = await _find_pending(db, ieee, ip, mac)
+        drawn = bool(
+            pending
+            and (
+                await db.execute(select(Node.id).where(Node.device_id == pending.id).limit(1))
+            ).scalar_one_or_none()
+        )
+
         if pending is None:
             db.add(_new_pending(ieee, ip, mac, n, props, status="pending"))
             pending_created += 1
         else:
-            _refresh_pending(pending, ieee, ip, mac, n, props)
+            if drawn:
+                # Already on a canvas: refresh the facts but leave the lifecycle
+                # alone (_refresh_pending would revive it as pending).
+                await _ensure_inventory_row(db, ieee, ip, mac, n, props, approved=True)
+            else:
+                _refresh_pending(pending, ieee, ip, mac, n, props)
+            pending.cpu_count = pending.cpu_count or n.get("cpu_count")
+            pending.ram_gb = pending.ram_gb or n.get("ram_gb")
+            pending.disk_gb = pending.disk_gb or n.get("disk_gb")
             pending_updated += 1
+
+            # A cluster host needs one left + one right handle for the cluster
+            # edge endpoints (both default to 0) — the one piece of this that is
+            # genuinely about how the node is drawn.
+            if ieee in cluster_members:
+                for en in (
+                    await db.execute(select(Node).where(Node.device_id == pending.id))
+                ).scalars().all():
+                    en.left_handles = max(en.left_handles or 0, 1)
+                    en.right_handles = max(en.right_handles or 0, 1)
 
     links_recorded = await _replace_links(db, edges_raw, cluster_pairs)
     await db.commit()
@@ -357,6 +350,11 @@ def _new_pending(
         vendor=n.get("vendor"),
         model=n.get("model"),
         properties=props,
+        # Specs the guest reports. They used to land only on the canvas node;
+        # the inventory row owns them now.
+        cpu_count=n.get("cpu_count"),
+        ram_gb=n.get("ram_gb"),
+        disk_gb=n.get("disk_gb"),
         status=status,
         discovery_source=_PROXMOX_GUEST_SOURCE,
         discovery_sources=[_PROXMOX_GUEST_SOURCE],

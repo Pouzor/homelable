@@ -74,7 +74,8 @@ async def test_broadcast_status_sends_to_connected_clients():
     _connections.append(fake)
     try:
         await broadcast_status(
-            node_id="node-1",
+            device_id="dev-1",
+            node_ids=["node-1", "node-2"],
             status="online",
             checked_at="2024-01-01T00:00:00",
             response_time_ms=42,
@@ -85,7 +86,9 @@ async def test_broadcast_status_sends_to_connected_clients():
     assert len(received) == 1
     msg = json.loads(received[0])
     assert msg["type"] == "status"
-    assert msg["node_id"] == "node-1"
+    # One check, addressed by device, lighting up every canvas drawing it.
+    assert msg["device_id"] == "dev-1"
+    assert msg["node_ids"] == ["node-1", "node-2"]
     assert msg["status"] == "online"
     assert msg["response_time_ms"] == 42
 
@@ -102,7 +105,7 @@ async def test_broadcast_status_no_response_time():
     fake = FakeWS()
     _connections.append(fake)
     try:
-        await broadcast_status(node_id="n", status="offline", checked_at="t")
+        await broadcast_status(device_id="d", node_ids=["n"], status="offline", checked_at="t")
     finally:
         _connections.remove(fake)
 
@@ -122,7 +125,7 @@ async def test_broadcast_status_removes_dead_connection():
     _connections.append(dead)
     initial_len = len(_connections)
 
-    await broadcast_status(node_id="n", status="online", checked_at="t")
+    await broadcast_status(device_id="d", node_ids=["n"], status="online", checked_at="t")
 
     assert dead not in _connections
     assert len(_connections) == initial_len - 1
@@ -159,7 +162,7 @@ async def test_broadcast_scan_update():
 async def test_broadcast_no_connections():
     """broadcast_* with no connections must not raise."""
     assert len(_connections) == 0
-    await broadcast_status(node_id="n", status="online", checked_at="t")
+    await broadcast_status(device_id="d", node_ids=["n"], status="online", checked_at="t")
     await broadcast_scan_update(run_id="r", devices_found=0)
 
 
@@ -179,7 +182,8 @@ async def test_broadcast_service_status_payload():
     _connections.append(fake)
     try:
         await broadcast_service_status(
-            node_id="node-7",
+            device_id="dev-7",
+            node_ids=["node-7"],
             services=[{"port": 80, "protocol": "tcp", "status": "offline"}],
             checked_at="2024-01-01T00:00:00",
         )
@@ -188,7 +192,8 @@ async def test_broadcast_service_status_payload():
 
     msg = json.loads(received[0])
     assert msg["type"] == "service_status"
-    assert msg["node_id"] == "node-7"
+    assert msg["device_id"] == "dev-7"
+    assert msg["node_ids"] == ["node-7"]
     assert msg["services"] == [{"port": 80, "protocol": "tcp", "status": "offline"}]
 
 
@@ -217,7 +222,7 @@ async def test_broadcast_dead_connection_dropped_once_safely():
 
     dead = DeadWS()
     _connections.append(dead)
-    await broadcast_status(node_id="n", status="online", checked_at="t")
+    await broadcast_status(device_id="d", node_ids=["n"], status="online", checked_at="t")
     # A second broadcast must not raise even though dead is already gone.
-    await broadcast_status(node_id="n", status="online", checked_at="t")
+    await broadcast_status(device_id="d", node_ids=["n"], status="online", checked_at="t")
     assert dead not in _connections

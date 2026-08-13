@@ -596,13 +596,20 @@ async def test_run_scan_adds_nmap_devices_as_pending(mem_db):
 
 @pytest.mark.asyncio
 async def test_run_scan_stamps_last_scan_on_matching_node_by_ip(mem_db):
-    """A scan that sees a device matching a canvas node (by IP) stamps last_scan."""
+    """A scan that sees a known device stamps last_scan on its inventory row.
+
+    The stamp is a fact about the device, so it lands once on the row every
+    canvas draws — not once per node.
+    """
     from app.services.scanner import run_scan
 
     run_id = _make_run_id()
     async with mem_db() as session:
         session.add(_make_scan_run(run_id))
-        session.add(Node(id="n1", type="server", label="NAS", ip="192.168.1.5"))
+        device = InventoryDevice(id="d1", ip="192.168.1.5", status="approved")
+        session.add(device)
+        await session.flush()
+        session.add(Node(id="n1", type="server", label="NAS", device_id="d1"))
         await session.commit()
 
     nmap_hosts = [{"ip": "192.168.1.5", "hostname": "nas.lan", "mac": None, "os": None, "open_ports": []}]
@@ -614,21 +621,24 @@ async def test_run_scan_stamps_last_scan_on_matching_node_by_ip(mem_db):
             await run_scan(["192.168.1.0/24"], session, run_id)
 
     async with mem_db() as session:
-        node = await session.get(Node, "n1")
+        device = await session.get(InventoryDevice, "d1")
 
-    assert node is not None
-    assert node.last_scan is not None
+    assert device is not None
+    assert device.last_scan is not None
 
 
 @pytest.mark.asyncio
 async def test_run_scan_stamps_last_scan_on_matching_node_by_mac(mem_db):
-    """A node with no IP but a matching MAC still gets last_scan stamped."""
+    """A device with no IP but a matching MAC still gets last_scan stamped."""
     from app.services.scanner import run_scan
 
     run_id = _make_run_id()
     async with mem_db() as session:
         session.add(_make_scan_run(run_id))
-        session.add(Node(id="n2", type="iot", label="Sensor", mac="AA:BB:CC:DD:EE:FF"))
+        device = InventoryDevice(id="d2", mac="aa:bb:cc:dd:ee:ff", status="approved")
+        session.add(device)
+        await session.flush()
+        session.add(Node(id="n2", type="iot", label="Sensor", device_id="d2"))
         await session.commit()
 
     nmap_hosts = [{"ip": "192.168.1.9", "hostname": None, "mac": "AA:BB:CC:DD:EE:FF", "os": None, "open_ports": []}]
@@ -640,21 +650,24 @@ async def test_run_scan_stamps_last_scan_on_matching_node_by_mac(mem_db):
             await run_scan(["192.168.1.0/24"], session, run_id)
 
     async with mem_db() as session:
-        node = await session.get(Node, "n2")
+        device = await session.get(InventoryDevice, "d2")
 
-    assert node is not None
-    assert node.last_scan is not None
+    assert device is not None
+    assert device.last_scan is not None
 
 
 @pytest.mark.asyncio
 async def test_run_scan_leaves_last_scan_untouched_on_unmatched_node(mem_db):
-    """A node whose IP/MAC is not seen by the scan keeps last_scan = None."""
+    """A device whose IP/MAC the scan never saw keeps last_scan = None."""
     from app.services.scanner import run_scan
 
     run_id = _make_run_id()
     async with mem_db() as session:
         session.add(_make_scan_run(run_id))
-        session.add(Node(id="n3", type="server", label="Other", ip="10.0.0.99"))
+        device = InventoryDevice(id="d3", ip="10.0.0.99", status="approved")
+        session.add(device)
+        await session.flush()
+        session.add(Node(id="n3", type="server", label="Other", device_id="d3"))
         await session.commit()
 
     nmap_hosts = [{"ip": "192.168.1.5", "hostname": None, "mac": None, "os": None, "open_ports": []}]
@@ -666,10 +679,10 @@ async def test_run_scan_leaves_last_scan_untouched_on_unmatched_node(mem_db):
             await run_scan(["192.168.1.0/24"], session, run_id)
 
     async with mem_db() as session:
-        node = await session.get(Node, "n3")
+        device = await session.get(InventoryDevice, "d3")
 
-    assert node is not None
-    assert node.last_scan is None
+    assert device is not None
+    assert device.last_scan is None
 
 
 @pytest.mark.asyncio
@@ -771,11 +784,12 @@ async def test_run_scan_keeps_canvas_nodes(mem_db):
     run_id = _make_run_id()
     async with mem_db() as session:
         session.add(_make_scan_run(run_id))
-        canvas_node = Node(
-            id=str(uuid.uuid4()), label="PVE", type="proxmox",
-            ip="192.168.1.100", status="online",
-        )
-        session.add(canvas_node)
+        drawn = InventoryDevice(id="d-pve", ip="192.168.1.100", status="pending")
+        session.add(drawn)
+        await session.flush()
+        session.add(Node(
+            id=str(uuid.uuid4()), label="PVE", type="proxmox", device_id="d-pve",
+        ))
         await session.commit()
 
     nmap_hosts = [{"ip": "192.168.1.100", "hostname": "pve.lan", "mac": None, "os": None, "open_ports": []}]

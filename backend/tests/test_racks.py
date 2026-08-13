@@ -508,8 +508,10 @@ class TestInventory:
         assert entry["services"] == [{"port": 445, "name": "smb"}]
         assert entry["node_label"] == "nas-truenas"
         assert entry["node_type"] == "nas"
-        assert entry["node_hostname"] == "nas.lan"
-        assert entry["node_os"] == "TrueNAS SCALE"
+        # The node no longer keeps its own copy: both views read the row, which
+        # the node create filled in without overwriting what the scan found.
+        assert entry["node_hostname"] == "nas"
+        assert entry["node_os"] == "TrueNAS"
         assert entry["node_check_method"] == "http"
         assert entry["node_design_id"] == network
         assert entry["node_design_name"] == "Network"
@@ -526,17 +528,16 @@ class TestInventory:
                 headers=headers,
             )
         ).json()
-        db_session.add(InventoryDevice(id="pd-seen", ip="192.168.1.77", suggested_type="server"))
         await db_session.execute(
-            text("UPDATE nodes SET last_seen = :ts WHERE id = :id"),
-            {"ts": "2026-08-08 10:00:00.000000", "id": node["id"]},
+            text("UPDATE device_inventory SET last_seen = :ts WHERE id = :id"),
+            {"ts": "2026-08-08 10:00:00.000000", "id": node["device_id"]},
         )
         await db_session.commit()
 
         items = (
             await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)
         ).json()["items"]
-        entry = next(i for i in items if i["id"] == "pd-seen")
+        entry = next(i for i in items if i["id"] == node["device_id"])
         assert entry["node_last_seen"].endswith(("Z", "+00:00"))
 
     async def test_prefers_the_node_the_mount_names(self, client: AsyncClient, headers):
@@ -631,9 +632,17 @@ class TestInventory:
         assert entry["node_design_name"] is None
         assert entry["services"] == []
 
-    async def test_falls_back_to_the_node_services(self, client: AsyncClient, headers, db_session):
-        """An approved device keeps its fingerprint on the node, not the inventory row."""
+    async def test_reports_the_services_a_canvas_added(self, client: AsyncClient, headers, db_session):
+        """Services documented on a canvas reach the rack — they are the device's.
+
+        The scan found the host but no services; the user typed one on the
+        logical canvas, and the rack prints it without the node being consulted.
+        """
         design_id = await _design(client, headers)
+        db_session.add(
+            InventoryDevice(id="pd-noservices", ip="192.168.1.63", suggested_type="server")
+        )
+        await db_session.commit()
         await client.post(
             "/api/v1/nodes",
             json={
@@ -644,10 +653,6 @@ class TestInventory:
             },
             headers=headers,
         )
-        db_session.add(
-            InventoryDevice(id="pd-noservices", ip="192.168.1.63", suggested_type="server")
-        )
-        await db_session.commit()
 
         items = (
             await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)

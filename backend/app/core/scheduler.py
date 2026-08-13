@@ -7,10 +7,11 @@ from typing import TYPE_CHECKING, Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.database import AsyncSessionLocal
-from app.db.models import Node
+from app.db.models import InventoryDevice, Node
 from app.services.status_checker import check_node, check_services
 
 if TYPE_CHECKING:
@@ -22,13 +23,23 @@ logger = logging.getLogger(__name__)
 scheduler: AsyncIOScheduler = AsyncIOScheduler()
 
 
-async def _check_single_node(
-    node_id: str,
+async def _nodes_by_device(db: AsyncSession) -> dict[str, list[str]]:
+    """Map each device id to the nodes drawing it, across every canvas."""
+    rows = (await db.execute(select(Node.id, Node.device_id).where(Node.device_id.is_not(None)))).all()
+    out: dict[str, list[str]] = {}
+    for node_id, device_id in rows:
+        out.setdefault(device_id, []).append(node_id)
+    return out
+
+
+async def _check_single_device(
+    device_id: str,
+    node_ids: list[str],
     check_method: str,
     check_target: str | None,
     ip: str | None,
 ) -> tuple[str, dict[str, object] | None]:
-    """Run a single node check; returns (node_id, result_or_None).
+    """Run a single device check; returns (device_id, result_or_None).
 
     Accepts plain scalars — not an ORM object — so there is no risk of
     DetachedInstanceError when the originating session has already closed.
@@ -37,45 +48,60 @@ async def _check_single_node(
 
     try:
         check_result = await check_node(check_method, check_target, ip)
+        raw_ms = check_result["response_time_ms"]
+        response_ms = raw_ms if isinstance(raw_ms, int) else None
         now = datetime.now(timezone.utc)
         async with AsyncSessionLocal() as db:
-            n = await db.get(Node, node_id)
-            if n:
-                n.status = check_result["status"]
-                n.response_time_ms = check_result["response_time_ms"]
+            device = await db.get(InventoryDevice, device_id)
+            if device:
+                device.status_live = str(check_result["status"])
+                device.response_time_ms = response_ms
                 if check_result["status"] == "online":
-                    n.last_seen = now
+                    device.last_seen = now
                 await db.commit()
         await broadcast_status(
-            node_id=node_id,
-            status=check_result["status"],
+            device_id=device_id,
+            node_ids=node_ids,
+            status=str(check_result["status"]),
             checked_at=now.isoformat(),
-            response_time_ms=check_result["response_time_ms"],
+            response_time_ms=response_ms,
         )
-        return node_id, check_result
+        return device_id, check_result
     except Exception as exc:
-        logger.error("Status check failed for node %s: %s", node_id, exc)
-        return node_id, None
+        logger.error("Status check failed for device %s: %s", device_id, exc)
+        return device_id, None
 
 
 async def _run_status_checks() -> None:
-    """Check all nodes concurrently and broadcast results via WebSocket."""
+    """Check every device once and broadcast the result to every canvas.
+
+    Device-scoped, not node-scoped: a host drawn on three canvases used to be
+    pinged three times and could report three different states. Hidden devices
+    are skipped — hiding one is how a user says "stop showing me this".
+    """
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(Node))
-        nodes = result.scalars().all()
+        devices = (
+            await db.execute(
+                select(InventoryDevice).where(
+                    InventoryDevice.check_method.is_not(None),
+                    InventoryDevice.check_method != "",
+                    InventoryDevice.status != "hidden",
+                )
+            )
+        ).scalars().all()
+        node_map = await _nodes_by_device(db)
         # Extract scalars while the session is open to avoid DetachedInstanceError
         checkable = [
-            (n.id, n.check_method, n.check_target, n.ip)
-            for n in nodes
-            if n.check_method
+            (d.id, node_map.get(d.id, []), d.check_method or "ping", d.check_target, d.ip)
+            for d in devices
         ]
 
     if not checkable:
         return
 
     await asyncio.gather(*[
-        _check_single_node(node_id, method, target, ip)
-        for node_id, method, target, ip in checkable
+        _check_single_device(device_id, node_ids, method, target, ip)
+        for device_id, node_ids, method, target, ip in checkable
     ])
 
 
@@ -89,27 +115,35 @@ def _node_host(ip: str | None, hostname: str | None) -> str | None:
 
 
 async def _run_service_checks() -> None:
-    """Check every service of every node and broadcast per-service results."""
+    """Check every service of every device and broadcast per-service results.
+
+    Device-scoped for the same reason as the status check: the services belong
+    to the device, so one pass serves every canvas showing it.
+    """
     if not settings.service_check_enabled:
         return
     from app.api.routes.status import broadcast_service_status  # avoid circular import
 
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(Node))
-        nodes = result.scalars().all()
+        devices = (
+            await db.execute(select(InventoryDevice).where(InventoryDevice.status != "hidden"))
+        ).scalars().all()
+        node_map = await _nodes_by_device(db)
         checkable = [
-            (n.id, _node_host(n.ip, n.hostname), list(n.services or []))
-            for n in nodes
-            if n.services
+            (d.id, node_map.get(d.id, []), _node_host(d.ip, d.hostname), list(d.services or []))
+            for d in devices
+            if d.services
         ]
 
     now = datetime.now(timezone.utc).isoformat()
-    for node_id, host, services in checkable:
+    for device_id, node_ids, host, services in checkable:
         try:
             statuses = await check_services(host, services)
-            await broadcast_service_status(node_id=node_id, services=statuses, checked_at=now)
+            await broadcast_service_status(
+                device_id=device_id, node_ids=node_ids, services=statuses, checked_at=now
+            )
         except Exception as exc:
-            logger.error("Service checks failed for node %s: %s", node_id, exc)
+            logger.error("Service checks failed for device %s: %s", device_id, exc)
 
 
 async def _run_proxmox_sync() -> None:

@@ -113,22 +113,25 @@ describe('useStatusPolling', () => {
     expect(ws.send).toHaveBeenCalledWith(JSON.stringify({ token: 'test-token' }))
   })
 
-  it('calls setNodeStatus with correct data on status message', () => {
+  it('lights up every node drawing the checked device', () => {
     renderHook(() => useStatusPolling())
     const ws = MockWebSocket.instances[0]
     ws.onmessage?.({
       data: JSON.stringify({
-        node_id: 'node-1',
+        device_id: 'dev-1',
+        node_ids: ['node-1', 'node-2'],
         status: 'online',
         checked_at: '2024-01-01T12:00:00Z',
         response_time_ms: 42,
       }),
     })
-    expect(mockSetNodeStatus).toHaveBeenCalledWith('node-1', {
+    const expected = {
       status: 'online',
       response_time_ms: 42,
       last_seen: '2024-01-01T12:00:00Z',
-    })
+    }
+    expect(mockSetNodeStatus).toHaveBeenCalledWith('node-1', expected)
+    expect(mockSetNodeStatus).toHaveBeenCalledWith('node-2', expected)
   })
 
   it('sets last_seen to undefined when status is offline', () => {
@@ -136,7 +139,8 @@ describe('useStatusPolling', () => {
     const ws = MockWebSocket.instances[0]
     ws.onmessage?.({
       data: JSON.stringify({
-        node_id: 'node-1',
+        device_id: 'dev-1',
+        node_ids: ['node-1'],
         status: 'offline',
         checked_at: '2024-01-01T12:00:00Z',
       }),
@@ -152,7 +156,9 @@ describe('useStatusPolling', () => {
     renderHook(() => useStatusPolling())
     const ws = MockWebSocket.instances[0]
     ws.onmessage?.({
-      data: JSON.stringify({ node_id: 'node-1', status: 'online', response_time_ms: null }),
+      data: JSON.stringify({
+        device_id: 'dev-1', node_ids: ['node-1'], status: 'online', response_time_ms: null,
+      }),
     })
     expect(mockSetNodeStatus).toHaveBeenCalledWith(
       'node-1',
@@ -173,7 +179,9 @@ describe('useStatusPolling', () => {
     const ws = MockWebSocket.instances[0]
     const services = [{ port: 80, protocol: 'tcp', status: 'offline' }]
     ws.onmessage?.({
-      data: JSON.stringify({ type: 'service_status', node_id: 'node-9', services }),
+      data: JSON.stringify({
+        type: 'service_status', device_id: 'dev-9', node_ids: ['node-9'], services,
+      }),
     })
     expect(mockSetServiceStatuses).toHaveBeenCalledWith('node-9', services)
     expect(mockSetNodeStatus).not.toHaveBeenCalled()

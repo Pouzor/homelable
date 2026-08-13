@@ -31,9 +31,13 @@ async def test_approve_zigbee_device_populates_properties(
     )
     assert res.status_code == 200
     node = (
-        await db_session.execute(select(NodeModel).where(NodeModel.ieee_address == "0xABCDEF"))
-    ).scalar_one()
-    keys = {p["key"]: p["value"] for p in node.properties}
+        await db_session.execute(select(NodeModel).where(NodeModel.device_id.is_not(None)))
+    ).scalars().first()
+    assert node is not None
+    # The device facts belong to the inventory row the node draws.
+    device = await db_session.get(InventoryDevice, node.device_id)
+    assert device is not None
+    keys = {p["key"]: p["value"] for p in device.properties}
     assert keys == {
         "IEEE": "0xABCDEF",
         "Vendor": "IKEA",
@@ -56,14 +60,18 @@ async def test_bulk_approve_zigbee_populates_properties(
     )
     assert res.status_code == 200
     node = (
-        await db_session.execute(select(NodeModel).where(NodeModel.ieee_address == "0xABCDEF"))
-    ).scalar_one()
-    keys = {p["key"]: p["value"] for p in node.properties}
+        await db_session.execute(select(NodeModel).where(NodeModel.device_id.is_not(None)))
+    ).scalars().first()
+    assert node is not None
+    # The device facts belong to the inventory row the node draws.
+    device = await db_session.get(InventoryDevice, node.device_id)
+    assert device is not None
+    keys = {p["key"]: p["value"] for p in device.properties}
     assert keys["IEEE"] == "0xABCDEF"
     assert keys["Vendor"] == "IKEA"
     assert keys["Model"] == "TRADFRI"
     assert keys["LQI"] == "180"
-    assert node.check_method == "none"
+    assert device.check_method == "none"
 
 
 def test_build_mac_property_returns_hidden_row():
@@ -133,9 +141,13 @@ async def test_approve_device_does_not_duplicate_mac_property(
     )
     assert res.status_code == 200
     node = (
-        await db_session.execute(select(NodeModel).where(NodeModel.ip == "192.168.1.100"))
-    ).scalar_one()
-    mac_props = [p for p in node.properties if p["key"] == "MAC"]
+        await db_session.execute(select(NodeModel).where(NodeModel.device_id.is_not(None)))
+    ).scalars().first()
+    assert node is not None
+    # The device facts belong to the inventory row the node draws.
+    device = await db_session.get(InventoryDevice, node.device_id)
+    assert device is not None
+    mac_props = [p for p in device.properties if p["key"] == "MAC"]
     assert len(mac_props) == 1
     # User's visibility choice is preserved.
     assert mac_props[0]["visible"] is True
@@ -328,9 +340,13 @@ async def test_single_approve_zwave_sets_wireless_fields(client, headers, db_ses
     assert res.status_code == 200
 
     node = (
-        await db_session.execute(select(Node).where(Node.ieee_address == "zwave-H-9"))
+        await db_session.execute(select(Node).join(InventoryDevice, Node.device_id == InventoryDevice.id).where(InventoryDevice.ieee_address == "zwave-H-9"))
     ).scalar_one()
     assert node.design_id == active
-    assert node.status == "online"
-    assert node.check_method == "none"
-    assert any(p["key"] == "Z-Wave ID" for p in node.properties)
+    node = (await db_session.execute(select(Node))).scalars().first()
+    assert node is not None
+    device = await db_session.get(InventoryDevice, node.device_id)
+    assert device is not None
+    assert device.status_live == "online"
+    assert device.check_method == "none"
+    assert any(p["key"] == "Z-Wave ID" for p in device.properties)

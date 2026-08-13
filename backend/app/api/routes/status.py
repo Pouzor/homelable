@@ -71,20 +71,36 @@ async def _broadcast(payload: str) -> None:
             _drop(conn)
 
 
-async def broadcast_status(node_id: str, status: str, checked_at: str, response_time_ms: int | None = None) -> None:
+async def broadcast_status(
+    device_id: str,
+    node_ids: list[str],
+    status: str,
+    checked_at: str,
+    response_time_ms: int | None = None,
+) -> None:
+    """Report one device's reachability to every canvas drawing it.
+
+    A device is checked once, not once per canvas, so the result is addressed by
+    device and carries the nodes it lights up. ``node_ids`` is empty for a
+    device that is in the inventory but on no canvas.
+    """
     await _broadcast(json.dumps({
         "type": "status",
-        "node_id": node_id,
+        "device_id": device_id,
+        "node_ids": node_ids,
         "status": status,
         "checked_at": checked_at,
         "response_time_ms": response_time_ms,
     }))
 
 
-async def broadcast_service_status(node_id: str, services: list[dict[str, object]], checked_at: str) -> None:
+async def broadcast_service_status(
+    device_id: str, node_ids: list[str], services: list[dict[str, object]], checked_at: str
+) -> None:
     await _broadcast(json.dumps({
         "type": "service_status",
-        "node_id": node_id,
+        "device_id": device_id,
+        "node_ids": node_ids,
         "services": services,
         "checked_at": checked_at,
     }))

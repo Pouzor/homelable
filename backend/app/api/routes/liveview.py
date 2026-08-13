@@ -13,6 +13,7 @@ from app.db.models import CanvasState, Design, Edge, Node
 from app.schemas.canvas import CanvasStateResponse
 from app.schemas.edges import EdgeResponse
 from app.schemas.nodes import NodeResponse
+from app.services.inventory_sync import hydrated_node, load_devices_for
 
 router = APIRouter()
 
@@ -59,13 +60,15 @@ async def liveview_canvas(
     if design_id is None:
         return CanvasStateResponse(nodes=[], edges=[], viewport={"x": 0, "y": 0, "zoom": 1}, custom_style=None)
 
-    nodes = (await db.execute(select(Node).where(Node.design_id == design_id))).scalars().all()
+    nodes = list((await db.execute(select(Node).where(Node.design_id == design_id))).scalars().all())
     edges = (await db.execute(select(Edge).where(Edge.design_id == design_id))).scalars().all()
     state = await db.get(CanvasState, design_id)
     viewport: dict[str, Any] = state.viewport if state else {"x": 0, "y": 0, "zoom": 1}
     custom_style: dict[str, Any] | None = state.custom_style if state else None
+    # Device facts come off the inventory row, same as the editable canvas.
+    devices = await load_devices_for(db, nodes)
     return CanvasStateResponse(
-        nodes=[NodeResponse.model_validate(n) for n in nodes],
+        nodes=[NodeResponse.model_validate(hydrated_node(n, devices.get(n.device_id or ""))) for n in nodes],
         edges=[EdgeResponse.model_validate(e) for e in edges],
         viewport=viewport,
         custom_style=custom_style,

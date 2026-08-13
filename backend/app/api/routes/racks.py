@@ -286,37 +286,38 @@ async def rack_inventory(
     # to find anything in the first place.
     pinned = {device_id: node_id for device_id, node_id in mounts if device_id and node_id}
 
-    # Correlate against canvas nodes for live status: IEEE first (stable), then IP.
+    # Correlate against canvas nodes: a node names the inventory row it draws,
+    # so the IEEE/IP guessing this used to do is gone — the link is explicit.
     nodes = (await db.execute(select(Node))).scalars().all()
     by_id = {n.id: n for n in nodes}
-    by_ieee = {n.ieee_address: n for n in nodes if n.ieee_address}
-    by_ip: dict[str, Node] = {}
+    by_device: dict[str, Node] = {}
     for node in nodes:
-        for token in _ip_tokens(node.ip):
-            by_ip.setdefault(token, node)
+        if node.device_id:
+            by_device.setdefault(node.device_id, node)
     # Which canvas the matched node lives on — the rack prints it so the user
     # knows where the logical twin of a mount is drawn.
     design_names = {
         d.id: d.name for d in (await db.execute(select(Design))).scalars().all()
     }
 
+    # A pinned node may draw a *different* device than the mount names, so its
+    # view is read off its own row.
+    devices_by_id = {d.id: d for d in devices}
+
     items = []
     for device in devices:
         if device.suggested_type in _UNRACKABLE_TYPES:
             continue
         # A node the user linked by hand wins; a deleted one falls back to the
-        # guess rather than reporting a node that no longer exists.
-        linked: Node | None = by_id.get(pinned.get(device.id) or "")
-        if linked is None and device.ieee_address:
-            linked = by_ieee.get(device.ieee_address)
-        if linked is None:
-            linked = next((by_ip[t] for t in _ip_tokens(device.ip) if t in by_ip), None)
-        # The node is the richer record once a device has been approved onto a
-        # canvas; the inventory row is what discovery last saw. Report both and
-        # let the panel prefer the node.
-        services = _services(device.services) or (
-            _services(linked.services) if linked else []
-        )
+        # node that draws this device, if any.
+        linked: Node | None = by_id.get(pinned.get(device.id) or "") or by_device.get(device.id)
+        # The logical view is whatever the linked node actually draws. Usually
+        # that is this same row — the node_* fields then simply mirror it.
+        node_device = None
+        if linked is not None:
+            node_device = devices_by_id.get(linked.device_id or "")
+            if node_device is None and linked.device_id:
+                node_device = await db.get(InventoryDevice, linked.device_id)
         items.append(
             RackInventoryItem(
                 id=device.id,
@@ -328,21 +329,25 @@ async def rack_inventory(
                 mac=device.mac or device.ieee_address,
                 hostname=device.hostname,
                 os=device.os,
-                services=services,
+                services=_services(device.services),
                 node_id=linked.id if linked else None,
-                node_status=linked.status if linked else None,
-                node_label=linked.label if linked else None,
-                node_type=linked.type if linked else None,
-                node_ip=linked.ip if linked else None,
-                node_mac=(linked.mac or linked.ieee_address) if linked else None,
-                node_hostname=linked.hostname if linked else None,
-                node_os=linked.os if linked else None,
-                node_check_method=linked.check_method if linked else None,
+                node_status=node_device.status_live if node_device else None,
+                node_label=(
+                    (node_device.label if node_device else None) or linked.label
+                ) if linked else None,
+                node_type=(
+                    (node_device.type if node_device else None) or linked.type
+                ) if linked else None,
+                node_ip=node_device.ip if node_device else None,
+                node_mac=(node_device.mac or node_device.ieee_address) if node_device else None,
+                node_hostname=node_device.hostname if node_device else None,
+                node_os=node_device.os if node_device else None,
+                node_check_method=node_device.check_method if node_device else None,
                 node_design_id=linked.design_id if linked else None,
                 node_design_name=(
                     design_names.get(linked.design_id) if linked and linked.design_id else None
                 ),
-                node_last_seen=linked.last_seen if linked else None,
+                node_last_seen=node_device.last_seen if node_device else None,
                 racked=device.id in mounted,
             )
         )

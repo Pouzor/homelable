@@ -7,7 +7,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.db.models import InventoryDevice
-from tests.scan.helpers import _add_design, _node
+from tests.scan.helpers import _add_design, _node_for
 
 
 @pytest.mark.asyncio
@@ -55,7 +55,7 @@ async def test_canvas_count_matches_ip_in_comma_list(client, headers, db_session
     # Node.ip holds several comma-separated addresses (IPv6 added first). The
     # device scanned as the plain IPv4 must still correlate (issue #258).
     d1 = await _add_design(db_session, "Home")
-    db_session.add(_node(d1, ip="fe80::1, 192.168.1.100"))
+    await _node_for(db_session, d1, ip="fe80::1, 192.168.1.100")
     await db_session.commit()
 
     data = (await client.get("/api/v1/scan/pending", headers=headers)).json()
@@ -67,7 +67,7 @@ async def test_canvas_count_correlates_by_mac(client, headers, db_session, pendi
     # Node's ip differs entirely (user edited it) but the MAC still matches:
     # the device is on the canvas (issue #258, MAC is the stable identifier).
     d1 = await _add_design(db_session, "Home")
-    db_session.add(_node(d1, ip="10.9.9.9", mac="aa:bb:cc:dd:ee:ff"))
+    await _node_for(db_session, d1, ip="10.9.9.9", mac="aa:bb:cc:dd:ee:ff")
     await db_session.commit()
 
     data = (await client.get("/api/v1/scan/pending", headers=headers)).json()
@@ -79,8 +79,8 @@ async def test_canvas_count_counts_distinct_designs_by_ip(client, headers, db_se
     # Same IP placed on two different canvases → canvas_count == 2.
     d1 = await _add_design(db_session, "Home")
     d2 = await _add_design(db_session, "Lab")
-    db_session.add(_node(d1, ip="192.168.1.100"))
-    db_session.add(_node(d2, ip="192.168.1.100"))
+    await _node_for(db_session, d1, ip="192.168.1.100")
+    await _node_for(db_session, d2, ip="192.168.1.100")
     await db_session.commit()
 
     res = await client.get("/api/v1/scan/pending", headers=headers)
@@ -97,7 +97,7 @@ async def test_canvas_count_correlates_by_ieee(client, headers, db_session):
     )
     db_session.add(device)
     d1 = await _add_design(db_session, "Zigbee")
-    db_session.add(_node(d1, ieee="0x00124b001"))
+    await _node_for(db_session, d1, ieee="0x00124b001")
     await db_session.commit()
 
     res = await client.get("/api/v1/scan/pending", headers=headers)
@@ -120,10 +120,13 @@ async def test_pending_device_without_node_has_null_node_timestamps(client, head
 @pytest.mark.asyncio
 async def test_pending_device_exposes_linked_node_timestamps(client, headers, db_session, pending_device):
     d1 = await _add_design(db_session, "Home")
-    node = _node(d1, ip="192.168.1.100")
-    node.last_scan = datetime(2026, 6, 1, 8, 30, tzinfo=timezone.utc)
-    node.last_seen = datetime(2026, 6, 25, 9, 15, tzinfo=timezone.utc)
-    db_session.add(node)
+    node = await _node_for(db_session, d1, ip="192.168.1.100")
+    # When the scanner last saw the device, and when it last answered, are facts
+    # about the device — they live on its row, not on any one drawing of it.
+    device = await db_session.get(InventoryDevice, node.device_id)
+    assert device is not None
+    device.last_scan = datetime(2026, 6, 1, 8, 30, tzinfo=timezone.utc)
+    device.last_seen = datetime(2026, 6, 25, 9, 15, tzinfo=timezone.utc)
     await db_session.commit()
 
     data = (await client.get("/api/v1/scan/pending", headers=headers)).json()[0]
@@ -139,18 +142,21 @@ async def test_node_timestamps_aggregate_across_matches(client, headers, db_sess
     # last_scan takes the NEWEST.
     d1 = await _add_design(db_session, "Home")
     d2 = await _add_design(db_session, "Lab")
-    older = _node(d1, ip="192.168.1.100")
+    older = await _node_for(db_session, d1, ip="192.168.1.100")
     older.created_at = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
-    older.last_scan = datetime(2026, 3, 1, 0, 0, tzinfo=timezone.utc)
-    newer = _node(d2, ip="192.168.1.100")
+    newer = await _node_for(db_session, d2, ip="192.168.1.100")
     newer.created_at = datetime(2026, 5, 1, 0, 0, tzinfo=timezone.utc)
-    newer.last_scan = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
+    # Both nodes draw the one row, which carries the scan observation.
+    assert older.device_id == newer.device_id
+    device = await db_session.get(InventoryDevice, older.device_id)
+    assert device is not None
+    device.last_scan = datetime(2026, 6, 1, 0, 0, tzinfo=timezone.utc)
     db_session.add_all([older, newer])
     await db_session.commit()
 
     data = (await client.get("/api/v1/scan/pending", headers=headers)).json()[0]
-    assert data["node_created_at"].startswith("2026-01-01")  # oldest
-    assert data["node_last_scan"].startswith("2026-06-01")   # newest
+    assert data["node_created_at"].startswith("2026-01-01")  # oldest node
+    assert data["node_last_scan"].startswith("2026-06-01")   # off the device row
 
 
 @pytest.mark.asyncio
