@@ -6,13 +6,13 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.db.models import Design, InventoryDevice, Node
-from tests.scan.helpers import _add_design, _node
+from tests.scan.helpers import _add_design, _node_for
 
 
 @pytest.mark.asyncio
 async def test_canvas_count_ignores_nodes_without_design(client, headers, db_session, pending_device):
     # A node with no design_id is not "on a canvas".
-    db_session.add(_node(None, ip="192.168.1.100"))
+    await _node_for(db_session, None, ip="192.168.1.100")
     await db_session.commit()
 
     res = await client.get("/api/v1/scan/pending", headers=headers)
@@ -57,16 +57,17 @@ async def test_approve_device_conflicts_on_existing_ieee_same_design(
     design = Design(name="d1")
     db_session.add(design)
     await db_session.flush()
-    existing = Node(
-        label="sensor", type="zigbee_enddevice", ieee_address="0xZZZ",
-        services=[], design_id=design.id,
-    )
-    db_session.add(existing)
     device = InventoryDevice(
         id=str(uuid.uuid4()), ieee_address="0xZZZ", suggested_type="zigbee_enddevice",
         status="pending", discovery_source="zigbee",
     )
     db_session.add(device)
+    await db_session.flush()
+    # The node already on this design draws that very row.
+    existing = Node(
+        label="sensor", type="zigbee_enddevice", device_id=device.id, design_id=design.id,
+    )
+    db_session.add(existing)
     await db_session.commit()
 
     res = await client.post(
@@ -86,7 +87,7 @@ async def test_approve_device_conflicts_on_existing_ieee_same_design(
 
     # No second node created; device stays pending until the user decides.
     nodes = (
-        await db_session.execute(select(Node).where(Node.ieee_address == "0xZZZ"))
+        await db_session.execute(select(Node).join(InventoryDevice, Node.device_id == InventoryDevice.id).where(InventoryDevice.ieee_address == "0xZZZ"))
     ).scalars().all()
     assert len(nodes) == 1
 
@@ -99,15 +100,15 @@ async def test_approve_device_force_creates_duplicate_ieee(
     design = Design(name="d1")
     db_session.add(design)
     await db_session.flush()
-    db_session.add(Node(
-        label="sensor", type="zigbee_enddevice", ieee_address="0xZZZ",
-        services=[], design_id=design.id,
-    ))
     device = InventoryDevice(
         id=str(uuid.uuid4()), ieee_address="0xZZZ", suggested_type="zigbee_enddevice",
         status="pending", discovery_source="zigbee",
     )
     db_session.add(device)
+    await db_session.flush()
+    db_session.add(Node(
+        label="sensor", type="zigbee_enddevice", device_id=device.id, design_id=design.id,
+    ))
     await db_session.commit()
 
     res = await client.post(
@@ -120,7 +121,7 @@ async def test_approve_device_force_creates_duplicate_ieee(
     )
     assert res.status_code == 200
     nodes = (
-        await db_session.execute(select(Node).where(Node.ieee_address == "0xZZZ"))
+        await db_session.execute(select(Node).join(InventoryDevice, Node.device_id == InventoryDevice.id).where(InventoryDevice.ieee_address == "0xZZZ"))
     ).scalars().all()
     assert len(nodes) == 2
 
@@ -133,8 +134,7 @@ async def test_approve_device_conflicts_on_existing_ip(
     silently duplicated: the approve returns 409 with the existing node so the
     UI can ask the user."""
     design = await _add_design(db_session, "Home")
-    existing = _node(design, ip="192.168.1.100")
-    db_session.add(existing)
+    existing = await _node_for(db_session, design, ip="192.168.1.100")
     await db_session.commit()
 
     res = await client.post(
@@ -163,10 +163,8 @@ async def test_approve_device_conflicts_on_existing_mac(
 ):
     """MAC match (device re-IP'd via DHCP) also triggers the duplicate guard."""
     design = await _add_design(db_session, "Home")
-    existing = Node(id=str(uuid.uuid4()), label="n", type="server", status="online",
-                    ip="10.0.0.9", mac="aa:bb:cc:dd:ee:ff", services=[], design_id=design)
-    db_session.add(existing)
-    await db_session.commit()
+    # The node already on this design draws a row carrying that MAC.
+    await _node_for(db_session, design, ip="10.0.0.9", mac="aa:bb:cc:dd:ee:ff")
 
     # pending_device carries mac aa:bb:cc:dd:ee:ff but a different ip.
     res = await client.post(
@@ -188,8 +186,7 @@ async def test_approve_device_conflicts_on_ip_in_comma_list(
     as. Exact-string matching missed it (issue #258); per-token matching catches
     the duplicate."""
     design = await _add_design(db_session, "Home")
-    existing = _node(design, ip="fe80::1, 192.168.1.100")
-    db_session.add(existing)
+    existing = await _node_for(db_session, design, ip="fe80::1, 192.168.1.100")
     await db_session.commit()
 
     res = await client.post(
@@ -212,7 +209,7 @@ async def test_approve_device_no_conflict_on_ip_substring(
     """The ip guard must match whole addresses, not substrings: a node at
     10.0.0.40 is not a duplicate of a device at 10.0.0.4."""
     design = await _add_design(db_session, "Home")
-    db_session.add(_node(design, ip="10.0.0.40"))
+    await _node_for(db_session, design, ip="10.0.0.40")
     await db_session.commit()
 
     res = await client.post(
@@ -230,7 +227,7 @@ async def test_approve_device_force_creates_duplicate(
 ):
     """force=True (user confirmed) bypasses the guard and creates the node."""
     design = await _add_design(db_session, "Home")
-    db_session.add(_node(design, ip="192.168.1.100"))
+    await _node_for(db_session, design, ip="192.168.1.100")
     await db_session.commit()
 
     res = await client.post(
@@ -251,7 +248,7 @@ async def test_approve_device_allows_same_ip_on_other_design(
     """The guard is per-design: the same host on a different canvas is fine."""
     other = await _add_design(db_session, "Lab")
     target = await _add_design(db_session, "Home")
-    db_session.add(_node(other, ip="192.168.1.100"))  # exists on a DIFFERENT design
+    await _node_for(db_session, other, ip="192.168.1.100")  # exists on a DIFFERENT design
     await db_session.commit()
 
     res = await client.post(
@@ -273,13 +270,16 @@ async def test_approve_device_places_already_approved_on_another_design(
     other = await _add_design(db_session, "Other")
     target = await _add_design(db_session, "Network Topology")
     # Device is on `other` already (its global status is "approved").
-    db_session.add(_node(other, ieee="0x00158d0005292b83"))
     device = InventoryDevice(
         id=str(uuid.uuid4()), ieee_address="0x00158d0005292b83",
         suggested_type="zigbee_enddevice", status="approved",
         discovery_source="zigbee",
     )
     db_session.add(device)
+    await db_session.flush()
+    db_session.add(Node(
+        label="sensor", type="zigbee_enddevice", device_id=device.id, design_id=other,
+    ))
     await db_session.commit()
 
     res = await client.post(
@@ -292,7 +292,7 @@ async def test_approve_device_places_already_approved_on_another_design(
     # A node now exists on the target design too (one per canvas).
     nodes = (
         await db_session.execute(
-            select(Node).where(Node.ieee_address == "0x00158d0005292b83")
+            select(Node).join(InventoryDevice, Node.device_id == InventoryDevice.id).where(InventoryDevice.ieee_address == "0x00158d0005292b83")
         )
     ).scalars().all()
     assert {n.design_id for n in nodes} == {other, target}
@@ -464,7 +464,7 @@ async def test_bulk_approve_skips_device_already_on_target_design(
     ids = [d.id for d in two_device_inventory]
     design = await _add_design(db_session, "Canvas")
     # First device already sits on the canvas (matched by ip).
-    db_session.add(_node(design, ip="192.168.1.10"))
+    await _node_for(db_session, design, ip="192.168.1.10")
     await db_session.commit()
 
     res = await client.post(
@@ -480,9 +480,10 @@ async def test_bulk_approve_skips_device_already_on_target_design(
     nodes = (
         await db_session.execute(select(NodeModel).where(NodeModel.design_id == design))
     ).scalars().all()
+    devices = [await db_session.get(InventoryDevice, n.device_id) for n in nodes]
     # The pre-existing node plus the one newly approved — no duplicate for .10.
     assert len(nodes) == 2
-    assert sorted(n.ip for n in nodes) == ["192.168.1.10", "192.168.1.11"]
+    assert sorted(d.ip for d in devices) == ["192.168.1.10", "192.168.1.11"]
 
 
 @pytest.mark.asyncio
@@ -493,7 +494,7 @@ async def test_bulk_approve_skips_device_matching_ip_in_comma_list(
     as the plain IPv4 is still recognised as already placed (issue #258)."""
     ids = [d.id for d in two_device_inventory]
     design = await _add_design(db_session, "Canvas")
-    db_session.add(_node(design, ip="fe80::1, 192.168.1.10"))
+    await _node_for(db_session, design, ip="fe80::1, 192.168.1.10")
     await db_session.commit()
 
     res = await client.post(
@@ -515,8 +516,7 @@ async def test_bulk_approve_reports_skipped_devices(
     (with the existing node id) instead of silently dropping it."""
     ids = [d.id for d in two_device_inventory]
     design = await _add_design(db_session, "Canvas")
-    existing = _node(design, ip="192.168.1.10")
-    db_session.add(existing)
+    existing = await _node_for(db_session, design, ip="192.168.1.10")
     await db_session.commit()
 
     res = await client.post(
@@ -551,10 +551,14 @@ async def test_approve_device_copies_mac_to_node_and_properties(
     )
     assert res.status_code == 200
     node = (
-        await db_session.execute(select(NodeModel).where(NodeModel.ip == "192.168.1.100"))
-    ).scalar_one()
-    assert node.mac == "aa:bb:cc:dd:ee:ff"
-    mac_props = [p for p in node.properties if p["key"] == "MAC"]
+        await db_session.execute(select(NodeModel).where(NodeModel.device_id.is_not(None)))
+    ).scalars().first()
+    assert node is not None
+    # The device facts belong to the inventory row the node draws.
+    device = await db_session.get(InventoryDevice, node.device_id)
+    assert device is not None
+    assert device.mac == "aa:bb:cc:dd:ee:ff"
+    mac_props = [p for p in device.properties if p["key"] == "MAC"]
     assert mac_props == [
         {"key": "MAC", "value": "aa:bb:cc:dd:ee:ff", "icon": None, "visible": False}
     ]
@@ -587,10 +591,14 @@ async def test_bulk_approve_copies_mac_to_node_and_properties(
     )
     assert res.status_code == 200
     node = (
-        await db_session.execute(select(NodeModel).where(NodeModel.ip == "192.168.1.55"))
-    ).scalar_one()
-    assert node.mac == "11:22:33:44:55:66"
-    mac_props = [p for p in node.properties if p["key"] == "MAC"]
+        await db_session.execute(select(NodeModel).where(NodeModel.device_id.is_not(None)))
+    ).scalars().first()
+    assert node is not None
+    # The device facts belong to the inventory row the node draws.
+    device = await db_session.get(InventoryDevice, node.device_id)
+    assert device is not None
+    assert device.mac == "11:22:33:44:55:66"
+    mac_props = [p for p in device.properties if p["key"] == "MAC"]
     assert mac_props == [
         {"key": "MAC", "value": "11:22:33:44:55:66", "icon": None, "visible": False}
     ]
@@ -607,8 +615,10 @@ async def test_bulk_approve_sets_default_check_method(client: AsyncClient, heade
     assert res.status_code == 200
     nodes = (await db_session.execute(select(NodeModel))).scalars().all()
     for n in nodes:
-        if n.ip:
-            assert n.check_method == "ping", f"node {n.id} created without check_method"
+        device = await db_session.get(InventoryDevice, n.device_id)
+        assert device is not None
+        if device.ip:
+            assert device.check_method == "ping", f"device {device.id} has no check_method"
 
 
 @pytest.mark.asyncio
@@ -624,7 +634,9 @@ async def test_approve_device_sets_default_check_method(client: AsyncClient, hea
     assert res.status_code == 200
     node = (await db_session.execute(select(NodeModel))).scalars().first()
     assert node is not None
-    assert node.check_method == "ping"
+    device = await db_session.get(InventoryDevice, node.device_id)
+    assert device is not None
+    assert device.check_method == "ping"
 
 
 @pytest.mark.asyncio
@@ -713,11 +725,14 @@ async def test_bulk_approve_targets_requested_design(client, headers, db_session
     assert res.json()["approved"] == 1
 
     node = (
-        await db_session.execute(select(Node).where(Node.ieee_address == "zwave-H-2"))
+        await db_session.execute(select(Node).join(InventoryDevice, Node.device_id == InventoryDevice.id).where(InventoryDevice.ieee_address == "zwave-H-2"))
     ).scalar_one()
     assert node.design_id == active
     assert node.design_id != first
-    # Z-Wave device → online + Z-Wave property rows, no ICMP check.
-    assert node.status == "online"
-    assert node.check_method == "none"
-    assert {p["key"] for p in node.properties} == {"Z-Wave ID", "Vendor", "Model"}
+    # Z-Wave device → online + Z-Wave property rows, no ICMP check. All of that
+    # is the device's, so it is read off the row the node draws.
+    device = await db_session.get(InventoryDevice, node.device_id)
+    assert device is not None
+    assert device.status_live == "online"
+    assert device.check_method == "none"
+    assert {p["key"] for p in device.properties} == {"Z-Wave ID", "Vendor", "Model"}

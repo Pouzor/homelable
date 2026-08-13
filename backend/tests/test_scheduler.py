@@ -24,18 +24,25 @@ from app.core.scheduler import (
     stop_scheduler,
 )
 from app.db.database import Base
-from app.db.models import Node
+from app.db.models import InventoryDevice, Node
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_node(**kwargs) -> Node:
+def _make_device(**kwargs) -> InventoryDevice:
+    """An inventory row — what the checker iterates now that a device is checked
+    once rather than once per canvas."""
+    defaults = dict(id=str(uuid.uuid4()), status="approved", status_live="unknown")
+    return InventoryDevice(**{**defaults, **kwargs})
+
+
+def _make_node(device_id: str | None = None, **kwargs) -> Node:
     defaults = dict(
         id=str(uuid.uuid4()),
         type="server",
         label="Test",
-        status="unknown",
+        device_id=device_id,
         pos_x=0.0,
         pos_y=0.0,
     )
@@ -58,11 +65,10 @@ async def mem_db():
 
 
 @pytest.mark.asyncio
-async def test_run_status_checks_skips_nodes_without_check_method(mem_db):
-    """Nodes with no check_method are skipped; check_node is never called."""
+async def test_run_status_checks_skips_devices_without_check_method(mem_db):
+    """Devices with no check_method are skipped; check_node is never called."""
     async with mem_db() as session:
-        node = _make_node(check_method=None, ip="10.0.0.1")
-        session.add(node)
+        session.add(_make_device(check_method=None, ip="10.0.0.1"))
         await session.commit()
 
     with patch("app.core.scheduler.AsyncSessionLocal", mem_db), \
@@ -72,13 +78,16 @@ async def test_run_status_checks_skips_nodes_without_check_method(mem_db):
 
 
 @pytest.mark.asyncio
-async def test_run_status_checks_updates_node_status(mem_db):
-    """check_node result is persisted to the DB and broadcast via WebSocket."""
+async def test_run_status_checks_updates_device_status(mem_db):
+    """check_node result lands on the device row and is broadcast to its nodes."""
     async with mem_db() as session:
-        node = _make_node(check_method="ping", ip="10.0.0.1")
+        device = _make_device(check_method="ping", ip="10.0.0.1")
+        session.add(device)
+        await session.flush()
+        node = _make_node(device_id=device.id)
         session.add(node)
         await session.commit()
-        node_id = node.id
+        device_id, node_id = device.id, node.id
 
     check_result = {"status": "online", "response_time_ms": 5}
 
@@ -87,17 +96,20 @@ async def test_run_status_checks_updates_node_status(mem_db):
          patch("app.api.routes.status.broadcast_status", new_callable=AsyncMock) as mock_broadcast:
         await _run_status_checks()
 
-    # Verify DB updated
+    # Verify the row updated — `status_live` is reachability, `status` is the
+    # pending/approved/hidden lifecycle and must not be touched.
     async with mem_db() as session:
-        updated = await session.get(Node, node_id)
+        updated = await session.get(InventoryDevice, device_id)
         assert updated is not None
-        assert updated.status == "online"
+        assert updated.status_live == "online"
+        assert updated.status == "approved"
         assert updated.response_time_ms == 5
 
-    # Verify WebSocket broadcast
+    # Verify WebSocket broadcast, addressed by device and carrying its nodes
     mock_broadcast.assert_awaited_once()
     _, kwargs = mock_broadcast.call_args
-    assert kwargs["node_id"] == node_id
+    assert kwargs["device_id"] == device_id
+    assert kwargs["node_ids"] == [node_id]
     assert kwargs["status"] == "online"
 
 
@@ -105,10 +117,10 @@ async def test_run_status_checks_updates_node_status(mem_db):
 async def test_run_status_checks_sets_last_seen_only_when_online(mem_db):
     """last_seen is updated only when status is 'online'."""
     async with mem_db() as session:
-        node = _make_node(check_method="ping", ip="10.0.0.1", last_seen=None)
-        session.add(node)
+        device = _make_device(check_method="ping", ip="10.0.0.1", last_seen=None)
+        session.add(device)
         await session.commit()
-        node_id = node.id
+        device_id = device.id
 
     check_result = {"status": "offline", "response_time_ms": None}
 
@@ -118,18 +130,19 @@ async def test_run_status_checks_sets_last_seen_only_when_online(mem_db):
         await _run_status_checks()
 
     async with mem_db() as session:
-        updated = await session.get(Node, node_id)
+        updated = await session.get(InventoryDevice, device_id)
         assert updated is not None
         assert updated.last_seen is None  # not set for offline
 
 
 @pytest.mark.asyncio
 async def test_run_status_checks_handles_check_error_gracefully(mem_db):
-    """An exception from check_node is logged and does not abort other nodes."""
+    """An exception from check_node is logged and does not abort other devices."""
     async with mem_db() as session:
-        n1 = _make_node(check_method="ping", ip="10.0.0.1")
-        n2 = _make_node(check_method="ping", ip="10.0.0.2")
-        session.add_all([n1, n2])
+        session.add_all([
+            _make_device(check_method="ping", ip="10.0.0.1"),
+            _make_device(check_method="ping", ip="10.0.0.2"),
+        ])
         await session.commit()
 
     call_count = 0
@@ -191,7 +204,7 @@ def test_start_and_stop_scheduler():
 @pytest.mark.asyncio
 async def test_run_service_checks_disabled_does_nothing(mem_db):
     async with mem_db() as session:
-        session.add(_make_node(services=[{"port": 80, "protocol": "tcp", "service_name": "http"}]))
+        session.add(_make_device(services=[{"port": 80, "protocol": "tcp", "service_name": "http"}]))
         await session.commit()
 
     with patch("app.core.scheduler.settings") as mock_settings, \
@@ -203,15 +216,18 @@ async def test_run_service_checks_disabled_does_nothing(mem_db):
 
 
 @pytest.mark.asyncio
-async def test_run_service_checks_broadcasts_per_node(mem_db):
+async def test_run_service_checks_broadcasts_per_device(mem_db):
     async with mem_db() as session:
-        node = _make_node(
+        device = _make_device(
             ip="10.0.0.5",
             services=[{"port": 80, "protocol": "tcp", "service_name": "http"}],
         )
+        session.add(device)
+        await session.flush()
+        node = _make_node(device_id=device.id)
         session.add(node)
         await session.commit()
-        node_id = node.id
+        device_id, node_id = device.id, node.id
 
     statuses = [{"port": 80, "protocol": "tcp", "status": "offline"}]
 
@@ -224,14 +240,15 @@ async def test_run_service_checks_broadcasts_per_node(mem_db):
 
     mock_bcast.assert_awaited_once()
     _, kwargs = mock_bcast.call_args
-    assert kwargs["node_id"] == node_id
+    assert kwargs["device_id"] == device_id
+    assert kwargs["node_ids"] == [node_id]
     assert kwargs["services"] == statuses
 
 
 @pytest.mark.asyncio
-async def test_run_service_checks_skips_nodes_without_services(mem_db):
+async def test_run_service_checks_skips_devices_without_services(mem_db):
     async with mem_db() as session:
-        session.add(_make_node(ip="10.0.0.6", services=[]))
+        session.add(_make_device(ip="10.0.0.6", services=[]))
         await session.commit()
 
     with patch("app.core.scheduler.settings") as mock_settings, \

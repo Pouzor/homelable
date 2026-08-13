@@ -30,10 +30,23 @@ async def summary(
     """
     _check_key(x_api_key)
 
+    # A node's reachability lives on the Device Inventory row it draws, so the
+    # per-canvas counts come from the join. A node with no row (canvas
+    # furniture) counts as unknown.
     status_rows = (
-        await db.execute(select(Node.status, func.count()).group_by(Node.status))
+        await db.execute(
+            select(InventoryDevice.status_live, func.count())
+            .select_from(Node)
+            .join(InventoryDevice, Node.device_id == InventoryDevice.id)
+            .group_by(InventoryDevice.status_live)
+        )
     ).all()
-    counts = {row[0]: row[1] for row in status_rows}
+    counts = {(row[0] or "unknown"): row[1] for row in status_rows}
+    unlinked = (
+        await db.execute(select(func.count()).select_from(Node).where(Node.device_id.is_(None)))
+    ).scalar_one()
+    if unlinked:
+        counts["unknown"] = counts.get("unknown", 0) + unlinked
 
     pending = (
         await db.execute(
@@ -45,7 +58,10 @@ async def summary(
 
     zigbee = (
         await db.execute(
-            select(func.count()).select_from(Node).where(Node.ieee_address.isnot(None))
+            select(func.count())
+            .select_from(Node)
+            .join(InventoryDevice, Node.device_id == InventoryDevice.id)
+            .where(InventoryDevice.ieee_address.isnot(None))
         )
     ).scalar_one()
 

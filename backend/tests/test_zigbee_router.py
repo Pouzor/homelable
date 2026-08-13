@@ -436,15 +436,18 @@ async def test_persist_pending_import_backfills_inventory_for_approved_node(
 
     # Simulate: router was approved earlier → exists as a canvas Node, but with
     # no matching device_inventory row (e.g. a legacy auto-placed device).
-    approved = Node(
-        label="router_1",
-        type="zigbee_router",
-        status="online",
-        check_method="none",
+    device = InventoryDevice(
         ieee_address="0xR1",
-        services=[],
+        friendly_name="router_1",
+        suggested_type="zigbee_router",
+        status="approved",
+        status_live="online",
+        check_method="none",
         properties=[],
     )
+    db_session.add(device)
+    await db_session.flush()
+    approved = Node(label="router_1", type="zigbee_router", device_id=device.id)
     db_session.add(approved)
     await db_session.commit()
 
@@ -464,7 +467,9 @@ async def test_persist_pending_import_backfills_inventory_for_approved_node(
 
     # Node properties got refreshed.
     refreshed = (
-        await db_session.execute(select(Node).where(Node.ieee_address == "0xR1"))
+        await db_session.execute(
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "0xR1")
+        )
     ).scalar_one()
     keys = {p["key"]: p["value"] for p in refreshed.properties}
     assert keys == {"IEEE": "0xR1", "Vendor": "TI", "Model": "CC2530", "LQI": "250"}
@@ -483,14 +488,15 @@ async def test_persist_pending_import_preserves_hidden_inventory_for_approved_no
     from app.api.routes.zigbee import _persist_pending_import
     from app.db.models import InventoryDevice, Node
 
-    db_session.add(Node(
-        label="router_1", type="zigbee_router", status="online",
-        check_method="none", ieee_address="0xR1", services=[], properties=[],
-    ))
-    db_session.add(InventoryDevice(
+    # One row, hidden by the user, and a canvas still draws it.
+    drawn = InventoryDevice(
         ieee_address="0xR1", friendly_name="router_1", suggested_type="zigbee_router",
-        device_subtype="Router", status="hidden", discovery_source="zigbee",
-    ))
+        device_subtype="Router", status="hidden", status_live="online",
+        check_method="none", discovery_source="zigbee",
+    )
+    db_session.add(drawn)
+    await db_session.flush()
+    db_session.add(Node(label="router_1", type="zigbee_router", device_id=drawn.id))
     await db_session.commit()
 
     await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
@@ -595,21 +601,24 @@ async def test_persist_pending_import_preserves_user_visibility(db_session) -> N
     from sqlalchemy import select
 
     from app.api.routes.zigbee import _persist_pending_import
-    from app.db.models import Node
+    from app.db.models import InventoryDevice, Node
 
-    approved = Node(
-        label="router_1",
-        type="zigbee_router",
-        status="online",
-        check_method="none",
+    device = InventoryDevice(
         ieee_address="0xR1",
-        services=[],
+        friendly_name="router_1",
+        suggested_type="zigbee_router",
+        status="approved",
+        status_live="online",
+        check_method="none",
         properties=[
             {"key": "IEEE", "value": "0xR1", "icon": None, "visible": True},
             {"key": "Vendor", "value": "TI", "icon": None, "visible": True},
             {"key": "Custom", "value": "kept", "icon": None, "visible": True},
         ],
     )
+    db_session.add(device)
+    await db_session.flush()
+    approved = Node(label="router_1", type="zigbee_router", device_id=device.id)
     db_session.add(approved)
     await db_session.commit()
 
@@ -619,7 +628,9 @@ async def test_persist_pending_import_preserves_user_visibility(db_session) -> N
     await _persist_pending_import(db_session, bumped, _PENDING_EDGES)
 
     refreshed = (
-        await db_session.execute(select(Node).where(Node.ieee_address == "0xR1"))
+        await db_session.execute(
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "0xR1")
+        )
     ).scalar_one()
     by_key = {p["key"]: p for p in refreshed.properties}
     # Existing keys keep their visibility (True).
@@ -647,10 +658,14 @@ async def test_persist_pending_import_refreshes_approved_coordinator_node(
     from app.db.models import InventoryDevice, Node
 
     # Legacy: coordinator auto-placed as a canvas Node, no device_inventory row.
-    db_session.add(Node(
-        label="Coordinator", type="zigbee_coordinator", status="online",
-        check_method="none", ieee_address="0xCOORD", services=[], properties=[],
-    ))
+    drawn = InventoryDevice(
+        ieee_address="0xCOORD", friendly_name="Coordinator",
+        suggested_type="zigbee_coordinator", status="approved", status_live="online",
+        check_method="none",
+    )
+    db_session.add(drawn)
+    await db_session.flush()
+    db_session.add(Node(label="Coordinator", type="zigbee_coordinator", device_id=drawn.id))
     await db_session.commit()
 
     bumped = [dict(n) for n in _PENDING_NODES]
@@ -659,7 +674,9 @@ async def test_persist_pending_import_refreshes_approved_coordinator_node(
     await _persist_pending_import(db_session, bumped, _PENDING_EDGES)
 
     coord = (
-        await db_session.execute(select(Node).where(Node.ieee_address == "0xCOORD"))
+        await db_session.execute(
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "0xCOORD")
+        )
     ).scalar_one()
     keys = {p["key"]: p["value"] for p in coord.properties}
     assert keys["Vendor"] == "TI"
@@ -685,17 +702,19 @@ async def test_persist_pending_import_device_on_multiple_canvases(
     from sqlalchemy import select
 
     from app.api.routes.zigbee import _persist_pending_import
-    from app.db.models import Design, Node
+    from app.db.models import Design, InventoryDevice, Node
 
     d1 = Design(name="d1")
     d2 = Design(name="d2")
-    db_session.add_all([d1, d2])
+    drawn = InventoryDevice(
+        ieee_address="0xR1", friendly_name="router_1", suggested_type="zigbee_router",
+        status="approved", status_live="online", check_method="none",
+    )
+    db_session.add_all([d1, d2, drawn])
     await db_session.flush()
     for d in (d1, d2):
         db_session.add(Node(
-            label="router_1", type="zigbee_router", status="online",
-            check_method="none", ieee_address="0xR1", services=[],
-            properties=[], design_id=d.id,
+            label="router_1", type="zigbee_router", device_id=drawn.id, design_id=d.id,
         ))
     await db_session.commit()
 
@@ -705,10 +724,12 @@ async def test_persist_pending_import_device_on_multiple_canvases(
     await _persist_pending_import(db_session, bumped, _PENDING_EDGES)
 
     nodes = (
-        await db_session.execute(select(Node).where(Node.ieee_address == "0xR1"))
+        await db_session.execute(select(Node).where(Node.device_id == drawn.id))
     ).scalars().all()
     assert len(nodes) == 2  # both canvas placements preserved
-    for n in nodes:
+    # One row behind them, so one refresh serves both canvases.
+    await db_session.refresh(drawn)
+    for n in [drawn]:
         lqi = {p["key"]: p["value"] for p in n.properties}.get("LQI")
         assert lqi == "240"  # refreshed on every canvas
 

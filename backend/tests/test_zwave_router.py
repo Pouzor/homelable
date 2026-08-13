@@ -374,16 +374,14 @@ async def test_persist_backfills_inventory_for_approved_node(db_session) -> None
     from app.api.routes.zwave import _persist_pending_import
     from app.db.models import InventoryDevice, Node
 
-    approved = Node(
-        label="Wall Plug",
-        type="zwave_router",
-        status="online",
+    drawn = InventoryDevice(
+        ieee_address="zwave-0xh-2", friendly_name="Wall Plug",
+        suggested_type="zwave_router", status="approved", status_live="online",
         check_method="none",
-        ieee_address="zwave-0xh-2",
-        services=[],
-        properties=[],
     )
-    db_session.add(approved)
+    db_session.add(drawn)
+    await db_session.flush()
+    db_session.add(Node(label="Wall Plug", type="zwave_router", device_id=drawn.id))
     await db_session.commit()
 
     await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
@@ -396,7 +394,9 @@ async def test_persist_backfills_inventory_for_approved_node(db_session) -> None
     assert inv.status == "approved"
     assert inv.suggested_type == "zwave_router"
     refreshed = (
-        await db_session.execute(select(Node).where(Node.ieee_address == "zwave-0xh-2"))
+        await db_session.execute(
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "zwave-0xh-2")
+        )
     ).scalar_one()
     keys = {p["key"]: p["value"] for p in refreshed.properties}
     assert keys == {"Z-Wave ID": "zwave-0xh-2", "Vendor": "Aeotec", "Model": "ZW100"}
@@ -466,17 +466,20 @@ async def test_persist_device_on_multiple_canvases(db_session) -> None:
     from sqlalchemy import select
 
     from app.api.routes.zwave import _persist_pending_import
-    from app.db.models import Design, Node
+    from app.db.models import Design, InventoryDevice, Node
 
     d1 = Design(name="d1")
     d2 = Design(name="d2")
-    db_session.add_all([d1, d2])
+    drawn = InventoryDevice(
+        ieee_address="zwave-0xh-2", friendly_name="Wall Plug",
+        suggested_type="zwave_router", status="approved", status_live="online",
+        check_method="none",
+    )
+    db_session.add_all([d1, d2, drawn])
     await db_session.flush()
     for d in (d1, d2):
         db_session.add(Node(
-            label="Wall Plug", type="zwave_router", status="online",
-            check_method="none", ieee_address="zwave-0xh-2", services=[],
-            properties=[], design_id=d.id,
+            label="Wall Plug", type="zwave_router", device_id=drawn.id, design_id=d.id,
         ))
     await db_session.commit()
 
@@ -486,12 +489,13 @@ async def test_persist_device_on_multiple_canvases(db_session) -> None:
     await _persist_pending_import(db_session, bumped, _PENDING_EDGES)
 
     nodes = (
-        await db_session.execute(select(Node).where(Node.ieee_address == "zwave-0xh-2"))
+        await db_session.execute(select(Node).where(Node.device_id == drawn.id))
     ).scalars().all()
     assert len(nodes) == 2  # both canvas placements preserved
-    for n in nodes:
-        model = {p["key"]: p["value"] for p in n.properties}.get("Model")
-        assert model == "ZW200"  # refreshed on every canvas
+    # One row behind them, so one refresh serves every canvas.
+    await db_session.refresh(drawn)
+    model = {p["key"]: p["value"] for p in drawn.properties}.get("Model")
+    assert model == "ZW200"
 
 
 # ---------------------------------------------------------------------------

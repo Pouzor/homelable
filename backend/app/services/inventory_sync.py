@@ -13,10 +13,12 @@ Nothing here commits — the caller owns the transaction.
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import Mapping
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import InventoryDevice, Node
@@ -170,19 +172,23 @@ def merge_services(base: list[Any] | None, incoming: list[Any] | None) -> list[A
     return out
 
 
-def merge_node_into_device(
+def merge_facts_into_device(
     device: InventoryDevice,
-    node: Node,
+    facts: Mapping[str, Any],
     *,
     overwrite_scalars: bool,
     replace_lists: bool,
 ) -> None:
-    """Fold a node's device facts into its inventory row, in place.
+    """Fold one view of a device into its inventory row, in place.
 
-    Two independent knobs, because the three callers need three combinations:
+    ``facts`` is a plain mapping — what a canvas save sent, or what a legacy
+    node's columns held — so this rule lives in one place regardless of where
+    the view came from.
 
-    * ``overwrite_scalars`` — a non-blank node value replaces the row's. True
-      for the backfill (nodes are visited oldest-edit-first, so the most
+    Two independent knobs, because the callers need three combinations:
+
+    * ``overwrite_scalars`` — a non-blank incoming value replaces the row's.
+      True for the backfill (nodes are visited oldest-edit-first, so the most
       recently edited canvas is the last writer and wins) and for a user's save.
       False on approve, where the row was just discovered and the node is only a
       placement. A blank *never* clears an established value in either mode.
@@ -191,91 +197,89 @@ def merge_node_into_device(
       would come straight back on the next one. The backfill unions, so nothing
       any canvas recorded is lost.
     """
-    for field in DEVICE_SCALARS:
-        incoming = getattr(node, field, None)
+    for field in (*DEVICE_SCALARS, "label", "type"):
+        incoming = facts.get(field)
         if _blank(incoming):
             continue
         if overwrite_scalars or _blank(getattr(device, field, None)):
             setattr(device, field, incoming)
 
-    if not _blank(node.label) and (overwrite_scalars or _blank(device.label)):
-        device.label = node.label
-    if not _blank(node.type) and (overwrite_scalars or _blank(device.type)):
-        device.type = node.type
-    if not _blank(node.ieee_address) and _blank(device.ieee_address):
+    if not _blank(facts.get("ieee_address")) and _blank(device.ieee_address):
         # Identity, never overwritten — two IEEEs mean two devices.
-        device.ieee_address = node.ieee_address
-    if node.show_hardware and not device.show_hardware:
+        device.ieee_address = facts["ieee_address"]
+    if facts.get("show_hardware") and not device.show_hardware:
         device.show_hardware = True
 
     if replace_lists:
-        device.properties = list(node.properties or [])
-        device.services = list(node.services or [])
+        device.properties = list(facts.get("properties") or [])
+        device.services = list(facts.get("services") or [])
     else:
-        device.properties = merge_properties(device.properties, node.properties)
-        device.services = merge_services(device.services, node.services)
+        device.properties = merge_properties(device.properties, facts.get("properties"))
+        device.services = merge_services(device.services, facts.get("services"))
 
     # Live status: keep the freshest observation rather than the last writer.
-    if node.last_seen and (device.last_seen is None or node.last_seen > device.last_seen):
-        device.last_seen = node.last_seen
-        device.status_live = node.status or device.status_live
-        device.response_time_ms = node.response_time_ms
-    elif device.status_live in (None, "", "unknown") and node.status:
-        device.status_live = node.status
-    if node.last_scan and (device.last_scan is None or node.last_scan > device.last_scan):
-        device.last_scan = node.last_scan
+    last_seen, status, last_scan = facts.get("last_seen"), facts.get("status"), facts.get("last_scan")
+    if last_seen and (device.last_seen is None or last_seen > device.last_seen):
+        device.last_seen = last_seen
+        device.status_live = status or device.status_live
+        device.response_time_ms = facts.get("response_time_ms")
+    elif device.status_live in (None, "", "unknown") and status:
+        device.status_live = status
+    if last_scan and (device.last_scan is None or last_scan > device.last_scan):
+        device.last_scan = last_scan
 
 
-def device_from_node(node: Node) -> InventoryDevice:
-    """Mint the inventory row for a node that has none.
+def device_from_facts(facts: Mapping[str, Any]) -> InventoryDevice:
+    """Mint the inventory row for a device that has none.
 
     Tagged ``canvas`` so the inventory filters can tell hand-drawn gear apart
     from anything a scan or import found.
     """
-    device = InventoryDevice(
-        label=node.label,
-        type=node.type,
-        hostname=node.hostname,
-        ip=node.ip,
-        mac=node.mac,
-        os=node.os,
-        ieee_address=node.ieee_address,
-        services=list(node.services or []),
-        properties=list(node.properties or []),
-        notes=node.notes,
-        cpu_count=node.cpu_count,
-        cpu_model=node.cpu_model,
-        ram_gb=node.ram_gb,
-        disk_gb=node.disk_gb,
-        show_hardware=bool(node.show_hardware),
-        check_method=node.check_method,
-        check_target=node.check_target,
-        suggested_type=node.type,
-        friendly_name=node.label,
+    return InventoryDevice(
+        label=facts.get("label"),
+        type=facts.get("type"),
+        hostname=facts.get("hostname"),
+        ip=facts.get("ip"),
+        mac=facts.get("mac"),
+        os=facts.get("os"),
+        ieee_address=facts.get("ieee_address"),
+        services=list(facts.get("services") or []),
+        properties=list(facts.get("properties") or []),
+        notes=facts.get("notes"),
+        cpu_count=facts.get("cpu_count"),
+        cpu_model=facts.get("cpu_model"),
+        ram_gb=facts.get("ram_gb"),
+        disk_gb=facts.get("disk_gb"),
+        show_hardware=bool(facts.get("show_hardware")),
+        check_method=facts.get("check_method"),
+        check_target=facts.get("check_target"),
+        suggested_type=facts.get("type"),
+        friendly_name=facts.get("label"),
         # On a canvas already, so it is past the pending queue.
         status="approved",
-        status_live=node.status or "unknown",
-        last_seen=node.last_seen,
-        last_scan=node.last_scan,
-        response_time_ms=node.response_time_ms,
+        status_live=facts.get("status") or "unknown",
+        last_seen=facts.get("last_seen"),
+        last_scan=facts.get("last_scan"),
+        response_time_ms=facts.get("response_time_ms"),
         discovery_source=CANVAS_SOURCE,
         discovery_sources=[CANVAS_SOURCE],
     )
-    return device
 
 
-async def link_node(
+async def link_facts(
     db: AsyncSession,
     node: Node,
+    facts: Mapping[str, Any],
     *,
     overwrite_scalars: bool = False,
     replace_lists: bool = False,
 ) -> InventoryDevice | None:
     """Point one node at its inventory row, creating or merging as needed.
 
-    Returns the row, or ``None`` for canvas furniture. The two flags are handed
-    to :func:`merge_node_into_device`; see it for when each applies. Flushes so
-    a freshly minted row has an id to link to, but does not commit.
+    ``facts`` is this node's view of the device — the fields a canvas save sent,
+    or a legacy node's columns during the backfill. Returns the row, or ``None``
+    for canvas furniture. Flushes so a freshly minted row has an id to link to,
+    but does not commit.
     """
     if is_furniture(node.type):
         node.device_id = None
@@ -285,20 +289,66 @@ async def link_node(
     if node.device_id:
         device = await db.get(InventoryDevice, node.device_id)
     if device is None:
-        device = await find_device_for(db, ip=node.ip, mac=node.mac, ieee=node.ieee_address)
+        device = await find_device_for(
+            db, ip=facts.get("ip"), mac=facts.get("mac"), ieee=facts.get("ieee_address")
+        )
 
     if device is None:
-        device = device_from_node(node)
+        device = device_from_facts(facts)
         db.add(device)
         await db.flush()
     else:
-        merge_node_into_device(
-            device, node, overwrite_scalars=overwrite_scalars, replace_lists=replace_lists
+        merge_facts_into_device(
+            device, facts, overwrite_scalars=overwrite_scalars, replace_lists=replace_lists
         )
         device.discovery_sources = add_source(device.discovery_sources, CANVAS_SOURCE)
 
     node.device_id = device.id
     return device
+
+
+def node_columns(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """The subset of a node payload that is still a `nodes` column.
+
+    The wire shape carries the device facts flat on the node; they belong to the
+    inventory row now, so they are dropped here and applied through
+    :func:`link_facts` instead.
+    """
+    allowed = {c.name for c in Node.__table__.columns}
+    return {k: v for k, v in payload.items() if k in allowed}
+
+
+# Fields that are both a node column and a device fact: the node keeps a copy so
+# a half-migrated database still renders, but the row is the truth.
+_SHARED_FIELDS = ("label", "type")
+
+# Everything the inventory row owns, as it appears in a node payload.
+DEVICE_FACT_FIELDS = (
+    *DEVICE_SCALARS, "services", "properties", "show_hardware", "status", *_SHARED_FIELDS,
+)
+
+
+def facts_from_update(sent: Mapping[str, Any]) -> dict[str, Any]:
+    """The device facts inside a partial node update — only what was sent.
+
+    An omitted field must not clear the row, so unsent keys are simply absent.
+    """
+    return {k: v for k, v in sent.items() if k in DEVICE_FACT_FIELDS}
+
+
+def facts_from_payload(payload: Mapping[str, Any], *, label: str, node_type: str) -> dict[str, Any]:
+    """The device facts inside a node save/create payload.
+
+    The wire shape still carries them flat on the node, so this is where they
+    are separated from the presentation fields the node itself keeps.
+    """
+    facts: dict[str, Any] = {
+        field: payload.get(field)
+        for field in (*DEVICE_SCALARS, "services", "properties", "show_hardware", "status")
+    }
+    facts["label"] = label
+    facts["type"] = node_type
+    return facts
 
 
 async def load_devices_for(db: AsyncSession, nodes: list[Node]) -> dict[str, InventoryDevice]:
@@ -317,8 +367,7 @@ def hydrated_node(node: Node, device: InventoryDevice | None) -> dict[str, Any]:
 
     The device fields stay on the wire exactly where they have always been, so
     every reader — the canvas, the live view, the MCP server — is unaffected by
-    the split. Falls back to the node's own columns when it has no row (canvas
-    furniture, or a device row deleted out from under it).
+    the split. Canvas furniture has no row and simply reports the defaults.
     """
     payload: dict[str, Any] = {
         c.name: getattr(node, c.name) for c in node.__table__.columns
@@ -333,59 +382,104 @@ def hydrated_node(node: Node, device: InventoryDevice | None) -> dict[str, Any]:
     payload["services"] = device.services or []
     payload["properties"] = device.properties or []
     payload["show_hardware"] = bool(device.show_hardware)
-    payload["ieee_address"] = device.ieee_address or node.ieee_address
-    # Live status still reaches the node while the status checker is node-scoped
-    # (it moves to the row in the next step), so prefer whichever side has an
-    # actual observation rather than blanking the canvas in between.
-    if device.status_live and device.status_live != "unknown":
-        payload["status"] = device.status_live
-    payload["last_seen"] = device.last_seen or node.last_seen
-    payload["last_scan"] = device.last_scan or node.last_scan
-    payload["response_time_ms"] = (
-        device.response_time_ms if device.response_time_ms is not None else node.response_time_ms
-    )
+    payload["ieee_address"] = device.ieee_address
+    payload["status"] = device.status_live or "unknown"
+    payload["last_seen"] = device.last_seen
+    payload["last_scan"] = device.last_scan
+    payload["response_time_ms"] = device.response_time_ms
     return payload
+
+
+# The device columns `nodes` carried before 3.3.0. They are read once, by the
+# backfill, and then dropped — so they are named here as raw SQL rather than as
+# model attributes that no longer exist.
+_LEGACY_NODE_COLUMNS = (
+    "hostname", "ip", "mac", "os", "status", "check_method", "check_target",
+    "services", "notes", "cpu_count", "cpu_model", "ram_gb", "disk_gb",
+    "show_hardware", "properties", "ieee_address", "last_seen", "last_scan",
+    "response_time_ms",
+)
+
+
+async def _legacy_columns_present(db: AsyncSession) -> list[str]:
+    """Which pre-3.3.0 device columns still exist on `nodes`."""
+    rows = (await db.execute(text("PRAGMA table_info(nodes)"))).all()
+    present = {r[1] for r in rows}
+    return [c for c in _LEGACY_NODE_COLUMNS if c in present]
+
+
+def _decode_json(value: Any) -> Any:
+    """Raw SQL hands back JSON columns as text; the ORM would have decoded them."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    return value
 
 
 async def backfill_node_devices(db: AsyncSession) -> dict[str, int]:
     """Link every pre-3.3.0 canvas node to a Device Inventory row.
 
-    Non-destructive: it writes ``nodes.device_id`` and fills blank inventory
-    fields, and never deletes a node or a row. Two nodes on two canvases
-    describing the same host converge on one row — that convergence is the point.
+    Non-destructive: it writes ``nodes.device_id`` and fills the inventory row,
+    and never deletes a node or a row. Two nodes on two canvases describing the
+    same host converge on one row — that convergence is the point.
 
     Nodes are processed oldest-edit-first so that, where two canvases disagree
-    on a scalar, the most recently edited node is the last writer and wins.
-    Returns counts for the boot log. Does not commit.
+    on a scalar, the most recently edited node is the last writer and wins;
+    properties and services are unioned, so nothing any canvas recorded is lost.
+
+    Reads the legacy columns with raw SQL because the model no longer declares
+    them — this runs on the boot that drops them, once. Returns counts for the
+    boot log. Does not commit.
     """
-    nodes = (
+    legacy = await _legacy_columns_present(db)
+    if not legacy:
+        # Already migrated: the columns are gone, so nothing can be left to read.
+        return {"linked": 0, "created": 0, "merged": 0}
+
+    placeholders = ", ".join(legacy)
+    furniture = ", ".join(f"'{t}'" for t in sorted(FURNITURE_TYPES))
+    rows = (
         await db.execute(
-            select(Node)
-            .where(Node.device_id.is_(None), Node.type.not_in(tuple(FURNITURE_TYPES)))
-            .order_by(Node.updated_at, Node.created_at, Node.id)
+            text(
+                f"SELECT id, label, type, design_id, {placeholders} FROM nodes "
+                f"WHERE device_id IS NULL AND type NOT IN ({furniture}) "
+                "ORDER BY updated_at, created_at, id"
+            )
         )
-    ).scalars().all()
-    if not nodes:
+    ).mappings().all()
+    if not rows:
         return {"linked": 0, "created": 0, "merged": 0}
 
     created = merged = 0
-    for node in nodes:
-        existing = await find_device_for(db, ip=node.ip, mac=node.mac, ieee=node.ieee_address)
-        # Nodes arrive oldest-edit-first, so overwriting scalars leaves the most
-        # recently edited canvas as the last writer. Lists stay unioned — nothing
-        # any canvas recorded is dropped.
-        device = await link_node(db, node, overwrite_scalars=True)
+    for row in rows:
+        facts: dict[str, Any] = {c: row[c] for c in legacy}
+        facts["services"] = _decode_json(facts.get("services")) or []
+        facts["properties"] = _decode_json(facts.get("properties")) or []
+        facts["label"] = row["label"]
+        facts["type"] = row["type"]
+
+        existing = await find_device_for(
+            db, ip=facts.get("ip"), mac=facts.get("mac"), ieee=facts.get("ieee_address")
+        )
+        node = await db.get(Node, row["id"])
+        if node is None:  # pragma: no cover - the row was just read
+            continue
+        device = await link_facts(db, node, facts, overwrite_scalars=True)
         if device is None:
             continue
         if existing is None:
             created += 1
-            logger.info("Inventory backfill: node %s (%s) created device %s", node.id, node.label, device.id)
+            logger.info(
+                "Inventory backfill: node %s (%s) created device %s", node.id, row["label"], device.id
+            )
         else:
             merged += 1
             logger.info(
                 "Inventory backfill: node %s (%s, design %s) merged into device %s",
-                node.id, node.label, node.design_id, device.id,
+                node.id, row["label"], row["design_id"], device.id,
             )
 
     await db.flush()
-    return {"linked": len(nodes), "created": created, "merged": merged}
+    return {"linked": len(rows), "created": created, "merged": merged}

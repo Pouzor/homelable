@@ -28,6 +28,15 @@ class Design(Base):
 
 
 class Node(Base):
+    """How a device is drawn on one canvas.
+
+    A node owns presentation only — position, size, colours, icon, handles,
+    nesting. What the device *is* (addresses, services, properties, notes,
+    hardware, check method, live status) belongs to the `device_inventory` row
+    named by `device_id`, so one device reads the same on every canvas. The API
+    still reports both together: see `services/inventory_sync.hydrated_node`.
+    """
+
     __tablename__ = "nodes"
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
@@ -40,38 +49,19 @@ class Node(Base):
     device_id: Mapped[str | None] = mapped_column(
         String, ForeignKey("device_inventory.id", ondelete="SET NULL"), index=True, nullable=True
     )
-    hostname: Mapped[str | None] = mapped_column(String)
-    ip: Mapped[str | None] = mapped_column(String)
-    mac: Mapped[str | None] = mapped_column(String)
-    os: Mapped[str | None] = mapped_column(String)
-    status: Mapped[str] = mapped_column(String, default="unknown")
-    check_method: Mapped[str | None] = mapped_column(String)
-    check_target: Mapped[str | None] = mapped_column(String)
-    services: Mapped[list[Any]] = mapped_column(JSON, default=list)
-    notes: Mapped[str | None] = mapped_column(Text)
     pos_x: Mapped[float] = mapped_column(Float, default=0)
     pos_y: Mapped[float] = mapped_column(Float, default=0)
     parent_id: Mapped[str | None] = mapped_column(String, ForeignKey("nodes.id", ondelete="CASCADE"))
     container_mode: Mapped[bool] = mapped_column(Boolean, default=False)
     custom_colors: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     custom_icon: Mapped[str | None] = mapped_column(String, nullable=True)
-    cpu_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    cpu_model: Mapped[str | None] = mapped_column(String, nullable=True)
-    ram_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
-    disk_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
-    show_hardware: Mapped[bool] = mapped_column(Boolean, default=False)
     show_port_numbers: Mapped[bool] = mapped_column(Boolean, default=False)
-    properties: Mapped[list[Any]] = mapped_column(JSON, default=list)
     width: Mapped[float | None] = mapped_column(Float, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)
     bottom_handles: Mapped[int] = mapped_column(Integer, default=1)
     top_handles: Mapped[int] = mapped_column(Integer, default=1)
     left_handles: Mapped[int] = mapped_column(Integer, default=0)
     right_handles: Mapped[int] = mapped_column(Integer, default=0)
-    ieee_address: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
-    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    last_scan: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    response_time_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
     children: Mapped[list["Node"]] = relationship("Node", back_populates="parent")

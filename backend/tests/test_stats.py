@@ -68,13 +68,21 @@ async def test_summary_aggregates_counts(
 ) -> None:
     settings.homepage_api_key = "topsecret"
     finished = datetime(2026, 5, 14, 10, 0, tzinfo=timezone.utc)
+    # Reachability and the ieee live on the inventory row each node draws.
+    drawn = [
+        ("A", "server", "online", None),
+        ("B", "server", "online", None),
+        ("C", "server", "offline", None),
+        ("D", "server", "unknown", None),
+        ("Z1", "iot", "online", "0x1"),
+        ("Z2", "iot", "online", "0x2"),
+    ]
+    for label, node_type, status_live, ieee in drawn:
+        device = InventoryDevice(status="approved", status_live=status_live, ieee_address=ieee)
+        db_session.add(device)
+        await db_session.flush()
+        db_session.add(Node(type=node_type, label=label, device_id=device.id))
     db_session.add_all([
-        Node(type="server", label="A", status="online"),
-        Node(type="server", label="B", status="online"),
-        Node(type="server", label="C", status="offline"),
-        Node(type="server", label="D", status="unknown"),
-        Node(type="iot",    label="Z1", status="online", ieee_address="0x1"),
-        Node(type="iot",    label="Z2", status="online", ieee_address="0x2"),
         InventoryDevice(ip="10.0.0.1", status="pending"),
         InventoryDevice(ip="10.0.0.2", status="pending"),
         InventoryDevice(ip="10.0.0.3", status="hidden"),  # excluded

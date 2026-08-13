@@ -486,6 +486,94 @@ async def init_db() -> None:
             await _try_migrate(conn, sql, label=label)
 
     await _backfill_node_devices()
+    await _drop_legacy_node_columns()
+
+
+
+# Columns `nodes` carried before 3.3.0, when a node owned the device facts. They
+# belong to `device_inventory` now; the backfill above copies them across, and
+# this rebuild removes them.
+_LEGACY_NODE_COLUMNS = (
+    "hostname", "ip", "mac", "os", "status", "check_method", "check_target",
+    "services", "notes", "cpu_count", "cpu_model", "ram_gb", "disk_gb",
+    "show_hardware", "properties", "ieee_address", "last_seen", "last_scan",
+    "response_time_ms",
+)
+
+# What a node keeps: how the device is drawn on one canvas.
+_NODE_COLUMNS_SQL = (
+    "id VARCHAR PRIMARY KEY,"
+    "type VARCHAR NOT NULL,"
+    "label VARCHAR NOT NULL,"
+    "design_id VARCHAR REFERENCES designs(id) ON DELETE SET NULL,"
+    "device_id VARCHAR REFERENCES device_inventory(id) ON DELETE SET NULL,"
+    "pos_x FLOAT,"
+    "pos_y FLOAT,"
+    "parent_id VARCHAR REFERENCES nodes(id) ON DELETE CASCADE,"
+    "container_mode BOOLEAN,"
+    "custom_colors JSON,"
+    "custom_icon VARCHAR,"
+    "show_port_numbers BOOLEAN,"
+    "width FLOAT,"
+    "height FLOAT,"
+    "bottom_handles INTEGER,"
+    "top_handles INTEGER,"
+    "left_handles INTEGER,"
+    "right_handles INTEGER,"
+    "created_at DATETIME,"
+    "updated_at DATETIME"
+)
+
+_NODE_KEPT = (
+    "id, type, label, design_id, device_id, pos_x, pos_y, parent_id, container_mode, "
+    "custom_colors, custom_icon, show_port_numbers, width, height, bottom_handles, "
+    "top_handles, left_handles, right_handles, created_at, updated_at"
+)
+
+
+async def _drop_legacy_node_columns() -> None:
+    """Remove the device columns from `nodes` (3.3.0) — SQLite table rebuild.
+
+    Runs only after the backfill has linked every device node to its inventory
+    row. If any non-furniture node is still unlinked the drop is skipped and
+    logged: the columns are the only remaining copy of that node's facts, and
+    losing them is not recoverable.
+    """
+    async with engine.begin() as conn:
+        info = (await conn.exec_driver_sql("PRAGMA table_info(nodes)")).fetchall()
+        present = {row[1] for row in info}
+        if not (present & set(_LEGACY_NODE_COLUMNS)):
+            return  # Already migrated.
+
+        unlinked = (
+            await conn.exec_driver_sql(
+                "SELECT COUNT(*) FROM nodes WHERE device_id IS NULL "
+                "AND type NOT IN ('group', 'groupRect', 'text')"
+            )
+        ).scalar()
+        if unlinked:
+            logger.warning(
+                "Keeping the legacy node columns: %d node(s) have no inventory row. "
+                "The backfill must link every device node before they can be dropped.",
+                unlinked,
+            )
+            return
+
+        logger.info("Migrating nodes: the device columns move to device_inventory")
+        try:
+            await conn.exec_driver_sql("PRAGMA foreign_keys = OFF")
+            await conn.exec_driver_sql(f"CREATE TABLE nodes_new ({_NODE_COLUMNS_SQL})")
+            await conn.exec_driver_sql(
+                f"INSERT INTO nodes_new ({_NODE_KEPT}) SELECT {_NODE_KEPT} FROM nodes"
+            )
+            await conn.exec_driver_sql("DROP TABLE nodes")
+            await conn.exec_driver_sql("ALTER TABLE nodes_new RENAME TO nodes")
+            await conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_nodes_device_id ON nodes(device_id)"
+            )
+            await conn.exec_driver_sql("PRAGMA foreign_keys = ON")
+        except OperationalError as exc:
+            logger.warning("nodes device-column drop failed: %s", exc)
 
 
 async def _backfill_node_devices() -> None:

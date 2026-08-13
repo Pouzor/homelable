@@ -222,25 +222,33 @@ async def test_persist_creates_pending(db_session) -> None:
 @pytest.mark.asyncio
 async def test_persist_merges_existing_scanned_node_by_ip(db_session) -> None:
     # A device previously found by an IP scan (no ieee, no specs).
+    # The scanned host: one inventory row, drawn by one node.
+    scanned_device = InventoryDevice(
+        id=str(uuid.uuid4()), ip="10.0.0.5", suggested_type="generic",
+        status="approved", discovery_source="arp", discovery_sources=["arp"],
+    )
+    db_session.add(scanned_device)
+    await db_session.flush()
     scanned = Node(
         id=str(uuid.uuid4()), type="generic", label="10.0.0.5",
-        ip="10.0.0.5", status="online", pos_x=0, pos_y=0,
+        device_id=scanned_device.id, pos_x=0, pos_y=0,
     )
     db_session.add(scanned)
     await db_session.commit()
 
     await _persist_pending_import(db_session, [_guest_node(101, "10.0.0.5")], [])
 
-    # No duplicate node; identity + specs merged onto the existing one.
-    nodes = (await db_session.execute(select(Node).where(Node.ip == "10.0.0.5"))).scalars().all()
+    # No duplicate node, and no second row: the import merged into the row the
+    # node already draws.
+    nodes = (await db_session.execute(select(Node))).scalars().all()
     assert len(nodes) == 1
-    merged = nodes[0]
+    merged = await db_session.get(InventoryDevice, nodes[0].device_id)
+    assert merged is not None
     assert merged.ieee_address == "pve-pve1-101"
     assert merged.cpu_count == 2
     assert any(p["key"] == "CPU Cores" for p in (merged.properties or []))
-    # Inventory row exists as approved (already on canvas).
-    inv = (await db_session.execute(select(InventoryDevice).where(InventoryDevice.ieee_address == "pve-pve1-101"))).scalar_one()
-    assert inv.status == "approved"
+    # Still approved — it is on a canvas.
+    assert merged.status == "approved"
 
 
 @pytest.mark.asyncio
@@ -290,17 +298,17 @@ async def test_persist_preserves_ip_tag_for_legacy_null_source_row(db_session) -
 async def test_persist_preserves_ip_tag_on_canvas_merge_legacy_row(db_session) -> None:
     # The immich case: an on-canvas node from an old scan, with a legacy
     # inventory row (NULL source). Merge must keep the IP tag on the row.
-    node = Node(
-        id=str(uuid.uuid4()), type="lxc", label="immich",
-        ip="192.168.1.108", mac="bc:24:11:6c:96:52",
-        status="online", pos_x=0, pos_y=0,
-    )
     inv = InventoryDevice(
         id=str(uuid.uuid4()), ip="192.168.1.108", mac="bc:24:11:6c:96:52",
         suggested_type="lxc", status="approved",
         discovery_source=None, discovery_sources=[],
     )
-    db_session.add_all([node, inv])
+    db_session.add(inv)
+    await db_session.flush()
+    db_session.add(Node(
+        id=str(uuid.uuid4()), type="lxc", label="immich",
+        device_id=inv.id, pos_x=0, pos_y=0,
+    ))
     await db_session.commit()
 
     await _persist_pending_import(
@@ -328,9 +336,15 @@ async def test_persist_does_not_add_ip_tag_to_pure_proxmox_guest(db_session) -> 
 @pytest.mark.asyncio
 async def test_persist_merges_canvas_node_by_mac(db_session) -> None:
     # A scanned canvas node with a MAC but no IP recorded for the guest.
+    scanned_device = InventoryDevice(
+        id=str(uuid.uuid4()), mac="bc:24:11:aa:bb:cc", suggested_type="generic",
+        status="approved", discovery_source="arp", discovery_sources=["arp"],
+    )
+    db_session.add(scanned_device)
+    await db_session.flush()
     scanned = Node(
         id=str(uuid.uuid4()), type="generic", label="box",
-        mac="bc:24:11:aa:bb:cc", status="online", pos_x=0, pos_y=0,
+        device_id=scanned_device.id, pos_x=0, pos_y=0,
     )
     db_session.add(scanned)
     await db_session.commit()
@@ -339,7 +353,8 @@ async def test_persist_merges_canvas_node_by_mac(db_session) -> None:
 
     nodes = (await db_session.execute(select(Node))).scalars().all()
     assert len(nodes) == 1                              # no duplicate node
-    merged = nodes[0]
+    merged = await db_session.get(InventoryDevice, nodes[0].device_id)
+    assert merged is not None
     assert merged.ieee_address == "pve-pve1-101"
     assert merged.mac == "bc:24:11:aa:bb:cc"
     assert merged.cpu_count == 2                        # specs backfilled
@@ -420,12 +435,14 @@ async def test_cluster_link_resolves_to_cluster_edge(db_session) -> None:
     # Two host nodes already on a canvas + a pending cluster link between them.
     design = Design(id=str(uuid.uuid4()), name="d")
     db_session.add(design)
-    a = Node(id=str(uuid.uuid4()), type="proxmox", label="a", ieee_address="pve-node-a",
-             status="online", pos_x=0, pos_y=0, design_id=design.id,
-             left_handles=1, right_handles=1)
-    b = Node(id=str(uuid.uuid4()), type="proxmox", label="b", ieee_address="pve-node-b",
-             status="online", pos_x=0, pos_y=0, design_id=design.id,
-             left_handles=1, right_handles=1)
+    dev_a = InventoryDevice(id=str(uuid.uuid4()), ieee_address="pve-node-a", status="approved")
+    dev_b = InventoryDevice(id=str(uuid.uuid4()), ieee_address="pve-node-b", status="approved")
+    db_session.add_all([dev_a, dev_b])
+    await db_session.flush()
+    a = Node(id=str(uuid.uuid4()), type="proxmox", label="a", device_id=dev_a.id,
+             pos_x=0, pos_y=0, design_id=design.id, left_handles=1, right_handles=1)
+    b = Node(id=str(uuid.uuid4()), type="proxmox", label="b", device_id=dev_b.id,
+             pos_x=0, pos_y=0, design_id=design.id, left_handles=1, right_handles=1)
     db_session.add_all([a, b])
     db_session.add(InventoryDeviceLink(
         id=str(uuid.uuid4()), source_ieee="pve-node-a", target_ieee="pve-node-b",
@@ -451,13 +468,18 @@ async def test_link_survives_and_resolves_onto_second_design(db_session) -> None
     da = Design(id=str(uuid.uuid4()), name="a")
     db_ = Design(id=str(uuid.uuid4()), name="b")
     db_session.add_all([da, db_])
+    # One row per device, whatever the canvas count.
+    dev_x = InventoryDevice(id=str(uuid.uuid4()), ieee_address="0xAAAA", status="approved")
+    dev_y = InventoryDevice(id=str(uuid.uuid4()), ieee_address="0xBBBB", status="approved")
+    db_session.add_all([dev_x, dev_y])
+    await db_session.flush()
     # Same two devices placed on BOTH designs (one Node per canvas).
     for d in (da, db_):
         db_session.add_all([
-            Node(id=str(uuid.uuid4()), type="iot", label="x", ieee_address="0xAAAA",
-                 status="online", pos_x=0, pos_y=0, design_id=d.id),
-            Node(id=str(uuid.uuid4()), type="iot", label="y", ieee_address="0xBBBB",
-                 status="online", pos_x=0, pos_y=0, design_id=d.id),
+            Node(id=str(uuid.uuid4()), type="iot", label="x", device_id=dev_x.id,
+                 pos_x=0, pos_y=0, design_id=d.id),
+            Node(id=str(uuid.uuid4()), type="iot", label="y", device_id=dev_y.id,
+                 pos_x=0, pos_y=0, design_id=d.id),
         ])
     db_session.add(InventoryDeviceLink(
         id=str(uuid.uuid4()), source_ieee="0xAAAA", target_ieee="0xBBBB",

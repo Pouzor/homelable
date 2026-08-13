@@ -1,41 +1,27 @@
-"""Collapse *true* duplicate canvas nodes: same ``ieee_address`` **and** same
-``design_id`` (i.e. the same device placed twice on the *same* canvas).
+"""Duplicate canvas nodes: the same device drawn twice on the *same* canvas.
 
-The same device legitimately appears on multiple canvases — placing a device on
-another design creates a second :class:`Node` for that IEEE by design (see the
-per-design guard in ``bulk_approve_devices``). Those cross-design rows are NOT
-duplicates and must be preserved. Only two rows sharing both the IEEE *and* the
-design are corrupt, and only those are collapsed here.
+A device legitimately appears on several canvases — one :class:`Node` per
+design, all pointing at one ``device_inventory`` row. Two nodes drawing that row
+on the *same* design are the corrupt case, and the only one collapsed here.
 
-This module provides an idempotent, **loss-free** repair: per ``(ieee,
-design_id)`` group with >1 node it keeps the oldest as canonical, merges the
-extras' data into it (properties, missing scalar fields, services), re-points
-every edge and ``parent_id`` reference onto the canonical node, then deletes the
-extras. Edges are de-duplicated and self-loops dropped after re-pointing so no
-dangling or redundant links remain.
+Identity is the device link, not the addresses: a node names the row it draws,
+so "same device" is an id comparison rather than a guess across ieee/ip/mac.
+The repair is idempotent — the oldest node stays, edges and ``parent_id``
+references are re-pointed onto it, then the extras go. No device data is lost in
+the process because none of it lives on the node any more.
 """
-
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Edge, Node
-from app.services.zigbee_service import merge_zigbee_properties
+from app.services.inventory_sync import find_device_for
 
 logger = logging.getLogger(__name__)
-
-
-def _ip_tokens(ip: str | None) -> list[str]:
-    """Split a Node ``ip`` field into individual, whitespace-trimmed addresses.
-
-    The canvas stores several addresses in one comma-separated string once a
-    user adds e.g. an IPv6 address, so identity matching must compare per token.
-    """
-    return [t.strip() for t in ip.split(",") if t.strip()] if ip else []
 
 
 async def find_duplicate_node(
@@ -45,153 +31,84 @@ async def find_duplicate_node(
     mac: str | None,
     ieee: str | None = None,
 ) -> dict[str, Any] | None:
-    """Return conflict details if an equivalent node (same ieee, ip OR mac)
-    already sits on ``design_id``, else ``None``.
+    """Return conflict details if this device is already drawn on ``design_id``.
 
-    Scoped to a single design on purpose: the same device may legitimately
-    appear on several canvases (one :class:`Node` per design). Only a second
-    node for the same ieee/ip/mac on the *same* design is a duplicate — which
-    the create/approve endpoints turn into a 409 so the UI can offer "go to
-    existing" vs "add duplicate anyway", uniformly for IEEE (Zigbee/Z-Wave) and
-    plain IP/ARP hosts.
+    Identity is resolved once, by the inventory row the addresses point at
+    (``find_device_for``: ieee > ip > mac), and a duplicate is simply a second
+    node on the same design drawing that row. Scoped to one design on purpose:
+    the same device may legitimately appear on several canvases.
 
-    (:func:`dedupe_nodes_by_ieee` still repairs *pre-existing* same-canvas IEEE
-    duplicates; this guard prevents new ones unless the user forces them.)
+    The create/approve endpoints turn this into a 409 so the UI can offer "go to
+    existing" vs "add duplicate anyway".
     """
-    ip_toks = _ip_tokens(ip)
-    conds = []
-    if ieee:
-        conds.append(Node.ieee_address == ieee)
-    # A node's ip may hold several comma-separated addresses (e.g. an IPv6 added
-    # before the IPv4), so narrow with a substring match then confirm per-token
-    # in Python — exact ``Node.ip == ip`` would miss those rows (issue #258).
-    for tok in ip_toks:
-        conds.append(Node.ip.contains(tok))
-    if mac:
-        conds.append(Node.mac == mac)
-    if not conds:
+    device = await find_device_for(db, ip=ip, mac=mac, ieee=ieee)
+    if device is None:
         return None
-    candidates = (
+    existing = (
         await db.execute(
-            select(Node).where(Node.design_id == design_id, or_(*conds))
+            select(Node)
+            .where(Node.design_id == design_id, Node.device_id == device.id)
+            .order_by(Node.created_at, Node.id)
         )
-    ).scalars().all()
-
-    # Confirm a real match (the ip ``contains`` above can false-positive, e.g.
-    # "1.2.3.4" inside "1.2.3.40"), preferring ieee > ip > mac.
-    def _matches(node: Node) -> tuple[str, str | None] | None:
-        if ieee and node.ieee_address == ieee:
-            return "ieee", node.ieee_address
-        node_toks = set(_ip_tokens(node.ip))
-        hit = next((t for t in ip_toks if t in node_toks), None)
-        if hit is not None:
-            return "ip", hit
-        if mac and node.mac == mac:
-            return "mac", mac
+    ).scalars().first()
+    if existing is None:
         return None
 
-    existing = None
-    matched: tuple[str, str | None] | None = None
-    for node in candidates:
-        m = _matches(node)
-        if m is not None:
-            existing, matched = node, m
-            break
-    if existing is None or matched is None:
-        return None
-    match, value = matched
+    # Report which address identified the device, as the UI prints it, in the
+    # same precedence find_device_for used: ieee > ip > mac.
+    match: str
+    value: str | None
+    device_ips = {t.strip() for t in (device.ip or "").split(",") if t.strip()}
+    shared_ip = next((t.strip() for t in (ip or "").split(",") if t.strip() in device_ips), None)
+    if ieee and device.ieee_address == ieee:
+        match, value = "ieee", ieee
+    elif shared_ip:
+        match, value = "ip", shared_ip
+    elif mac and device.mac == mac:
+        match, value = "mac", mac
+    else:
+        match, value = "ip", ip
     return {
         "duplicate": True,
         "existing_node_id": existing.id,
-        "existing_label": existing.label,
+        "existing_label": device.label or existing.label,
         "match": match,
         "value": value,
     }
 
-# Scalar Node fields worth carrying over from a duplicate when the canonical
-# node has no value. Positions, design, parent and identity fields are left on
-# the canonical node untouched (that's the row the user actually placed).
-_FILLABLE_FIELDS = (
-    "hostname",
-    "ip",
-    "mac",
-    "os",
-    "check_method",
-    "check_target",
-    "notes",
-    "cpu_count",
-    "cpu_model",
-    "ram_gb",
-    "disk_gb",
-    "custom_icon",
-    "last_seen",
-    "last_scan",
-)
 
+async def dedupe_nodes_by_device(db: AsyncSession) -> int:
+    """Merge duplicate nodes drawing the same device on the same canvas.
 
-def _merge_services(
-    a: list[Any] | None, b: list[Any] | None
-) -> list[Any]:
-    """Union two service lists, de-duplicated, order-stable."""
-    out: list[Any] = list(a or [])
-    seen = {repr(s) for s in out}
-    for s in b or []:
-        if repr(s) not in seen:
-            out.append(s)
-            seen.add(repr(s))
-    return out
-
-
-def _merge_into_canonical(canonical: Node, dup: Node) -> None:
-    """Fold ``dup``'s data into ``canonical`` in place (no field lost)."""
-    canonical.properties = merge_zigbee_properties(
-        canonical.properties, dup.properties or []
-    )
-    canonical.services = _merge_services(canonical.services, dup.services)
-    for field in _FILLABLE_FIELDS:
-        if getattr(canonical, field, None) in (None, "") and getattr(dup, field, None) not in (None, ""):
-            setattr(canonical, field, getattr(dup, field))
-    # Prefer a human label over a bare IEEE/hex fallback.
-    if (not canonical.label or canonical.label == canonical.ieee_address) and dup.label:
-        canonical.label = dup.label
-
-
-async def dedupe_nodes_by_ieee(db: AsyncSession) -> int:
-    """Merge duplicate nodes sharing an ``ieee_address`` AND ``design_id``.
-
-    Returns the number of nodes removed. Idempotent: a no-op when every
-    ``(ieee, design)`` pair maps to at most one node. Nodes with the same IEEE
-    on *different* designs are left untouched (valid cross-canvas placement).
+    Returns the number of nodes removed. Idempotent. Nodes drawing one device on
+    *different* designs are left alone — that is valid cross-canvas placement.
+    The device facts live on the inventory row, so nothing has to be merged out
+    of the extras: only edges and parent links are re-pointed before they go.
     Does not commit — the caller owns the transaction.
     """
     rows = (
         await db.execute(
             select(Node)
-            .where(Node.ieee_address.is_not(None))
-            .order_by(Node.ieee_address, Node.created_at, Node.id)
+            .where(Node.device_id.is_not(None))
+            .order_by(Node.device_id, Node.created_at, Node.id)
         )
     ).scalars().all()
 
     groups: dict[tuple[str, str | None], list[Node]] = {}
     for node in rows:
-        groups.setdefault((node.ieee_address, node.design_id), []).append(node)  # type: ignore[arg-type]
+        groups.setdefault((node.device_id, node.design_id), []).append(node)  # type: ignore[arg-type]
 
     removed = 0
-    for (ieee, _design), nodes in groups.items():
+    for (device_id, _design), nodes in groups.items():
         if len(nodes) < 2:
             continue
         canonical, *dups = nodes  # oldest first (ordered above)
         dup_ids = {d.id for d in dups}
 
-        for dup in dups:
-            _merge_into_canonical(canonical, dup)
-
         # Re-point edges + parents, then drop self-loops / duplicates.
         edges = (
             await db.execute(
-                select(Edge).where(
-                    Edge.source.in_(dup_ids) | Edge.target.in_(dup_ids)
-                )
+                select(Edge).where(Edge.source.in_(dup_ids) | Edge.target.in_(dup_ids))
             )
         ).scalars().all()
         for edge in edges:
@@ -200,19 +117,15 @@ async def dedupe_nodes_by_ieee(db: AsyncSession) -> int:
             if edge.target in dup_ids:
                 edge.target = canonical.id
 
-        # Re-point children whose parent was a duplicate.
         children = (
             await db.execute(select(Node).where(Node.parent_id.in_(dup_ids)))
         ).scalars().all()
         for child in children:
             child.parent_id = canonical.id
 
-        # Collapse self-loops and now-redundant parallel edges.
         all_edges = (
             await db.execute(
-                select(Edge).where(
-                    (Edge.source == canonical.id) | (Edge.target == canonical.id)
-                )
+                select(Edge).where((Edge.source == canonical.id) | (Edge.target == canonical.id))
             )
         ).scalars().all()
         seen_pairs: set[tuple[str, str, str]] = set()
@@ -232,8 +145,8 @@ async def dedupe_nodes_by_ieee(db: AsyncSession) -> int:
             removed += 1
 
         logger.info(
-            "Deduped IEEE %s: merged %d duplicate node(s) into %s",
-            ieee, len(dups), canonical.id,
+            "Deduped device %s: merged %d duplicate node(s) into %s",
+            device_id, len(dups), canonical.id,
         )
 
     if removed:

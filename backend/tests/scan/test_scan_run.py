@@ -131,16 +131,6 @@ async def test_run_scan_creates_new_pending_device(db_session: AsyncSession):
 async def test_run_scan_keeps_stale_pending_for_canvas_nodes(db_session: AsyncSession):
     """Pending devices whose IP is already on a canvas are NOT purged — they stay
     in the inventory and are surfaced with an "In N canvas" badge."""
-    node = Node(
-        id=str(uuid.uuid4()),
-        label="Existing Server",
-        type="server",
-        ip="192.168.1.50",
-        status="online",
-        services=[],
-        pos_x=0.0,
-        pos_y=0.0,
-    )
     stale = InventoryDevice(
         id=str(uuid.uuid4()),
         ip="192.168.1.50",
@@ -151,8 +141,17 @@ async def test_run_scan_keeps_stale_pending_for_canvas_nodes(db_session: AsyncSe
         suggested_type="generic",
         status="pending",
     )
-    db_session.add(node)
     db_session.add(stale)
+    await db_session.flush()
+    # A canvas already draws that device.
+    db_session.add(Node(
+        id=str(uuid.uuid4()),
+        label="Existing Server",
+        type="server",
+        device_id=stale.id,
+        pos_x=0.0,
+        pos_y=0.0,
+    ))
     await db_session.commit()
 
     run_id = str(uuid.uuid4())
@@ -174,19 +173,23 @@ async def test_run_scan_keeps_stale_pending_for_canvas_nodes(db_session: AsyncSe
 
 @pytest.mark.asyncio
 async def test_run_scan_records_ip_already_in_canvas(db_session: AsyncSession):
-    """A scanned IP that already exists as a canvas Node still produces a pending
-    device (no longer suppressed)."""
-    node = Node(
+    """A scanned IP already drawn on a canvas refreshes the one inventory row.
+
+    The device is never suppressed, and never duplicated: the node draws that
+    row, so a second row for the same host would split the device in two.
+    """
+    existing = InventoryDevice(id=str(uuid.uuid4()), ip="192.168.1.50", status="approved")
+    db_session.add(existing)
+    await db_session.flush()
+    existing_id = existing.id
+    db_session.add(Node(
         id=str(uuid.uuid4()),
         label="Existing Server",
         type="server",
-        ip="192.168.1.50",
-        status="online",
-        services=[],
+        device_id=existing.id,
         pos_x=0.0,
         pos_y=0.0,
-    )
-    db_session.add(node)
+    ))
     await db_session.commit()
 
     run_id = str(uuid.uuid4())
@@ -200,12 +203,16 @@ async def test_run_scan_records_ip_already_in_canvas(db_session: AsyncSession):
     ):
         await run_scan(["192.168.1.0/24"], db_session, run_id)
 
-    result = await db_session.execute(
-        select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.50")
-    )
-    device = result.scalar_one_or_none()
-    assert device is not None
-    assert device.status == "pending"
+    rows = (
+        await db_session.execute(
+            select(InventoryDevice).where(InventoryDevice.ip == "192.168.1.50")
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].id == existing_id
+    # The scan refreshed it; it did not reset the lifecycle.
+    assert rows[0].status == "approved"
+    assert rows[0].hostname == MOCK_HOST["hostname"]
 
 
 @pytest.mark.asyncio

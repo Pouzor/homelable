@@ -4,12 +4,13 @@ The inventory row owns the device facts; a node owns how the device is drawn.
 These tests pin the rules that make one device end up as one row even when it
 was drawn on several canvases.
 """
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.db.models import Design, InventoryDevice, Node
 from app.services.inventory_sync import (
@@ -36,9 +37,6 @@ def _node(design_id: str, **kwargs) -> Node:
         "id": str(uuid.uuid4()),
         "label": "n",
         "type": "server",
-        "status": "unknown",
-        "services": [],
-        "properties": [],
         "pos_x": 0.0,
         "pos_y": 0.0,
         "design_id": design_id,
@@ -126,31 +124,92 @@ class TestFindDeviceFor:
 
 
 class TestBackfill:
+    """The 3.3.0 migration path.
+
+    A pre-3.3.0 database still has the device columns on `nodes`; the backfill
+    reads them with raw SQL (the model no longer declares them) and folds each
+    node's view into an inventory row. These tests recreate that shape.
+    """
+
+    async def _legacy_nodes_table(self, db_session) -> None:
+        """Re-add the pre-3.3.0 device columns to `nodes`."""
+        for column, sql_type in (
+            ("hostname", "VARCHAR"), ("ip", "VARCHAR"), ("mac", "VARCHAR"), ("os", "VARCHAR"),
+            ("status", "VARCHAR"), ("check_method", "VARCHAR"), ("check_target", "VARCHAR"),
+            ("services", "JSON"), ("notes", "TEXT"), ("cpu_count", "INTEGER"),
+            ("cpu_model", "VARCHAR"), ("ram_gb", "FLOAT"), ("disk_gb", "FLOAT"),
+            ("show_hardware", "BOOLEAN"), ("properties", "JSON"), ("ieee_address", "VARCHAR"),
+            ("last_seen", "DATETIME"), ("last_scan", "DATETIME"), ("response_time_ms", "INTEGER"),
+        ):
+            await db_session.execute(text(f"ALTER TABLE nodes ADD COLUMN {column} {sql_type}"))
+        await db_session.commit()
+
+    async def _legacy_node(self, db_session, design_id: str, *, updated_at=None, **facts) -> str:
+        node_id = str(uuid.uuid4())
+        columns = {
+            "id": node_id,
+            "label": facts.pop("label", "n"),
+            "type": facts.pop("type", "server"),
+            "design_id": design_id,
+            "pos_x": 0.0,
+            "pos_y": 0.0,
+            "container_mode": 0,
+            "show_port_numbers": 0,
+            "bottom_handles": 1,
+            "top_handles": 1,
+            "left_handles": 0,
+            "right_handles": 0,
+            "created_at": _now(0),
+            "updated_at": updated_at or _now(0),
+        }
+        for key in ("services", "properties"):
+            if key in facts:
+                facts[key] = json.dumps(facts[key])
+        columns.update(facts)
+        names = ", ".join(columns)
+        binds = ", ".join(f":{c}" for c in columns)
+        await db_session.execute(text(f"INSERT INTO nodes ({names}) VALUES ({binds})"), columns)
+        await db_session.commit()
+        return node_id
+
+    @pytest.mark.asyncio
+    async def test_does_nothing_when_the_columns_are_already_gone(self, db_session):
+        """A second boot: there is no legacy data left to read."""
+        design = await _design(db_session)
+        db_session.add(_node(design))
+        await db_session.commit()
+
+        assert await backfill_node_devices(db_session) == {"linked": 0, "created": 0, "merged": 0}
+
     @pytest.mark.asyncio
     async def test_links_a_node_to_its_existing_row(self, db_session):
+        await self._legacy_nodes_table(db_session)
         design = await _design(db_session)
         db_session.add(InventoryDevice(id="d-1", ip="10.0.0.5", hostname="nas"))
-        node = _node(design, ip="10.0.0.5", label="NAS")
-        db_session.add(node)
         await db_session.commit()
+        node_id = await self._legacy_node(db_session, design, ip="10.0.0.5", label="NAS")
 
         stats = await backfill_node_devices(db_session)
         await db_session.commit()
 
         assert stats == {"linked": 1, "created": 0, "merged": 1}
-        assert node.device_id == "d-1"
+        node = await db_session.get(Node, node_id)
+        assert node is not None and node.device_id == "d-1"
 
     @pytest.mark.asyncio
     async def test_creates_a_row_for_a_node_no_scan_ever_saw(self, db_session):
+        await self._legacy_nodes_table(db_session)
         design = await _design(db_session)
-        node = _node(design, label="Dumb switch", type="switch", notes="under the desk")
-        db_session.add(node)
-        await db_session.commit()
+        node_id = await self._legacy_node(
+            db_session, design, label="Dumb switch", type="switch", notes="under the desk"
+        )
 
         stats = await backfill_node_devices(db_session)
         await db_session.commit()
 
         assert stats == {"linked": 1, "created": 1, "merged": 0}
+        node = await db_session.get(Node, node_id)
+        assert node is not None
         device = await db_session.get(InventoryDevice, node.device_id)
         assert device is not None
         assert device.label == "Dumb switch"
@@ -162,36 +221,33 @@ class TestBackfill:
     @pytest.mark.asyncio
     async def test_two_canvases_one_device_merge_into_one_row(self, db_session):
         """The whole point: the same host drawn twice becomes one inventory row."""
+        await self._legacy_nodes_table(db_session)
         design_a = await _design(db_session, "A")
         design_b = await _design(db_session, "B")
-        older = _node(
-            design_a,
-            ip="10.0.0.5",
-            label="nas-old",
-            hostname="nas.lan",
-            notes="older note",
+        older = await self._legacy_node(
+            db_session, design_a,
+            ip="10.0.0.5", label="nas-old", hostname="nas.lan", notes="older note",
             properties=[{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
             services=[{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
             updated_at=_now(0),
         )
-        newer = _node(
-            design_b,
-            ip="10.0.0.5",
-            label="nas-new",
-            os="TrueNAS",
+        newer = await self._legacy_node(
+            db_session, design_b,
+            ip="10.0.0.5", label="nas-new", os="TrueNAS",
             properties=[{"key": "Owner", "value": "me", "icon": None, "visible": True}],
             services=[{"port": 80, "protocol": "tcp", "service_name": "http"}],
             updated_at=_now(30),
         )
-        db_session.add_all([older, newer])
-        await db_session.commit()
 
         stats = await backfill_node_devices(db_session)
         await db_session.commit()
 
         assert stats["linked"] == 2
-        assert older.device_id == newer.device_id
-        device = await db_session.get(InventoryDevice, older.device_id)
+        node_a = await db_session.get(Node, older)
+        node_b = await db_session.get(Node, newer)
+        assert node_a is not None and node_b is not None
+        assert node_a.device_id == node_b.device_id
+        device = await db_session.get(InventoryDevice, node_a.device_id)
         assert device is not None
         # Scalars: most recent edit wins, blanks never wipe an established value.
         assert device.label == "nas-new"
@@ -204,10 +260,10 @@ class TestBackfill:
 
     @pytest.mark.asyncio
     async def test_leaves_canvas_furniture_alone(self, db_session):
+        await self._legacy_nodes_table(db_session)
         design = await _design(db_session)
         for kind in ("group", "groupRect", "text"):
-            db_session.add(_node(design, type=kind, label=kind))
-        await db_session.commit()
+            await self._legacy_node(db_session, design, type=kind, label=kind)
 
         stats = await backfill_node_devices(db_session)
         await db_session.commit()
@@ -217,9 +273,9 @@ class TestBackfill:
 
     @pytest.mark.asyncio
     async def test_is_a_no_op_on_a_second_run(self, db_session):
+        await self._legacy_nodes_table(db_session)
         design = await _design(db_session)
-        db_session.add(_node(design, ip="10.0.0.5"))
-        await db_session.commit()
+        await self._legacy_node(db_session, design, ip="10.0.0.5")
 
         first = await backfill_node_devices(db_session)
         await db_session.commit()

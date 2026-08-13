@@ -15,7 +15,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import InventoryDevice, Node, ScanRun
+from app.db.models import InventoryDevice, ScanRun
 from app.services.discovery_sources import add_source
 from app.services.fingerprint import fingerprint_ports, suggest_node_type
 from app.services.http_probe import probe_open_ports
@@ -599,6 +599,10 @@ async def run_scan(
                 # Merged row carries both sources (e.g. ["proxmox", "arp"]).
                 keep.discovery_sources = add_source(keep.discovery_sources, discovery_source)
                 # status preserved — an approved device stays approved.
+                # Stamp last_scan on the row so every canvas drawing the device
+                # shows when the scanner last observed it. The row is the one
+                # place that fact belongs; a node only draws it.
+                keep.last_scan = datetime.now(timezone.utc)
             else:
                 db.add(InventoryDevice(
                     ip=ip,
@@ -610,24 +614,9 @@ async def run_scan(
                     status="pending",
                     discovery_source=discovery_source,
                     discovery_sources=[discovery_source],
+                    last_scan=datetime.now(timezone.utc),
                 ))
                 devices_found += 1
-
-            # Stamp last_scan on any canvas node that matches this device by IP
-            # (or MAC, when known) so the inventory shows when the scanner last
-            # observed it. Match both the normalized and raw MAC so a legacy
-            # canvas node whose mac predates normalization still matches. Across
-            # designs.
-            node_match = [Node.ip == ip]
-            for m in {norm_mac, host.get("mac")}:
-                if m:
-                    node_match.append(Node.mac == m)
-            matching_nodes = (await db.execute(
-                select(Node).where(or_(*node_match))
-            )).scalars().all()
-            scanned_at = datetime.now(timezone.utc)
-            for node in matching_nodes:
-                node.last_scan = scanned_at
 
             await db.commit()
             await broadcast_scan_update(run_id=run_id, devices_found=devices_found)

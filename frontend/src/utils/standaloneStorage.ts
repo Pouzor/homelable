@@ -19,6 +19,7 @@ import type {
   DesignType,
   EdgeData,
   InventoryDevice,
+  InventoryEntry,
   NodeData,
   Rack,
   RackDevice,
@@ -49,8 +50,80 @@ export interface StandaloneCanvas {
   edges: Edge<EdgeData>[]
   theme_id?: ThemeId
   custom_style?: CustomStyleDef | null
+  /**
+   * The Device Inventory for this canvas. Standalone has no backend, so the
+   * rows live with the canvas the way `StandaloneRackCanvas.inventory` does —
+   * but the split is the same one the API makes: a node points at a row through
+   * `device_id`, and the row owns the device facts. Absent on canvases saved
+   * before the split, whose nodes still carry those facts inline.
+   */
+  devices?: InventoryEntry[]
   // NOTE: no floor plan here — floor plans need a backend to upload/serve the
   // image, so they are disabled in standalone mode (see homelable/CLAUDE.md ADR).
+}
+
+/** Node types that draw nothing physical, so they never get an inventory row. */
+const FURNITURE_TYPES = new Set(['group', 'groupRect', 'text'])
+
+/** Device fields the inventory row owns — everything a node no longer keeps. */
+const DEVICE_FIELDS = [
+  'hostname', 'ip', 'mac', 'os', 'status', 'check_method', 'check_target',
+  'services', 'notes', 'cpu_count', 'cpu_model', 'ram_gb', 'disk_gb',
+  'show_hardware', 'properties', 'last_seen', 'last_scan', 'response_time_ms',
+] as const
+
+/**
+ * Split a canvas into nodes-plus-rows on the way to storage.
+ *
+ * Mirrors what the API does server-side, so a standalone canvas and a
+ * backed one carry the same shape: one row per device, the node keeping only
+ * the id of the row it draws.
+ */
+function splitDevices(data: StandaloneCanvas): StandaloneCanvas {
+  const devices: InventoryEntry[] = [...(data.devices ?? [])]
+  const byId = new Map(devices.map((d) => [d.id, d]))
+
+  const nodes = data.nodes.map((n) => {
+    if (FURNITURE_TYPES.has(n.data.type)) return n
+    const deviceId = n.data.device_id ?? generateUUID()
+    const previous = byId.get(deviceId)
+    const facts = Object.fromEntries(
+      DEVICE_FIELDS.filter((f) => n.data[f] !== undefined).map((f) => [f, n.data[f]]),
+    )
+    const row = {
+      ...(previous ?? { id: deviceId, discovered_at: new Date().toISOString(), status: 'approved' }),
+      ...facts,
+      id: deviceId,
+      label: n.data.label,
+      type: n.data.type,
+    } as InventoryEntry
+    if (previous) devices[devices.indexOf(previous)] = row
+    else devices.push(row)
+    byId.set(deviceId, row)
+    return { ...n, data: { ...n.data, device_id: deviceId } }
+  })
+
+  return { ...data, nodes, devices }
+}
+
+/** Put the device facts back on the nodes, so the canvas renders unchanged. */
+function hydrateDevices(data: StandaloneCanvas): StandaloneCanvas {
+  if (!data.devices?.length) return data
+  const byId = new Map(data.devices.map((d) => [d.id, d]))
+  return {
+    ...data,
+    nodes: data.nodes.map((n) => {
+      const row = n.data.device_id ? byId.get(n.data.device_id) : undefined
+      if (!row) return n
+      const facts = Object.fromEntries(
+        DEVICE_FIELDS.filter((f) => row[f] != null).map((f) => [f, row[f]]),
+      )
+      return {
+        ...n,
+        data: { ...n.data, ...facts, label: row.label ?? n.data.label, type: row.type ?? n.data.type },
+      } as Node<NodeData>
+    }),
+  }
 }
 
 function readJSON<T>(key: string): T | null {
@@ -182,9 +255,10 @@ export function saveRackCanvas(designId: string, data: StandaloneRackCanvas): vo
 
 /** Load a design's canvas. Returns null when the design has never been saved. */
 export function loadCanvas(designId: string): StandaloneCanvas | null {
-  return readJSON<StandaloneCanvas>(canvasKey(designId))
+  const stored = readJSON<StandaloneCanvas>(canvasKey(designId))
+  return stored ? hydrateDevices(stored) : null
 }
 
 export function saveCanvas(designId: string, data: StandaloneCanvas): void {
-  localStorage.setItem(canvasKey(designId), JSON.stringify(data))
+  localStorage.setItem(canvasKey(designId), JSON.stringify(splitDevices(data)))
 }

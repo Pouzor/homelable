@@ -27,7 +27,7 @@ from app.schemas.zwave import (
     ZwaveTestConnectionRequest,
     ZwaveTestConnectionResponse,
 )
-from app.services.node_dedupe import dedupe_nodes_by_ieee
+from app.services.node_dedupe import dedupe_nodes_by_device
 from app.services.zwave_service import (
     build_zwave_properties,
     fetch_zwave_network,
@@ -36,6 +36,15 @@ from app.services.zwave_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _is_drawn(db: AsyncSession, device_id: str) -> bool:
+    """True while at least one canvas node still draws this device."""
+    return (
+        await db.execute(select(Node.id).where(Node.device_id == device_id).limit(1))
+    ).scalar_one_or_none() is not None
+
+
 router = APIRouter()
 
 
@@ -189,7 +198,7 @@ async def _persist_pending_import(
     """
     # Repair any pre-existing same-canvas duplicate nodes before upserting, so
     # the by-IEEE lookups below resolve cleanly.
-    await dedupe_nodes_by_ieee(db)
+    await dedupe_nodes_by_device(db)
 
     # Coordinator is no longer auto-placed, so the response's coordinator fields
     # stay unset — retained for backward-compatible response shape.
@@ -208,54 +217,10 @@ async def _persist_pending_import(
         # the pending inventory like every other device, so the user approves it
         # explicitly. Only the shared paths below run for it.
 
-        # Already approved as a canvas Node → refresh props on every canvas it
-        # sits on. Still ensure the discovery inventory carries a row for it
-        # (status="approved") so it shows in the inventory list with an
-        # "In N canvas" badge — legacy auto-placed coordinators never got a
-        # pending row, which is why they went missing.
-        existing_nodes = (
-            await db.execute(
-                select(Node).where(Node.ieee_address == ieee).order_by(Node.id)
-            )
-        ).scalars().all()
-        if existing_nodes:
-            for existing_node in existing_nodes:
-                existing_node.properties = merge_zwave_properties(
-                    existing_node.properties, props
-                )
-            inv = (
-                await db.execute(
-                    select(InventoryDevice).where(InventoryDevice.ieee_address == ieee)
-                )
-            ).scalar_one_or_none()
-            if inv is None:
-                db.add(
-                    InventoryDevice(
-                        ieee_address=ieee,
-                        friendly_name=n.get("friendly_name"),
-                        hostname=n.get("friendly_name"),
-                        suggested_type=n.get("type"),
-                        device_subtype=n.get("device_type"),
-                        model=n.get("model"),
-                        vendor=n.get("vendor"),
-                        lqi=n.get("lqi"),
-                        status="approved",
-                        discovery_source="zwave",
-                    )
-                )
-                pending_created += 1
-            else:
-                # Refresh metadata but never change the row's status.
-                inv.friendly_name = n.get("friendly_name") or inv.friendly_name
-                inv.suggested_type = n.get("type") or inv.suggested_type
-                inv.device_subtype = n.get("device_type") or inv.device_subtype
-                inv.model = n.get("model") or inv.model
-                inv.vendor = n.get("vendor") or inv.vendor
-                if n.get("lqi") is not None:
-                    inv.lqi = n.get("lqi")
-                pending_updated += 1
-            continue
-
+        # Properties belong to the inventory row now, so one upsert serves
+        # every canvas drawing this device — there is no per-node refresh left
+        # to do. The row's status is never touched here: an approved device
+        # stays approved, a hidden one stays hidden.
         result = await db.execute(
             select(InventoryDevice).where(InventoryDevice.ieee_address == ieee)
         )
@@ -271,6 +236,7 @@ async def _persist_pending_import(
                     model=n.get("model"),
                     vendor=n.get("vendor"),
                     lqi=n.get("lqi"),
+                    properties=props,
                     status="pending",
                     discovery_source="zwave",
                 )
@@ -282,9 +248,10 @@ async def _persist_pending_import(
             pending.device_subtype = n.get("device_type") or pending.device_subtype
             pending.model = n.get("model") or pending.model
             pending.vendor = n.get("vendor") or pending.vendor
-            if pending.status == "approved":
-                # Approved earlier but the canvas Node is gone (deleted) — revive
-                # to "pending" so it reappears in the list instead of vanishing.
+            pending.properties = merge_zwave_properties(list(pending.properties or []), props)
+            if pending.status == "approved" and not await _is_drawn(db, pending.id):
+                # Approved earlier but no canvas draws it any more (the node was
+                # deleted) — revive to "pending" so it reappears in the list.
                 pending.status = "pending"
             elif pending.status == "hidden":
                 pass

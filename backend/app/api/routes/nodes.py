@@ -8,7 +8,14 @@ from app.api.deps import get_current_user
 from app.db.database import get_db
 from app.db.models import Design, InventoryDevice, Node
 from app.schemas.nodes import NodeCreate, NodeResponse, NodeUpdate
-from app.services.inventory_sync import hydrated_node, link_node, load_devices_for
+from app.services.inventory_sync import (
+    facts_from_payload,
+    facts_from_update,
+    hydrated_node,
+    link_facts,
+    load_devices_for,
+    node_columns,
+)
 from app.services.node_dedupe import find_duplicate_node
 
 router = APIRouter()
@@ -108,12 +115,14 @@ async def create_node(body: NodeCreate, db: AsyncSession = Depends(get_db), _: s
             if data["pos_y"] is None:
                 data["pos_y"] = 0.0
 
-    node = Node(**data)
+    node = Node(**node_columns(data))
     db.add(node)
     await db.flush()
     # A new device node gets (or joins) its Device Inventory row — the canvas is
     # one more way to document hardware, not a parallel store.
-    await link_node(db, node)
+    await link_facts(
+        db, node, facts_from_payload(data, label=data["label"], node_type=data["type"])
+    )
     await db.commit()
     await db.refresh(node)
     return await _hydrate(db, node)
@@ -140,10 +149,20 @@ async def update_node(
     node = await db.get(Node, node_id)
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
+    sent = body.model_dump(exclude_unset=True)
+    for field, value in node_columns(sent).items():
         setattr(node, field, value)
     # The user edited the device, not just its drawing: push the facts down.
-    await link_node(db, node, overwrite_scalars=True, replace_lists=True)
+    # Only what was sent counts — an omitted field must not clear the row, and
+    # lists are replaced only when the client actually sent them.
+    facts = facts_from_update(sent)
+    await link_facts(
+        db,
+        node,
+        facts,
+        overwrite_scalars=True,
+        replace_lists="properties" in sent or "services" in sent,
+    )
     await db.commit()
     await db.refresh(node)
     return await _hydrate(db, node)

@@ -12,7 +12,13 @@ from app.db.models import CanvasState, Design, Edge, Node
 from app.schemas.canvas import CanvasSaveRequest, CanvasStateResponse
 from app.schemas.edges import EdgeResponse
 from app.schemas.nodes import NodeResponse
-from app.services.inventory_sync import hydrated_node, link_node, load_devices_for
+from app.services.inventory_sync import (
+    facts_from_payload,
+    hydrated_node,
+    link_facts,
+    load_devices_for,
+    node_columns,
+)
 
 router = APIRouter()
 
@@ -81,22 +87,24 @@ async def save_canvas(
     # Upsert nodes, then route their device facts to the inventory row that owns
     # them — an edit made on this canvas is an edit to the device itself, and
     # every other canvas showing it follows.
-    saved_nodes: list[Node] = []
+    saved: list[tuple[Node, dict[str, Any]]] = []
     for node_data in body.nodes:
         db_node = await db.get(Node, node_data.id)
         payload = node_data.model_dump()
         payload["design_id"] = design_id
+        facts = facts_from_payload(payload, label=node_data.label, node_type=node_data.type)
+        columns = node_columns(payload)
         if db_node:
-            for field, value in payload.items():
+            for field, value in columns.items():
                 setattr(db_node, field, value)
         else:
-            db_node = Node(**payload)
+            db_node = Node(**columns)
             db.add(db_node)
-        saved_nodes.append(db_node)
+        saved.append((db_node, facts))
 
     await db.flush()
-    for node in saved_nodes:
-        await link_node(db, node, overwrite_scalars=True, replace_lists=True)
+    for node, facts in saved:
+        await link_facts(db, node, facts, overwrite_scalars=True, replace_lists=True)
 
     # Upsert edges
     for edge_data in body.edges:

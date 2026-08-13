@@ -28,9 +28,10 @@ from app.schemas.scan import (
     InventoryDeviceUpdate,
     ScanRunResponse,
 )
-from app.services.inventory_sync import merge_node_into_device
+from app.services.discovery_sources import add_source
+from app.services.inventory_sync import find_device_for, merge_properties, merge_services
 from app.services.mac_utils import normalize_mac
-from app.services.node_dedupe import dedupe_nodes_by_ieee, find_duplicate_node
+from app.services.node_dedupe import dedupe_nodes_by_device, find_duplicate_node
 from app.services.scanner import DeepScanOptions, _valid_port_range, request_cancel, run_scan
 from app.services.zigbee_service import (
     build_zigbee_properties,
@@ -250,65 +251,38 @@ def _agg(values: list[datetime], *, newest: bool) -> datetime | None:
 async def _canvas_correlation(
     db: AsyncSession, devices: list[InventoryDevice]
 ) -> dict[str, dict[str, Any]]:
-    """Correlate each device to existing canvas nodes by ``ieee_address``, ``mac``
-    or ``ip``.
+    """Correlate each device to the canvas nodes drawing it.
 
     Returns, per device id: the number of distinct canvases (designs) it appears
-    on, plus aggregated timestamps from every matching node — created_at (oldest),
-    last_scan / updated_at / last_seen (newest). One node query, grouped in Python
-    (node counts are small for a homelab), so no N+1 per device.
+    on, plus aggregated node timestamps — created_at (oldest) and updated_at
+    (newest). A node names the inventory row it draws, so this is a group-by on
+    ``device_id`` rather than the ieee/mac/ip guesswork it used to be.
 
-    IP matching is per-address: a node's ``ip`` may hold several comma-separated
-    addresses (e.g. an IPv6 added before the IPv4), so we index each token, not
-    the raw string. MAC is a stable identifier immune to such IP edits, so it is
-    matched too — cumulatively with ieee/ip (issue #258).
+    ``last_scan`` and ``last_seen`` come off the device row itself now: they are
+    observations of the device, not of any one drawing of it.
     """
     if not devices:
         return {}
     rows = (
         await db.execute(
-            select(
-                Node.ip,
-                Node.mac,
-                Node.ieee_address,
-                Node.design_id,
-                Node.created_at,
-                Node.last_scan,
-                Node.updated_at,
-                Node.last_seen,
-            ).where(Node.design_id.isnot(None))
+            select(Node.device_id, Node.design_id, Node.created_at, Node.updated_at)
+            .where(Node.design_id.isnot(None), Node.device_id.isnot(None))
         )
     ).all()
-    # Index matching nodes by ip token, mac and ieee so a device can look up any.
-    by_ip: dict[str, list[Any]] = {}
-    by_mac: dict[str, list[Any]] = {}
-    by_ieee: dict[str, list[Any]] = {}
+    by_device: dict[str, list[Any]] = {}
     for row in rows:
-        for tok in _ip_tokens(row.ip):
-            by_ip.setdefault(tok, []).append(row)
-        if row.mac:
-            by_mac.setdefault(row.mac, []).append(row)
-        if row.ieee_address:
-            by_ieee.setdefault(row.ieee_address, []).append(row)
+        by_device.setdefault(row.device_id, []).append(row)
 
     info: dict[str, dict[str, Any]] = {}
     for d in devices:
-        matched = []
-        if d.ieee_address:
-            matched += by_ieee.get(d.ieee_address, [])
-        if d.mac:
-            matched += by_mac.get(d.mac, [])
-        for tok in _ip_tokens(d.ip):
-            matched += by_ip.get(tok, [])
-        # De-duplicate nodes matched by more than one identifier.
-        matched = list({id(m): m for m in matched}.values())
+        matched = by_device.get(d.id, [])
         designs = {m.design_id for m in matched}
         info[d.id] = {
             "canvas_count": len(designs),
             "node_created_at": _agg([m.created_at for m in matched], newest=False),
-            "node_last_scan": _agg([m.last_scan for m in matched], newest=True),
+            "node_last_scan": d.last_scan,
             "node_last_modified": _agg([m.updated_at for m in matched], newest=True),
-            "node_last_seen": _agg([m.last_seen for m in matched], newest=True),
+            "node_last_seen": d.last_seen,
         }
     return info
 
@@ -347,13 +321,35 @@ async def create_pending(
     Lands as ``status="pending"`` like a discovery would, so the existing approve
     / hide / restore flows apply unchanged.
     """
+    # One device is one row. If this host is already known — by ieee, ip or mac —
+    # the user is documenting the device they already have, so fill in what the
+    # row is missing rather than splitting it in two.
+    mac = normalize_mac(body.mac)
+    existing = await find_device_for(db, ip=body.ip, mac=mac, ieee=None)
+    if existing is not None:
+        for field in (
+            "hostname", "ip", "os", "suggested_type", "model", "vendor", "label", "type",
+            "notes", "cpu_count", "cpu_model", "ram_gb", "disk_gb", "check_method",
+            "check_target", "friendly_name", "device_subtype",
+        ):
+            value = getattr(body, field, None)
+            if value not in (None, "") and getattr(existing, field, None) in (None, ""):
+                setattr(existing, field, value)
+        existing.mac = existing.mac or mac
+        existing.properties = merge_properties(existing.properties, body.properties)
+        existing.services = merge_services(existing.services, body.services)
+        existing.discovery_sources = add_source(existing.discovery_sources, body.discovery_source)
+        await db.commit()
+        await db.refresh(existing)
+        return (await _with_canvas_counts(db, [existing]))[0]
+
     device = InventoryDevice(
         hostname=body.hostname,
         ip=body.ip,
         # Canonical form, like every other write path: dedup compares MACs by
         # equality, so a hand-typed "AA-BB-CC-11-22-33" would never match the
         # scanned "aa:bb:cc:11:22:33" and approve would build a duplicate node.
-        mac=normalize_mac(body.mac),
+        mac=mac,
         suggested_type=body.suggested_type,
         model=body.model,
         vendor=body.vendor,
@@ -468,7 +464,7 @@ async def bulk_approve_devices(
     _: str = Depends(get_current_user),
 ) -> dict[str, Any]:
     # Repair any legacy same-canvas duplicate nodes before placing more.
-    await dedupe_nodes_by_ieee(db)
+    await dedupe_nodes_by_device(db)
 
     # Target the design the user is on; fall back to the first design.
     default_design_id = payload.design_id
@@ -489,25 +485,18 @@ async def bulk_approve_devices(
     )
     devices = result.scalars().all()
 
-    # What already sits on the target canvas, so we skip devices already placed
-    # here (by ip, mac or ieee_address) instead of creating duplicate nodes. We
-    # map to the existing node id so the skip report can point the user at it. A
-    # value may be a Node still pending flush (in-batch duplicate) — resolved to
-    # its id after the flush below. IPs are indexed per comma-separated token so
-    # a node whose ip is "fe80::1, 192.168.1.5" still matches a device scanned as
-    # 192.168.1.5 (issue #258).
+    # What already sits on the target canvas. A node names the inventory row it
+    # draws, so "already placed" is now a device-id lookup rather than a guess
+    # across ip/mac/ieee. The value may be a Node still pending flush (in-batch
+    # duplicate) — resolved to its id after the flush below.
     existing = (
         await db.execute(
-            select(Node.id, Node.ip, Node.mac, Node.ieee_address).where(
-                Node.design_id == default_design_id
+            select(Node.id, Node.device_id).where(
+                Node.design_id == default_design_id, Node.device_id.isnot(None)
             )
         )
     ).all()
-    placed_ips: dict[str, Any] = {
-        tok: nid for nid, ip, _, _ in existing for tok in _ip_tokens(ip)
-    }
-    placed_mac: dict[str, Any] = {mac: nid for nid, _, mac, _ in existing if mac}
-    placed_ieee: dict[str, Any] = {ieee: nid for nid, _, _, ieee in existing if ieee}
+    placed: dict[str, Any] = {device_id: nid for nid, device_id in existing}
 
     created_nodes: list[Node] = []
     approved_devices: list[InventoryDevice] = []
@@ -521,68 +510,58 @@ async def bulk_approve_devices(
                 "match": "rack", "value": "rack device", "_ref": None,
             })
             continue
-        # Record which identifier collided so the caller can explain each skip
-        # (and, for existing on-canvas nodes, link to the node already there).
-        ip_hit = next((t for t in _ip_tokens(device.ip) if t in placed_ips), None)
-        if ip_hit is not None:
+        # Report which identifier names the device, so the caller can explain
+        # the skip and link to the node already drawing it.
+        if device.id in placed:
+            match, value = (
+                ("ip", device.ip) if device.ip
+                else ("ieee", device.ieee_address) if device.ieee_address
+                else ("mac", device.mac)
+            )
             skipped_devices.append({
                 "device_id": device.id,
-                "label": device.hostname or device.friendly_name or device.ip or "device",
-                "match": "ip", "value": ip_hit, "_ref": placed_ips[ip_hit],
-            })
-            continue
-        if device.ieee_address is not None and device.ieee_address in placed_ieee:
-            skipped_devices.append({
-                "device_id": device.id,
-                "label": device.hostname or device.friendly_name or device.ieee_address or "device",
-                "match": "ieee", "value": device.ieee_address, "_ref": placed_ieee[device.ieee_address],
-            })
-            continue
-        if device.mac is not None and device.mac in placed_mac:
-            skipped_devices.append({
-                "device_id": device.id,
-                "label": device.hostname or device.friendly_name or device.mac or "device",
-                "match": "mac", "value": device.mac, "_ref": placed_mac[device.mac],
+                "label": device.hostname or device.friendly_name or value or "device",
+                "match": match, "value": value, "_ref": placed[device.id],
             })
             continue
         device.status = "approved"
         node_type = device.suggested_type or "generic"
         is_wireless = _is_wireless(node_type)
         cluster_host = await _is_proxmox_cluster_member(db, device.ieee_address)
+        # Enrich the row, not the node: a mesh device's radio properties and the
+        # default check method describe the device itself.
+        device.type = device.type or node_type
+        device.label = device.label or device.hostname or device.friendly_name or device.ip or "device"
+        device.properties = (
+            _wireless_properties(node_type, device.ieee_address, device.vendor, device.model, device.lqi)
+            if is_wireless
+            else merge_mac_property(list(device.properties or []), device.mac)
+        )
+        if is_wireless:
+            # A mesh device answers no ICMP; being in the mesh is the liveness.
+            device.check_method = "none"
+            device.status_live = "online"
+        elif not device.check_method:
+            # Default to ping so the status checker actually polls it. Without
+            # this the scheduler skips it (check_method NULL -> no check).
+            device.check_method = "ping" if device.ip else None
         node = Node(
-            label=device.hostname or device.friendly_name or device.ip or "device",
-            type=node_type,
-            ip=device.ip,
-            mac=device.mac,
-            hostname=device.hostname,
-            status="online" if is_wireless else "unknown",
-            services=device.services or [],
-            ieee_address=device.ieee_address,
-            properties=_wireless_properties(
-                node_type, device.ieee_address, device.vendor, device.model, device.lqi
-            ) if is_wireless else merge_mac_property(list(device.properties or []), device.mac),
-            # Default to ping so the status checker actually polls the new node.
-            # Without this the scheduler skips it (check_method NULL → no check).
-            check_method="none" if is_wireless else ("ping" if device.ip else None),
-            # Cluster hosts get side handles for their host↔host cluster edge.
+            label=device.label,
+            type=device.type,
+            # Cluster hosts get side handles for their host<->host cluster edge.
             left_handles=1 if cluster_host else 0,
             right_handles=1 if cluster_host else 0,
             design_id=default_design_id,
-            # The node draws this inventory row; the row keeps owning the facts.
+            # The node draws this inventory row; the row owns the facts.
             device_id=device.id,
         )
         db.add(node)
         created_nodes.append(node)
         approved_devices.append(device)
-        # Track within this batch so a duplicate selection (same ip/mac/ieee) is
-        # not placed twice on the same canvas. Store the Node so a later in-batch
-        # skip can resolve to its id after flush.
-        for tok in _ip_tokens(device.ip):
-            placed_ips[tok] = node
-        if device.mac:
-            placed_mac[device.mac] = node
-        if device.ieee_address:
-            placed_ieee[device.ieee_address] = node
+        # Track within this batch so a duplicate selection is not placed twice
+        # on the same canvas. Stores the Node so a later in-batch skip can
+        # resolve to its id after flush.
+        placed[device.id] = node
     await db.flush()  # populates node.id from Python-side default before reading
     # node_ids and approved_device_ids stay index-aligned for the client's mapping.
     node_ids = [n.id for n in created_nodes]
@@ -716,40 +695,56 @@ async def approve_device(
             raise HTTPException(status_code=409, detail=conflict)
 
     device.status = "approved"
-    # Prefer the MAC discovered during the scan (stored on the pending device);
+    # Prefer the MAC discovered during the scan (stored on the inventory row);
     # fall back to whatever the approve payload carried.
     _mac = device.mac or node_data.mac
     cluster_host = await _is_proxmox_cluster_member(db, device.ieee_address)
-    node = Node(
-        label=node_data.label,
-        type=node_data.type,
-        ip=node_data.ip,
-        mac=_mac,
-        hostname=node_data.hostname,
-        status="online" if wireless else node_data.status,
-        services=node_data.services or [],
-        ieee_address=device.ieee_address,
-        properties=_wireless_properties(
+
+    # The approve dialog is an edit of the device, so its values land on the row
+    # — the node that follows only says where it is drawn. A blank field in the
+    # payload never clears what discovery already found.
+    device.label = node_data.label or device.label
+    device.type = node_data.type or device.type
+    device.ip = node_data.ip or device.ip
+    device.mac = _mac
+    device.hostname = node_data.hostname or device.hostname
+    device.services = merge_services(device.services, node_data.services)
+    device.properties = (
+        _wireless_properties(
             node_data.type, device.ieee_address, device.vendor, device.model, device.lqi
-        ) if wireless else merge_mac_property(
+        )
+        if wireless
+        else merge_mac_property(
             merge_zigbee_properties(list(device.properties or []), node_data.properties or []),
             _mac,
-        ),
-        check_method="none" if wireless else (node_data.check_method or ("ping" if node_data.ip else None)),
-        check_target=None if wireless else node_data.check_target,
-        # Cluster hosts get side handles for their host↔host cluster edge.
+        )
+    )
+    if wireless:
+        # A mesh device answers no ICMP; being in the mesh is the liveness.
+        device.check_method = "none"
+        device.check_target = None
+        device.status_live = "online"
+    else:
+        device.check_method = node_data.check_method or device.check_method or (
+            "ping" if device.ip else None
+        )
+        device.check_target = node_data.check_target or device.check_target
+        if node_data.status:
+            device.status_live = node_data.status
+
+    node = Node(
+        label=device.label or node_data.label,
+        type=device.type or node_data.type,
+        # Cluster hosts get side handles for their host<->host cluster edge.
         left_handles=1 if cluster_host else 0,
         right_handles=1 if cluster_host else 0,
         design_id=node_design_id,
-        # The node draws this inventory row; the row keeps owning the facts.
+        # The node draws this inventory row; the row owns the facts.
         device_id=device.id,
     )
     db.add(node)
     await db.flush()
     node_id = node.id
-    # The approve payload may carry user edits (a renamed label, a typed IP) the
-    # inventory row has never seen — fold them back so it stays the source.
-    merge_node_into_device(device, node, overwrite_scalars=False, replace_lists=False)
 
     edges = await _resolve_pending_links_for_ieee(db, device.ieee_address, node_design_id)
 
@@ -818,13 +813,16 @@ async def _resolve_pending_links_for_ieee(
         for link in links
     }
     other_ieees.add(ieee)
+    # A node reaches its ieee through the inventory row it draws.
     nodes_q = await db.execute(
-        select(Node).where(
-            Node.ieee_address.in_(other_ieees),
+        select(InventoryDevice.ieee_address, Node)
+        .join(Node, Node.device_id == InventoryDevice.id)
+        .where(
+            InventoryDevice.ieee_address.in_(other_ieees),
             Node.design_id == design_id,
         )
     )
-    by_ieee = {n.ieee_address: n for n in nodes_q.scalars().all() if n.ieee_address}
+    by_ieee = {row_ieee: node for row_ieee, node in nodes_q.all() if row_ieee}
 
     self_node = by_ieee.get(ieee)
     if self_node is None:
