@@ -498,7 +498,9 @@ export default function App() {
     // parent the LXC/VM stays a free node (linked by a virtual edge) — setting
     // extent:'parent' on a non-container would trap it inside the parent's tiny
     // bounding box with no way to drag it out (issue #205 follow-up).
-    const nestInParent = !!parentNode?.data.container_mode
+    // A visual group nests too, so it seeds its position the same way — mirrors
+    // the condition in the store's addNode, which is the authority here.
+    const nestInParent = !!parentNode?.data.container_mode || parentNode?.data.type === 'group'
     // Seed an ABSOLUTE position near the container's top-left; addNode converts
     // it to container-relative. addNode is the single authority for parentId /
     // extent, so we don't set them here.
