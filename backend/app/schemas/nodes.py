@@ -85,6 +85,10 @@ class NodeUpdate(BaseModel):
 class NodeResponse(NodeBase):
     id: str
     design_id: str | None = None
+    # The Device Inventory row this node draws; None for canvas furniture. The
+    # device fields above are hydrated from that row on read, so the wire shape
+    # is unchanged even though the row, not the node, owns them.
+    device_id: str | None = None
     ieee_address: str | None = None
     last_seen: datetime | None = None
     last_scan: datetime | None = None

@@ -594,6 +594,13 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
               >
                 Rack devices
               </button>
+              <button
+                onClick={() => setSourceFilter('canvas')}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'canvas' ? 'bg-[#8b949e]/20 text-foreground' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                title="Documented directly on a canvas — no scan ever saw it"
+              >
+                Canvas
+              </button>
             </div>
             <select
               value={typeFilter}

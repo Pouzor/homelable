@@ -12,6 +12,7 @@ from app.db.models import CanvasState, Design, Edge, Node
 from app.schemas.canvas import CanvasSaveRequest, CanvasStateResponse
 from app.schemas.edges import EdgeResponse
 from app.schemas.nodes import NodeResponse
+from app.services.inventory_sync import hydrated_node, link_node, load_devices_for
 
 router = APIRouter()
 
@@ -28,12 +29,15 @@ async def load_canvas(
     if design_id is None:
         return CanvasStateResponse(nodes=[], edges=[], viewport={"x": 0, "y": 0, "zoom": 1}, custom_style=None)
 
-    nodes = (await db.execute(select(Node).where(Node.design_id == design_id))).scalars().all()
+    nodes = list((await db.execute(select(Node).where(Node.design_id == design_id))).scalars().all())
     edges = (await db.execute(select(Edge).where(Edge.design_id == design_id))).scalars().all()
     state = await db.get(CanvasState, design_id)
     viewport: dict[str, Any] = state.viewport if state else {"x": 0, "y": 0, "zoom": 1}
+    # The device facts live on the inventory row now; hydrate them back into the
+    # node so the wire shape the canvas consumes is unchanged.
+    devices = await load_devices_for(db, nodes)
     return CanvasStateResponse(
-        nodes=[NodeResponse.model_validate(n) for n in nodes],
+        nodes=[NodeResponse.model_validate(hydrated_node(n, devices.get(n.device_id or ""))) for n in nodes],
         edges=[EdgeResponse.model_validate(e) for e in edges],
         viewport=viewport,
         custom_style=state.custom_style if state else None,
@@ -74,7 +78,10 @@ async def save_canvas(
 
     await db.flush()
 
-    # Upsert nodes
+    # Upsert nodes, then route their device facts to the inventory row that owns
+    # them — an edit made on this canvas is an edit to the device itself, and
+    # every other canvas showing it follows.
+    saved_nodes: list[Node] = []
     for node_data in body.nodes:
         db_node = await db.get(Node, node_data.id)
         payload = node_data.model_dump()
@@ -83,7 +90,13 @@ async def save_canvas(
             for field, value in payload.items():
                 setattr(db_node, field, value)
         else:
-            db.add(Node(**payload))
+            db_node = Node(**payload)
+            db.add(db_node)
+        saved_nodes.append(db_node)
+
+    await db.flush()
+    for node in saved_nodes:
+        await link_node(db, node, overwrite_scalars=True, replace_lists=True)
 
     # Upsert edges
     for edge_data in body.edges:
