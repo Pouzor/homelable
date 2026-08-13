@@ -138,6 +138,39 @@ def _service_host(svc: dict[str, Any], host: str) -> str:
     return f"[{host}]" if _is_ipv6(host) else host
 
 
+def _parse_override(raw: str) -> tuple[str, str | None, int | None]:
+    """Split a service `host` override into (hostname, scheme, port).
+
+    Mirrors the frontend `parseHostParts`: a node can serve several domains, so
+    a service may carry its own host, optionally with a scheme and a port
+    (`blog.example.com`, `blog.example.com:8443`, `https://blog.example.com`).
+    """
+    rest = raw
+    scheme: str | None = None
+    for prefix in ("https://", "http://"):
+        if rest.lower().startswith(prefix):
+            scheme = prefix[:-3]
+            rest = rest[len(prefix):]
+            break
+    rest = rest.split("/", 1)[0]
+
+    if rest.startswith("["):
+        closing = rest.find("]")
+        if closing == -1:
+            return rest, scheme, None
+        hostname = rest[1:closing]
+        remainder = rest[closing + 1:]
+        port = remainder[1:] if remainder.startswith(":") else ""
+        return hostname, scheme, int(port) if port.isdigit() else None
+
+    if rest.count(":") == 1:
+        hostname, _, port = rest.partition(":")
+        if hostname and port.isdigit():
+            return hostname, scheme, int(port)
+
+    return rest, scheme, None
+
+
 async def check_service(svc: dict[str, Any], host: str | None) -> str:
     """Check a single service. Returns 'online' | 'offline' | 'unknown'.
 
@@ -146,6 +179,12 @@ async def check_service(svc: dict[str, Any], host: str | None) -> str:
     so it keeps its category colour instead of flashing red. An open TCP socket
     doesn't prove a non-web service is healthy, so we don't pretend it does.
     """
+    override = str(svc.get("host") or "").strip()
+    override_scheme: str | None = None
+    override_port: int | None = None
+    if override:
+        host, override_scheme, override_port = _parse_override(override)
+
     if not host or host.startswith("-"):
         return "unknown"
     if str(svc.get("protocol", "")).lower() == "udp":
@@ -153,20 +192,22 @@ async def check_service(svc: dict[str, Any], host: str | None) -> str:
 
     port = svc.get("port")
     port = int(port) if isinstance(port, int) or (isinstance(port, str) and port.isdigit()) else None
+    if port is None:
+        port = override_port
 
     # Non-HTTP ports (SSH 22, DB, mail, …) are never checked — keep them grey.
     if port is not None and port in _NON_HTTP_PORTS:
         return "unknown"
 
     name = str(svc.get("service_name", "")).lower()
-    is_web = port is not None or "http" in name
+    is_web = port is not None or "http" in name or override_scheme is not None
     if not is_web:
         return "unknown"
 
     try:
-        scheme = "https" if (
+        scheme = override_scheme or ("https" if (
             port in _HTTPS_PORTS or "https" in name or "ssl" in name or "tls" in name
-        ) else "http"
+        ) else "http")
         url_host = _service_host(svc, host)
         url = f"{scheme}://{url_host}" + (f":{port}" if port is not None else "")
         return "online" if await _http_get(url, verify=False) else "offline"
@@ -187,6 +228,13 @@ async def check_services(
     async def _one(svc: dict[str, Any]) -> dict[str, Any]:
         async with sem:
             status = await check_service(svc, host)
-        return {"port": svc.get("port"), "protocol": svc.get("protocol"), "status": status}
+        # `host` rides along: several vhosts can share one port on one node, so
+        # port+protocol alone no longer identifies a service on the client side.
+        return {
+            "port": svc.get("port"),
+            "protocol": svc.get("protocol"),
+            "host": svc.get("host"),
+            "status": status,
+        }
 
     return await asyncio.gather(*[_one(s) for s in services]) if services else []

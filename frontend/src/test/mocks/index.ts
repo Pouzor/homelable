@@ -65,6 +65,6 @@ export function makeUseCanvasStore<S extends Record<string, unknown>>(state: S) 
 }
 
 /** Common `serviceStatusKey` helper mirrored from the real store. */
-export function serviceStatusKey(nodeId: string, port?: number, protocol?: string) {
-  return `${nodeId}:${port ?? ''}/${protocol ?? ''}`
+export function serviceStatusKey(nodeId: string, port?: number, protocol?: string, host?: string) {
+  return `${nodeId}:${port ?? ''}/${protocol ?? ''}@${host?.trim() ?? ''}`
 }

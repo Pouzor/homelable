@@ -235,7 +235,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
                   key={`${svc.port ?? 'host'}-${svc.protocol}-${svc.path ?? ''}-${i}`}
                   svc={svc}
                   host={host}
-                  status={serviceStatuses[serviceStatusKey(node.id, svc.port, svc.protocol)]}
+                  status={serviceStatuses[serviceStatusKey(node.id, svc.port, svc.protocol, svc.host)]}
                   draggable={services.length > 1}
                   isDragging={dragSvcIndex === i}
                   isDragOver={dragOverSvcIndex === i && dragSvcIndex !== i}

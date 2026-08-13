@@ -101,9 +101,11 @@ function translateWaypointsForMovedNodes(
   })
 }
 
-/** Key for the live per-service status overlay. */
-export const serviceStatusKey = (nodeId: string, port?: number, protocol?: string): string =>
-  `${nodeId}:${port ?? ''}/${protocol ?? ''}`
+/** Key for the live per-service status overlay.
+ *  `host` is part of the key because several vhosts can share one port on one
+ *  node — without it they'd all read the same status. */
+export const serviceStatusKey = (nodeId: string, port?: number, protocol?: string, host?: string): string =>
+  `${nodeId}:${port ?? ''}/${protocol ?? ''}@${host?.trim() ?? ''}`
 
 interface CanvasState {
   nodes: Node<NodeData>[]
@@ -186,7 +188,7 @@ interface CanvasState {
   fitViewPending: boolean
   clearFitViewPending: () => void
   notifyScanDeviceFound: () => void
-  setServiceStatuses: (nodeId: string, statuses: { port?: number; protocol?: string; status: ServiceStatus }[]) => void
+  setServiceStatuses: (nodeId: string, statuses: { port?: number; protocol?: string; host?: string; status: ServiceStatus }[]) => void
   hideIp: boolean
   toggleHideIp: () => void
   setHideIp: (value: boolean) => void
@@ -913,7 +915,7 @@ export const useCanvasStore = create<CanvasState>((rawSet) => {
       // Live overlay only — never touches node data, so it stays out of saves.
       const next = { ...state.serviceStatuses }
       for (const s of statuses) {
-        next[serviceStatusKey(nodeId, s.port, s.protocol)] = s.status
+        next[serviceStatusKey(nodeId, s.port, s.protocol, s.host)] = s.status
       }
       return { serviceStatuses: next }
     }),

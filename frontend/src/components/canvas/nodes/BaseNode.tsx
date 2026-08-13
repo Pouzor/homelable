@@ -162,7 +162,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
           <div className="flex flex-col gap-1 px-2.5 py-1.5 overflow-hidden">
             {services.map((svc, idx) => {
               const url = getServiceUrl(svc, serviceHost)
-              const svcOffline = serviceStatuses[serviceStatusKey(id, svc.port, svc.protocol)] === 'offline'
+              const svcOffline = serviceStatuses[serviceStatusKey(id, svc.port, svc.protocol, svc.host)] === 'offline'
               const row = (
                 <div
                   className="nodrag flex items-center justify-between gap-2 px-1.5 py-1 rounded text-[10px] min-w-0 overflow-hidden"
