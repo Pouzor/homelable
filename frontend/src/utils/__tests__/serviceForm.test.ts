@@ -3,21 +3,23 @@ import { serviceToForm, EMPTY_SERVICE_FORM } from '../serviceForm'
 
 describe('serviceToForm', () => {
   it('maps a service onto string form fields', () => {
-    expect(serviceToForm({ port: 443, protocol: 'udp', service_name: 'svc', path: '/x', icon: 'database' })).toEqual({
+    expect(serviceToForm({ port: 443, protocol: 'udp', service_name: 'svc', path: '/x', host: 'svc.example.com', icon: 'database' })).toEqual({
       service_name: 'svc',
       port: '443',
       protocol: 'udp',
       path: '/x',
+      host: 'svc.example.com',
       icon: 'database',
     })
   })
 
-  it('blanks out absent port and path', () => {
+  it('blanks out absent port, path and host', () => {
     expect(serviceToForm({ protocol: 'tcp', service_name: 'svc' })).toEqual({
       service_name: 'svc',
       port: '',
       protocol: 'tcp',
       path: '',
+      host: '',
       icon: undefined,
     })
   })
@@ -27,6 +29,6 @@ describe('serviceToForm', () => {
   })
 
   it('starts from a blank tcp form', () => {
-    expect(EMPTY_SERVICE_FORM).toEqual({ service_name: '', port: '', protocol: 'tcp', path: '' })
+    expect(EMPTY_SERVICE_FORM).toEqual({ service_name: '', port: '', protocol: 'tcp', path: '', host: '' })
   })
 })

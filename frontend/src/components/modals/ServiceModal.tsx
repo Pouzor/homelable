@@ -45,11 +45,13 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
     const port = trimmedPort === '' ? undefined : Number.parseInt(trimmedPort, 10)
     if (port != null && (Number.isNaN(port) || port < 1 || port > 65535)) return
     const path = form.path.trim()
+    const hostOverride = form.host.trim()
     onSubmit({
       service_name: name,
       protocol: form.protocol,
       port,
       path: path || undefined,
+      host: hostOverride || undefined,
       icon: form.icon,
     })
     onClose()
@@ -132,6 +134,20 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
                 <option value="udp">udp</option>
               </select>
             </div>
+          </div>
+
+          {/* Host override */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">Host</Label>
+            <Input
+              value={form.host}
+              onChange={(e) => set('host', e.target.value)}
+              placeholder="Node host (app.example.com)"
+              className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
+            />
+            <span className="text-[10px] text-muted-foreground/60">
+              Overrides the node host for this service only.
+            </span>
           </div>
 
           {/* Path */}

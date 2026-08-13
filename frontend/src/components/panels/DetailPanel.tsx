@@ -102,6 +102,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         protocol: data.protocol,
         service_name: data.service_name,
         ...(data.path ? { path: data.path } : {}),
+        ...(data.host ? { host: data.host } : {}),
         ...(data.icon ? { icon: data.icon } : {}),
       }
       updateNode(node.id, { services: [...services, svc] })
@@ -115,6 +116,7 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
             service_name: data.service_name,
             port: data.port,
             path: data.path,
+            host: data.host,
             icon: data.icon,
           }
         : svc

@@ -28,6 +28,7 @@ describe('ServiceModal', () => {
         protocol: 'udp',
         port: 80,
         path: '/admin',
+        host: undefined,
         icon: undefined,
       })
       expect(onClose).toHaveBeenCalledOnce()
@@ -116,6 +117,34 @@ describe('ServiceModal', () => {
       fireEvent.change(screen.getByPlaceholderText('Path (/admin)'), { target: { value: '' } })
       submit('Save')
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ path: undefined }))
+    })
+
+    it('prefills and clears the host override', () => {
+      const withHost = serviceToForm({ port: 443, protocol: 'tcp', service_name: 'blog', host: 'blog.example.com' })
+      const { onSubmit } = setup({ initial: withHost, confirmLabel: 'Save' })
+      const input = screen.getByPlaceholderText('Node host (app.example.com)') as HTMLInputElement
+      expect(input.value).toBe('blog.example.com')
+      fireEvent.change(input, { target: { value: '' } })
+      submit('Save')
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ host: undefined }))
+    })
+  })
+
+  describe('host override', () => {
+    it('submits a trimmed host override', () => {
+      const { onSubmit } = setup()
+      fireEvent.change(screen.getByPlaceholderText('Service name'), { target: { value: 'blog' } })
+      fireEvent.change(screen.getByPlaceholderText('Node host (app.example.com)'), { target: { value: '  blog.example.com  ' } })
+      submit()
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ host: 'blog.example.com' }))
+    })
+
+    it('submits undefined when the host is left blank', () => {
+      const { onSubmit } = setup()
+      fireEvent.change(screen.getByPlaceholderText('Service name'), { target: { value: 'blog' } })
+      fireEvent.change(screen.getByPlaceholderText('Node host (app.example.com)'), { target: { value: '   ' } })
+      submit()
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ host: undefined }))
     })
   })
 

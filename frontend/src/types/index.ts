@@ -93,6 +93,10 @@ export interface ServiceInfo {
   path?: string
   icon?: string
   category?: string
+  /** Overrides the node host when building the service URL — one node can serve
+   *  several domains. Same accepted shapes as a node `ip`/`hostname`
+   *  (`host`, `host:port`, `https://host/…`). */
+  host?: string
 }
 
 export type ServiceStatus = 'online' | 'offline' | 'unknown'
