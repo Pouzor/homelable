@@ -424,6 +424,33 @@ describe('NodeModal', () => {
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).parent_id).toBeUndefined()
   })
 
+  it('keeps a group parent_id on submit for a plain node', () => {
+    const { onSubmit } = renderModal({
+      initial: { ...BASE, type: 'server', parent_id: 'g1' },
+      parentCandidates: [{ id: 'g1', label: 'My Group', type: 'group' }],
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).parent_id).toBe('g1')
+  })
+
+  it('keeps a group parent_id when the type changes', () => {
+    const { onSubmit } = renderModal({
+      initial: { ...BASE, type: 'server', parent_id: 'g1' },
+      parentCandidates: [{ id: 'g1', label: 'My Group', type: 'group' }],
+    })
+    fireEvent.change(selects()[0], { target: { value: 'nas' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).parent_id).toBe('g1')
+  })
+
+  it('offers a group as a parent for a plain node', () => {
+    renderModal({
+      initial: { ...BASE, type: 'server' },
+      parentCandidates: [{ id: 'g1', label: 'My Group', type: 'group' }],
+    })
+    expect(screen.getByText('Parent Container')).toBeDefined()
+  })
+
   // ── Appearance ────────────────────────────────────────────────────────
 
   it('renders 3 color swatch labels (border, background, icon)', () => {

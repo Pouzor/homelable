@@ -83,6 +83,47 @@ describe('canvasStore — containers & nesting', () => {
     expect(node?.position.y).toBe(80)
   })
 
+  it('updateNode setting parent_id on a group nests the node visually', () => {
+    const group = { ...makeNode('g1', { type: 'group' }), position: { x: 100, y: 100 } }
+    const child = { ...makeNode('s1', { type: 'server' }), position: { x: 160, y: 180 } }
+    useCanvasStore.getState().addNode(group)
+    useCanvasStore.getState().addNode(child)
+    useCanvasStore.getState().updateNode('s1', { parent_id: 'g1' })
+    const node = useCanvasStore.getState().nodes.find((n) => n.id === 's1')
+    expect(node?.parentId).toBe('g1')
+    expect(node?.extent).toBe('parent')
+    expect(node?.position).toEqual({ x: 60, y: 80 })
+  })
+
+  it('updateNode re-sending an unchanged group parent_id keeps the node in place', () => {
+    const group = { ...makeNode('g1', { type: 'group' }), position: { x: 100, y: 100 } }
+    const child = {
+      ...makeNode('s1', { type: 'server', parent_id: 'g1' }),
+      parentId: 'g1',
+      extent: 'parent' as const,
+      position: { x: 20, y: 30 },
+    }
+    useCanvasStore.setState({ nodes: [group, child] })
+    // What the node modal submits on an unrelated edit: label plus the parent it
+    // already had. It must not detach or re-offset the node (#332 follow-up).
+    useCanvasStore.getState().updateNode('s1', { label: 'renamed', parent_id: 'g1' })
+    const node = useCanvasStore.getState().nodes.find((n) => n.id === 's1')
+    expect(node?.data.parent_id).toBe('g1')
+    expect(node?.parentId).toBe('g1')
+    expect(node?.extent).toBe('parent')
+    expect(node?.position).toEqual({ x: 20, y: 30 })
+  })
+
+  it('addNode keeps a node nested when its parent is a group', () => {
+    const group = { ...makeNode('g1', { type: 'group' }), position: { x: 100, y: 100 } }
+    useCanvasStore.setState({ nodes: [group] })
+    useCanvasStore.getState().addNode({ ...makeNode('s1', { type: 'server', parent_id: 'g1' }), position: { x: 160, y: 180 } })
+    const node = useCanvasStore.getState().nodes.find((n) => n.id === 's1')
+    expect(node?.parentId).toBe('g1')
+    expect(node?.extent).toBe('parent')
+    expect(node?.position).toEqual({ x: 60, y: 80 })
+  })
+
   it('updateNode setting parent_id on non-container proxmox does NOT set React Flow parentId', () => {
     const proxmox = { ...makeNode('px1', { type: 'proxmox', container_mode: false }), position: { x: 100, y: 100 } }
     const lxc = { ...makeNode('lxc1', { type: 'lxc' }), position: { x: 160, y: 180 } }

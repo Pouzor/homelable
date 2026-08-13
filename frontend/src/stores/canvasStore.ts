@@ -433,7 +433,8 @@ export const useCanvasStore = create<CanvasState>((rawSet) => {
   addNode: (node) =>
     set((state) => {
       const parent = node.data.parent_id ? state.nodes.find((n) => n.id === node.data.parent_id) : null
-      const shouldNestInParent = !!(parent?.data.container_mode)
+      // A visual group nests its children just like a container-mode host.
+      const shouldNestInParent = !!(parent?.data.container_mode) || parent?.data.type === 'group'
       const enriched = node.data.parent_id && shouldNestInParent
         ? {
             ...node,
@@ -487,8 +488,8 @@ export const useCanvasStore = create<CanvasState>((rawSet) => {
             updated.extent = undefined
           } else if (newParentId && newParentId !== n.parentId) {
             const parent = state.nodes.find((p) => p.id === newParentId)
-            if (parent?.data.container_mode) {
-              // Attaching to a container-mode Proxmox: nest visually
+            if (parent?.data.container_mode || parent?.data.type === 'group') {
+              // Attaching to a container-mode host or a visual group: nest visually
               updated.parentId = newParentId
               updated.extent = 'parent' as const
               // Convert absolute position to parent-relative (keep node visible inside)
