@@ -28,6 +28,7 @@ from app.schemas.scan import (
     InventoryDeviceUpdate,
     ScanRunResponse,
 )
+from app.services.inventory_sync import merge_node_into_device
 from app.services.mac_utils import normalize_mac
 from app.services.node_dedupe import dedupe_nodes_by_ieee, find_duplicate_node
 from app.services.scanner import DeepScanOptions, _valid_port_range, request_cancel, run_scan
@@ -567,6 +568,8 @@ async def bulk_approve_devices(
             left_handles=1 if cluster_host else 0,
             right_handles=1 if cluster_host else 0,
             design_id=default_design_id,
+            # The node draws this inventory row; the row keeps owning the facts.
+            device_id=device.id,
         )
         db.add(node)
         created_nodes.append(node)
@@ -738,10 +741,15 @@ async def approve_device(
         left_handles=1 if cluster_host else 0,
         right_handles=1 if cluster_host else 0,
         design_id=node_design_id,
+        # The node draws this inventory row; the row keeps owning the facts.
+        device_id=device.id,
     )
     db.add(node)
     await db.flush()
     node_id = node.id
+    # The approve payload may carry user edits (a renamed label, a typed IP) the
+    # inventory row has never seen — fold them back so it stays the source.
+    merge_node_into_device(device, node, overwrite_scalars=False, replace_lists=False)
 
     edges = await _resolve_pending_links_for_ieee(db, device.ieee_address, node_design_id)
 

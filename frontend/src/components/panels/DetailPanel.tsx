@@ -1,5 +1,5 @@
 import { createElement, useRef, useState } from 'react'
-import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff, GripVertical } from 'lucide-react'
+import { X, Edit, Trash2, ExternalLink, Plus, Pencil, Layers, Ungroup, Eye, EyeOff, GripVertical, Boxes } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -16,12 +16,15 @@ import type { Node } from '@xyflow/react'
 
 interface DetailPanelProps {
   onEdit: (id: string) => void
+  /** Opens the Device Inventory on this node's row. Absent in contexts with no
+   *  inventory (standalone, the tour), where the link is simply not offered. */
+  onOpenInventory?: (deviceId: string) => void
 }
 
 /** Open service editor: `index === null` means "add a new service". */
 type SvcModalState = { nodeId: string; index: number | null; form?: ServiceFormData }
 
-export function DetailPanel({ onEdit }: DetailPanelProps) {
+export function DetailPanel({ onEdit, onOpenInventory }: DetailPanelProps) {
   const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup, removeFromGroup, setNodeSize } = useCanvasStore()
   const serviceStatuses = useCanvasStore((s) => s.serviceStatuses)
 
@@ -209,6 +212,16 @@ export function DetailPanel({ onEdit }: DetailPanelProps) {
         {data.last_scan && <DetailRow label="Last Scan" value={formatTimestamp(data.last_scan)} />}
         {data.created_at && <DetailRow label="Created" value={formatTimestamp(data.created_at)} />}
         {data.updated_at && <DetailRow label="Last Modified" value={formatTimestamp(data.updated_at)} />}
+        {/* The row behind this node — where the same facts live for every other
+            canvas showing it. */}
+        {data.device_id && onOpenInventory && (
+          <button
+            onClick={() => onOpenInventory(data.device_id as string)}
+            className="mt-1 flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer"
+          >
+            <Boxes size={10} /> Open in inventory
+          </button>
+        )}
       </div>
 
       {/* Size section — manual width/height entry for pixel-exact sizing */}

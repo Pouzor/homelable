@@ -468,6 +468,21 @@ class TestInventory:
         """The rack prints the logical view's facts, so the endpoint must ship them."""
         rack_design = await _design(client, headers)
         network = await _design(client, headers, name="Network", design_type="network")
+        # Straight to the table: the manual-create schema carries no os/services,
+        # and a scan find does. Seeded before the node so the node links to this
+        # row rather than minting a second one for the same host.
+        db_session.add(
+            InventoryDevice(
+                id="pd-nas",
+                hostname="nas",
+                ip="192.168.1.9",
+                mac="aa:bb:cc:dd:ee:ff",
+                os="TrueNAS",
+                suggested_type="nas",
+                services=[{"port": 445, "service_name": "smb", "category": "storage"}],
+            )
+        )
+        await db_session.commit()
         await client.post(
             "/api/v1/nodes",
             json={
@@ -483,20 +498,6 @@ class TestInventory:
             },
             headers=headers,
         )
-        # Straight to the table: the manual-create schema carries no os/services,
-        # and a scan find does.
-        db_session.add(
-            InventoryDevice(
-                id="pd-nas",
-                hostname="nas",
-                ip="192.168.1.9",
-                mac="aa:bb:cc:dd:ee:ff",
-                os="TrueNAS",
-                suggested_type="nas",
-                services=[{"port": 445, "service_name": "smb", "category": "storage"}],
-            )
-        )
-        await db_session.commit()
 
         items = (
             await client.get(f"/api/v1/racks/inventory?design_id={rack_design}", headers=headers)

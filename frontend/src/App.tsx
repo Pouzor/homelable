@@ -1060,7 +1060,12 @@ export default function App() {
               {isRackDesign
                 ? <RackCablePanel />
                 : (selectedNodeId || selectedNodeIds.length > 1) && (
-                    <DetailPanel onEdit={handleEditNode} />
+                    <DetailPanel
+                      onEdit={handleEditNode}
+                      // Standalone has no Device Inventory to open (ADR-001 style
+                      // gate: the whole scan surface is backend-only).
+                      onOpenInventory={STANDALONE ? undefined : (deviceId) => openInventoryModal(deviceId)}
+                    />
                   )}
             </div>
           </div>

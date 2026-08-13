@@ -34,6 +34,12 @@ class Node(Base):
     type: Mapped[str] = mapped_column(String, nullable=False)
     label: Mapped[str] = mapped_column(String, nullable=False)
     design_id: Mapped[str | None] = mapped_column(String, ForeignKey("designs.id", ondelete="SET NULL"), nullable=True)
+    # The Device Inventory row this node draws. NULL for canvas furniture
+    # (group / groupRect / text), which represents nothing physical. Deleting a
+    # node never deletes the device — the inventory outlives every canvas.
+    device_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("device_inventory.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     hostname: Mapped[str | None] = mapped_column(String)
     ip: Mapped[str | None] = mapped_column(String)
     mac: Mapped[str | None] = mapped_column(String)

@@ -1,11 +1,14 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.database import get_db
-from app.db.models import Design, Node
+from app.db.models import Design, InventoryDevice, Node
 from app.schemas.nodes import NodeCreate, NodeResponse, NodeUpdate
+from app.services.inventory_sync import hydrated_node, link_node, load_devices_for
 from app.services.node_dedupe import find_duplicate_node
 
 router = APIRouter()
@@ -59,15 +62,17 @@ async def list_nodes(
     label: str | None = Query(None, description="Case-insensitive substring filter on node label"),
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
-) -> list[Node]:
+) -> list[Any]:
     query = select(Node)
     if label:
         query = query.where(Node.label.ilike(f"%{label}%"))
-    return list((await db.execute(query)).scalars().all())
+    nodes = list((await db.execute(query)).scalars().all())
+    devices = await load_devices_for(db, nodes)
+    return [hydrated_node(n, devices.get(n.device_id or "")) for n in nodes]
 
 
 @router.post("", response_model=NodeResponse, status_code=status.HTTP_201_CREATED)
-async def create_node(body: NodeCreate, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> Node:
+async def create_node(body: NodeCreate, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> Any:
     data = body.model_dump()
     # `force` bypasses the duplicate guard below; it is not a Node column.
     force = data.pop("force", False)
@@ -105,31 +110,43 @@ async def create_node(body: NodeCreate, db: AsyncSession = Depends(get_db), _: s
 
     node = Node(**data)
     db.add(node)
+    await db.flush()
+    # A new device node gets (or joins) its Device Inventory row — the canvas is
+    # one more way to document hardware, not a parallel store.
+    await link_node(db, node)
     await db.commit()
     await db.refresh(node)
-    return node
+    return await _hydrate(db, node)
+
+
+async def _hydrate(db: AsyncSession, node: Node) -> dict[str, Any]:
+    """Node as the API reports it, with the device facts read off its row."""
+    device = await db.get(InventoryDevice, node.device_id) if node.device_id else None
+    return hydrated_node(node, device)
 
 
 @router.get("/{node_id}", response_model=NodeResponse)
-async def get_node(node_id: str, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> Node:
+async def get_node(node_id: str, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> Any:
     node = await db.get(Node, node_id)
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
-    return node
+    return await _hydrate(db, node)
 
 
 @router.patch("/{node_id}", response_model=NodeResponse)
 async def update_node(
     node_id: str, body: NodeUpdate, db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)
-) -> Node:
+) -> Any:
     node = await db.get(Node, node_id)
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(node, field, value)
+    # The user edited the device, not just its drawing: push the facts down.
+    await link_node(db, node, overwrite_scalars=True, replace_lists=True)
     await db.commit()
     await db.refresh(node)
-    return node
+    return await _hydrate(db, node)
 
 
 @router.delete("/{node_id}", status_code=status.HTTP_204_NO_CONTENT)

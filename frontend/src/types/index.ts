@@ -174,6 +174,13 @@ export interface InventoryEntry {
 export interface NodeData extends Record<string, unknown> {
   label: string
   type: NodeType
+  /**
+   * The Device Inventory row this node draws. The row owns the device facts
+   * below (ip, services, properties, notes…) — they arrive hydrated from it and
+   * a save routes them back to it. Null/absent for canvas furniture
+   * (group / groupRect / text), which describes nothing physical.
+   */
+  device_id?: string | null
   hostname?: string
   ip?: string
   mac?: string

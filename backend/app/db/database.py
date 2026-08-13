@@ -460,6 +460,15 @@ async def init_db() -> None:
             await _try_migrate(conn, sql, label=label)
         # Backfill the columns that carry a non-NULL default in the model, so a
         # legacy row round-trips through Pydantic without tripping the validators.
+        # The link itself: a node points at the inventory row it draws.
+        for label, sql in (
+            ("nodes.device_id", "ALTER TABLE nodes ADD COLUMN device_id TEXT"),
+            (
+                "nodes.device_id.index",
+                "CREATE INDEX IF NOT EXISTS ix_nodes_device_id ON nodes(device_id)",
+            ),
+        ):
+            await _try_migrate(conn, sql, label=label)
         for label, sql in (
             (
                 "device_inventory.status_live.backfill",
@@ -475,6 +484,32 @@ async def init_db() -> None:
             ),
         ):
             await _try_migrate(conn, sql, label=label)
+
+    await _backfill_node_devices()
+
+
+async def _backfill_node_devices() -> None:
+    """Link existing canvas nodes to their Device Inventory rows (3.3.0).
+
+    Runs outside the DDL connection because the merge is Python-side, not SQL.
+    Self-limiting: it only looks at nodes with no ``device_id``, so a second boot
+    finds nothing to do. Never fatal — a failure here leaves the canvas working
+    off its own columns, which still carry the data at this point.
+    """
+    # Imported here: app.services imports app.db.models, which imports this module.
+    from app.services.inventory_sync import backfill_node_devices
+
+    try:
+        async with AsyncSessionLocal() as session:
+            stats = await backfill_node_devices(session)
+            if stats["linked"]:
+                await session.commit()
+                logger.info(
+                    "Inventory backfill: linked %d node(s) — %d device(s) created, %d merged",
+                    stats["linked"], stats["created"], stats["merged"],
+                )
+    except Exception as exc:  # pragma: no cover - defensive, boot must not die
+        logger.warning("Inventory backfill failed: %s", exc)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

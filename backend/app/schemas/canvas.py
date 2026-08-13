@@ -11,6 +11,10 @@ class NodeSave(BaseModel):
     id: str
     type: str
     label: str
+    # Round-tripped so a save keeps the node pointed at its inventory row. The
+    # device fields below are still accepted at their canvas values and routed
+    # to that row server-side.
+    device_id: str | None = None
     hostname: str | None = None
     ip: str | None = None
     mac: str | None = None
