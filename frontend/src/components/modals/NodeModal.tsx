@@ -13,7 +13,7 @@ import { resolveNodeColors } from '@/utils/nodeColors'
 import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
 import { IconPickerPanel } from './IconPickerPanel'
 import { MAX_HANDLES, MIN_HANDLES, clampHandles, sideDefault, handleCountField, type Side } from '@/utils/handleUtils'
-import { getValidParentTypes } from '@/utils/virtualEdgeParent'
+import { isValidParentNode } from '@/utils/virtualEdgeParent'
 
 const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
   { label: 'Hardware',       types: ['isp', 'router', 'firewall', 'switch', 'server', 'nas', 'kvm', 'ap', 'printer'] },
@@ -174,15 +174,10 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
     setLabelError(false)
     const selectedType = (form.type ?? 'generic') as NodeType
     const canUseContainerMode = CONTAINER_MODE_TYPES.includes(selectedType)
-    const validParentTypes = getValidParentTypes(selectedType)
-    // A parent is valid either by the type rules (lxc/vm/docker_container) or
-    // because the candidate is a container-mode node (any child can nest in it).
-    const isValidParent = (p: ParentCandidate) =>
-      validParentTypes.includes(p.type) || p.container_mode === true
     let safeParentId = form.parent_id
     if (safeParentId) {
       const parent = parentCandidates.find((n) => n.id === safeParentId)
-      if (!parent || !isValidParent(parent)) safeParentId = undefined
+      if (!parent || !isValidParentNode(selectedType, parent)) safeParentId = undefined
     }
     const isGroupType = selectedType === 'groupRect' || selectedType === 'group'
     onSubmit({
@@ -225,7 +220,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   // Drop the parent only if it's no longer a valid target for the
                   // new type — keep container-mode parents (any node can nest).
                   const parent = parentCandidates.find((n) => n.id === f.parent_id)
-                  if (f.parent_id && !(parent && (getValidParentTypes(t).includes(parent.type) || parent.container_mode === true))) {
+                  if (f.parent_id && !(parent && isValidParentNode(t, parent))) {
                     next.parent_id = undefined
                   }
                   return next
@@ -377,13 +372,13 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {/* Parent Container */}
             {(() => {
               const childType = (form.type ?? 'generic') as NodeType
-              const validParentTypes = getValidParentTypes(childType)
-              // Candidates: type-based parents (lxc/vm/docker_container) plus any
-              // container-mode node. The current parent is always kept so an
-              // already-nested node can be re-targeted or detached here.
+              // Candidates: type-based parents (lxc/vm/docker_container), any
+              // container-mode node, and visual groups. The current parent is
+              // always kept so an already-nested node can be re-targeted or
+              // detached here.
               const validParents = parentCandidates.filter(
                 (n) => n.id !== currentNodeId &&
-                  (validParentTypes.includes(n.type) || n.container_mode === true || n.id === form.parent_id),
+                  (isValidParentNode(childType, n) || n.id === form.parent_id),
               )
               if (validParents.length === 0) return null
               return (
