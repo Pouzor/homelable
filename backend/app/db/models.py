@@ -236,6 +236,32 @@ class InventoryDevice(Base):
     properties: Mapped[list[Any]] = mapped_column(JSON, default=list)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
+    # --- Curated device facts (3.3.0) -------------------------------------
+    # The inventory row, not the canvas node, owns what the device *is*. A node
+    # only says how it is drawn. `label`/`type` supersede friendly_name/
+    # suggested_type for a device that reached a canvas; the older pair is kept
+    # so discovery imports and the source filters keep working unchanged.
+    label: Mapped[str | None] = mapped_column(String, nullable=True)
+    type: Mapped[str | None] = mapped_column(String, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cpu_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cpu_model: Mapped[str | None] = mapped_column(String, nullable=True)
+    ram_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    disk_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    show_hardware: Mapped[bool] = mapped_column(Boolean, default=False)
+    check_method: Mapped[str | None] = mapped_column(String, nullable=True)
+    check_target: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Live reachability from the status checker. NOT `status` — that column holds
+    # the inventory lifecycle (pending/approved/hidden) and the two must not be
+    # conflated.
+    status_live: Mapped[str] = mapped_column(String, default="unknown")
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_scan: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    response_time_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
+
     # Transient (not persisted): populated per-request by the scan routes to report
     # how many canvases this device already appears on. Not a mapped column.
     canvas_count: int = 0

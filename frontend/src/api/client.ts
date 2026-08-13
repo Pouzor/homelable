@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/authStore'
 import type { AuthMode, AuthUser } from '@/stores/authStore'
+import type { InventoryEntry } from '@/types'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -150,6 +151,13 @@ export const scanApi = {
     /** "manual" (default) or "rack" for gear created from a rack canvas. */
     discovery_source?: 'manual' | 'rack'
   }) => api.post<{ id: string; hostname: string | null }>('/scan/pending', data),
+  /**
+   * Edit an inventory row. Partial: only the keys sent are applied, so a caller
+   * touching one field never clears the rest. Lifecycle (`status`) and discovery
+   * bookkeeping are not editable — approve/hide own those.
+   */
+  updatePending: (id: string, data: Partial<Omit<InventoryEntry, 'id' | 'status' | 'discovered_at'>>) =>
+    api.patch<InventoryEntry>(`/scan/pending/${id}`, data),
   hidden: () => api.get('/scan/hidden'),
   runs: () => api.get('/scan/runs'),
   clearPending: () => api.delete('/scan/pending'),
