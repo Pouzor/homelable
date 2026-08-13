@@ -528,6 +528,12 @@ async def test_check_service_lets_the_service_port_beat_the_override_port():
 
 
 @pytest.mark.asyncio
+async def test_check_service_uses_the_first_host_of_a_comma_list_override():
+    svc = {"port": 8080, "protocol": "tcp", "service_name": "blog", "host": "blog.example.com, alt.example.com"}
+    assert await _captured_url(svc, "10.0.0.1") == "http://blog.example.com:8080"
+
+
+@pytest.mark.asyncio
 async def test_check_service_brackets_an_ipv6_override():
     svc = {"port": 80, "protocol": "tcp", "service_name": "http", "host": "[2001:db8::1]:8080"}
     assert await _captured_url(svc, "10.0.0.1") == "http://[2001:db8::1]:80"

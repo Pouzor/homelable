@@ -104,7 +104,7 @@ function translateWaypointsForMovedNodes(
 /** Key for the live per-service status overlay.
  *  `host` is part of the key because several vhosts can share one port on one
  *  node — without it they'd all read the same status. */
-export const serviceStatusKey = (nodeId: string, port?: number, protocol?: string, host?: string): string =>
+export const serviceStatusKey = (nodeId: string, port?: number, protocol?: string, host?: string | null): string =>
   `${nodeId}:${port ?? ''}/${protocol ?? ''}@${host?.trim() ?? ''}`
 
 interface CanvasState {
@@ -188,7 +188,7 @@ interface CanvasState {
   fitViewPending: boolean
   clearFitViewPending: () => void
   notifyScanDeviceFound: () => void
-  setServiceStatuses: (nodeId: string, statuses: { port?: number; protocol?: string; host?: string; status: ServiceStatus }[]) => void
+  setServiceStatuses: (nodeId: string, statuses: { port?: number; protocol?: string; host?: string | null; status: ServiceStatus }[]) => void
   hideIp: boolean
   toggleHideIp: () => void
   setHideIp: (value: boolean) => void

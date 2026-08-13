@@ -49,6 +49,12 @@ describe('canvasStore — nodes', () => {
     expect(serviceStatuses['node-1:443/tcp@shop.example.com']).toBe('offline')
   })
 
+  it('setServiceStatuses treats a null host from the wire as no override', () => {
+    const { setServiceStatuses } = useCanvasStore.getState()
+    setServiceStatuses('node-1', [{ port: 80, protocol: 'tcp', host: null, status: 'online' }])
+    expect(useCanvasStore.getState().serviceStatuses['node-1:80/tcp@']).toBe('online')
+  })
+
   it('setServiceStatuses merges without dropping other nodes', () => {
     const { setServiceStatuses } = useCanvasStore.getState()
     setServiceStatuses('node-1', [{ port: 80, protocol: 'tcp', status: 'online' }])

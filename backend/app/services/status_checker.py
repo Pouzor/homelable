@@ -145,7 +145,9 @@ def _parse_override(raw: str) -> tuple[str, str | None, int | None]:
     a service may carry its own host, optionally with a scheme and a port
     (`blog.example.com`, `blog.example.com:8443`, `https://blog.example.com`).
     """
-    rest = raw
+    # Like a node ip, an override may list several hosts — the first one wins,
+    # same as the frontend's `splitFirstHost`.
+    rest = raw.split(",")[0].strip()
     scheme: str | None = None
     for prefix in ("https://", "http://"):
         if rest.lower().startswith(prefix):
