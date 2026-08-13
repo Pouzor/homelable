@@ -445,6 +445,46 @@ describe('DetailPanel', () => {
       expect(updateNode.mock.calls[0][1].services[0].port).toBeUndefined()
     })
 
+    it('stores a host override on the added service and links it', () => {
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+        nodes: [makeNode({ ip: '192.168.1.10' })],
+        selectedNodeId: 'n1',
+        selectedNodeIds: [],
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode,
+        snapshotHistory: vi.fn(),
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
+      } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const addHeaders = screen.getAllByText('Add')
+      fireEvent.click(addHeaders[addHeaders.length - 1])
+      fireEvent.change(screen.getByPlaceholderText('Service name'), { target: { value: 'blog' } })
+      fireEvent.change(screen.getByPlaceholderText('Port'), { target: { value: '443' } })
+      fireEvent.change(screen.getByPlaceholderText('Node host (app.example.com)'), { target: { value: 'blog.example.com' } })
+      fireEvent.click(screen.getAllByRole('button', { name: 'Add' }).at(-1) as HTMLButtonElement)
+
+      expect(updateNode.mock.calls[0][1].services[0]).toMatchObject({ service_name: 'blog', host: 'blog.example.com' })
+    })
+
+    it('links a service badge to its host override rather than the node IP', () => {
+      vi.mocked(canvasStore.useCanvasStore).mockReturnValue({
+        nodes: [makeNode({ ip: '192.168.1.10', services: [{ port: 443, protocol: 'tcp', service_name: 'blog', host: 'blog.example.com' }] })],
+        selectedNodeId: 'n1',
+        selectedNodeIds: [],
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode: vi.fn(),
+        snapshotHistory: vi.fn(),
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
+      } as unknown as ReturnType<typeof canvasStore.useCanvasStore>)
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByRole('link', { name: 'blog' }).getAttribute('href')).toBe('https://blog.example.com:443')
+    })
+
     it('calls updateNode without the removed service when X is clicked', () => {
       const updateNode = vi.fn()
       const svc = { port: 80, protocol: 'tcp' as const, service_name: 'nginx' }

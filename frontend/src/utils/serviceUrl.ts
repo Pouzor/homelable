@@ -78,10 +78,13 @@ function formatHostname(hostname: string): string {
 }
 
 export function getServiceUrl(svc: ServiceInfo, host?: string): string | null {
-  if (!host) return null
+  // A node can serve several domains, so a service may carry its own host that
+  // overrides the node one.
+  const effectiveHost = svc.host?.trim() || host
+  if (!effectiveHost) return null
   if (svc.protocol === 'udp') return null // UDP — not HTTP
 
-  const parts = parseHostParts(host)
+  const parts = parseHostParts(effectiveHost)
   if (!parts?.hostname) return null
 
   const effectivePort = svc.port ?? parts.port

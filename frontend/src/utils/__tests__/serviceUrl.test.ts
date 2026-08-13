@@ -80,4 +80,37 @@ describe('getServiceUrl', () => {
   it('supports path-only services inheriting the node port', () => {
     expect(getServiceUrl(svc(undefined, 'tcp', 'app', '/metrics'), '192.168.1.10:9090')).toBe('http://192.168.1.10:9090/metrics')
   })
+
+  describe('service host override', () => {
+    const withHost = (host: string, port?: number, path?: string): ServiceInfo =>
+      ({ ...svc(port, 'tcp', 'app', path), host })
+
+    it('uses the service host instead of the node one', () => {
+      expect(getServiceUrl(withHost('blog.example.com', 8080), '192.168.1.10')).toBe('http://blog.example.com:8080')
+    })
+
+    it('falls back to the node host when the override is blank', () => {
+      expect(getServiceUrl(withHost('   ', 8080), '192.168.1.10')).toBe('http://192.168.1.10:8080')
+    })
+
+    it('resolves against the override even when the node has no host', () => {
+      expect(getServiceUrl(withHost('blog.example.com', 80), undefined)).toBe('http://blog.example.com:80')
+    })
+
+    it('honours a scheme carried by the override', () => {
+      expect(getServiceUrl(withHost('https://blog.example.com'), '192.168.1.10')).toBe('https://blog.example.com')
+    })
+
+    it('takes the port from the override when the service has none', () => {
+      expect(getServiceUrl(withHost('blog.example.com:8443'), '192.168.1.10:80')).toBe('https://blog.example.com:8443')
+    })
+
+    it('appends the service path to the override host', () => {
+      expect(getServiceUrl(withHost('blog.example.com', 3000, 'admin'), '192.168.1.10')).toBe('http://blog.example.com:3000/admin')
+    })
+
+    it('still returns null for a UDP service', () => {
+      expect(getServiceUrl({ ...svc(53, 'udp', 'dns'), host: 'dns.example.com' }, '192.168.1.10')).toBeNull()
+    })
+  })
 })
