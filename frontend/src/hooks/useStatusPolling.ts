@@ -6,6 +6,9 @@ import type { ServiceStatus } from '@/types'
 interface ServiceStatusEntry {
   port?: number
   protocol?: string
+  /** Per-service host override, part of the overlay key — several vhosts can
+   *  share one port on one node. Null when the service has none. */
+  host?: string | null
   status: ServiceStatus
 }
 
