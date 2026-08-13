@@ -37,6 +37,11 @@ describe('isValidParentNode', () => {
     expect(isValidParentNode('lxc', { type: 'proxmox' })).toBe(true)
   })
 
+  it('rejects a group or a zone as the child of a group', () => {
+    expect(isValidParentNode('group', { type: 'group' })).toBe(false)
+    expect(isValidParentNode('groupRect', { type: 'group' })).toBe(false)
+  })
+
   it('rejects a non-container node that no type rule allows', () => {
     expect(isValidParentNode('server', { type: 'proxmox', container_mode: false })).toBe(false)
     expect(isValidParentNode('server', { type: 'groupRect' })).toBe(false)

@@ -443,12 +443,21 @@ describe('NodeModal', () => {
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).parent_id).toBe('g1')
   })
 
-  it('offers a group as a parent for a plain node', () => {
+  it('offers a group as a parent option for a plain node', () => {
     renderModal({
       initial: { ...BASE, type: 'server' },
       parentCandidates: [{ id: 'g1', label: 'My Group', type: 'group' }],
     })
-    expect(screen.getByText('Parent Container')).toBeDefined()
+    const option = screen.getByRole('option', { name: 'My Group' }) as HTMLOptionElement
+    expect(option.value).toBe('g1')
+  })
+
+  it('does not offer a group as a parent for another group', () => {
+    renderModal({
+      initial: { ...BASE, type: 'group' },
+      parentCandidates: [{ id: 'g1', label: 'My Group', type: 'group' }],
+    })
+    expect(screen.queryByText('Parent Container')).toBeNull()
   })
 
   // ── Appearance ────────────────────────────────────────────────────────
