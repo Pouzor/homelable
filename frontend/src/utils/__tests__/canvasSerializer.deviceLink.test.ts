@@ -4,6 +4,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { serializeNode, deserializeApiNode } from '@/utils/canvasSerializer'
+import { DEVICE_FACT_FIELDS, factsBaselineOf } from '@/utils/deviceFacts'
 import type { NodeData } from '@/types'
 import type { Node } from '@xyflow/react'
 
@@ -27,6 +28,23 @@ describe('serializeNode — device link', () => {
 
   it('sends null for a zone — furniture describes nothing physical', () => {
     expect(serializeNode(node({ type: 'groupRect' })).device_id).toBeNull()
+  })
+})
+
+describe('serializeNode — changed_facts', () => {
+  it('claims nothing when the node still holds what it loaded', () => {
+    const n = node({ device_id: 'dev-1', notes: 'in the garage' })
+    expect(serializeNode(n, factsBaselineOf(n.data)).changed_facts).toEqual([])
+  })
+
+  it('claims only the edited fact, so the rest of the row is left alone', () => {
+    const loaded = node({ device_id: 'dev-1', notes: 'in the garage' })
+    const edited = node({ device_id: 'dev-1', notes: 'moved to the loft' })
+    expect(serializeNode(edited, factsBaselineOf(loaded.data)).changed_facts).toEqual(['notes'])
+  })
+
+  it('claims every fact with no baseline — a node the server has never seen', () => {
+    expect(serializeNode(node({ device_id: null })).changed_facts).toEqual([...DEVICE_FACT_FIELDS])
   })
 })
 

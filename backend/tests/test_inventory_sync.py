@@ -15,6 +15,7 @@ from sqlalchemy import select, text
 from app.db.models import Design, InventoryDevice, Node
 from app.services.inventory_sync import (
     backfill_node_devices,
+    changed_facts,
     find_device_for,
     merge_properties,
     merge_services,
@@ -79,6 +80,64 @@ class TestMergeRules:
         assert len(out) == 2
         assert out[0]["icon"] == "Terminal"
         assert out[1]["port"] == 80
+
+
+class TestChangedFacts:
+    """What a save is allowed to write: its edit, not its whole snapshot."""
+
+    def test_an_unchanged_snapshot_writes_nothing(self):
+        device = InventoryDevice(
+            id="d-1",
+            label="NAS",
+            type="nas",
+            hostname="nas.lan",
+            ip="10.0.0.5",
+            notes="in the garage",
+            status_live="online",
+            properties=[{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
+            services=[{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+        )
+        facts = {
+            "label": "NAS",
+            "type": "nas",
+            "hostname": "nas.lan",
+            "ip": "10.0.0.5",
+            "notes": "in the garage",
+            "status": "online",
+            "properties": [{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
+            "services": [{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+        }
+        assert changed_facts(device, facts) == {}
+
+    def test_only_the_edited_field_survives(self):
+        device = InventoryDevice(id="d-1", hostname="nas.lan", ip="10.0.0.5", notes="old")
+        facts = {"hostname": "nas.lan", "ip": "10.0.0.5", "notes": "new"}
+        assert changed_facts(device, facts) == {"notes": "new"}
+
+    def test_a_blank_incoming_value_is_not_a_change(self):
+        # A blank never clears an established value, so it is not an edit either.
+        device = InventoryDevice(id="d-1", hostname="nas.lan", notes="keep me")
+        assert changed_facts(device, {"hostname": "", "notes": None}) == {}
+
+    def test_a_changed_list_is_sent_whole(self):
+        device = InventoryDevice(
+            id="d-1",
+            properties=[{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
+            services=[{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+        )
+        facts = {
+            "properties": [],
+            "services": [{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+        }
+        # Replace semantics need the full list, and the untouched one stays out.
+        assert changed_facts(device, facts) == {"properties": []}
+
+    def test_live_status_only_fills_a_row_never_checked(self):
+        unknown = InventoryDevice(id="d-1", status_live="unknown")
+        assert changed_facts(unknown, {"status": "online"}) == {"status": "online"}
+        checked = InventoryDevice(id="d-2", status_live="offline")
+        # The status checker owns reachability; a stale canvas must not reset it.
+        assert changed_facts(checked, {"status": "online"}) == {}
 
 
 # --- matching ---------------------------------------------------------------
@@ -409,6 +468,209 @@ class TestRoutesKeepTheLinkInStep:
         device = await db_session.get(InventoryDevice, "d-1")
         await db_session.refresh(device)
         assert device.properties == []
+
+    @pytest.mark.asyncio
+    async def test_a_canvas_save_does_not_revert_an_inventory_edit(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """Regression: a save carries this canvas' edit, not its stale snapshot.
+
+        The canvas payload holds a full copy of the device, hydrated when it
+        loaded. Editing the device elsewhere and then saving the still-open
+        canvas — for nothing but a moved node — must not roll the row back.
+        """
+        db_session.add(
+            InventoryDevice(
+                id="d-1",
+                ip="10.0.0.5",
+                label="NAS",
+                type="nas",
+                notes="old note",
+                status="approved",
+                properties=[{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
+            )
+        )
+        await db_session.commit()
+        design_id = (await client.post("/api/v1/designs", json={"name": "A"}, headers=headers)).json()["id"]
+
+        # What the canvas loaded and still holds in memory.
+        stale = {
+            "id": str(uuid.uuid4()),
+            "type": "nas",
+            "label": "NAS",
+            "status": "unknown",
+            "pos_x": 0,
+            "pos_y": 0,
+            "ip": "10.0.0.5",
+            "notes": "old note",
+            "properties": [{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
+        }
+        res = await client.post(
+            "/api/v1/canvas/save",
+            json={"design_id": design_id, "nodes": [stale], "edges": [], "viewport": {}},
+            headers=headers,
+        )
+        assert res.status_code == 200
+
+        # Meanwhile, in the Device Inventory modal.
+        res = await client.patch(
+            "/api/v1/scan/pending/d-1",
+            json={
+                "notes": "moved to the loft",
+                "properties": [
+                    {"key": "Rack", "value": "A1", "icon": None, "visible": True},
+                    {"key": "Owner", "value": "me", "icon": None, "visible": True},
+                ],
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200
+
+        # The canvas saves again — only the node position changed, so it claims
+        # no device edit at all.
+        res = await client.post(
+            "/api/v1/canvas/save",
+            json={
+                "design_id": design_id,
+                "nodes": [{**stale, "pos_x": 240, "changed_facts": []}],
+                "edges": [],
+                "viewport": {},
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200
+
+        device = await db_session.get(InventoryDevice, "d-1")
+        await db_session.refresh(device)
+        assert device.notes == "moved to the loft"
+        assert [p["key"] for p in device.properties] == ["Rack", "Owner"]
+
+    @pytest.mark.asyncio
+    async def test_a_canvas_save_still_writes_what_that_canvas_changed(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """The narrowing must not cost the write-through: an edit still lands."""
+        db_session.add(InventoryDevice(id="d-1", ip="10.0.0.5", label="NAS", type="nas", notes="old note"))
+        await db_session.commit()
+        design_id = (await client.post("/api/v1/designs", json={"name": "A"}, headers=headers)).json()["id"]
+        node = {
+            "id": str(uuid.uuid4()),
+            "type": "nas",
+            "label": "NAS",
+            "status": "unknown",
+            "pos_x": 0,
+            "pos_y": 0,
+            "ip": "10.0.0.5",
+            "notes": "old note",
+        }
+        await client.post(
+            "/api/v1/canvas/save",
+            json={"design_id": design_id, "nodes": [node], "edges": [], "viewport": {}},
+            headers=headers,
+        )
+
+        res = await client.post(
+            "/api/v1/canvas/save",
+            json={
+                "design_id": design_id,
+                "nodes": [
+                    {
+                        **node,
+                        "notes": "edited on the canvas",
+                        "hostname": "nas.lan",
+                        "changed_facts": ["notes", "hostname"],
+                    }
+                ],
+                "edges": [],
+                "viewport": {},
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200
+
+        device = await db_session.get(InventoryDevice, "d-1")
+        await db_session.refresh(device)
+        assert device.notes == "edited on the canvas"
+        assert device.hostname == "nas.lan"
+
+    @pytest.mark.asyncio
+    async def test_an_edit_writes_without_dragging_the_rest_of_the_snapshot(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """One edited fact lands; the stale fields beside it stay out of the write."""
+        db_session.add(
+            InventoryDevice(id="d-1", ip="10.0.0.5", label="NAS", type="nas", notes="old note")
+        )
+        await db_session.commit()
+        design_id = (await client.post("/api/v1/designs", json={"name": "A"}, headers=headers)).json()["id"]
+        node = {
+            "id": str(uuid.uuid4()),
+            "type": "nas",
+            "label": "NAS",
+            "status": "unknown",
+            "pos_x": 0,
+            "pos_y": 0,
+            "ip": "10.0.0.5",
+            "notes": "old note",
+        }
+        await client.post(
+            "/api/v1/canvas/save",
+            json={"design_id": design_id, "nodes": [node], "edges": [], "viewport": {}},
+            headers=headers,
+        )
+        await client.patch("/api/v1/scan/pending/d-1", json={"notes": "moved to the loft"}, headers=headers)
+
+        # The canvas renames the node; its `notes` copy is stale but unedited.
+        await client.post(
+            "/api/v1/canvas/save",
+            json={
+                "design_id": design_id,
+                "nodes": [{**node, "label": "Big NAS", "changed_facts": ["label"]}],
+                "edges": [],
+                "viewport": {},
+            },
+            headers=headers,
+        )
+
+        device = await db_session.get(InventoryDevice, "d-1")
+        await db_session.refresh(device)
+        assert device.label == "Big NAS"
+        assert device.notes == "moved to the loft"
+
+    @pytest.mark.asyncio
+    async def test_a_client_that_tracks_no_changes_still_writes_its_facts(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """Backward compatible: an import or older client omits the field entirely."""
+        db_session.add(InventoryDevice(id="d-1", ip="10.0.0.5", notes="old note"))
+        await db_session.commit()
+        design_id = (await client.post("/api/v1/designs", json={"name": "A"}, headers=headers)).json()["id"]
+
+        await client.post(
+            "/api/v1/canvas/save",
+            json={
+                "design_id": design_id,
+                "nodes": [
+                    {
+                        "id": str(uuid.uuid4()),
+                        "type": "nas",
+                        "label": "NAS",
+                        "status": "unknown",
+                        "pos_x": 0,
+                        "pos_y": 0,
+                        "ip": "10.0.0.5",
+                        "notes": "from the import",
+                    }
+                ],
+                "edges": [],
+                "viewport": {},
+            },
+            headers=headers,
+        )
+
+        device = await db_session.get(InventoryDevice, "d-1")
+        await db_session.refresh(device)
+        assert device.notes == "from the import"
 
     @pytest.mark.asyncio
     async def test_the_second_canvas_sees_the_first_canvas_edit(self, client: AsyncClient, headers, db_session):

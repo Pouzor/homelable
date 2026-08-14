@@ -87,7 +87,7 @@ async def save_canvas(
     # Upsert nodes, then route their device facts to the inventory row that owns
     # them — an edit made on this canvas is an edit to the device itself, and
     # every other canvas showing it follows.
-    saved: list[tuple[Node, dict[str, Any]]] = []
+    saved: list[tuple[Node, dict[str, Any], list[str] | None]] = []
     for node_data in body.nodes:
         db_node = await db.get(Node, node_data.id)
         payload = node_data.model_dump()
@@ -100,11 +100,25 @@ async def save_canvas(
         else:
             db_node = Node(**columns)
             db.add(db_node)
-        saved.append((db_node, facts))
+        saved.append((db_node, facts, node_data.changed_facts))
 
     await db.flush()
-    for node, facts in saved:
-        await link_facts(db, node, facts, overwrite_scalars=True, replace_lists=True)
+    for node, facts, changed in saved:
+        # The payload carries a full copy of each device, hydrated when this
+        # canvas loaded. Routing all of it back would rewrite the row from a
+        # stale snapshot — a save made for nothing but a moved node could revert
+        # an edit meanwhile in the inventory modal. `changed_facts` (when the
+        # client tracked it) plus the row diff narrow the write to this canvas'
+        # actual edit.
+        await link_facts(
+            db,
+            node,
+            facts,
+            overwrite_scalars=True,
+            replace_lists=True,
+            only_changed=True,
+            changed_fields=changed,
+        )
 
     # Upsert edges
     for edge_data in body.edges:
