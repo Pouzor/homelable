@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
-  Globe, Router, Server, Layers, Box, Container, HardDrive, Cpu, Wifi, Circle, Network,
+  Server, Layers,
   Search, RefreshCw, X, CheckCircle2, EyeOff, Trash2, Loader2, ServerCog,
 } from 'lucide-react'
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -9,6 +9,7 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
+import { NODE_TYPE_DEFAULT_ICONS } from '@/utils/nodeIcons'
 import { toast } from 'sonner'
 import { InventoryDeviceModal, type InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 import type { NodeType, ServiceInfo } from '@/types'
@@ -72,24 +73,19 @@ function serviceColor(port: number | null | undefined, category?: string | null)
   return '#8b949e'
 }
 
-const TYPE_ICONS: Record<string, React.ElementType> = {
-  isp: Globe,
-  router: Router,
-  server: Server,
-  proxmox: Layers,
-  vm: Box,
-  lxc: Container,
-  nas: HardDrive,
-  iot: Cpu,
-  ap: Wifi,
-  switch: Network,
-  generic: Circle,
-}
-
 type SourceFilter = 'all' | SourceBucket
 type StatusFilter = 'pending' | 'hidden'
 
 const COMMON_PORTS = new Set([22, 80, 443])
+
+/**
+ * What the device is. The curated `type` wins over the discovery guess: a
+ * device drawn on a canvas only ever has the former, and an edit that retypes a
+ * scanned row must not keep reading the scanner's opinion.
+ */
+function deviceType(d: InventoryEntry): NodeType | null {
+  return ((d.type ?? d.suggested_type) as NodeType) ?? null
+}
 
 function specialServiceName(d: InventoryEntry): string | undefined {
   const candidates = (d.services ?? []).filter(
@@ -101,7 +97,8 @@ function specialServiceName(d: InventoryEntry): string | undefined {
 }
 
 function deviceLabel(d: InventoryEntry): string {
-  return d.friendly_name ?? d.hostname ?? specialServiceName(d) ?? d.ip ?? d.ieee_address ?? 'device'
+  // Same precedence as the detail modal — the name the user gave it first.
+  return d.label ?? d.friendly_name ?? d.hostname ?? specialServiceName(d) ?? d.ip ?? d.ieee_address ?? 'device'
 }
 
 // Pull the duplicate-conflict payload out of a 409 approve response, if that's
@@ -182,7 +179,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
 
   const distinctTypes = useMemo(() => {
     const set = new Set<string>()
-    devices.forEach((d) => { if (d.suggested_type) set.add(d.suggested_type) })
+    devices.forEach((d) => { const t = deviceType(d); if (t) set.add(t) })
     return [...set].sort()
   }, [devices])
 
@@ -190,7 +187,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
     const q = search.trim().toLowerCase()
     return devices.filter((d) => {
       if (sourceFilter !== 'all' && !sourceBuckets(d).has(sourceFilter)) return false
-      if (typeFilter !== 'all' && d.suggested_type !== typeFilter) return false
+      if (typeFilter !== 'all' && deviceType(d) !== typeFilter) return false
       // Inventory-only: optionally hide devices already placed on a canvas.
       if (statusFilter === 'pending' && !showOnCanvas && (d.canvas_count ?? 0) > 0) return false
       if (withServicesOnly && (d.services?.length ?? 0) === 0) return false
@@ -302,7 +299,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       return
     }
     const fallbackLabel = deviceLabel(device)
-    const type = (device.suggested_type ?? 'generic') as NodeType
+    const type = deviceType(device) ?? 'generic'
     const zwave = isZwaveType(type)
     const wireless = isZigbeeType(type) || zwave
     const properties = zwave
@@ -405,7 +402,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       approvedDevices.forEach((d, i) => {
         const nodeId = deviceToNode[d.id]
         if (!nodeId) return
-        const type = (d.suggested_type ?? 'generic') as NodeType
+        const type = deviceType(d) ?? 'generic'
         const zwave = isZwaveType(type)
         const wireless = isZigbeeType(type) || zwave
         addNode({
@@ -827,8 +824,8 @@ interface DeviceCardProps {
 
 function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRef }: DeviceCardProps) {
   const sources = orderedSources(device)
-  const roleType = (device.suggested_type ?? 'generic') as NodeType
-  const Icon = TYPE_ICONS[roleType] ?? Circle
+  const roleType = deviceType(device) ?? 'generic'
+  const Icon = NODE_TYPE_DEFAULT_ICONS[roleType] ?? NODE_TYPE_DEFAULT_ICONS.generic
   const activeTheme = useThemeStore((s) => s.activeTheme)
   // Colour the role badge with the same accent the node uses on the canvas
   // (from the active theme / style section), instead of a flat grey.
@@ -906,12 +903,12 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
                 {SOURCE_META[s].label}
               </span>
             ))}
-            {device.suggested_type && (
+            {roleType !== 'generic' && (
               <span
                 className="text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider"
                 style={{ background: `${roleColor}22`, color: roleColor }}
               >
-                {device.suggested_type}
+                {roleType}
               </span>
             )}
             {device.lqi != null && (
