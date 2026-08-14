@@ -4,6 +4,7 @@ import {
   getVisibleNodeIds,
   rewireEdgesForCollapse,
   getZoneSpatialChildren,
+  getZoneChildren,
   computeCollapseInfo,
 } from '../collapseFilter'
 import type { EdgeData, NodeData } from '@/types'
@@ -131,6 +132,31 @@ describe('getZoneSpatialChildren', () => {
     // No width/height → defaults (200, 80). Centre at (100, 40), inside.
     const n = mkNode('n', { type: 'server' })
     expect(getZoneSpatialChildren(zone, [zone, n])).toEqual(['n'])
+  })
+})
+
+describe('getZoneChildren', () => {
+  it('unions real parentId children with the ones merely sitting on the zone', () => {
+    const zone = mkNode('zone', { position: { x: 0, y: 0 }, width: 400, height: 300 })
+    const parented = mkNode('parented', { parentId: 'zone', type: 'server' })
+    const overlapping = mkNode('overlapping', { position: { x: 100, y: 50 }, type: 'server' })
+    const outside = mkNode('outside', { position: FAR, type: 'server' })
+    const found = getZoneChildren(zone, [zone, parented, overlapping, outside])
+    expect(found.sort()).toEqual(['overlapping', 'parented'])
+  })
+
+  it('does not double-count a child that is both parented and overlapping', () => {
+    const zone = mkNode('zone', { position: { x: 0, y: 0 }, width: 400, height: 300 })
+    const child = mkNode('child', { parentId: 'zone', position: { x: 10, y: 10 }, type: 'server' })
+    expect(getZoneChildren(zone, [zone, child])).toEqual(['child'])
+  })
+})
+
+describe('computeCollapseInfo — a zone with real children', () => {
+  it('hides parentId children when the zone collapses', () => {
+    const zone = mkNode('zone', { collapsed: true, width: 400, height: 300 })
+    const child = mkNode('child', { parentId: 'zone', type: 'server' })
+    expect(getVisibleNodeIds([zone, child])).toEqual(new Set(['zone']))
   })
 })
 

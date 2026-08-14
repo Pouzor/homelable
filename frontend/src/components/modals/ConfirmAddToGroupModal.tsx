@@ -15,7 +15,7 @@ interface ConfirmAddToGroupModalProps {
   /** Label of the destination group/container. */
   targetLabel: string
   /** Destination kind — drives the wording. Defaults to 'group'. */
-  variant?: 'group' | 'container'
+  variant?: 'group' | 'container' | 'zone'
   onConfirm: () => void
   onCancel: () => void
 }
@@ -28,8 +28,8 @@ export function ConfirmAddToGroupModal({
   onConfirm,
   onCancel,
 }: ConfirmAddToGroupModalProps) {
-  const action = variant === 'container' ? 'Add to container' : 'Add to group'
-  const noun = variant === 'container' ? 'container' : 'group'
+  const noun = variant === 'container' ? 'container' : variant === 'zone' ? 'zone' : 'group'
+  const action = `Add to ${noun}`
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel() }}>
       <DialogContent className="max-w-sm">

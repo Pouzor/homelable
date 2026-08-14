@@ -64,7 +64,7 @@ import { buildProxmoxClusterEdges } from '@/components/proxmox/clusterEdges'
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 export default function App() {
-  const { loadCanvas, applyLayout, markSaved, markUnsaved, hasUnsavedChanges, editSeq, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addToGroup, addToContainer, floorMap, setFloorMap } = useCanvasStore()
+  const { loadCanvas, applyLayout, markSaved, markUnsaved, hasUnsavedChanges, editSeq, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addToGroup, addToContainer, addToZone, floorMap, setFloorMap } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated, isInitialized } = useAuthStore()
   const authBootstrapStarted = useRef(false)
@@ -133,6 +133,7 @@ export default function App() {
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null)
   const [pendingGroupAdd, setPendingGroupAdd] = useState<{ nodeId: string; groupId: string } | null>(null)
   const [pendingContainerAdd, setPendingContainerAdd] = useState<{ nodeId: string; containerId: string } | null>(null)
+  const [pendingZoneAdd, setPendingZoneAdd] = useState<{ nodeId: string; zoneId: string } | null>(null)
   const [editEdgeId, setEditEdgeId] = useState<string | null>(null)
   const [scanConfigOpen, setScanConfigOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -224,8 +225,11 @@ export default function App() {
           .filter((n) => n.type === 'group' || n.container_mode === true)
           .map((n) => [n.id, true])
       )
+      const zoneIds = new Set(
+        (apiNodes as ApiNode[]).filter((n) => n.type === 'groupRect').map((n) => n.id)
+      )
       const { nodes: rfNodes, edges: rfEdges } = migrateClusterHandles(
-        (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxContainerMap)),
+        (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxContainerMap, zoneIds)),
         (apiEdges as ApiEdge[]).map(deserializeApiEdge),
       )
       const savedTheme = res.data.viewport?.theme_id
@@ -1053,6 +1057,7 @@ export default function App() {
                     onNodeDragStart={snapshotHistory}
                     onRequestAddToGroup={setPendingGroupAdd}
                     onRequestAddToContainer={setPendingContainerAdd}
+                    onRequestAddToZone={setPendingZoneAdd}
                     onOpenInventory={(deviceId) => openInventoryModal(deviceId)}
                   />
                 )}
@@ -1293,6 +1298,18 @@ export default function App() {
             setPendingContainerAdd(null)
           }}
           onCancel={() => setPendingContainerAdd(null)}
+        />
+
+        <ConfirmAddToGroupModal
+          open={!!pendingZoneAdd}
+          variant="zone"
+          nodeLabel={pendingZoneAdd ? (nodes.find((n) => n.id === pendingZoneAdd.nodeId)?.data.label ?? '') : ''}
+          targetLabel={pendingZoneAdd ? (nodes.find((n) => n.id === pendingZoneAdd.zoneId)?.data.label ?? '') : ''}
+          onConfirm={() => {
+            if (pendingZoneAdd) addToZone(pendingZoneAdd.zoneId, pendingZoneAdd.nodeId)
+            setPendingZoneAdd(null)
+          }}
+          onCancel={() => setPendingZoneAdd(null)}
         />
 
         {/* Mounted in standalone too: status-check settings are hidden inside,

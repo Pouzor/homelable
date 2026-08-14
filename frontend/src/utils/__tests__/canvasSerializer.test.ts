@@ -366,6 +366,12 @@ describe('deserializeApiNode — regular node', () => {
     expect(result.extent).toBe('parent')
   })
 
+  it('restores a zone child parented but not extent-clamped', () => {
+    const result = deserializeApiNode(makeApiNode({ parent_id: 'z1' }), emptyMap, new Set(['z1']))
+    expect(result.parentId).toBe('z1')
+    expect(result.extent).toBeUndefined()
+  })
+
   it('does not set parentId when parent is not in container mode', () => {
     const map = new Map([['px1', false]])
     const result = deserializeApiNode(makeApiNode({ parent_id: 'px1' }), map)

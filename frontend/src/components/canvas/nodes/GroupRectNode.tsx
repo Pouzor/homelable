@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Handle, Position, NodeResizer, type NodeProps, type Node } from '@xyflow/react'
 import { ChevronDown } from 'lucide-react'
 import { useCanvasStore } from '@/stores/canvasStore'
-import { getZoneSpatialChildren } from '@/utils/collapseFilter'
+import { getZoneChildren } from '@/utils/collapseFilter'
 import type { NodeData, TextPosition } from '@/types'
 
 const FONT_FAMILIES: Record<string, string> = {
@@ -55,11 +55,11 @@ export function GroupRectNode({ id, data, selected }: NodeProps<Node<NodeData>>)
   const textPos = (rc.text_position ?? 'top-left') as TextPosition
   const posStyle = POSITION_STYLES[textPos]
 
-  // Count children for collapse badge — groupRect zones don't parent their
-  // contents via React Flow parentId, so we hit-test by spatial containment.
+  // Count children for collapse badge — a zone holds both real parentId
+  // children (dropped inside) and top-level nodes merely overlapping it.
   const selfNode = (nodes ?? []).find((n) => n.id === id)
   const childrenCount = selfNode
-    ? getZoneSpatialChildren(selfNode, nodes ?? []).length
+    ? getZoneChildren(selfNode, nodes ?? []).length
     : 0
 
   const outsideJustify = textPos.includes('right') ? 'flex-end'

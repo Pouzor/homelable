@@ -177,6 +177,8 @@ export function serializeEdge(e: Edge<EdgeData>): Record<string, unknown> {
 export function deserializeApiNode(
   n: ApiNode,
   proxmoxContainerMap: Map<string, boolean>,
+  /** Ids of groupRect zones, which parent their contents without clamping them. */
+  zoneIds?: Set<string>,
 ): Node<NodeData> {
   const normalizedType = n.type === 'docker' ? 'docker_host' : n.type
   if (n.type === 'groupRect') {
@@ -199,6 +201,9 @@ export function deserializeApiNode(
     }
   }
   const parentIsContainer = n.parent_id ? (proxmoxContainerMap.get(n.parent_id) ?? false) : false
+  // A node dropped inside a zone is parented (so the zone moves it) but never
+  // extent-clamped — it must stay draggable back out.
+  const parentIsZone = n.parent_id ? (zoneIds?.has(n.parent_id) ?? false) : false
   return {
     id: n.id,
     type: normalizedType,
@@ -214,7 +219,11 @@ export function deserializeApiNode(
       right_handles: clampHandles('right', n.right_handles ?? 0),
       collapsed: Boolean(n.custom_colors?.collapsed),
     } as unknown as NodeData,
-    ...(n.parent_id && parentIsContainer ? { parentId: n.parent_id, extent: 'parent' as const } : {}),
+    ...(n.parent_id && parentIsZone
+      ? { parentId: n.parent_id }
+      : n.parent_id && parentIsContainer
+        ? { parentId: n.parent_id, extent: 'parent' as const }
+        : {}),
     // Container hosts (Proxmox/VM/LXC/docker in container_mode) get a default
     // box if none was saved. Every other node — including LEAF vm/lxc/docker
     // nodes nested inside a container — restores its own saved width/height.
