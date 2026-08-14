@@ -298,6 +298,46 @@ async def test_create_pending_keeps_a_missing_mac_null(client: AsyncClient, head
 
 
 @pytest.mark.asyncio
+async def test_create_pending_unhides_the_row_it_merges_into(client: AsyncClient, headers, db_session):
+    """Adding a device by hand outranks an earlier hide of the same host.
+
+    One device is one row, hidden ones included — but merging into a hidden row
+    and leaving it hidden answers 201 while nothing appears in the inventory, so
+    the add reads as a no-op.
+    """
+    db_session.add(InventoryDevice(id="d-1", ip="192.168.1.50", status="hidden"))
+    await db_session.commit()
+
+    res = await client.post(
+        "/api/v1/scan/pending",
+        json={"ip": "192.168.1.50", "hostname": "printer", "discovery_source": "manual"},
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["id"] == "d-1"
+    assert res.json()["status"] == "pending"
+
+    listed = (await client.get("/api/v1/scan/pending", headers=headers)).json()
+    assert [d["id"] for d in listed] == ["d-1"]
+
+
+@pytest.mark.asyncio
+async def test_create_pending_leaves_an_approved_row_approved(client: AsyncClient, headers, db_session):
+    """Only `hidden` is lifted — a merge must not walk a device back down the
+    lifecycle and re-queue something already on a canvas."""
+    db_session.add(InventoryDevice(id="d-1", ip="192.168.1.51", status="approved"))
+    await db_session.commit()
+
+    res = await client.post(
+        "/api/v1/scan/pending",
+        json={"ip": "192.168.1.51", "hostname": "nas", "discovery_source": "manual"},
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["status"] == "approved"
+
+
+@pytest.mark.asyncio
 async def test_delete_pending_removes_one_entry(client: AsyncClient, headers, pending_device):
     # The rack canvas drops the placeholder it created for a plate once that
     # plate is pointed at a real inventory row.

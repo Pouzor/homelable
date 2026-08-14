@@ -114,6 +114,49 @@ async def test_run_status_checks_updates_device_status(mem_db):
 
 
 @pytest.mark.asyncio
+async def test_run_status_checks_covers_a_device_no_canvas_draws(mem_db):
+    """Deliberate: the inventory row, not a node, is what gets monitored.
+
+    A rack mount or an inventory-only entry reports live status without being
+    drawn on any canvas, and deleting a node does not silently stop monitoring
+    the host. `hide` (or clearing the check method) is what ends the checks.
+    """
+    async with mem_db() as session:
+        device = _make_device(check_method="ping", ip="10.0.0.1")
+        session.add(device)
+        await session.commit()
+        device_id = device.id
+
+    with patch("app.core.scheduler.AsyncSessionLocal", mem_db), \
+         patch("app.core.scheduler.check_node", new_callable=AsyncMock,
+               return_value={"status": "online", "response_time_ms": 5}), \
+         patch("app.api.routes.status.broadcast_status", new_callable=AsyncMock) as mock_broadcast:
+        await _run_status_checks()
+
+    async with mem_db() as session:
+        updated = await session.get(InventoryDevice, device_id)
+        assert updated is not None
+        assert updated.status_live == "online"
+
+    _, kwargs = mock_broadcast.call_args
+    assert kwargs["device_id"] == device_id
+    assert kwargs["node_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_run_status_checks_skips_a_hidden_device(mem_db):
+    """Hiding a device is how a user stops the checks, node or no node."""
+    async with mem_db() as session:
+        session.add(_make_device(check_method="ping", ip="10.0.0.1", status="hidden"))
+        await session.commit()
+
+    with patch("app.core.scheduler.AsyncSessionLocal", mem_db), \
+         patch("app.core.scheduler.check_node", new_callable=AsyncMock) as mock_check:
+        await _run_status_checks()
+        mock_check.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_run_status_checks_sets_last_seen_only_when_online(mem_db):
     """last_seen is updated only when status is 'online'."""
     async with mem_db() as session:
