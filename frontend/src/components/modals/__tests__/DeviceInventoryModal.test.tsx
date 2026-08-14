@@ -693,3 +693,70 @@ describe('DeviceInventoryModal', () => {
     })
   })
 })
+
+/**
+ * A device documented straight on a canvas carries a curated `label` and `type`
+ * and no discovery guess at all — the card has to read those, or a printer
+ * shows up unnamed with the generic circle.
+ */
+describe('DeviceInventoryModal — the curated type wins over the discovery guess', () => {
+  const DEVICE_CANVAS = {
+    id: 'dev-printer',
+    ip: '192.168.1.77',
+    hostname: null,
+    mac: null,
+    os: null,
+    services: [],
+    label: 'Office printer',
+    type: 'printer',
+    suggested_type: null,
+    status: 'approved',
+    discovery_source: 'canvas',
+    discovery_sources: ['canvas'],
+    discovered_at: '2026-02-01T00:00:00Z',
+  }
+
+  it('names the card from the curated label', async () => {
+    mockPending.mockResolvedValue({ data: [DEVICE_CANVAS] })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-printer')).toBeInTheDocument())
+    expect(screen.getByText('Office printer')).toBeInTheDocument()
+  })
+
+  it('badges the curated type', async () => {
+    mockPending.mockResolvedValue({ data: [DEVICE_CANVAS] })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-printer')).toBeInTheDocument())
+    expect(within(screen.getByTestId('pending-card-dev-printer')).getByText('printer')).toBeInTheDocument()
+  })
+
+  it('prefers it over a stale discovery guess', async () => {
+    mockPending.mockResolvedValue({ data: [{ ...DEVICE_CANVAS, suggested_type: 'server' }] })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-printer')).toBeInTheDocument())
+    const card = within(screen.getByTestId('pending-card-dev-printer'))
+    expect(card.getByText('printer')).toBeInTheDocument()
+    expect(card.queryByText('server')).toBeNull()
+  })
+
+  it('filters on it', async () => {
+    mockPending.mockResolvedValue({ data: [DEVICE_CANVAS, DEVICE_IP] })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-printer')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByLabelText('Type filter'), { target: { value: 'printer' } })
+    expect(screen.getByTestId('pending-card-dev-printer')).toBeInTheDocument()
+    expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
+  })
+
+  it('approves onto a node of that type', async () => {
+    mockPending.mockResolvedValue({ data: [DEVICE_CANVAS] })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-printer')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('pending-card-dev-printer'))
+    fireEvent.click(screen.getByTestId('do-approve'))
+    await waitFor(() => expect(mockApprove).toHaveBeenCalled())
+    expect(mockApprove.mock.calls[0][1]).toMatchObject({ type: 'printer', label: 'Office printer' })
+  })
+})
