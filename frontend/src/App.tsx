@@ -167,7 +167,10 @@ export default function App() {
         if (!options?.silent) toast.success('Canvas saved')
         return true
       }
-      const nodesToSave = nodes.map(serializeNode)
+      // Read the baseline at save time (not through the render-time destructure)
+      // so a device edited in the inventory a moment ago is already rebased.
+      const factsBaseline = useCanvasStore.getState().factsBaseline
+      const nodesToSave = nodes.map((n) => serializeNode(n, factsBaseline[n.id]))
       const edgesToSave = edges.map(serializeEdge)
       const viewport: Record<string, unknown> = { theme_id: activeTheme }
       if (floorMap) viewport.floor_map = floorMap

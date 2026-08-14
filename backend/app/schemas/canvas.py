@@ -15,6 +15,13 @@ class NodeSave(BaseModel):
     # device fields below are still accepted at their canvas values and routed
     # to that row server-side.
     device_id: str | None = None
+    # Which device facts this canvas edited since it loaded them, if the client
+    # tracked that. The payload always carries a *full* copy of the device — it
+    # was hydrated from the inventory row on load — so without this a save made
+    # for nothing but a moved node would rewrite the row from a snapshot that may
+    # be hours old. `None` (an older client, an import, the MCP server) keeps the
+    # previous behaviour: every fact is a candidate write.
+    changed_facts: list[str] | None = None
     hostname: str | None = None
     ip: str | None = None
     mac: str | None = None

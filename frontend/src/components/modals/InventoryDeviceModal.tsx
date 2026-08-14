@@ -41,7 +41,9 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { PropertyList } from '@/components/common/PropertyList'
 import { ServiceModal } from './ServiceModal'
 import { scanApi } from '@/api/client'
+import { useCanvasStore } from '@/stores/canvasStore'
 import { useThemeStore } from '@/stores/themeStore'
+import { deviceFactsToNodeData } from '@/utils/deviceFacts'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { NODE_TYPE_DEFAULT_ICONS } from '@/utils/nodeIcons'
 import { isRackDevice, orderedSources, SOURCE_META } from '@/utils/deviceSources'
@@ -341,6 +343,11 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
         properties,
         services,
       })
+      // Push the row straight into the canvas on screen. Its nodes carry a copy
+      // of these facts, loaded before this edit — left stale, the next canvas
+      // save (even one for a moved node) would report them as an edit and roll
+      // the row back.
+      useCanvasStore.getState().applyDeviceFacts(device.id, deviceFactsToNodeData(res.data))
       toast.success('Device updated')
       setEditing(false)
       onSaved?.(res.data)

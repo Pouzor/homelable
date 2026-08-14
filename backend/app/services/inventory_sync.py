@@ -172,6 +172,55 @@ def merge_services(base: list[Any] | None, incoming: list[Any] | None) -> list[A
     return out
 
 
+# Observations rather than edits: the checker and the scanner write these, so a
+# client never lists them as changed and they survive a `changed_fields` filter.
+_LIVE_FACT_FIELDS = frozenset({"status", "last_seen", "last_scan", "response_time_ms"})
+
+
+def changed_facts(device: InventoryDevice, facts: Mapping[str, Any]) -> dict[str, Any]:
+    """The subset of ``facts`` that actually differs from the row.
+
+    A canvas save sends a *full* copy of the device — the facts were hydrated
+    into the node when the canvas loaded — so a save triggered by nothing but a
+    node being dragged would otherwise rewrite the row from a snapshot that may
+    be minutes or hours old, silently reverting an edit made meanwhile in the
+    inventory modal, on another canvas, or by the scanner. Narrowing to what the
+    sender changed turns the write-through from "push my whole snapshot" into
+    "push my edit", so two writers only collide on the same field.
+
+    The comparison mirrors :func:`merge_facts_into_device`: a blank incoming
+    value is not a change (it never clears an established one), and a list
+    counts as changed only when it would actually be replaced by a different
+    one. Ambiguity is resolved toward reporting a change — a false positive is
+    the old behaviour for that field, a false negative would drop a real edit.
+    """
+    out: dict[str, Any] = {}
+    for field in (*DEVICE_SCALARS, "label", "type"):
+        incoming = facts.get(field)
+        if _blank(incoming) or incoming == getattr(device, field, None):
+            continue
+        out[field] = incoming
+
+    if not _blank(facts.get("ieee_address")) and _blank(device.ieee_address):
+        out["ieee_address"] = facts["ieee_address"]
+    if facts.get("show_hardware") and not device.show_hardware:
+        out["show_hardware"] = facts["show_hardware"]
+
+    if "properties" in facts and list(facts["properties"] or []) != list(device.properties or []):
+        out["properties"] = facts["properties"]
+    if "services" in facts and list(facts["services"] or []) != list(device.services or []):
+        out["services"] = facts["services"]
+
+    # Live observations, not edits: carried through only where the merge would
+    # have used them — filling a row that has never been checked.
+    if facts.get("status") and device.status_live in (None, "", "unknown"):
+        out["status"] = facts["status"]
+    for field in ("last_seen", "last_scan", "response_time_ms"):
+        if facts.get(field) is not None:
+            out[field] = facts[field]
+    return out
+
+
 def merge_facts_into_device(
     device: InventoryDevice,
     facts: Mapping[str, Any],
@@ -279,6 +328,8 @@ async def link_facts(
     *,
     overwrite_scalars: bool = False,
     replace_lists: bool = False,
+    only_changed: bool = False,
+    changed_fields: list[str] | None = None,
 ) -> InventoryDevice | None:
     """Point one node at its inventory row, creating or merging as needed.
 
@@ -286,6 +337,16 @@ async def link_facts(
     or a legacy node's columns during the backfill. Returns the row, or ``None``
     for canvas furniture. Flushes so a freshly minted row has an id to link to,
     but does not commit.
+
+    Two narrowings turn a save from "push my whole snapshot" into "push my edit",
+    and they compose. Identity matching always uses the full ``facts`` — the row
+    has to be found before it can be narrowed against.
+
+    * ``changed_fields`` — what the sender says it edited since it loaded the
+      device. Authoritative: a fact absent from the list is not written even when
+      it differs, because the difference means the *row* moved on, not the sender.
+    * ``only_changed`` — drop facts already equal to the row (see
+      :func:`changed_facts`), so a no-op save writes nothing at all.
     """
     if is_furniture(node.type):
         node.device_id = None
@@ -304,8 +365,17 @@ async def link_facts(
         db.add(device)
         await db.flush()
     else:
+        merged = dict(facts)
+        if changed_fields is not None:
+            keep = set(changed_fields) | _LIVE_FACT_FIELDS
+            merged = {k: v for k, v in merged.items() if k in keep}
+        if only_changed:
+            merged = changed_facts(device, merged)
         merge_facts_into_device(
-            device, facts, overwrite_scalars=overwrite_scalars, replace_lists=replace_lists
+            device,
+            merged,
+            overwrite_scalars=overwrite_scalars,
+            replace_lists=replace_lists,
         )
         device.discovery_sources = add_source(device.discovery_sources, CANVAS_SOURCE)
 
