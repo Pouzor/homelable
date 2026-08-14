@@ -217,19 +217,31 @@ def register_tools(server: Server):
 
 
 def _slim_canvas(raw: dict) -> dict:
-    """Strip React Flow layout/style fields — keep only semantic data for AI use."""
+    """Strip layout/style fields — keep only semantic data for AI use.
+
+    `GET /api/v1/canvas` reports a node flat (`NodeResponse`): the device facts
+    sit beside `id` and `type`, not under a React Flow `data` key. A payload that
+    does carry `data` — the shape the frontend store holds — is folded in too, so
+    either form slims to the same thing.
+    """
     NODE_KEEP = {
-        "id", "type", "label", "ip", "hostname", "mac", "os", "status", "services",
+        "label", "ip", "hostname", "mac", "os", "status", "services",
         "notes", "description", "properties", "cpu_count", "cpu_model", "ram_gb",
-        "disk_gb", "parentId",
+        "disk_gb", "parent_id",
     }
     EDGE_KEEP = {"id", "source", "target", "type", "label"}
 
     def slim_node(n: dict) -> dict:
-        data = n.get("data", {})
-        out = {k: v for k, v in data.items() if k in NODE_KEEP and v not in (None, "", [])}
+        fields = {**n, **n.get("data", {})}
+        out = {k: v for k, v in fields.items() if k in NODE_KEEP and v not in (None, "", [])}
         out["id"] = n.get("id")
+        # `type` on the wire is the node type (router, proxmox, ...); it is
+        # reported under its own key so it cannot collide with a device fact.
         out["node_type"] = n.get("type")
+        # Nesting is `parent_id` on the API and `parentId` in a React Flow payload.
+        parent = out.pop("parent_id", None) or n.get("parentId")
+        if parent:
+            out["parent_id"] = parent
         return out
 
     def slim_edge(e: dict) -> dict:

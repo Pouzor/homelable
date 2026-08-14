@@ -197,6 +197,113 @@ async def test_get_canvas_keeps_documentation_fields(mock_backend):
     assert node["properties"] == [{"name": "rack", "value": "A1"}]
 
 
+# A node as `GET /api/v1/canvas` actually reports it: `NodeResponse`, flat, with
+# the device facts beside `id` and `type` rather than under a React Flow `data`
+# key. Copied from a real response — the backend pins this shape in
+# `backend/tests/test_inventory_sync.py::
+# TestRoutesKeepTheLinkInStep::test_the_wire_shape_the_mcp_server_reads_is_unchanged`.
+_API_CANVAS_NODE = {
+    "id": "n1",
+    "type": "proxmox",
+    "label": "pve1",
+    "design_id": "d-1",
+    "device_id": "dev-1",
+    "ip": "192.168.1.10",
+    "hostname": "pve1.lan",
+    "mac": "aa:bb:cc:dd:ee:ff",
+    "os": "Proxmox VE 8",
+    "status": "online",
+    "notes": "Main hypervisor",
+    "services": [{"port": 8006, "protocol": "tcp", "service_name": "proxmox"}],
+    "properties": [{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
+    "cpu_count": 16,
+    "cpu_model": "Xeon E5",
+    "ram_gb": 64.0,
+    "disk_gb": 4000.0,
+    "show_hardware": True,
+    "check_method": "https",
+    "check_target": "https://192.168.1.10:8006",
+    "parent_id": None,
+    "pos_x": 120.0,
+    "pos_y": 240.0,
+    "width": 160.0,
+    "height": 80.0,
+    "container_mode": False,
+    "custom_colors": None,
+    "custom_icon": None,
+    "show_port_numbers": False,
+    "bottom_handles": 1,
+    "top_handles": 1,
+    "left_handles": 0,
+    "right_handles": 0,
+    "ieee_address": None,
+    "last_seen": "2026-08-14T10:00:00Z",
+    "last_scan": None,
+    "response_time_ms": 12,
+    "created_at": "2026-08-01T10:00:00Z",
+    "updated_at": "2026-08-14T10:00:00Z",
+}
+
+
+@pytest.mark.anyio
+async def test_get_canvas_keeps_the_facts_of_a_flat_api_node(mock_backend):
+    """The API reports a node flat; slimming must not drop everything but the id."""
+    mock_backend.get = AsyncMock(return_value={"nodes": [_API_CANVAS_NODE], "edges": []})
+
+    node = (await _dispatch("get_canvas", {}))["nodes"][0]
+
+    assert node == {
+        "id": "n1",
+        "node_type": "proxmox",
+        "label": "pve1",
+        "ip": "192.168.1.10",
+        "hostname": "pve1.lan",
+        "mac": "aa:bb:cc:dd:ee:ff",
+        "os": "Proxmox VE 8",
+        "status": "online",
+        "notes": "Main hypervisor",
+        "services": [{"port": 8006, "protocol": "tcp", "service_name": "proxmox"}],
+        "properties": [{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
+        "cpu_count": 16,
+        "cpu_model": "Xeon E5",
+        "ram_gb": 64.0,
+        "disk_gb": 4000.0,
+    }
+
+
+@pytest.mark.anyio
+async def test_get_canvas_drops_the_layout_fields_of_a_flat_api_node(mock_backend):
+    mock_backend.get = AsyncMock(return_value={"nodes": [_API_CANVAS_NODE], "edges": []})
+
+    node = (await _dispatch("get_canvas", {}))["nodes"][0]
+
+    for dropped in (
+        "pos_x", "pos_y", "width", "height", "custom_colors", "custom_icon",
+        "bottom_handles", "top_handles", "left_handles", "right_handles",
+        "created_at", "updated_at", "design_id", "device_id", "type",
+    ):
+        assert dropped not in node
+
+
+@pytest.mark.anyio
+async def test_get_canvas_reports_nesting_from_either_shape(mock_backend):
+    mock_backend.get = AsyncMock(
+        return_value={
+            "nodes": [
+                {**_API_CANVAS_NODE, "id": "child", "parent_id": "n1"},
+                {"id": "rf-child", "type": "vm", "parentId": "n1", "data": {"label": "vm1"}},
+            ],
+            "edges": [],
+        }
+    )
+
+    nodes = (await _dispatch("get_canvas", {}))["nodes"]
+
+    assert nodes[0]["parent_id"] == "n1"
+    assert nodes[1]["parent_id"] == "n1"
+    assert nodes[1]["label"] == "vm1"
+
+
 @pytest.mark.anyio
 async def test_get_canvas_with_design_id(mock_backend):
     mock_backend.get = AsyncMock(return_value={"nodes": [], "edges": []})
