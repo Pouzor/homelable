@@ -55,7 +55,6 @@ describe('InventoryDeviceModal — view mode extras', () => {
       />
     )
     expect(screen.getByText('garage rack')).toBeInTheDocument()
-    expect(screen.getByText('4 vCPU · 16 GB RAM')).toBeInTheDocument()
     expect(screen.getByText('http → http://192.168.1.100')).toBeInTheDocument()
     expect(screen.getByText('Owner')).toBeInTheDocument()
     expect(screen.getByText('me')).toBeInTheDocument()
@@ -120,15 +119,16 @@ describe('InventoryDeviceModal — edit mode', () => {
     expect(mockUpdatePending.mock.calls[0][1].ip).toBeNull()
   })
 
+  // Hardware moved to the properties; the columns are no longer edited here but
+  // must still be sent as numbers, not as the form's strings.
   it('sends the numeric hardware fields as numbers', async () => {
     render(<InventoryDeviceModal {...noop} device={makeDevice({ cpu_count: 2, ram_gb: 8 })} />)
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
-    fireEvent.change(screen.getByDisplayValue('8'), { target: { value: '32' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => expect(mockUpdatePending).toHaveBeenCalled())
     const body = mockUpdatePending.mock.calls[0][1]
-    expect(body.ram_gb).toBe(32)
+    expect(body.ram_gb).toBe(8)
     expect(body.cpu_count).toBe(2)
   })
 
