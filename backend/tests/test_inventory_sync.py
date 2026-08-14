@@ -343,6 +343,74 @@ class TestRoutesKeepTheLinkInStep:
         assert device.notes == "moved to the garage"
 
     @pytest.mark.asyncio
+    async def test_patching_one_list_leaves_the_other_alone(self, client: AsyncClient, headers, db_session):
+        """Replace applies list by list — an unsent list is not blanked."""
+        db_session.add(
+            InventoryDevice(
+                id="d-1",
+                ip="10.0.0.5",
+                services=[{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+                properties=[{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
+            )
+        )
+        await db_session.commit()
+        node_id = (
+            await client.post(
+                "/api/v1/nodes",
+                json={"type": "nas", "label": "NAS", "ip": "10.0.0.5", "force": True},
+                headers=headers,
+            )
+        ).json()["id"]
+
+        # properties only: services must survive untouched.
+        res = await client.patch(
+            f"/api/v1/nodes/{node_id}",
+            json={"properties": [{"key": "Owner", "value": "me", "icon": None, "visible": True}]},
+            headers=headers,
+        )
+        assert res.status_code == 200
+        device = await db_session.get(InventoryDevice, "d-1")
+        await db_session.refresh(device)
+        assert [p["key"] for p in device.properties] == ["Owner"]
+        assert [s["port"] for s in device.services] == [22]
+
+        # services only: the properties just written must survive in turn.
+        res = await client.patch(
+            f"/api/v1/nodes/{node_id}",
+            json={"services": [{"port": 443, "protocol": "tcp", "service_name": "https"}]},
+            headers=headers,
+        )
+        assert res.status_code == 200
+        await db_session.refresh(device)
+        assert [s["port"] for s in device.services] == [443]
+        assert [p["key"] for p in device.properties] == ["Owner"]
+
+    @pytest.mark.asyncio
+    async def test_patching_a_list_empty_still_clears_it(self, client: AsyncClient, headers, db_session):
+        """An explicit empty list is a deletion, not an omission."""
+        db_session.add(
+            InventoryDevice(
+                id="d-1",
+                ip="10.0.0.5",
+                properties=[{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
+            )
+        )
+        await db_session.commit()
+        node_id = (
+            await client.post(
+                "/api/v1/nodes",
+                json={"type": "nas", "label": "NAS", "ip": "10.0.0.5", "force": True},
+                headers=headers,
+            )
+        ).json()["id"]
+
+        res = await client.patch(f"/api/v1/nodes/{node_id}", json={"properties": []}, headers=headers)
+        assert res.status_code == 200
+        device = await db_session.get(InventoryDevice, "d-1")
+        await db_session.refresh(device)
+        assert device.properties == []
+
+    @pytest.mark.asyncio
     async def test_the_second_canvas_sees_the_first_canvas_edit(self, client: AsyncClient, headers, db_session):
         """No per-node overrides: one device, one set of facts, every canvas."""
         db_session.add(InventoryDevice(id="d-1", ip="10.0.0.5"))

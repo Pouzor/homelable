@@ -195,7 +195,9 @@ def merge_facts_into_device(
     * ``replace_lists`` — properties/services are taken wholesale rather than
       unioned. True only for a user's save: otherwise a property they deleted
       would come straight back on the next one. The backfill unions, so nothing
-      any canvas recorded is lost.
+      any canvas recorded is lost. It applies list by list: a list absent from
+      ``facts`` is left alone even in replace mode, so a partial update never
+      clears the one it did not send.
     """
     for field in (*DEVICE_SCALARS, "label", "type"):
         incoming = facts.get(field)
@@ -210,11 +212,15 @@ def merge_facts_into_device(
     if facts.get("show_hardware") and not device.show_hardware:
         device.show_hardware = True
 
-    if replace_lists:
-        device.properties = list(facts.get("properties") or [])
-        device.services = list(facts.get("services") or [])
+    # Per list, and only for one the caller actually sent: a partial update
+    # carrying properties alone must leave services as they were, not blank them.
+    if replace_lists and "properties" in facts:
+        device.properties = list(facts["properties"] or [])
     else:
         device.properties = merge_properties(device.properties, facts.get("properties"))
+    if replace_lists and "services" in facts:
+        device.services = list(facts["services"] or [])
+    else:
         device.services = merge_services(device.services, facts.get("services"))
 
     # Live status: keep the freshest observation rather than the last writer.
