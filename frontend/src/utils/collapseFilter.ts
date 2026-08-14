@@ -66,6 +66,22 @@ export function getZoneSpatialChildren(
   return out
 }
 
+/**
+ * Everything a zone "contains": nodes really parented to it (dropped inside,
+ * so they follow it when it moves) plus the top-level nodes merely sitting on
+ * top of it. Used for the collapse badge count.
+ */
+export function getZoneChildren(
+  zone: Node<NodeData>,
+  nodes: Node<NodeData>[],
+): string[] {
+  const ids = new Set(getZoneSpatialChildren(zone, nodes))
+  for (const n of nodes) {
+    if (n.parentId === zone.id) ids.add(n.id)
+  }
+  return [...ids]
+}
+
 function buildChildrenByParent(nodes: Node<NodeData>[]): Map<string, string[]> {
   const m = new Map<string, string[]>()
   for (const n of nodes) {

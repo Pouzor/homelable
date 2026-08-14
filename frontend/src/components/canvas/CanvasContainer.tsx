@@ -34,10 +34,11 @@ interface CanvasContainerProps {
   onNodeDragStart?: () => void
   onRequestAddToGroup?: (payload: { nodeId: string; groupId: string }) => void
   onRequestAddToContainer?: (payload: { nodeId: string; containerId: string }) => void
+  onRequestAddToZone?: (payload: { nodeId: string; zoneId: string }) => void
   onOpenInventory?: (deviceId: string) => void
 }
 
-export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDoubleClick, onNodeDragStart, onRequestAddToGroup, onRequestAddToContainer, onOpenInventory }: CanvasContainerProps) {
+export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDoubleClick, onNodeDragStart, onRequestAddToGroup, onRequestAddToContainer, onRequestAddToZone, onOpenInventory }: CanvasContainerProps) {
   const [lassoMode, setLassoMode] = useState(true)
   const {
     nodes, edges,
@@ -45,6 +46,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     setSelectedNode, snapshotHistory,
     fitViewPending, clearFitViewPending,
     copySelectedNodes, pasteNodes,
+    removeFromGroup,
   } = useCanvasStore()
   const { fitView, screenToFlowPosition, getIntersectingNodes } = useReactFlow<Node<NodeData>>()
 
@@ -146,20 +148,35 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
   // Drop a top-level node onto a group → ask App to confirm adding it. Runs
   // before the alignment snap so detection uses the dropped position.
   const handleNodeDragStop = useCallback<NonNullable<typeof onNodeDragStop>>((event, dragNode, dragNodes) => {
-    if (dragNode && !dragNode.parentId &&
-        dragNode.data.type !== 'group' && dragNode.data.type !== 'groupRect') {
+    if (dragNode && dragNode.data.type !== 'group' && dragNode.data.type !== 'groupRect') {
       const intersecting = getIntersectingNodes(dragNode)
-      const group = intersecting.find((n) => n.data.type === 'group')
-      if (group) {
-        onRequestAddToGroup?.({ nodeId: dragNode.id, groupId: group.id })
-      } else {
-        // Any node in container_mode (proxmox, docker_host, …) accepts children.
+      const zoneParent = dragNode.parentId
+        ? nodes.find((n) => n.id === dragNode.parentId && n.data.type === 'groupRect')
+        : undefined
+      if (zoneParent) {
+        // Zone children are not extent-clamped, so a drop outside the zone is
+        // how the user takes a node back out of it.
+        if (!intersecting.some((n) => n.id === zoneParent.id)) {
+          removeFromGroup(zoneParent.id, dragNode.id)
+        }
+      } else if (!dragNode.parentId) {
+        const group = intersecting.find((n) => n.data.type === 'group')
         const container = intersecting.find((n) => n.id !== dragNode.id && n.data.container_mode === true)
-        if (container) onRequestAddToContainer?.({ nodeId: dragNode.id, containerId: container.id })
+        if (group) {
+          onRequestAddToGroup?.({ nodeId: dragNode.id, groupId: group.id })
+        } else if (container) {
+          // Any node in container_mode (proxmox, docker_host, …) accepts children.
+          onRequestAddToContainer?.({ nodeId: dragNode.id, containerId: container.id })
+        } else {
+          // Zones come last: they are the loosest container and the largest, so
+          // a group/container inside one still wins the drop.
+          const zone = intersecting.find((n) => n.data.type === 'groupRect')
+          if (zone) onRequestAddToZone?.({ nodeId: dragNode.id, zoneId: zone.id })
+        }
       }
     }
     onNodeDragStop(event, dragNode, dragNodes)
-  }, [onRequestAddToGroup, onRequestAddToContainer, getIntersectingNodes, onNodeDragStop])
+  }, [onRequestAddToGroup, onRequestAddToContainer, onRequestAddToZone, removeFromGroup, nodes, getIntersectingNodes, onNodeDragStop])
 
   return (
     <div ref={wrapperRef} className="w-full h-full" style={{ background: theme.colors.canvasBackground }} onMouseMove={onMouseMove}>
