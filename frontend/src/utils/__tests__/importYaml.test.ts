@@ -65,12 +65,43 @@ describe('parseYamlToCanvas', () => {
     expect(d.cpu_count).toBe(16)
     expect(d.ram_gb).toBe(64)
     expect(d.disk_gb).toBe(2000)
-    expect(d.show_hardware).toBe(true)
   })
 
-  it('sets show_hardware only when hardware fields present', () => {
+  // A node draws its `properties`; the hardware fields are inventory data. An
+  // import that set `show_hardware` alone showed the specs until the first
+  // save, then lost them — so the specs arrive as properties instead.
+  it('mints the hardware specs as visible properties', () => {
+    const yaml = `
+- nodeType: proxmox
+  label: "PVE1"
+  cpuModel: "Intel Xeon"
+  cpuCore: 16
+  ram: 64
+  disk: 2000
+`
+    const { nodes } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    expect(nodes[0].data.properties).toEqual([
+      { key: 'CPU Model', value: 'Intel Xeon', icon: 'Cpu', visible: true },
+      { key: 'CPU Cores', value: '16', icon: 'Cpu', visible: true },
+      { key: 'RAM', value: '64 GB', icon: 'MemoryStick', visible: true },
+      { key: 'Disk', value: '2000 GB', icon: 'HardDrive', visible: true },
+    ])
+    // The structured fields survive for the export round trip.
+    expect(nodes[0].data.cpu_count).toBe(16)
+  })
+
+  it('mints only the specs the YAML carries', () => {
+    const yaml = `- nodeType: server\n  label: "RamOnly"\n  ram: 8\n`
+    const { nodes } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    expect(nodes[0].data.properties).toEqual([
+      { key: 'RAM', value: '8 GB', icon: 'MemoryStick', visible: true },
+    ])
+  })
+
+  it('leaves a node with no hardware without properties', () => {
     const yaml = `- nodeType: server\n  label: "NoHW"\n`
     const { nodes } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    expect(nodes[0].data.properties).toBeUndefined()
     expect(nodes[0].data.show_hardware).toBeUndefined()
   })
 

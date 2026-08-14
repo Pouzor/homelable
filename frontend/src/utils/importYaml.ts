@@ -1,10 +1,28 @@
 import yaml from 'js-yaml'
 import type { Node, Edge } from '@xyflow/react'
-import type { NodeData, EdgeData } from '@/types'
+import type { NodeData, EdgeData, NodeProperty } from '@/types'
 import type { YamlNode, YamlNodeConnection } from '@/types/yaml'
 import { generateUUID } from '@/utils/uuid'
 import { applyDagreLayout } from '@/utils/layout'
 import { migrateClusterHandles } from '@/utils/canvasSerializer'
+
+/**
+ * Hardware specs as canvas properties.
+ *
+ * A node draws its `properties`, never the `cpu_*` / `ram_gb` / `disk_gb`
+ * fields — those are inventory data, kept for the YAML round trip and the
+ * Proxmox import. An import that only filled them produced specs that showed
+ * until the first save and then silently vanished, so it mints the same four
+ * properties the 3.x migration and the Proxmox import already create.
+ */
+function hardwareProperties(yn: YamlNode): NodeProperty[] {
+  const props: NodeProperty[] = []
+  if (yn.cpuModel) props.push({ key: 'CPU Model', value: String(yn.cpuModel), icon: 'Cpu', visible: true })
+  if (yn.cpuCore) props.push({ key: 'CPU Cores', value: String(yn.cpuCore), icon: 'Cpu', visible: true })
+  if (yn.ram) props.push({ key: 'RAM', value: `${yn.ram} GB`, icon: 'MemoryStick', visible: true })
+  if (yn.disk) props.push({ key: 'Disk', value: `${yn.disk} GB`, icon: 'HardDrive', visible: true })
+  return props
+}
 
 /**
  * Parse a YAML string and merge the resulting nodes/edges into the existing canvas.
@@ -55,7 +73,7 @@ export function parseYamlToCanvas(
     const id = generateUUID()
     labelToId.set(yn.label, id)
 
-    const hasHardware = !!(yn.cpuModel || yn.cpuCore || yn.ram || yn.disk)
+    const hardware = hardwareProperties(yn)
 
     const data: NodeData = {
       label: yn.label,
@@ -72,7 +90,9 @@ export function parseYamlToCanvas(
       ...(yn.cpuCore ? { cpu_count: yn.cpuCore } : {}),
       ...(yn.ram ? { ram_gb: yn.ram } : {}),
       ...(yn.disk ? { disk_gb: yn.disk } : {}),
-      ...(hasHardware ? { show_hardware: true } : {}),
+      // Kept as structured fields for the export round trip; drawn through the
+      // properties above.
+      ...(hardware.length > 0 ? { properties: hardware } : {}),
       // Restore custom connection-point counts so the edges below attach to the
       // slots they were exported on instead of collapsing onto slot 0.
       // A count of 0 is meaningful (side with no connection point), so test for
