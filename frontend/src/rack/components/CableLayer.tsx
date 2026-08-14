@@ -47,7 +47,8 @@ function annotationLines(cable: Cable): string[] {
   const lines: string[] = []
   if (cable.labelVisible && cable.label?.trim()) lines.push(cable.label.trim())
   for (const prop of cable.properties ?? []) {
-    if (prop.visible) lines.push(`${prop.key}: ${prop.value}`)
+    // The value is optional — a property may print as a bare label.
+    if (prop.visible) lines.push(prop.value?.trim() ? `${prop.key}: ${prop.value}` : prop.key)
   }
   return lines
 }

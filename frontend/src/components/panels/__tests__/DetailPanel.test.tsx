@@ -137,9 +137,9 @@ describe('DetailPanel', () => {
       fireEvent.click(addButtons[0]) // first Add = properties
       // Form is now open — fill key and value
       fireEvent.change(screen.getByPlaceholderText('Label (e.g. CPU Model)'), { target: { value: 'GPU' } })
-      fireEvent.change(screen.getByPlaceholderText('Value (e.g. i7-12700K)'), { target: { value: 'RTX 4090' } })
+      fireEvent.change(screen.getByPlaceholderText(/^Value/), { target: { value: 'RTX 4090' } })
       // The PropertyForm confirm button is labeled "Add" — use the form's confirm button
-      fireEvent.keyDown(screen.getByPlaceholderText('Value (e.g. i7-12700K)'), { key: 'Enter' })
+      fireEvent.keyDown(screen.getByPlaceholderText(/^Value/), { key: 'Enter' })
       expect(updateNode).toHaveBeenCalledOnce()
       const [, payload] = updateNode.mock.calls[0]
       expect(payload.properties[0]).toMatchObject({ key: 'GPU', value: 'RTX 4090', visible: true })
@@ -243,7 +243,7 @@ describe('DetailPanel', () => {
       const addButtons = screen.getAllByText('Add')
       fireEvent.click(addButtons[0])
       // Only fill value, leave key empty
-      fireEvent.change(screen.getByPlaceholderText('Value (e.g. i7-12700K)'), { target: { value: 'some value' } })
+      fireEvent.change(screen.getByPlaceholderText(/^Value/), { target: { value: 'some value' } })
       const confirmButtons = screen.getAllByRole('button', { name: 'Add' })
       fireEvent.click(confirmButtons[confirmButtons.length - 1])
       expect(updateNode).not.toHaveBeenCalled()

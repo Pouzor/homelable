@@ -119,7 +119,7 @@ describe('RackCablePanel', () => {
     render(<RackCablePanel />)
 
     fireEvent.click(screen.getByText('+ Length'))
-    fireEvent.change(screen.getByPlaceholderText('Value (e.g. 2 m)'), { target: { value: '2 m' } })
+    fireEvent.change(screen.getByPlaceholderText(/^Value/), { target: { value: '2 m' } })
     // Two buttons read "Add": the section's, then the form's confirm.
     const addButtons = screen.getAllByRole('button', { name: 'Add' })
     fireEvent.click(addButtons[addButtons.length - 1])

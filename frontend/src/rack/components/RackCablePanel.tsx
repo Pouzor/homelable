@@ -146,7 +146,7 @@ export function RackCablePanel() {
         onChange={(next) => updateCable(cable.id, { properties: next })}
         visibleLabel="Show on canvas"
         keyPlaceholder="Label (e.g. Length)"
-        valuePlaceholder="Value (e.g. 2 m)"
+        valuePlaceholder="Value — optional (e.g. 2 m)"
         suggestions={CABLE_PROPERTY_SUGGESTIONS}
         emptyHint="No properties — add a length, a VLAN, whatever this run needs."
       />

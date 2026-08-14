@@ -40,7 +40,7 @@ describe('PropertyList', () => {
     ])
   })
 
-  it('refuses a property with no key or no value', () => {
+  it('adds a property with a label and no value', () => {
     const onChange = vi.fn()
     render(<PropertyList properties={[]} onChange={onChange} />)
 
@@ -48,7 +48,25 @@ describe('PropertyList', () => {
     fireEvent.change(screen.getByPlaceholderText(/^Label/), { target: { value: 'GPU' } })
     fireEvent.click(confirm('Add'))
 
+    expect(onChange).toHaveBeenCalledWith([{ key: 'GPU', value: '', icon: null, visible: true }])
+  })
+
+  it('refuses a property with no key', () => {
+    const onChange = vi.fn()
+    render(<PropertyList properties={[]} onChange={onChange} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    fireEvent.change(screen.getByPlaceholderText(/^Value/), { target: { value: 'RTX' } })
+    fireEvent.click(confirm('Add'))
+
     expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('prints a value-less property as a bare label', () => {
+    render(<PropertyList properties={[{ key: 'Rented', value: '', icon: null, visible: true }]} onChange={vi.fn()} />)
+
+    expect(screen.getByTitle('Rented')).toBeInTheDocument()
+    expect(screen.queryByText(/^·/)).not.toBeInTheDocument()
   })
 
   it('toggles a property between shown and hidden', () => {
@@ -108,6 +126,17 @@ describe('PropertyList', () => {
       { key: 'B', value: '22', icon: null, visible: true },
       { key: 'C', value: '3', icon: null, visible: true },
     ])
+  })
+
+  it('saves an edit that clears the value', () => {
+    const onChange = vi.fn()
+    render(<PropertyList properties={props()} onChange={onChange} />)
+
+    fireEvent.click(screen.getAllByTitle('Edit property')[1])
+    fireEvent.change(screen.getByDisplayValue('2'), { target: { value: '' } })
+    fireEvent.click(confirm('Save'))
+
+    expect(onChange.mock.calls[0][0][1]).toEqual({ key: 'B', value: '', icon: null, visible: true })
   })
 
   it('words the visibility toggle for the surface it edits', () => {

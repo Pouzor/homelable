@@ -38,7 +38,7 @@ export function PropertyList({
   onChange,
   visibleLabel = 'Show on node',
   keyPlaceholder = 'Label (e.g. CPU Model)',
-  valuePlaceholder = 'Value (e.g. i7-12700K)',
+  valuePlaceholder = 'Value — optional (e.g. i7-12700K)',
   suggestions,
   title = 'Properties',
   emptyHint = 'No properties — click Add to define one.',
@@ -51,7 +51,8 @@ export function PropertyList({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   const handleAdd = () => {
-    if (!newProp.key.trim() || !newProp.value.trim()) return
+    // Only the key is required — a property may carry a label alone.
+    if (!newProp.key.trim()) return
     onChange([
       ...properties,
       { key: newProp.key.trim(), value: newProp.value.trim(), icon: newProp.icon, visible: newProp.visible },
@@ -82,7 +83,7 @@ export function PropertyList({
   }
 
   const handleSaveEdit = () => {
-    if (editingIndex === null || !editProp.key.trim() || !editProp.value.trim()) return
+    if (editingIndex === null || !editProp.key.trim()) return
     onChange(
       properties.map((p, i) =>
         i === editingIndex
@@ -192,7 +193,7 @@ export function PropertyList({
   )
 }
 
-export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel, visibleLabel = 'Show on node', keyPlaceholder = 'Label (e.g. CPU Model)', valuePlaceholder = 'Value (e.g. i7-12700K)' }: {
+export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel, visibleLabel = 'Show on node', keyPlaceholder = 'Label (e.g. CPU Model)', valuePlaceholder = 'Value — optional (e.g. i7-12700K)' }: {
   form: PropForm
   onChange: (f: PropForm) => void
   onConfirm: () => void
@@ -307,7 +308,9 @@ export function PropertyBadge({ prop, visibleLabel = 'node', draggable, isDraggi
         )}
         {Icon && createElement(Icon, { size: 11, className: 'shrink-0 text-muted-foreground' })}
         <span className="font-medium truncate text-foreground" title={prop.key}>{prop.key}</span>
-        <span className="text-muted-foreground truncate" title={prop.value}>· {prop.value}</span>
+        {prop.value.trim() && (
+          <span className="text-muted-foreground truncate" title={prop.value}>· {prop.value}</span>
+        )}
       </div>
       <div className="flex items-center gap-1 shrink-0">
         <button
