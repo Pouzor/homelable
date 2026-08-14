@@ -15,7 +15,22 @@
  * reads in one screen instead of a scrolling column of key-value pairs.
  */
 import { useEffect, useState } from 'react'
-import { Check, Copy, Layers, Pencil, Plus, X } from 'lucide-react'
+import {
+  Check,
+  Copy,
+  Factory,
+  Fingerprint,
+  HeartPulse,
+  History,
+  Layers,
+  Network,
+  Pencil,
+  Plus,
+  StickyNote,
+  Tags,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -91,20 +106,25 @@ function categoryColor(category: string | null | undefined) {
   return CATEGORY_COLORS[category.toLowerCase()] ?? '#8b949e'
 }
 
-/** A section card: heading bar, optional action, body. */
+/** A section card: heading bar with its icon, optional action, body. */
 function Section({
   title,
+  icon: Icon,
   action,
   children,
 }: {
   title: string
+  icon: LucideIcon
   action?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <section className="rounded-lg border border-[#30363d] bg-[#161b22] overflow-hidden">
       <header className="flex items-center justify-between gap-2 px-3 py-2 border-b border-[#30363d] bg-[#0d1117]/50">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</span>
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <Icon size={12} className="text-muted-foreground/70" aria-hidden />
+          {title}
+        </span>
         {action}
       </header>
       <div className="p-3">{children}</div>
@@ -398,7 +418,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
           {editing ? (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
               <div className="flex flex-col gap-4 min-w-0">
-                <Section title="Identity">
+                <Section title="Identity" icon={Fingerprint}>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Name" className="col-span-2">
                       <Input value={form.label} onChange={(e) => set('label', e.target.value)} placeholder="Display name" className={INPUT} />
@@ -440,7 +460,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                   </div>
                 </Section>
 
-                <Section title="Make & model">
+                <Section title="Make & model" icon={Factory}>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Vendor">
                       <Input value={form.vendor} onChange={(e) => set('vendor', e.target.value)} className={INPUT} />
@@ -459,7 +479,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
               </div>
 
               <div className="flex flex-col gap-4 min-w-0">
-                <Section title="Monitoring">
+                <Section title="Monitoring" icon={HeartPulse}>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Check method">
                       <Select value={form.check_method || undefined} onValueChange={(v) => set('check_method', (v as string | null) ?? '')}>
@@ -479,7 +499,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                   </div>
                 </Section>
 
-                <Section title="Notes">
+                <Section title="Notes" icon={StickyNote}>
                   <Textarea
                     value={form.notes}
                     onChange={(e) => set('notes', e.target.value)}
@@ -505,6 +525,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
 
                 <Section
                   title={`Services${services.length > 0 ? ` (${services.length})` : ''}`}
+                  icon={Network}
                   action={
                     <button
                       onClick={() => setSvcModal({ index: null })}
@@ -548,8 +569,9 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-              <div className="flex flex-col gap-4 min-w-0">
-                <Section title="Identity">
+              {/* What the device is: how to reach it, and what answers there. */}
+              <div className="flex flex-col gap-4 min-w-0" data-testid="device-column-identity">
+                <Section title="Identity" icon={Fingerprint}>
                   <div className="flex flex-col">
                     {device.ip && <InfoRow label="IP" value={device.ip} copyable />}
                     {device.hostname && <InfoRow label="Hostname" value={device.hostname} copyable />}
@@ -572,65 +594,9 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                   </div>
                 </Section>
 
-              </div>
-
-              <div className="flex flex-col gap-4 min-w-0">
-                <Section title="Monitoring">
-                  <div className="flex flex-col">
-                    {device.check_method ? (
-                      <InfoRow
-                        label="Check"
-                        value={device.check_target ? `${device.check_method} → ${device.check_target}` : device.check_method}
-                      />
-                    ) : (
-                      <Empty>Not monitored — pick a check method from Edit.</Empty>
-                    )}
-                    {device.response_time_ms != null && <InfoRow label="Response" value={`${device.response_time_ms} ms`} />}
-                    {device.discovery_source && <InfoRow label="Source" value={device.discovery_source.toUpperCase()} />}
-                    {device.canvas_count != null && device.canvas_count > 0 && (
-                      <InfoRow label="Canvases" value={String(device.canvas_count)} />
-                    )}
-                  </div>
-                </Section>
-
-                <Section title="Activity">
-                  <div className="flex flex-col">
-                    {timestamps.length === 0 ? (
-                      <Empty>No activity recorded.</Empty>
-                    ) : (
-                      timestamps.map((t) => <TimeRow key={t.label} label={t.label} iso={t.iso} />)
-                    )}
-                  </div>
-                </Section>
-
-                <Section title="Notes">
-                  {device.notes ? (
-                    <p className="text-xs text-foreground/80 whitespace-pre-wrap">{device.notes}</p>
-                  ) : (
-                    <Empty>No notes.</Empty>
-                  )}
-                </Section>
-              </div>
-
-              <div className="flex flex-col gap-4 min-w-0">
-                <Section title={`Properties${device.properties && device.properties.length > 0 ? ` (${device.properties.length})` : ''}`}>
-                  {device.properties && device.properties.length > 0 ? (
-                    <div className="flex flex-col gap-1.5">
-                      {device.properties.map((prop, i) => (
-                        <div key={`${prop.key}-${i}`} className="flex items-baseline gap-2 px-2.5 py-1.5 rounded-md bg-[#21262d] border border-[#30363d] text-xs">
-                          <span className="text-muted-foreground shrink-0">{prop.key}</span>
-                          <span className="ml-auto font-mono text-foreground break-all text-right">{prop.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <Empty>No properties.</Empty>
-                  )}
-                </Section>
-
                 {/* Zigbee devices have no IP services — the section would always be empty. */}
                 {!isZigbee && (
-                  <Section title={`Services found (${device.services.length})`}>
+                  <Section title={`Services found (${device.services.length})`} icon={Network}>
                     {device.services.length === 0 ? (
                       <Empty>No services detected</Empty>
                     ) : (
@@ -658,6 +624,67 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                     )}
                   </Section>
                 )}
+              </div>
+
+              {/* How it is watched, and what happened to it. */}
+              <div className="flex flex-col gap-4 min-w-0" data-testid="device-column-operations">
+                <Section title="Monitoring" icon={HeartPulse}>
+                  <div className="flex flex-col">
+                    {device.check_method ? (
+                      <InfoRow
+                        label="Check"
+                        value={device.check_target ? `${device.check_method} → ${device.check_target}` : device.check_method}
+                      />
+                    ) : (
+                      <Empty>Not monitored — pick a check method from Edit.</Empty>
+                    )}
+                    {device.response_time_ms != null && <InfoRow label="Response" value={`${device.response_time_ms} ms`} />}
+                    {device.discovery_source && <InfoRow label="Source" value={device.discovery_source.toUpperCase()} />}
+                    {device.canvas_count != null && device.canvas_count > 0 && (
+                      <InfoRow label="Canvases" value={String(device.canvas_count)} />
+                    )}
+                  </div>
+                </Section>
+
+                <Section title="Activity" icon={History}>
+                  <div className="flex flex-col">
+                    {timestamps.length === 0 ? (
+                      <Empty>No activity recorded.</Empty>
+                    ) : (
+                      timestamps.map((t) => <TimeRow key={t.label} label={t.label} iso={t.iso} />)
+                    )}
+                  </div>
+                </Section>
+
+                <Section title="Notes" icon={StickyNote}>
+                  {device.notes ? (
+                    <p className="text-xs text-foreground/80 whitespace-pre-wrap">{device.notes}</p>
+                  ) : (
+                    <Empty>No notes.</Empty>
+                  )}
+                </Section>
+              </div>
+
+              {/* What the user curated. */}
+              <div className="flex flex-col gap-4 min-w-0" data-testid="device-column-curation">
+                <Section
+                  title={`Properties${device.properties && device.properties.length > 0 ? ` (${device.properties.length})` : ''}`}
+                  icon={Tags}
+                >
+                  {device.properties && device.properties.length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                      {device.properties.map((prop, i) => (
+                        <div key={`${prop.key}-${i}`} className="flex items-baseline gap-2 px-2.5 py-1.5 rounded-md bg-[#21262d] border border-[#30363d] text-xs">
+                          <span className="text-muted-foreground shrink-0">{prop.key}</span>
+                          <span className="ml-auto font-mono text-foreground break-all text-right">{prop.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <Empty>No properties.</Empty>
+                  )}
+                </Section>
+
               </div>
             </div>
           )}
