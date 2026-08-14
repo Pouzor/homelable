@@ -5,6 +5,54 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.3.0] - 2026-08-14
+
+### Breaking
+
+- **The Device Inventory row is now the source of a device's facts.** A canvas node
+  owns how a device is drawn (position, size, colours, icon, handles, nesting);
+  what the device *is* — addresses, services, properties, notes, hardware, check
+  method, live status — lives on its `device_inventory` row, named by
+  `nodes.device_id`. One device therefore reads the same on every canvas it
+  appears on, and editing it anywhere updates it everywhere. (#339)
+- **Migration on first start of 3.3.0, one way.** The device columns are copied
+  from `nodes` into `device_inventory`, then dropped from `nodes` in a table
+  rebuild. Nodes drawing the same device are linked to one row (by IEEE, then IP,
+  then MAC). The API still reports the node and its facts together, so REST and
+  MCP clients see the same shape as before. A downgrade to 3.2.x on a migrated
+  database will not work. The startup backup (`homelab.db.back-3.3.0`, written
+  before any migration runs) is the way back. (#339)
+- The drop is skipped, and logged, if any non-furniture node is still unlinked
+  after the backfill — the old columns are that node's only remaining copy of its
+  facts. (#339)
+- `/ws/status` messages now carry `device_id` and the `node_ids` drawing it,
+  in place of a single `node_id`. (#339)
+
+### Features
+
+- Show and edit a device from the Device Inventory: the detail sheet is grouped
+  by what a reader is after, and every field of the row is editable in place. (#339)
+- Per-service host override: a service can be checked against a host of its own
+  rather than the device's. (#338)
+- Nodes accept 0 connection points on their top and bottom edges. (#336)
+- New device type: KVM switch. (#335)
+
+### Fixes
+
+- A partial `PATCH /api/v1/nodes/{id}` no longer blanks the list it did not send —
+  properties and services are replaced one by one. (#339)
+- An inventory card reads the device's curated type rather than the suggestion
+  discovery left on it. (#339)
+- YAML import files hardware specs as device properties. (#339)
+- Alignment guides show for nodes inside groups and containers. (#337)
+- A group child is seeded near its group, and groups refuse to nest. (#338)
+- A node stays inside its group when edited. (#338)
+- A comma-listed host override is split, and the wire host is typed. (#338)
+- The status check interval applies to the running scheduler. (#319)
+- `get_canvas` on the MCP server reported only an id and a node type: it slimmed
+  a React Flow shape the API has never sent. It now reads the facts where the API
+  puts them. (#339)
+
 ## [3.2.0] - 2026-08-10
 
 ### Features
