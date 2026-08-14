@@ -73,6 +73,30 @@ describe('InventoryDeviceModal — header', () => {
 })
 
 describe('InventoryDeviceModal — view sections', () => {
+  // What answers on a host belongs beside how to reach it, not in the curation
+  // column next to the properties.
+  it('puts the services under Identity', () => {
+    render(
+      <InventoryDeviceModal
+        {...noop}
+        device={makeDevice({ services: [{ port: 22, protocol: 'tcp', service_name: 'SSH' }] })}
+      />
+    )
+    const identity = screen.getByTestId('device-column-identity')
+    expect(identity).toHaveTextContent('Identity')
+    expect(identity).toHaveTextContent('Services found (1)')
+    expect(screen.getByTestId('device-column-curation')).not.toHaveTextContent('Services found')
+  })
+
+  it('heads every section with an icon', () => {
+    render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
+    const headings = [...screen.getByRole('dialog').querySelectorAll('section > header > span:first-child')]
+    expect(headings.length).toBeGreaterThan(0)
+    for (const heading of headings) {
+      expect(heading.querySelector('svg')).not.toBeNull()
+    }
+  })
+
   it('keeps a section with an empty-state rather than dropping it', () => {
     render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
     expect(screen.getByText('No properties.')).toBeInTheDocument()
