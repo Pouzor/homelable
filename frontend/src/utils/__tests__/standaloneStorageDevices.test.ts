@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import type { Node } from '@xyflow/react'
 import type { NodeData } from '@/types'
-import { saveCanvas, loadCanvas, type StandaloneCanvas } from '@/utils/standaloneStorage'
+import { saveCanvas, loadCanvas, ensureSeed, type StandaloneCanvas } from '@/utils/standaloneStorage'
 
 function node(id: string, data: Partial<NodeData> = {}): Node<NodeData> {
   return {
@@ -99,5 +99,99 @@ describe('standalone device rows', () => {
 
     const loaded = loadCanvas('d1')
     expect(loaded?.nodes[0].data.ip).toBe('10.0.0.7')
+  })
+})
+
+/**
+ * An install that predates the split has canvases whose nodes carry the facts
+ * inline and no `devices` at all. Reading one must not lose anything, and the
+ * next save must convert it in place rather than write the old shape back.
+ */
+describe('a canvas stored in the pre-split shape', () => {
+  const legacyNode = () =>
+    node('n1', {
+      ip: '10.0.0.7',
+      hostname: 'nas.lan',
+      notes: 'garage',
+      cpu_count: 8,
+      show_hardware: true,
+      services: [{ port: 22, protocol: 'tcp', service_name: 'ssh' }],
+      properties: [{ key: 'Rack', value: 'A1', icon: null, visible: true }],
+    })
+
+  it('survives a load-then-save round trip with every fact intact', () => {
+    localStorage.setItem(
+      'homelable_canvas:d1',
+      JSON.stringify({ nodes: [legacyNode()], edges: [], theme_id: 'midnight' }),
+    )
+
+    // What the app does on open: load, then save at some point after.
+    const loaded = loadCanvas('d1')!
+    saveCanvas('d1', loaded)
+
+    const blob = stored('d1')
+    expect(blob.devices).toHaveLength(1)
+    const [device] = blob.devices!
+    expect(device.ip).toBe('10.0.0.7')
+    expect(device.hostname).toBe('nas.lan')
+    expect(device.notes).toBe('garage')
+    expect(device.cpu_count).toBe(8)
+    expect(device.show_hardware).toBe(true)
+    expect(device.services).toHaveLength(1)
+    expect(device.properties).toHaveLength(1)
+    expect(blob.nodes[0].data.device_id).toBe(device.id)
+    expect(blob.theme_id).toBe('midnight')
+
+    // And it still reads back the same way it did before the conversion.
+    const reloaded = loadCanvas('d1')!
+    expect(reloaded.nodes[0].data.ip).toBe('10.0.0.7')
+    expect(reloaded.nodes[0].data.cpu_count).toBe(8)
+    expect(reloaded.nodes[0].data.properties).toHaveLength(1)
+  })
+
+  it('does not mint a second row when saved twice', () => {
+    localStorage.setItem(
+      'homelable_canvas:d1',
+      JSON.stringify({ nodes: [legacyNode()], edges: [] }),
+    )
+
+    saveCanvas('d1', loadCanvas('d1')!)
+    const firstId = stored('d1').devices![0].id
+    saveCanvas('d1', loadCanvas('d1')!)
+
+    expect(stored('d1').devices).toHaveLength(1)
+    expect(stored('d1').devices![0].id).toBe(firstId)
+  })
+
+  it('keeps furniture out of the conversion', () => {
+    localStorage.setItem(
+      'homelable_canvas:d1',
+      JSON.stringify({
+        nodes: [legacyNode(), node('z1', { type: 'groupRect', label: 'Zone' })],
+        edges: [],
+      }),
+    )
+
+    saveCanvas('d1', loadCanvas('d1')!)
+
+    const blob = stored('d1')
+    expect(blob.devices).toHaveLength(1)
+    expect(blob.nodes.find((n) => n.id === 'z1')!.data.device_id).toBeUndefined()
+  })
+
+  it('carries a legacy single-canvas install through ensureSeed', () => {
+    localStorage.setItem(
+      'homelable_canvas',
+      JSON.stringify({ nodes: [legacyNode()], edges: [] }),
+    )
+
+    const [design] = ensureSeed()
+    const loaded = loadCanvas(design.id)!
+
+    expect(loaded.nodes[0].data.ip).toBe('10.0.0.7')
+    expect(localStorage.getItem('homelable_canvas')).toBeNull()
+
+    saveCanvas(design.id, loaded)
+    expect(stored(design.id).devices).toHaveLength(1)
   })
 })
