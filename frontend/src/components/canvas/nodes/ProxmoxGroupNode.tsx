@@ -120,7 +120,9 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
             >
               {Icon && <Icon size={9} className="shrink-0" />}
               <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
-              <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
+              {prop.value.trim() && (
+                <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
+              )}
             </div>
           )
         })}

@@ -161,6 +161,19 @@ describe('CableLayer selection', () => {
     expect(lines).toEqual(['Uplink', 'Length: 2 m'])
   })
 
+  it('prints a value-less property as a bare label', () => {
+    const store = useRackStore.getState()
+    store.setCableVisibility('always')
+    store.updateCable(store.cables[0].id, {
+      labelVisible: false,
+      properties: [{ key: 'Spare', value: '', icon: null, visible: true }],
+    })
+
+    const { getAllByTestId } = render(<CableLayer />)
+    const lines = Array.from(getAllByTestId('cable-annotation')[0].querySelectorAll('text')).map((t) => t.textContent)
+    expect(lines).toEqual(['Spare'])
+  })
+
   it('draws the selected cable with a highlight halo', () => {
     useRackStore.getState().toggleCableMode()
     const { container, rerender } = render(<CableLayer />)
