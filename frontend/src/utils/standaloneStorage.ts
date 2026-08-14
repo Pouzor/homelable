@@ -65,12 +65,33 @@ export interface StandaloneCanvas {
 /** Node types that draw nothing physical, so they never get an inventory row. */
 const FURNITURE_TYPES = new Set(['group', 'groupRect', 'text'])
 
-/** Device fields the inventory row owns — everything a node no longer keeps. */
+/**
+ * Device fields the inventory row owns — everything a node no longer keeps.
+ *
+ * `status` is deliberately absent. On a node it is live reachability
+ * (online/offline/unknown); on an inventory row it is the pending / approved /
+ * hidden lifecycle. The backend keeps them apart as `status` vs `status_live`
+ * and so does this — copying one into the other would leave a stored device
+ * reading `status: "online"`, which no inventory filter can make sense of.
+ */
 const DEVICE_FIELDS = [
-  'hostname', 'ip', 'mac', 'os', 'status', 'check_method', 'check_target',
+  'hostname', 'ip', 'mac', 'os', 'check_method', 'check_target',
   'services', 'notes', 'cpu_count', 'cpu_model', 'ram_gb', 'disk_gb',
   'show_hardware', 'properties', 'last_seen', 'last_scan', 'response_time_ms',
 ] as const
+
+const LIFECYCLE_STATUSES = new Set(['pending', 'approved', 'hidden'])
+
+/**
+ * Repair a row saved before the two statuses were told apart, where the node's
+ * reachability landed in the lifecycle field. Anything that is not a lifecycle
+ * value was reachability, so it moves to `status_live` and the row counts as
+ * approved — it is on a canvas, which is what approved means.
+ */
+function normalizeLifecycle(row: InventoryEntry): InventoryEntry {
+  if (LIFECYCLE_STATUSES.has(row.status)) return row
+  return { ...row, status: 'approved', status_live: row.status_live ?? row.status }
+}
 
 /**
  * Split a canvas into nodes-plus-rows on the way to storage.
@@ -91,11 +112,15 @@ function splitDevices(data: StandaloneCanvas): StandaloneCanvas {
       DEVICE_FIELDS.filter((f) => n.data[f] !== undefined).map((f) => [f, n.data[f]]),
     )
     const row = {
-      ...(previous ?? { id: deviceId, discovered_at: new Date().toISOString(), status: 'approved' }),
+      ...(previous
+        ? normalizeLifecycle(previous)
+        : { id: deviceId, discovered_at: new Date().toISOString(), status: 'approved' }),
       ...facts,
       id: deviceId,
       label: n.data.label,
       type: n.data.type,
+      // Reachability, kept where the backend keeps it — never in `status`.
+      status_live: (n.data.status as string | undefined) ?? previous?.status_live ?? 'unknown',
     } as InventoryEntry
     if (previous) devices[devices.indexOf(previous)] = row
     else devices.push(row)
@@ -118,9 +143,18 @@ function hydrateDevices(data: StandaloneCanvas): StandaloneCanvas {
       const facts = Object.fromEntries(
         DEVICE_FIELDS.filter((f) => row[f] != null).map((f) => [f, row[f]]),
       )
+      const normalized = normalizeLifecycle(row)
       return {
         ...n,
-        data: { ...n.data, ...facts, label: row.label ?? n.data.label, type: row.type ?? n.data.type },
+        data: {
+          ...n.data,
+          ...facts,
+          label: row.label ?? n.data.label,
+          type: row.type ?? n.data.type,
+          // The node draws reachability; a row saved before the split carries it
+          // in `status`, which normalizeLifecycle has moved to `status_live`.
+          status: normalized.status_live ?? n.data.status,
+        },
       } as Node<NodeData>
     }),
   }

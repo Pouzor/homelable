@@ -78,6 +78,13 @@ async def _run_status_checks() -> None:
     Device-scoped, not node-scoped: a host drawn on three canvases used to be
     pinged three times and could report three different states. Hidden devices
     are skipped — hiding one is how a user says "stop showing me this".
+
+    A device with no node at all is still checked, deliberately. The inventory
+    row owns the device and shows its live status in the list and the detail
+    modal, so a rack mount or an inventory-only entry reports state without
+    being drawn anywhere — and deleting a node no longer silently stops
+    monitoring the host. `hide` (or clearing the check method) is what ends the
+    checks; the broadcast simply carries an empty `node_ids`.
     """
     async with AsyncSessionLocal() as db:
         devices = (

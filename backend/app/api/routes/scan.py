@@ -339,6 +339,12 @@ async def create_pending(
         existing.properties = merge_properties(existing.properties, body.properties)
         existing.services = merge_services(existing.services, body.services)
         existing.discovery_sources = add_source(existing.discovery_sources, body.discovery_source)
+        # A hidden row is still that device, so it is the one to fill in — but
+        # adding a device by hand is asking for it, and returning it still hidden
+        # would leave the user with a 201 and nothing in the inventory. The
+        # explicit add outranks the earlier hide, exactly like restore.
+        if existing.status == "hidden":
+            existing.status = "pending"
         await db.commit()
         await db.refresh(existing)
         return (await _with_canvas_counts(db, [existing]))[0]

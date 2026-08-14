@@ -80,6 +80,42 @@ describe('standalone device rows', () => {
     expect(reloaded.nodes.every((n) => n.data.ip === reloaded.nodes[0].data.ip)).toBe(true)
   })
 
+  it('stores reachability as status_live, never as the lifecycle status', () => {
+    saveCanvas('d1', { nodes: [node('n1', { ip: '10.0.0.5', status: 'online' })], edges: [] })
+
+    const [device] = stored('d1').devices!
+    // `status` is pending / approved / hidden — a device on a canvas is approved.
+    expect(device.status).toBe('approved')
+    expect(device.status_live).toBe('online')
+  })
+
+  it('puts reachability back on the node it belongs to', () => {
+    saveCanvas('d1', { nodes: [node('n1', { ip: '10.0.0.5', status: 'offline' })], edges: [] })
+    expect(loadCanvas('d1')?.nodes[0].data.status).toBe('offline')
+  })
+
+  it('repairs a row saved with reachability in the lifecycle field', () => {
+    // Written by the version that copied `status` straight across.
+    localStorage.setItem(
+      'homelable_canvas:d1',
+      JSON.stringify({
+        nodes: [{ ...node('n1'), data: { ...node('n1').data, device_id: 'dev-1' } }],
+        edges: [],
+        devices: [
+          { id: 'dev-1', ip: '10.0.0.5', status: 'online', discovered_at: '2026-01-01T00:00:00Z' },
+        ],
+      }),
+    )
+
+    const loaded = loadCanvas('d1')!
+    expect(loaded.nodes[0].data.status).toBe('online')
+    saveCanvas('d1', loaded)
+
+    const [device] = stored('d1').devices!
+    expect(device.status).toBe('approved')
+    expect(device.status_live).toBe('online')
+  })
+
   it('gives canvas furniture no row', () => {
     saveCanvas('d1', {
       nodes: [node('z1', { type: 'groupRect', label: 'Zone' }), node('t1', { type: 'text' })],
