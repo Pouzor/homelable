@@ -436,6 +436,77 @@ class TestRoutesKeepTheLinkInStep:
         assert canvas_b["nodes"][0]["ip"] == "10.0.0.9"
 
     @pytest.mark.asyncio
+    async def test_the_wire_shape_the_mcp_server_reads_is_unchanged(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """`mcp/app/tools.py` reads the facts flat on the node — keep it that way.
+
+        The MCP server is a thin proxy over these routes: `_slim_canvas` keeps
+        `NODE_KEEP`, `_slim_node_summary` keeps label/type/status, and `get_node`
+        looks a node up by label. None of it knows the inventory row exists, so
+        the split must not show on the wire.
+        """
+        db_session.add(
+            InventoryDevice(
+                id="d-1",
+                ip="10.0.0.5",
+                hostname="nas.lan",
+                mac="aa:bb:cc:dd:ee:ff",
+                os="TrueNAS",
+                notes="in the garage",
+                cpu_count=8,
+                cpu_model="Xeon",
+                ram_gb=32.0,
+                disk_gb=4000.0,
+                services=[{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+                properties=[{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
+                status_live="online",
+            )
+        )
+        await db_session.commit()
+        design_id = (await client.post("/api/v1/designs", json={"name": "Net"}, headers=headers)).json()["id"]
+        created = (
+            await client.post(
+                "/api/v1/nodes",
+                json={
+                    "type": "nas", "label": "NAS", "ip": "10.0.0.5",
+                    "design_id": design_id, "force": True,
+                },
+                headers=headers,
+            )
+        ).json()
+
+        # mcp `_slim_canvas` NODE_KEEP, plus what `_slim_node_summary` reads.
+        expected = {
+            "type": "nas",
+            "label": "NAS",
+            "ip": "10.0.0.5",
+            "hostname": "nas.lan",
+            "mac": "aa:bb:cc:dd:ee:ff",
+            "os": "TrueNAS",
+            "status": "online",
+            "notes": "in the garage",
+            "cpu_count": 8,
+            "cpu_model": "Xeon",
+            "ram_gb": 32.0,
+            "disk_gb": 4000.0,
+        }
+        for source in (
+            created,
+            (await client.get(f"/api/v1/nodes/{created['id']}", headers=headers)).json(),
+            (await client.get("/api/v1/nodes", headers=headers)).json()[0],
+            (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"][0],
+            # mcp `get_node` falls back to a label lookup when given no id.
+            (await client.get("/api/v1/nodes?label=NAS", headers=headers)).json()[0],
+        ):
+            assert {k: source[k] for k in expected} == expected
+            assert source["services"] == [{"port": 22, "protocol": "tcp", "service_name": "ssh"}]
+            assert source["properties"] == [
+                {"key": "Rack", "value": "A1", "icon": None, "visible": True}
+            ]
+            assert "parent_id" in source
+
+    @pytest.mark.asyncio
     async def test_deleting_a_node_keeps_the_device(self, client: AsyncClient, headers, db_session):
         db_session.add(InventoryDevice(id="d-1", ip="10.0.0.5"))
         await db_session.commit()
