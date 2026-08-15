@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixes
 
 - Alignment guides show for nodes inside groups and containers. (#337)
-- The status check interval is applied to the running scheduler. (#319) — thanks @JaG-v2
+- The status check interval is applied to the running scheduler. Thanks @JaG-v2. (#319)
 - Bumped undici and ip-address to patch high severity advisories. (#342)
 
 ### Docs
