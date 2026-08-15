@@ -388,14 +388,25 @@ function VersionBadge() {
 
   return (
     <div className="px-3 py-2 border-t border-border flex flex-col gap-1">
-      <a
-        href={`https://github.com/Pouzor/homelable/releases/tag/v${current}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-      >
-        v{current}
-      </a>
+      <div className="flex items-center gap-1.5">
+        <a
+          href={`https://github.com/Pouzor/homelable/releases/tag/v${current}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-mono text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          v{current}
+        </a>
+        <span className="text-[11px] text-muted-foreground">-</span>
+        <a
+          href="https://homelable.net/changelog/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[11px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors"
+        >
+          Changelog
+        </a>
+      </div>
       {hasUpdate && latest && (
         <a
           href={latest.url.startsWith('https://') ? latest.url : '#'}

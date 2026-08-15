@@ -83,6 +83,13 @@ describe('VersionBadge', () => {
     expect(link).toHaveAttribute('target', '_blank')
   })
 
+  it('links to the public changelog next to the version', () => {
+    renderSidebar()
+    const link = screen.getByText('Changelog').closest('a')
+    expect(link).toHaveAttribute('href', 'https://homelable.net/changelog/')
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
   it('does not show update badge when on latest version', () => {
     renderSidebar()
     expect(screen.queryByText(/available/)).not.toBeInTheDocument()
