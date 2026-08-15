@@ -65,7 +65,7 @@ Every feature, with how to turn it on and use it, is described in **[FEATURES.md
 
 ## Installation
 
-Docker, Proxmox LXC, build from source, configuration, and development setup are all covered in **[INSTALLATION.md](./INSTALLATION.md)**.
+Docker (from the **[pre-built GHCR images](./INSTALLATION.md#pre-built-docker-images)**), Proxmox LXC, build from source, configuration, and development setup are all covered in **[INSTALLATION.md](./INSTALLATION.md)**.
 
 ---
 

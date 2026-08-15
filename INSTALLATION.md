@@ -40,7 +40,32 @@ curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/install.sh | 
 cd homelable && docker compose pull && docker compose up -d
 ```
 
+## Pre-built Docker images
+
+The quick starts above never build anything — `install.sh` writes `docker-compose.prebuilt.yml` (or `docker-compose.standalone.yml` with `--standalone`) as your `docker-compose.yml`, and both pull ready-made images. They are published to the GitHub Container Registry on every push to `main` and every `v*` tag, for `linux/amd64` and `linux/arm64`:
+
+| Image | Contents |
+|---|---|
+| [`ghcr.io/pouzor/homelable-backend`](https://github.com/Pouzor/homelable/pkgs/container/homelable-backend) | FastAPI API, scanner, status checker |
+| [`ghcr.io/pouzor/homelable-frontend`](https://github.com/Pouzor/homelable/pkgs/container/homelable-frontend) | React SPA behind nginx, proxying `/api` to the backend |
+| [`ghcr.io/pouzor/homelable-frontend-standalone`](https://github.com/Pouzor/homelable/pkgs/container/homelable-frontend-standalone) | Same SPA built with `VITE_STANDALONE=true` — no backend, canvases in `localStorage` |
+| [`ghcr.io/pouzor/homelable-mcp`](https://github.com/Pouzor/homelable/pkgs/container/homelable-mcp) | MCP server exposing the canvas to AI clients |
+
+Tags: `latest` (tip of `main`), plus `X.Y.Z` and `X.Y` for releases.
+
+To wire it up by hand instead of using `install.sh`:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Pouzor/homelable/main/docker-compose.prebuilt.yml
+curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/.env.example -o .env
+docker compose -f docker-compose.prebuilt.yml up -d
+```
+
+Update the same way: `docker compose -f docker-compose.prebuilt.yml pull && … up -d`.
+
 ## Build from source
+
+`docker-compose.yml` at the repo root builds the images locally instead of pulling them — use it for development, or to run a patched tree.
 
 ```bash
 git clone https://github.com/Pouzor/homelable.git
