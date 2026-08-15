@@ -5,6 +5,28 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.3.0] - 2026-08-15
+
+### Features
+
+- The Device Inventory is now the source of truth for device data: a node reads and edits its facts from its inventory row, and the device sheet is grouped by what a reader is after. (#339)
+- Per-service host override, so a service can point at a host other than the node's own. (#338)
+- A zone now parents the nodes dropped inside it. (#343)
+- Node properties accept an empty value. (#345)
+- Nodes can be given 0 connection points on top and bottom. (#336)
+- KVM switch added as a device type. (#335)
+- The sidebar version row links to the public changelog.
+
+### Fixes
+
+- Alignment guides show for nodes inside groups and containers. (#337)
+- The status check interval is applied to the running scheduler. (#319) — thanks @JaG-v2
+- Bumped undici and ip-address to patch high severity advisories. (#342)
+
+### Docs
+
+- The pre-built GHCR images are documented in the install guide.
+
 ## [3.2.0] - 2026-08-10
 
 ### Features
