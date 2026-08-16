@@ -17,6 +17,7 @@ from app.services.inventory_sync import (
     backfill_node_devices,
     changed_facts,
     find_device_for,
+    link_facts,
     merge_properties,
     merge_services,
 )
@@ -178,6 +179,60 @@ class TestFindDeviceFor:
         found = await find_device_for(db_session, ip="10.0.0.5", mac=None, ieee=None)
         assert found is not None and found.id == "d-hidden"
 
+    @pytest.mark.asyncio
+    async def test_matches_an_ieee_written_in_another_case(self, db_session):
+        """One radio, one row: `ieee_address` is UNIQUE, so a case-sensitive
+        match here would mint a second row the index then refuses."""
+        db_session.add(InventoryDevice(id="d-1", ieee_address="0x00124b0022334455"))
+        await db_session.commit()
+
+        found = await find_device_for(
+            db_session, ip=None, mac=None, ieee="0x00124B0022334455"
+        )
+        assert found is not None and found.id == "d-1"
+
+
+class TestIeeeCollisions:
+    """`device_inventory.ieee_address` is UNIQUE — a merge must never duplicate it."""
+
+    @pytest.mark.asyncio
+    async def test_an_address_another_row_owns_is_left_where_it_is(self, db_session):
+        """The node is already linked, so identity is settled — the IEEE is not
+        a reason to move it, and writing it here would violate the index."""
+        design = await _design(db_session)
+        db_session.add_all([
+            InventoryDevice(id="d-radio", ieee_address="0xAAA"),
+            InventoryDevice(id="d-host", ip="10.0.0.5"),
+        ])
+        node = _node(design, device_id="d-host")
+        db_session.add(node)
+        await db_session.commit()
+
+        device = await link_facts(
+            db_session, node, {"ip": "10.0.0.5", "ieee_address": "0xAAA"}, overwrite_scalars=True
+        )
+        await db_session.commit()
+
+        assert device is not None and device.id == "d-host"
+        assert device.ieee_address is None
+        radio = await db_session.get(InventoryDevice, "d-radio")
+        assert radio is not None and radio.ieee_address == "0xAAA"
+
+    @pytest.mark.asyncio
+    async def test_the_row_that_already_holds_it_keeps_writing_it(self, db_session):
+        design = await _design(db_session)
+        db_session.add(InventoryDevice(id="d-1", ip="10.0.0.5", ieee_address="0xAAA"))
+        node = _node(design)
+        db_session.add(node)
+        await db_session.commit()
+
+        device = await link_facts(
+            db_session, node, {"ip": "10.0.0.5", "ieee_address": "0xAAA"}, overwrite_scalars=True
+        )
+        await db_session.commit()
+
+        assert device is not None and device.ieee_address == "0xAAA"
+
 
 # --- the backfill -----------------------------------------------------------
 
@@ -238,7 +293,7 @@ class TestBackfill:
         db_session.add(_node(design))
         await db_session.commit()
 
-        assert await backfill_node_devices(db_session) == {"linked": 0, "created": 0, "merged": 0}
+        assert await backfill_node_devices(db_session) == {"linked": 0, "created": 0, "merged": 0, "skipped": 0}
 
     @pytest.mark.asyncio
     async def test_links_a_node_to_its_existing_row(self, db_session):
@@ -251,7 +306,7 @@ class TestBackfill:
         stats = await backfill_node_devices(db_session)
         await db_session.commit()
 
-        assert stats == {"linked": 1, "created": 0, "merged": 1}
+        assert stats == {"linked": 1, "created": 0, "merged": 1, "skipped": 0}
         node = await db_session.get(Node, node_id)
         assert node is not None and node.device_id == "d-1"
 
@@ -266,7 +321,7 @@ class TestBackfill:
         stats = await backfill_node_devices(db_session)
         await db_session.commit()
 
-        assert stats == {"linked": 1, "created": 1, "merged": 0}
+        assert stats == {"linked": 1, "created": 1, "merged": 0, "skipped": 0}
         node = await db_session.get(Node, node_id)
         assert node is not None
         device = await db_session.get(InventoryDevice, node.device_id)
@@ -342,7 +397,7 @@ class TestBackfill:
         await db_session.commit()
 
         assert first["linked"] == 1
-        assert second == {"linked": 0, "created": 0, "merged": 0}
+        assert second == {"linked": 0, "created": 0, "merged": 0, "skipped": 0}
         rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
         assert len(rows) == 1
 
