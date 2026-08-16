@@ -5,6 +5,12 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.3.1] - 2026-08-17
+
+### Fixes
+
+- Approving a device no longer fails after an upgrade from 3.2.0: a node the 3.3.0 inventory backfill could not link kept the old device columns on `nodes`, and their NOT NULL constraint rejected every new node. (#352)
+
 ## [3.3.0] - 2026-08-15
 
 ### Features
