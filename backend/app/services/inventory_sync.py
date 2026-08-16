@@ -18,7 +18,8 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import func, or_, select, text
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import InventoryDevice, Node
@@ -66,6 +67,50 @@ def _blank(value: Any) -> bool:
     return value is None or value == ""
 
 
+def _same_ieee(left: str | None, right: str | None) -> bool:
+    """IEEE addresses compare case-insensitively — the same radio either way."""
+    if _blank(left) or _blank(right):
+        return False
+    return str(left).lower() == str(right).lower()
+
+
+async def _ieee_owner(db: AsyncSession, ieee: str, *, other_than: str | None) -> InventoryDevice | None:
+    """The row already holding ``ieee``, if it is not ``other_than``.
+
+    ``device_inventory.ieee_address`` is UNIQUE, so writing an address a second
+    row owns raises. Callers ask first and leave the address where it is.
+    """
+    stmt = select(InventoryDevice).where(func.lower(InventoryDevice.ieee_address) == ieee.lower())
+    if other_than is not None:
+        # `id != NULL` is NULL in SQL and would match nothing — only narrow when
+        # there is a row to exclude.
+        stmt = stmt.where(InventoryDevice.id != other_than)
+    return (await db.execute(stmt)).scalars().first()
+
+
+async def _drop_taken_ieee(
+    db: AsyncSession, facts: Mapping[str, Any], device: InventoryDevice | None
+) -> Mapping[str, Any]:
+    """``facts`` without an ``ieee_address`` another inventory row already owns.
+
+    Returned unchanged in the common case. The column is UNIQUE, so writing a
+    duplicate raises mid-merge — and during the backfill that would cost the node
+    its link. The address belongs to whichever row holds it; identity for *this*
+    device was established by ip or mac.
+    """
+    ieee = facts.get("ieee_address")
+    if _blank(ieee) or (device is not None and _same_ieee(device.ieee_address, ieee)):
+        return facts
+    owner = await _ieee_owner(db, str(ieee), other_than=device.id if device else None)
+    if owner is None:
+        return facts
+    logger.warning(
+        "IEEE %s is already held by device %s — leaving it off %s",
+        ieee, owner.id, device.id if device else "the new row",
+    )
+    return {k: v for k, v in facts.items() if k != "ieee_address"}
+
+
 async def find_device_for(
     db: AsyncSession,
     *,
@@ -83,7 +128,10 @@ async def find_device_for(
     ip_toks = _ip_tokens(ip)
     conds = []
     if ieee:
-        conds.append(InventoryDevice.ieee_address == ieee)
+        # Case-insensitive: `0x00124B00…` and `0x00124b00…` are the same radio,
+        # and an exact comparison here would mint a second row for it — one the
+        # UNIQUE index then refuses.
+        conds.append(func.lower(InventoryDevice.ieee_address) == ieee.lower())
     for tok in ip_toks:
         # Narrow with a substring match, then confirm per token below — an exact
         # comparison misses rows holding several addresses.
@@ -98,7 +146,7 @@ async def find_device_for(
     ).scalars().all()
 
     for device in candidates:
-        if ieee and device.ieee_address == ieee:
+        if ieee and _same_ieee(device.ieee_address, ieee):
             return device
     for device in candidates:
         # "1.2.3.4" must not match "1.2.3.40" — confirm the token, don't trust
@@ -360,6 +408,12 @@ async def link_facts(
             db, ip=facts.get("ip"), mac=facts.get("mac"), ieee=facts.get("ieee_address")
         )
 
+    # The IEEE is UNIQUE across the inventory. Where another row already owns the
+    # one these facts carry, drop it rather than write a duplicate: identity has
+    # been resolved to *this* device by ip or mac, and the address stays with the
+    # row holding it.
+    facts = await _drop_taken_ieee(db, facts, device)
+
     if device is None:
         device = device_from_facts(facts)
         db.add(device)
@@ -507,12 +561,13 @@ async def backfill_node_devices(db: AsyncSession) -> dict[str, int]:
 
     Reads the legacy columns with raw SQL because the model no longer declares
     them — this runs on the boot that drops them, once. Returns counts for the
-    boot log. Does not commit.
+    boot log, ``skipped`` among them: a node whose merge violates a constraint is
+    left unlinked instead of aborting the run. Does not commit.
     """
     legacy = await _legacy_columns_present(db)
     if not legacy:
         # Already migrated: the columns are gone, so nothing can be left to read.
-        return {"linked": 0, "created": 0, "merged": 0}
+        return {"linked": 0, "created": 0, "merged": 0, "skipped": 0}
 
     placeholders = ", ".join(legacy)
     furniture = ", ".join(f"'{t}'" for t in sorted(FURNITURE_TYPES))
@@ -526,9 +581,9 @@ async def backfill_node_devices(db: AsyncSession) -> dict[str, int]:
         )
     ).mappings().all()
     if not rows:
-        return {"linked": 0, "created": 0, "merged": 0}
+        return {"linked": 0, "created": 0, "merged": 0, "skipped": 0}
 
-    created = merged = 0
+    linked = created = merged = skipped = 0
     for row in rows:
         facts: dict[str, Any] = {c: row[c] for c in legacy}
         facts["services"] = _decode_json(facts.get("services")) or []
@@ -536,15 +591,30 @@ async def backfill_node_devices(db: AsyncSession) -> dict[str, int]:
         facts["label"] = row["label"]
         facts["type"] = row["type"]
 
-        existing = await find_device_for(
-            db, ip=facts.get("ip"), mac=facts.get("mac"), ieee=facts.get("ieee_address")
-        )
-        node = await db.get(Node, row["id"])
-        if node is None:  # pragma: no cover - the row was just read
+        # One savepoint per node: a row the merge cannot write — a duplicate
+        # IEEE, a constraint no longer met — is dropped on its own rather than
+        # taking the whole backfill with it. Every node it does not link keeps
+        # its legacy columns, so nothing is lost and the next boot retries.
+        try:
+            async with db.begin_nested():
+                existing = await find_device_for(
+                    db, ip=facts.get("ip"), mac=facts.get("mac"), ieee=facts.get("ieee_address")
+                )
+                node = await db.get(Node, row["id"])
+                if node is None:  # pragma: no cover - the row was just read
+                    continue
+                device = await link_facts(db, node, facts, overwrite_scalars=True)
+                if device is None:
+                    continue
+                await db.flush()
+        except (IntegrityError, OperationalError) as exc:
+            skipped += 1
+            logger.warning(
+                "Inventory backfill: node %s (%s) skipped — %s", row["id"], row["label"], exc
+            )
             continue
-        device = await link_facts(db, node, facts, overwrite_scalars=True)
-        if device is None:
-            continue
+
+        linked += 1
         if existing is None:
             created += 1
             logger.info(
@@ -558,4 +628,4 @@ async def backfill_node_devices(db: AsyncSession) -> dict[str, int]:
             )
 
     await db.flush()
-    return {"linked": len(rows), "created": created, "merged": merged}
+    return {"linked": linked, "created": created, "merged": merged, "skipped": skipped}

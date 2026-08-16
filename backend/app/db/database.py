@@ -5,8 +5,9 @@ import uuid as _uuid_mod
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -531,13 +532,64 @@ _NODE_KEPT = (
 )
 
 
+async def _relax_legacy_node_columns(conn: AsyncConnection, info: list[Any]) -> None:
+    """Make the retained legacy `nodes` columns nullable — SQLite table rebuild.
+
+    The 3.2.0 schema declares `status`, `services`, `properties` and
+    `show_hardware` NOT NULL with no server-side default. The 3.3.0 model no
+    longer maps them, so every INSERT omits them and SQLite rejects the row —
+    approving a device, creating a node, importing a canvas all fail with
+    ``NOT NULL constraint failed: nodes.status``. Dropping the columns is the
+    real fix, but it waits on a complete backfill; until then they have to stop
+    blocking writes. Values are preserved: only the constraint goes.
+    """
+    kept = [row for row in info if row[1] in _LEGACY_NODE_COLUMNS]
+    if not any(row[3] for row in kept):  # PRAGMA `notnull`
+        return  # Already relaxed, or never constrained.
+
+    logger.info("Relaxing NOT NULL on the retained legacy node columns")
+    legacy_defs = ",".join(f"{row[1]} {row[2] or 'VARCHAR'}" for row in kept)
+    legacy_names = ", ".join(row[1] for row in kept)
+    await _rebuild_nodes(
+        conn,
+        columns_sql=f"{_NODE_COLUMNS_SQL},{legacy_defs}",
+        copied=f"{_NODE_KEPT}, {legacy_names}",
+        what="nodes legacy-column relax",
+    )
+
+
+async def _rebuild_nodes(conn: AsyncConnection, *, columns_sql: str, copied: str, what: str) -> None:
+    """Recreate `nodes` with a new column list — SQLite cannot alter constraints.
+
+    Never fatal: a rebuild that fails leaves the table it could not replace, and
+    the boot carries on. Foreign keys go off for the swap, because `edges` and
+    `rack_devices` point at `nodes`, and back on in every case — the pragma is
+    per connection and this one returns to the pool.
+    """
+    try:
+        await conn.exec_driver_sql("PRAGMA foreign_keys = OFF")
+        # A previous attempt that failed after the create would block this one.
+        await conn.exec_driver_sql("DROP TABLE IF EXISTS nodes_new")
+        await conn.exec_driver_sql(f"CREATE TABLE nodes_new ({columns_sql})")
+        await conn.exec_driver_sql(f"INSERT INTO nodes_new ({copied}) SELECT {copied} FROM nodes")
+        await conn.exec_driver_sql("DROP TABLE nodes")
+        await conn.exec_driver_sql("ALTER TABLE nodes_new RENAME TO nodes")
+        await conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_nodes_device_id ON nodes(device_id)")
+    except (OperationalError, IntegrityError) as exc:
+        logger.warning("%s failed: %s", what, exc)
+    finally:
+        await conn.exec_driver_sql("PRAGMA foreign_keys = ON")
+
+
 async def _drop_legacy_node_columns() -> None:
     """Remove the device columns from `nodes` (3.3.0) — SQLite table rebuild.
 
     Runs only after the backfill has linked every device node to its inventory
     row. If any non-furniture node is still unlinked the drop is skipped and
     logged: the columns are the only remaining copy of that node's facts, and
-    losing them is not recoverable.
+    losing them is not recoverable. The skip then relaxes their NOT NULL instead,
+    because the 3.3.0 model no longer writes them and the database must stay
+    insertable while the backfill is retried on later boots.
     """
     async with engine.begin() as conn:
         info = (await conn.exec_driver_sql("PRAGMA table_info(nodes)")).fetchall()
@@ -557,23 +609,16 @@ async def _drop_legacy_node_columns() -> None:
                 "The backfill must link every device node before they can be dropped.",
                 unlinked,
             )
+            await _relax_legacy_node_columns(conn, list(info))
             return
 
         logger.info("Migrating nodes: the device columns move to device_inventory")
-        try:
-            await conn.exec_driver_sql("PRAGMA foreign_keys = OFF")
-            await conn.exec_driver_sql(f"CREATE TABLE nodes_new ({_NODE_COLUMNS_SQL})")
-            await conn.exec_driver_sql(
-                f"INSERT INTO nodes_new ({_NODE_KEPT}) SELECT {_NODE_KEPT} FROM nodes"
-            )
-            await conn.exec_driver_sql("DROP TABLE nodes")
-            await conn.exec_driver_sql("ALTER TABLE nodes_new RENAME TO nodes")
-            await conn.exec_driver_sql(
-                "CREATE INDEX IF NOT EXISTS ix_nodes_device_id ON nodes(device_id)"
-            )
-            await conn.exec_driver_sql("PRAGMA foreign_keys = ON")
-        except OperationalError as exc:
-            logger.warning("nodes device-column drop failed: %s", exc)
+        await _rebuild_nodes(
+            conn,
+            columns_sql=_NODE_COLUMNS_SQL,
+            copied=_NODE_KEPT,
+            what="nodes device-column drop",
+        )
 
 
 async def _backfill_node_devices() -> None:
@@ -595,6 +640,12 @@ async def _backfill_node_devices() -> None:
                 logger.info(
                     "Inventory backfill: linked %d node(s) — %d device(s) created, %d merged",
                     stats["linked"], stats["created"], stats["merged"],
+                )
+            if stats.get("skipped"):
+                logger.warning(
+                    "Inventory backfill: %d node(s) could not be linked; they keep their "
+                    "legacy columns and are retried on the next start.",
+                    stats["skipped"],
                 )
     except Exception as exc:  # pragma: no cover - defensive, boot must not die
         logger.warning("Inventory backfill failed: %s", exc)
