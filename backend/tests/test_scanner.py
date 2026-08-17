@@ -1030,3 +1030,131 @@ async def test_run_scan_no_probe_when_disabled(mem_db):
             await run_scan(["192.168.1.0/24"], session, run_id)
 
     probe.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# run_device_scan — per-device deep rescan (issue #350)
+# ---------------------------------------------------------------------------
+
+def test_build_port_spec_full_covers_every_tcp_port():
+    from app.services.scanner import _build_port_spec
+
+    # full wins over the curated list *and* over user ranges — the deep rescan
+    # is only worth its minutes if it really scans everything.
+    assert _build_port_spec(None, full=True) == "1-65535"
+    assert _build_port_spec(["8000-8100"], full=True) == "1-65535"
+
+
+@pytest.mark.asyncio
+async def test_run_device_scan_refreshes_services_and_marks_run_done(mem_db):
+    from app.services.scanner import run_device_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(ScanRun(id=run_id, status="running", kind="device", ranges=["192.168.1.9/32"]))
+        session.add(InventoryDevice(id="d1", ip="192.168.1.9", status="approved", services=[]))
+        await session.commit()
+
+    def _scanned(host_dict, port_spec):
+        assert port_spec == "1-65535"
+        host_dict["open_ports"] = [{"port": 22, "protocol": "tcp", "banner": "OpenSSH 9.2"}]
+        return host_dict
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan_single", side_effect=_scanned), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_device_scan("d1", session, run_id)
+
+    async with mem_db() as session:
+        device = await session.get(InventoryDevice, "d1")
+        run = await session.get(ScanRun, run_id)
+
+    assert device is not None and run is not None
+    assert run.status == "done"
+    assert device.last_scan is not None
+    assert any(s.get("port") == 22 for s in device.services)
+    # A rescan refreshes an existing row; it never spawns a second one.
+    assert device.status == "approved"
+
+
+@pytest.mark.asyncio
+async def test_run_device_scan_keeps_hand_added_services(mem_db):
+    """Regression: the rescan unions, it does not replace.
+
+    Services the user typed in by hand are the only copy that exists — every
+    canvas drawing the device reads this list.
+    """
+    from app.services.scanner import run_device_scan
+
+    run_id = _make_run_id()
+    hand_added = {"port": 9000, "protocol": "tcp", "service_name": "My App"}
+    async with mem_db() as session:
+        session.add(ScanRun(id=run_id, status="running", kind="device", ranges=["192.168.1.9/32"]))
+        session.add(InventoryDevice(id="d1", ip="192.168.1.9", status="pending", services=[hand_added]))
+        await session.commit()
+
+    def _scanned(host_dict, port_spec):
+        host_dict["open_ports"] = [{"port": 22, "protocol": "tcp", "banner": "OpenSSH 9.2"}]
+        return host_dict
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan_single", side_effect=_scanned), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_device_scan("d1", session, run_id)
+
+    async with mem_db() as session:
+        device = await session.get(InventoryDevice, "d1")
+
+    assert device is not None
+    ports = {s.get("port") for s in device.services}
+    assert ports == {22, 9000}
+
+
+@pytest.mark.asyncio
+async def test_run_device_scan_marks_run_error_when_device_has_no_ip(mem_db):
+    from app.services.scanner import run_device_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(ScanRun(id=run_id, status="running", kind="device", ranges=["/32"]))
+        session.add(InventoryDevice(id="d1", ip=None, status="pending", services=[]))
+        await session.commit()
+
+    async with mem_db() as session:
+        with patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_device_scan("d1", session, run_id)
+
+    async with mem_db() as session:
+        run = await session.get(ScanRun, run_id)
+
+    assert run is not None
+    assert run.status == "error"
+    assert run.error is not None
+
+
+@pytest.mark.asyncio
+async def test_run_device_scan_skips_nmap_when_cancelled(mem_db):
+    from app.services.scanner import _cancelled_runs, request_cancel, run_device_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(ScanRun(id=run_id, status="running", kind="device", ranges=["192.168.1.9/32"]))
+        session.add(InventoryDevice(id="d1", ip="192.168.1.9", status="pending", services=[]))
+        await session.commit()
+
+    request_cancel(run_id)
+    single = MagicMock()
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan_single", new=single), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_device_scan("d1", session, run_id)
+
+    async with mem_db() as session:
+        run = await session.get(ScanRun, run_id)
+
+    single.assert_not_called()
+    assert run is not None
+    assert run.status == "cancelled"
+    # The run cleans up its cancellation flag on the way out.
+    assert run_id not in _cancelled_runs

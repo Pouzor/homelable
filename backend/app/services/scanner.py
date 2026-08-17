@@ -62,8 +62,19 @@ def _valid_port_range(spec: str) -> bool:
     return len(parts) == 1 or parts[0] <= parts[1]
 
 
-def _build_port_spec(http_ranges: list[str] | None) -> str:
-    """Combine the default port list with validated user ranges for nmap -p."""
+# Every TCP port. Used by the per-device deep rescan, which trades minutes of
+# nmap time for a service list that no curated port list can promise.
+_FULL_PORTS = "1-65535"
+
+
+def _build_port_spec(http_ranges: list[str] | None, full: bool = False) -> str:
+    """Combine the default port list with validated user ranges for nmap -p.
+
+    ``full`` overrides everything with the whole TCP range — the deep rescan of
+    a single device, where completeness beats speed.
+    """
+    if full:
+        return _FULL_PORTS
     if not http_ranges:
         return _EXTRA_PORTS
     extra = [r.strip() for r in http_ranges if _valid_port_range(r.strip())]
@@ -502,6 +513,108 @@ async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
     return deleted
 
 
+async def process_host(
+    db: AsyncSession,
+    host: dict[str, Any],
+    *,
+    hidden_ips: set[str],
+    deep_scan: DeepScanOptions,
+    discovery_source: str = "arp",
+) -> str:
+    """Fold one scanned host into ``device_inventory`` and commit.
+
+    Shared by the range scan and the single-device deep rescan, so both apply
+    the same matching, merge and de-duplication rules.
+
+    Returns ``"skipped"`` (hidden by the user), ``"created"`` (a new inventory
+    row) or ``"updated"`` (an existing row refreshed).
+    """
+    ip = host["ip"]
+
+    # Skip only user-hidden devices. On-canvas devices are kept so they
+    # surface in the inventory with a canvas-presence badge.
+    if ip in hidden_ips:
+        logger.debug("Skipping %s — hidden by user", ip)
+        return "skipped"
+
+    open_ports = host["open_ports"]
+    # Deep-scan HTTP probe: enrich open ports with title/header signals so
+    # fingerprint can confirm services on custom ports. No-op when disabled
+    # or when the host has no open ports (e.g. mDNS-only discovery).
+    if deep_scan.http_probe_enabled and open_ports:
+        open_ports = await probe_open_ports(
+            ip, open_ports, verify_tls=deep_scan.verify_tls
+        )
+
+    norm_mac = normalize_mac(host.get("mac"))
+    services = fingerprint_ports(open_ports)
+    suggested_type = suggest_node_type(open_ports, norm_mac)
+
+    # One inventory row per device. Match by IP OR MAC across pending AND
+    # approved so a re-scan refreshes the existing row instead of spawning
+    # a duplicate — and so a device previously imported from Proxmox (which
+    # may have no IP but a known NIC MAC) reconciles with this scan instead
+    # of doubling up. Hidden rows are already skipped above.
+    match_cond = [InventoryDevice.ip == ip]
+    if norm_mac:
+        match_cond.append(InventoryDevice.mac == norm_mac)
+    existing_rows = (await db.execute(
+        select(InventoryDevice)
+        .where(or_(*match_cond), InventoryDevice.status != "hidden")
+        .order_by(InventoryDevice.discovered_at)
+    )).scalars().all()
+
+    if existing_rows:
+        # Prefer an approved row (it owns the canvas link semantics),
+        # otherwise the oldest. Collapse any leftover duplicates created
+        # by earlier scans.
+        keep = next((r for r in existing_rows if r.status == "approved"), existing_rows[0])
+        for dup in existing_rows:
+            if dup is not keep:
+                await db.delete(dup)
+        keep.ip = keep.ip or ip  # fill an IP a Proxmox import lacked
+        keep.mac = norm_mac or keep.mac
+        keep.hostname = host.get("hostname") or keep.hostname
+        keep.os = host.get("os") or keep.os
+        # Union, never replace. Since 3.3.0 the row is the only copy of
+        # a device's services — every canvas drawing it reads this list
+        # — so overwriting it with the fingerprint would delete services
+        # the user added by hand, on every canvas at once. What a scan
+        # finds is added; what it no longer sees stays. A service the
+        # user does not want on a canvas is hidden by that node's view,
+        # which is where "I deleted this" belongs.
+        keep.services = merge_services(keep.services, services)
+        # Don't downgrade a Proxmox-typed guest (vm/lxc) to the generic
+        # scan guess; the importer knows the true type.
+        if not (keep.ieee_address or "").startswith("pve-"):
+            keep.suggested_type = suggested_type
+        # Merged row carries both sources (e.g. ["proxmox", "arp"]).
+        keep.discovery_sources = add_source(keep.discovery_sources, discovery_source)
+        # status preserved — an approved device stays approved.
+        # Stamp last_scan on the row so every canvas drawing the device
+        # shows when the scanner last observed it. The row is the one
+        # place that fact belongs; a node only draws it.
+        keep.last_scan = datetime.now(timezone.utc)
+        outcome = "updated"
+    else:
+        db.add(InventoryDevice(
+            ip=ip,
+            mac=norm_mac,
+            hostname=host.get("hostname"),
+            os=host.get("os"),
+            services=services,
+            suggested_type=suggested_type,
+            status="pending",
+            discovery_source=discovery_source,
+            discovery_sources=[discovery_source],
+            last_scan=datetime.now(timezone.utc),
+        ))
+        outcome = "created"
+
+    await db.commit()
+    return outcome
+
+
 async def run_scan(
     ranges: list[str],
     db: AsyncSession,
@@ -545,88 +658,17 @@ async def run_scan(
 
         async def _process_host(host: dict[str, Any], discovery_source: str = "arp") -> None:
             nonlocal devices_found
-            ip = host["ip"]
-
-            # Skip only user-hidden devices. On-canvas devices are kept so they
-            # surface in the inventory with a canvas-presence badge.
-            if ip in hidden_ips:
-                logger.debug("Skipping %s — hidden by user", ip)
+            outcome = await process_host(
+                db,
+                host,
+                hidden_ips=hidden_ips,
+                deep_scan=deep_scan,
+                discovery_source=discovery_source,
+            )
+            if outcome == "skipped":
                 return
-
-            open_ports = host["open_ports"]
-            # Deep-scan HTTP probe: enrich open ports with title/header signals so
-            # fingerprint can confirm services on custom ports. No-op when disabled
-            # or when the host has no open ports (e.g. mDNS-only discovery).
-            if deep_scan.http_probe_enabled and open_ports:
-                open_ports = await probe_open_ports(
-                    ip, open_ports, verify_tls=deep_scan.verify_tls
-                )
-
-            norm_mac = normalize_mac(host.get("mac"))
-            services = fingerprint_ports(open_ports)
-            suggested_type = suggest_node_type(open_ports, norm_mac)
-
-            # One inventory row per device. Match by IP OR MAC across pending AND
-            # approved so a re-scan refreshes the existing row instead of spawning
-            # a duplicate — and so a device previously imported from Proxmox (which
-            # may have no IP but a known NIC MAC) reconciles with this scan instead
-            # of doubling up. Hidden rows are already skipped above.
-            match_cond = [InventoryDevice.ip == ip]
-            if norm_mac:
-                match_cond.append(InventoryDevice.mac == norm_mac)
-            existing_rows = (await db.execute(
-                select(InventoryDevice)
-                .where(or_(*match_cond), InventoryDevice.status != "hidden")
-                .order_by(InventoryDevice.discovered_at)
-            )).scalars().all()
-
-            if existing_rows:
-                # Prefer an approved row (it owns the canvas link semantics),
-                # otherwise the oldest. Collapse any leftover duplicates created
-                # by earlier scans.
-                keep = next((r for r in existing_rows if r.status == "approved"), existing_rows[0])
-                for dup in existing_rows:
-                    if dup is not keep:
-                        await db.delete(dup)
-                keep.ip = keep.ip or ip  # fill an IP a Proxmox import lacked
-                keep.mac = norm_mac or keep.mac
-                keep.hostname = host.get("hostname") or keep.hostname
-                keep.os = host.get("os") or keep.os
-                # Union, never replace. Since 3.3.0 the row is the only copy of
-                # a device's services — every canvas drawing it reads this list
-                # — so overwriting it with the fingerprint would delete services
-                # the user added by hand, on every canvas at once. What a scan
-                # finds is added; what it no longer sees stays. A service the
-                # user does not want on a canvas is hidden by that node's view,
-                # which is where "I deleted this" belongs.
-                keep.services = merge_services(keep.services, services)
-                # Don't downgrade a Proxmox-typed guest (vm/lxc) to the generic
-                # scan guess; the importer knows the true type.
-                if not (keep.ieee_address or "").startswith("pve-"):
-                    keep.suggested_type = suggested_type
-                # Merged row carries both sources (e.g. ["proxmox", "arp"]).
-                keep.discovery_sources = add_source(keep.discovery_sources, discovery_source)
-                # status preserved — an approved device stays approved.
-                # Stamp last_scan on the row so every canvas drawing the device
-                # shows when the scanner last observed it. The row is the one
-                # place that fact belongs; a node only draws it.
-                keep.last_scan = datetime.now(timezone.utc)
-            else:
-                db.add(InventoryDevice(
-                    ip=ip,
-                    mac=norm_mac,
-                    hostname=host.get("hostname"),
-                    os=host.get("os"),
-                    services=services,
-                    suggested_type=suggested_type,
-                    status="pending",
-                    discovery_source=discovery_source,
-                    discovery_sources=[discovery_source],
-                    last_scan=datetime.now(timezone.utc),
-                ))
+            if outcome == "created":
                 devices_found += 1
-
-            await db.commit()
             await broadcast_scan_update(run_id=run_id, devices_found=devices_found)
 
         # nmap scan per CIDR — results stream in progressively
@@ -671,6 +713,74 @@ async def run_scan(
         logger.error("Scan failed: %s", exc)
         if mdns_task is not None and not mdns_task.done():
             mdns_task.cancel()
+        run = await db.get(ScanRun, run_id)
+        if run:
+            run.status = "error"
+            run.error = str(exc)
+            run.finished_at = datetime.now(timezone.utc)
+            await db.commit()
+    finally:
+        with _cancelled_lock:
+            _cancelled_runs.discard(run_id)
+
+
+async def run_device_scan(
+    device_id: str,
+    db: AsyncSession,
+    run_id: str,
+    deep_scan: DeepScanOptions | None = None,
+    full_ports: bool = True,
+) -> None:
+    """Deep-rescan one known device and refresh its inventory row.
+
+    No ping sweep and no mDNS: the device is already known, so the IP goes
+    straight to the phase-2 port scan (``-Pn``). ``full_ports`` scans all 65535
+    TCP ports, which is the point of the feature — a device added before the
+    scanner knew a service, or listening on a port no curated list covers.
+    Minutes, not seconds; the run is cancellable like any other.
+    """
+    from app.api.routes.status import broadcast_scan_update
+
+    deep_scan = deep_scan or DeepScanOptions()
+    port_spec = _build_port_spec(deep_scan.http_ranges, full=full_ports)
+
+    try:
+        device = await db.get(InventoryDevice, device_id)
+        if device is None or not device.ip:
+            raise ValueError("Device has no IP to scan")
+
+        host: dict[str, Any] = {
+            "ip": device.ip,
+            "mac": device.mac,
+            "hostname": device.hostname,
+            "os": device.os,
+            "open_ports": [],
+        }
+
+        if not _is_cancelled(run_id):
+            host = await asyncio.to_thread(_nmap_scan_single, host, port_spec)
+
+        devices_found = 0
+        if not _is_cancelled(run_id):
+            # The row is being rescanned on the user's request, so it is never
+            # "hidden" from itself — the route rejects hidden devices upfront.
+            outcome = await process_host(
+                db, host, hidden_ips=set(), deep_scan=deep_scan, discovery_source="arp"
+            )
+            if outcome == "created":
+                devices_found = 1
+            await broadcast_scan_update(run_id=run_id, devices_found=devices_found)
+
+        run = await db.get(ScanRun, run_id)
+        if run:
+            run.status = "cancelled" if _is_cancelled(run_id) else "done"
+            run.devices_found = devices_found
+            run.finished_at = datetime.now(timezone.utc)
+            await db.commit()
+
+    except Exception as exc:
+        logger.error("Device scan failed: %s", exc)
+        await db.rollback()
         run = await db.get(ScanRun, run_id)
         if run:
             run.status = "error"

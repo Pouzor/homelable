@@ -32,7 +32,13 @@ from app.services.discovery_sources import add_source
 from app.services.inventory_sync import find_device_for, merge_properties, merge_services
 from app.services.mac_utils import normalize_mac
 from app.services.node_dedupe import dedupe_nodes_by_device, find_duplicate_node
-from app.services.scanner import DeepScanOptions, _valid_port_range, request_cancel, run_scan
+from app.services.scanner import (
+    DeepScanOptions,
+    _valid_port_range,
+    request_cancel,
+    run_device_scan,
+    run_scan,
+)
 from app.services.zigbee_service import (
     build_zigbee_properties,
     merge_zigbee_properties,
@@ -180,6 +186,30 @@ async def _background_scan(
                 await db.commit()
 
 
+async def _background_device_scan(
+    run_id: str,
+    device_id: str,
+    deep_scan: DeepScanOptions | None = None,
+    full_ports: bool = True,
+) -> None:
+    async with AsyncSessionLocal() as db:
+        try:
+            await run_device_scan(
+                device_id,
+                db,
+                run_id,
+                deep_scan=deep_scan or DeepScanOptions(),
+                full_ports=full_ports,
+            )
+        except Exception:
+            logger.exception("Device scan run %s failed unexpectedly", run_id)
+            await db.rollback()
+            run = await db.get(ScanRun, run_id)
+            if run and run.status == "running":
+                run.status = "failed"
+                await db.commit()
+
+
 def _resolve_deep_scan(payload: TriggerScanRequest | None) -> DeepScanOptions:
     """Merge per-scan overrides over persisted settings defaults."""
     p = payload or TriggerScanRequest()
@@ -212,6 +242,63 @@ async def trigger_scan(
     await db.commit()
     await db.refresh(run)
     background_tasks.add_task(_background_scan, run.id, ranges, deep_scan)
+    return run
+
+
+class RescanDeviceRequest(BaseModel):
+    """Per-device deep rescan. Defaults to every TCP port — that is the point."""
+
+    full_ports: bool = True
+    http_probe_enabled: bool | None = None
+    verify_tls: bool | None = None
+
+
+@router.post("/pending/{device_id}/rescan", response_model=ScanRunResponse)
+async def rescan_device(
+    device_id: str,
+    background_tasks: BackgroundTasks,
+    payload: RescanDeviceRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> ScanRun:
+    """Deep-rescan one known device to refresh its services (issue #350).
+
+    Recorded as a ScanRun like any other scan, so progress, stop and history
+    work unchanged. One run per device at a time — a second request while the
+    first is still scanning is a 409, not a duplicate nmap over 65535 ports.
+    """
+    device = await db.get(InventoryDevice, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if not device.ip:
+        raise HTTPException(
+            status_code=409, detail="Device has no IP address to scan"
+        )
+    if device.status == "hidden":
+        raise HTTPException(status_code=409, detail="Device is hidden")
+
+    target = f"{device.ip}/32"
+    running = (await db.execute(
+        select(ScanRun).where(ScanRun.status == "running", ScanRun.kind == "device")
+    )).scalars().all()
+    if any(target in (r.ranges or []) for r in running):
+        raise HTTPException(
+            status_code=409, detail="A scan is already running for this device"
+        )
+
+    p = payload or RescanDeviceRequest()
+    deep_scan = _resolve_deep_scan(
+        TriggerScanRequest(
+            http_probe_enabled=p.http_probe_enabled, verify_tls=p.verify_tls
+        )
+    )
+    run = ScanRun(status="running", kind="device", ranges=[target])
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+    background_tasks.add_task(
+        _background_device_scan, run.id, device_id, deep_scan, p.full_ports
+    )
     return run
 
 
@@ -931,6 +1018,19 @@ async def ignore_device(
 async def list_runs(db: AsyncSession = Depends(get_db), _: str = Depends(get_current_user)) -> list[ScanRun]:
     result = await db.execute(select(ScanRun).order_by(ScanRun.started_at.desc()).limit(20))
     return list(result.scalars().all())
+
+
+@router.get("/runs/{run_id}", response_model=ScanRunResponse)
+async def get_run(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> ScanRun:
+    """One run, for a caller waiting on a scan it started (the device rescan)."""
+    run = await db.get(ScanRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Scan run not found")
+    return run
 
 
 @router.get("/config", response_model=ScanConfig)
