@@ -546,6 +546,64 @@ describe('DetailPanel', () => {
       expect(payload.services.map((s: { service_name: string }) => s.service_name)).toEqual(['C', 'A', 'B'])
     })
 
+    it('hides a service on this node without touching the service itself', () => {
+      // Visibility is the node's answer, not the device's: the rest of the
+      // service record goes back unchanged so other canvases keep drawing it.
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockImplementation(
+        ((sel?: (s: Record<string, unknown>) => unknown) => {
+          const state = {
+            nodes: [makeNode({ services: [{ port: 3001, protocol: 'tcp' as const, service_name: 'Uptime Kuma' }] })],
+            selectedNodeId: 'n1',
+            selectedNodeIds: [],
+            setSelectedNode: vi.fn(),
+            deleteNode: vi.fn(),
+            updateNode,
+            snapshotHistory: vi.fn(),
+            createGroup: vi.fn(),
+            ungroup: vi.fn(),
+            setNodeSize: vi.fn(),
+            serviceStatuses: {},
+          }
+          return sel ? sel(state) : state
+        }) as unknown as typeof canvasStore.useCanvasStore,
+      )
+      render(<DetailPanel onEdit={vi.fn()} />)
+
+      fireEvent.click(screen.getByTitle('Hide on node'))
+      expect(updateNode.mock.calls[0][1].services).toEqual([
+        { port: 3001, protocol: 'tcp', service_name: 'Uptime Kuma', visible: false },
+      ])
+    })
+
+    it('shows a hidden service again', () => {
+      const updateNode = vi.fn()
+      vi.mocked(canvasStore.useCanvasStore).mockImplementation(
+        ((sel?: (s: Record<string, unknown>) => unknown) => {
+          const state = {
+            nodes: [makeNode({
+              services: [{ port: 3001, protocol: 'tcp' as const, service_name: 'Uptime Kuma', visible: false }],
+            })],
+            selectedNodeId: 'n1',
+            selectedNodeIds: [],
+            setSelectedNode: vi.fn(),
+            deleteNode: vi.fn(),
+            updateNode,
+            snapshotHistory: vi.fn(),
+            createGroup: vi.fn(),
+            ungroup: vi.fn(),
+            setNodeSize: vi.fn(),
+            serviceStatuses: {},
+          }
+          return sel ? sel(state) : state
+        }) as unknown as typeof canvasStore.useCanvasStore,
+      )
+      render(<DetailPanel onEdit={vi.fn()} />)
+
+      fireEvent.click(screen.getByTitle('Show on node'))
+      expect(updateNode.mock.calls[0][1].services[0].visible).toBe(true)
+    })
+
     it('is not draggable with a single service', () => {
       setupStore({ services: [{ port: 80, protocol: 'tcp', service_name: 'A' }] })
       render(<DetailPanel onEdit={vi.fn()} />)

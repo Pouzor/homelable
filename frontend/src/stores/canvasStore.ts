@@ -15,7 +15,13 @@ import { normalizeHandle, removedHandleIds, handleCountField, sideDefault, handl
 import { applyOpacity } from '@/utils/colorUtils'
 import { readHideIp, writeHideIp } from '@/utils/ipDisplay'
 import { CONTAINER_MODE_TYPES } from '@/utils/virtualEdgeParent'
-import { changedFactFields, factsBaselineOf, factsBaselines, type FactsBaseline } from '@/utils/deviceFacts'
+import {
+  changedFactFields,
+  factsBaselineOf,
+  factsBaselines,
+  listArrangedForNode,
+  type FactsBaseline,
+} from '@/utils/deviceFacts'
 
 type HistoryEntry = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
 type Clipboard = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
@@ -1012,6 +1018,15 @@ export const useCanvasStore = create<CanvasState>((rawSet) => {
         if (Object.keys(applied).length === 0) return n
         changed = true
         const data = { ...n.data, ...applied }
+        // The row owns the facts, this node owns how they are laid out: an
+        // inventory edit updates the values in place rather than replacing the
+        // arrangement, and a service the row just gained arrives hidden.
+        if (Array.isArray(applied.services)) {
+          data.services = listArrangedForNode(n.data.services, applied.services)
+        }
+        if (Array.isArray(applied.properties)) {
+          data.properties = listArrangedForNode(n.data.properties, applied.properties)
+        }
         // Rebase only what was applied: an untouched pending edit stays reported
         // as this canvas' change so the next save still writes it.
         const rebased = factsBaselineOf(data)

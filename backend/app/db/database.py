@@ -1,9 +1,10 @@
 import json as _json
 import logging
 import shutil
+import sqlite3
 import uuid as _uuid_mod
 from collections.abc import AsyncGenerator
-from contextlib import suppress
+from contextlib import closing, suppress
 from pathlib import Path
 from typing import Any
 
@@ -468,6 +469,10 @@ async def init_db() -> None:
                 "nodes.device_id.index",
                 "CREATE INDEX IF NOT EXISTS ix_nodes_device_id ON nodes(device_id)",
             ),
+            # Which of the row's services and properties this canvas shows, and
+            # in what order. Seeded from the row further down, once the backfill
+            # has had its say — see `_seed_node_views`.
+            ("nodes.display_view", "ALTER TABLE nodes ADD COLUMN display_view JSON"),
         ):
             await _try_migrate(conn, sql, label=label)
         for label, sql in (
@@ -488,6 +493,7 @@ async def init_db() -> None:
 
     await _backfill_node_devices()
     await _drop_legacy_node_columns()
+    await _seed_node_views()
 
 
 
@@ -508,6 +514,7 @@ _NODE_COLUMNS_SQL = (
     "label VARCHAR NOT NULL,"
     "design_id VARCHAR REFERENCES designs(id) ON DELETE SET NULL,"
     "device_id VARCHAR REFERENCES device_inventory(id) ON DELETE SET NULL,"
+    "display_view JSON,"
     "pos_x FLOAT,"
     "pos_y FLOAT,"
     "parent_id VARCHAR REFERENCES nodes(id) ON DELETE CASCADE,"
@@ -526,7 +533,7 @@ _NODE_COLUMNS_SQL = (
 )
 
 _NODE_KEPT = (
-    "id, type, label, design_id, device_id, pos_x, pos_y, parent_id, container_mode, "
+    "id, type, label, design_id, device_id, display_view, pos_x, pos_y, parent_id, container_mode, "
     "custom_colors, custom_icon, show_port_numbers, width, height, bottom_handles, "
     "top_handles, left_handles, right_handles, created_at, updated_at"
 )
@@ -649,6 +656,100 @@ async def _backfill_node_devices() -> None:
                 )
     except Exception as exc:  # pragma: no cover - defensive, boot must not die
         logger.warning("Inventory backfill failed: %s", exc)
+
+
+def _pre_split_backup() -> Path | None:
+    """The newest backup still holding the per-node device columns, if any.
+
+    `_backup_db` copies the database *before* the migrations of each new
+    version, so a user who upgraded to 3.3.0 has a `homelab.db.back-3.3.0`
+    carrying the last state in which `nodes` still owned its own services and
+    properties. That copy is the only record of which canvas showed what, since
+    3.3.0's backfill unioned them all onto one inventory row. Newest first: it is
+    the state closest to the upgrade, so it is what the user last saw.
+    """
+    db_path = Path(settings.sqlite_path)
+    candidates = sorted(
+        db_path.parent.glob(f"{db_path.name}.back-*"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for path in candidates:
+        try:
+            with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn:
+                cols = {row[1] for row in conn.execute("PRAGMA table_info(nodes)")}
+        except sqlite3.Error:
+            continue
+        if {"services", "properties"} <= cols:
+            return path
+    return None
+
+
+def _views_from_backup() -> dict[str, dict[str, Any]]:
+    """What each node drew, read out of the pre-3.3.0 backup. Empty when there is none.
+
+    Keyed by node id, which is a uuid and stable across every version. A backup
+    that cannot be opened, or holds nodes this database no longer has, simply
+    contributes nothing — the caller falls back to the inventory row.
+    """
+    path = _pre_split_backup()
+    if path is None:
+        return {}
+    try:
+        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn:
+            rows = conn.execute("SELECT id, services, properties FROM nodes").fetchall()
+    except sqlite3.Error as exc:
+        logger.warning("Could not read the pre-3.3.0 node lists from %s: %s", path.name, exc)
+        return {}
+
+    out: dict[str, dict[str, Any]] = {}
+    for node_id, services, properties in rows:
+        drawn: dict[str, Any] = {}
+        for kind, raw in (("services", services), ("properties", properties)):
+            if isinstance(raw, str | bytes):
+                with suppress(ValueError):
+                    decoded = _json.loads(raw)
+                    if isinstance(decoded, list):
+                        drawn[kind] = decoded
+        if drawn:
+            out[node_id] = drawn
+    if out:
+        logger.info("Recovering the per-canvas service/property layout from %s", path.name)
+    return out
+
+
+async def _seed_node_views() -> None:
+    """Give pre-existing nodes an explicit view of their inventory row (3.3.3).
+
+    Order and visibility for services and properties moved to the node, so one
+    device drawn on two canvases can be rendered two ways. A node from before
+    that has no view, and where it comes from decides whether the user gets
+    their arrangement back:
+
+    * upgrading from 3.2.0, the backfill has already seeded it from the node's
+      own columns — nothing here to do;
+    * upgrading from 3.3.0-3.3.2, those columns are gone and the row holds the
+      union of every canvas, so the view is recovered from the backup taken
+      before the 3.3.0 migration. That is the difference between a canvas coming
+      back as the user left it and coming back showing every other canvas'
+      properties;
+    * with no usable backup, the row itself is the seed: what shows today keeps
+      showing, and only what the row gains *later* is held back.
+
+    Never fatal: without a view the node simply shows the whole row, which is
+    the behaviour it has now.
+    """
+    # Imported here: app.services imports app.db.models, which imports this module.
+    from app.services.inventory_sync import seed_node_views
+
+    try:
+        async with AsyncSessionLocal() as session:
+            seeded = await seed_node_views(session, drawn=_views_from_backup)
+            if seeded:
+                await session.commit()
+                logger.info("Seeded the service/property view of %d node(s)", seeded)
+    except Exception as exc:  # pragma: no cover - defensive, boot must not die
+        logger.warning("Seeding the node service/property views failed: %s", exc)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

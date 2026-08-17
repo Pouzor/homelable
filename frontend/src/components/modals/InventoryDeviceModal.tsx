@@ -523,7 +523,10 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                   <PropertyList
                     properties={properties}
                     onChange={setProperties}
-                    visibleLabel="Show on node"
+                    // Whether a canvas draws a property is that node's own
+                    // answer; the flag here only decides what a node drawing
+                    // this device from now on starts out showing.
+                    visibleLabel="Show on new nodes"
                     // Hardware is a property like any other; these are the keys
                     // the Proxmox import and the YAML import already mint.
                     suggestions={['CPU Model', 'CPU Cores', 'RAM', 'Disk']}

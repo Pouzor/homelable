@@ -9,6 +9,7 @@ those columns, so if they survive the upgrade every INSERT fails with
 ``NOT NULL constraint failed: nodes.status`` and approving a device is dead.
 """
 import os
+import shutil
 
 os.environ.setdefault("SECRET_KEY", "test-only-secret-key-not-for-production")
 
@@ -188,3 +189,187 @@ async def test_a_node_the_backfill_cannot_link_still_leaves_nodes_insertable(db_
     finally:
         await check.dispose()
         await engine.dispose()
+
+
+async def test_upgrade_keeps_each_canvas_drawing_its_own_services(db_320):
+    """3.3.3: order and visibility become the node's, and the upgrade freezes them.
+
+    Two canvases drew the same host with different service lists, and a scan had
+    already fingerprinted a third the user put on neither. All three converge on
+    one inventory row — so each node must come out of the upgrade still drawing
+    what it drew, with the scanner's guess hidden on both.
+    """
+    db_path, engine = db_320
+    await _build_320(engine)
+    ssh = '[{"port": 22, "protocol": "tcp", "service_name": "ssh"}]'
+    both = '[{"port": 22, "protocol": "tcp", "service_name": "ssh"}, ' \
+           '{"port": 443, "protocol": "tcp", "service_name": "https"}]'
+    async with engine.begin() as conn:
+        await conn.exec_driver_sql(f"UPDATE nodes SET services = '{ssh}' WHERE id = 'n1'")
+        await conn.exec_driver_sql(f"UPDATE nodes SET services = '{both}' WHERE id = 'n2'")
+
+    await database.init_db()
+
+    from app.db.models import InventoryDevice, Node
+
+    session_factory = database.async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        drawn = {}
+        for node_id in ("n1", "n2"):
+            node = await session.get(Node, node_id)
+            device = await session.get(InventoryDevice, node.device_id)
+            payload = inventory_sync.hydrated_node(node, device)
+            drawn[node_id] = [s["service_name"] for s in payload["services"] if s.get("visible", True)]
+            # Seeded, not left to "show the whole row".
+            assert node.display_view is not None
+        assert drawn == {"n1": ["ssh"], "n2": ["ssh", "https"]}
+
+        # What a scan finds next lands on the row, and on no canvas.
+        node = await session.get(Node, "n1")
+        device = await session.get(InventoryDevice, node.device_id)
+        device.services = [
+            *device.services,
+            {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"},
+        ]
+        await session.commit()
+        payload = inventory_sync.hydrated_node(node, device)
+        assert [(s["service_name"], s.get("visible", True)) for s in payload["services"]] == [
+            ("ssh", True), ("Uptime Kuma", False),
+        ]
+    await engine.dispose()
+
+
+async def _wind_back_to_3_3_2(engine, extra_service: dict) -> None:
+    """A database that already took the 3.3.0 upgrade, leak included.
+
+    Both nodes point at one row holding the union of what each drew plus what a
+    scan found, and neither has a view — which is every 3.3.0-3.3.2 install.
+    """
+    from app.db.models import InventoryDevice, Node
+
+    async with engine.begin() as conn:
+        await conn.exec_driver_sql("UPDATE nodes SET display_view = NULL")
+    session_factory = database.async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        node = await session.get(Node, "n1")
+        one = await session.get(InventoryDevice, node.device_id)
+        other = await session.get(InventoryDevice, (await session.get(Node, "n2")).device_id)
+        for device in (one, other):
+            device.services = [
+                {"port": 22, "protocol": "tcp", "service_name": "ssh"},
+                {"port": 443, "protocol": "tcp", "service_name": "https"},
+                extra_service,
+            ]
+        await session.commit()
+
+
+async def test_a_database_already_on_3_3_recovers_its_layout_from_the_backup(db_320):
+    """The second upgrade path: 3.3.0-3.3.2, where the legacy columns are gone.
+
+    3.3.0 unioned every canvas' services onto one row, so the row can no longer
+    say who drew what — but the backup taken before that migration still can.
+    Recovering from it is the difference between the user getting their canvases
+    back and getting each canvas showing every other canvas' services.
+    """
+    _, engine = db_320
+    await _build_320(engine)
+    ssh = '[{"port": 22, "protocol": "tcp", "service_name": "ssh"}]'
+    both = '[{"port": 22, "protocol": "tcp", "service_name": "ssh"}, ' \
+           '{"port": 443, "protocol": "tcp", "service_name": "https"}]'
+    async with engine.begin() as conn:
+        await conn.exec_driver_sql(f"UPDATE nodes SET services = '{ssh}' WHERE id = 'n1'")
+        await conn.exec_driver_sql(f"UPDATE nodes SET services = '{both}' WHERE id = 'n2'")
+
+    await database.init_db()  # 3.2.0 -> 3.3.x, and the backup that predates it.
+    kuma = {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"}
+    await _wind_back_to_3_3_2(engine, kuma)
+
+    await database.init_db()
+
+    from app.db.models import InventoryDevice, Node
+
+    session_factory = database.async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        drawn = {}
+        for node_id in ("n1", "n2"):
+            node = await session.get(Node, node_id)
+            device = await session.get(InventoryDevice, node.device_id)
+            payload = inventory_sync.hydrated_node(node, device)
+            drawn[node_id] = [s["service_name"] for s in payload["services"] if s.get("visible", True)]
+        assert drawn == {"n1": ["ssh"], "n2": ["ssh", "https"]}
+    await engine.dispose()
+
+
+async def test_without_a_usable_backup_the_row_is_the_seed(db_320):
+    """No backup to recover from: keep showing what the canvas shows today.
+
+    Nothing is taken away — the user simply keeps the merged list they have been
+    looking at since 3.3.0, and only what the row gains *after* this boot is
+    held back.
+    """
+    db_path, engine = db_320
+    await _build_320(engine)
+    await database.init_db()
+    kuma = {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"}
+    await _wind_back_to_3_3_2(engine, kuma)
+    for backup in db_path.parent.glob(f"{db_path.name}.back-*"):
+        backup.unlink()
+
+    await database.init_db()
+
+    from app.db.models import InventoryDevice, Node
+
+    session_factory = database.async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        node = await session.get(Node, "n1")
+        device = await session.get(InventoryDevice, node.device_id)
+        payload = inventory_sync.hydrated_node(node, device)
+        assert [s["service_name"] for s in payload["services"]] == ["ssh", "https", "Uptime Kuma"]
+        assert all(s.get("visible", True) for s in payload["services"])
+
+        # From here on the node is pinned: the next scan's find is held back.
+        device.services = [*device.services, {"port": 5001, "protocol": "tcp", "service_name": "Synology DSM HTTPS"}]
+        await session.commit()
+        payload = inventory_sync.hydrated_node(node, device)
+        assert [s["service_name"] for s in payload["services"] if not s.get("visible", True)] == [
+            "Synology DSM HTTPS"
+        ]
+    await engine.dispose()
+
+
+async def test_the_newest_backup_that_still_has_the_columns_is_the_one_read(db_320):
+    """A 3.3.2 install has several backups; only some can answer.
+
+    `homelab.db.back-3.3.1` and `-3.3.2` were taken *after* the split and hold
+    nothing per node; `-3.3.0` was taken before it. Reading the wrong one would
+    either say nothing or resurrect a much older canvas.
+    """
+    db_path, engine = db_320
+    await _build_320(engine)
+    async with engine.begin() as conn:
+        await conn.exec_driver_sql(
+            "UPDATE nodes SET services = "
+            "'[{\"port\": 22, \"protocol\": \"tcp\", \"service_name\": \"ssh\"}]' WHERE id = 'n1'"
+        )
+    # Ancient: same shape, but a canvas the user has long since moved on from.
+    old = db_path.parent / f"{db_path.name}.back-3.1.0"
+    shutil.copy2(db_path, old)
+    os.utime(old, (1, 1))
+    async with engine.begin() as conn:
+        await conn.exec_driver_sql(
+            "UPDATE nodes SET services = "
+            "'[{\"port\": 443, \"protocol\": \"tcp\", \"service_name\": \"https\"}]' WHERE id = 'n1'"
+        )
+    pre_split = db_path.parent / f"{db_path.name}.back-3.3.0"
+    shutil.copy2(db_path, pre_split)
+
+    await database.init_db()  # drops the columns, and backs up under this version
+    # Post-split backups: newer, and unable to say who drew what.
+    for name in ("back-3.3.1", "back-3.3.2"):
+        shutil.copy2(db_path, db_path.parent / f"{db_path.name}.{name}")
+
+    assert database._pre_split_backup() == pre_split
+    assert database._views_from_backup()["n1"]["services"] == [
+        {"port": 443, "protocol": "tcp", "service_name": "https"}
+    ]
+    await engine.dispose()

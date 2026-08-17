@@ -49,6 +49,15 @@ class Node(Base):
     device_id: Mapped[str | None] = mapped_column(
         String, ForeignKey("device_inventory.id", ondelete="SET NULL"), index=True, nullable=True
     )
+    # How this canvas renders the device's list facts: which services and which
+    # properties it shows, and in what order. The facts themselves stay on the
+    # inventory row, so the same device drawn on two canvases can show two
+    # different subsets — a scanner-guessed service on one, none on the other.
+    #   {"services": [{"key": "443|tcp|https", "visible": true}, …],
+    #    "properties": [{"key": "rack", "visible": false}, …]}
+    # NULL only for canvas furniture and for a node with no inventory row yet;
+    # `inventory_sync.link_facts` fills both lists as soon as there is one.
+    display_view: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     pos_x: Mapped[float] = mapped_column(Float, default=0)
     pos_y: Mapped[float] = mapped_column(Float, default=0)
     parent_id: Mapped[str | None] = mapped_column(String, ForeignKey("nodes.id", ondelete="CASCADE"))

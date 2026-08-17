@@ -40,9 +40,35 @@ export type FactsBaseline = Record<string, string>
 
 const encode = (value: unknown): string => JSON.stringify(value ?? null)
 
+/**
+ * Which services and properties the node carries, ignoring how it draws them.
+ *
+ * Order and visibility belong to the node, not to the inventory row, so hiding
+ * a service or dragging a property into place is not an edit to the device and
+ * must not be reported as one — otherwise a rearranged canvas would push its
+ * arrangement onto every other canvas showing the same device.
+ */
+const keyOf = (item: Record<string, unknown>): string =>
+  'key' in item
+    ? String(item.key ?? '').toLowerCase()
+    : `${item.port ?? ''}|${item.protocol ?? ''}|${String(item.service_name ?? '').toLowerCase()}`
+
+const encodeFacts = (field: DeviceFactField, value: unknown): string => {
+  if (field !== 'services' && field !== 'properties') return encode(value)
+  const items = (Array.isArray(value) ? value : []).filter(
+    (item): item is Record<string, unknown> => typeof item === 'object' && item !== null,
+  )
+  const bare = items.map((item) => {
+    const rest = { ...item }
+    delete rest.visible
+    return rest
+  })
+  return encode([...bare].sort((a, b) => keyOf(a).localeCompare(keyOf(b))))
+}
+
 export function factsBaselineOf(data: Partial<NodeData>): FactsBaseline {
   const out: FactsBaseline = {}
-  for (const field of DEVICE_FACT_FIELDS) out[field] = encode(data[field])
+  for (const field of DEVICE_FACT_FIELDS) out[field] = encodeFacts(field, data[field])
   return out
 }
 
@@ -64,7 +90,37 @@ export function changedFactFields(
   baseline: FactsBaseline | undefined,
 ): DeviceFactField[] {
   if (!baseline) return [...DEVICE_FACT_FIELDS]
-  return DEVICE_FACT_FIELDS.filter((field) => encode(data[field]) !== baseline[field])
+  return DEVICE_FACT_FIELDS.filter((field) => encodeFacts(field, data[field]) !== baseline[field])
+}
+
+/**
+ * The row's list, arranged the way this node already draws it.
+ *
+ * The facts are the row's, the order and the visibility are the node's, so an
+ * edit made in the Device Inventory must not reshuffle a canvas or unhide what
+ * it hid. Same rule the backend applies on read: what the node already lists
+ * keeps its place and its flag, what the row gained since is appended hidden,
+ * and what the row lost disappears.
+ */
+export function listArrangedForNode<T extends Record<string, unknown>>(
+  current: T[] | undefined,
+  incoming: T[],
+): T[] {
+  if (!current?.length) return incoming
+  const seen = new Set<string>()
+  const by = new Map(incoming.map((item) => [keyOf(item), item]))
+  const out: T[] = []
+  for (const item of current) {
+    const key = keyOf(item)
+    const fresh = by.get(key)
+    if (!fresh || seen.has(key)) continue
+    seen.add(key)
+    out.push('visible' in item ? { ...fresh, visible: item.visible } : (fresh as T))
+  }
+  for (const item of incoming) {
+    if (!seen.has(keyOf(item))) out.push({ ...item, visible: false })
+  }
+  return out
 }
 
 /**

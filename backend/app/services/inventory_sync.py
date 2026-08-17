@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -203,6 +203,152 @@ def _service_key(svc: Any) -> Any:
     return (svc.get("port"), svc.get("protocol"), (svc.get("service_name") or "").lower())
 
 
+# --- Per-node view of the device's list facts -----------------------------
+#
+# The row owns the services and the properties; a node owns which of them it
+# shows and in what order. Both are keyed by a stable string so the view
+# survives an edit to a service's path or a property's value.
+
+VIEW_LISTS = ("services", "properties")
+
+
+def _service_view_key(svc: Any) -> str:
+    port, protocol, name = _service_key(svc) if isinstance(svc, dict) else (None, None, repr(svc))
+    return f"{port}|{protocol}|{name}"
+
+
+def _property_view_key(prop: Any) -> str:
+    if not isinstance(prop, dict):
+        return repr(prop)
+    return str(prop.get("key") or "").lower()
+
+
+_VIEW_KEY = {"services": _service_view_key, "properties": _property_view_key}
+
+
+def view_entries(items: list[Any] | None, kind: str) -> list[dict[str, Any]]:
+    """One list of device facts as a node's view of it: order plus visibility.
+
+    A service carries no ``visible`` of its own — one that reached a canvas was
+    always drawn — so it defaults to shown. A property carries an explicit flag
+    and keeps it. Duplicate keys collapse: the view addresses the row, and the
+    row holds one entry per key.
+    """
+    key_of = _VIEW_KEY[kind]
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items or []:
+        key = key_of(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        visible = bool(item.get("visible", True)) if isinstance(item, dict) else True
+        out.append({"key": key, "visible": visible})
+    return out
+
+
+def view_from_facts(facts: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """The view a node payload implies — only for the lists it actually sent.
+
+    The wire shape has no separate view: a client sends its services and its
+    properties in display order, each with its ``visible`` flag, exactly as it
+    draws them. That *is* the view, so it is read back out here rather than
+    asking clients for a second field.
+    """
+    return {kind: view_entries(facts[kind], kind) for kind in VIEW_LISTS if kind in facts}
+
+
+def view_of_device(device: InventoryDevice) -> dict[str, list[dict[str, Any]]]:
+    """A view showing everything the row currently holds — the seed for a new node."""
+    return {
+        "services": view_entries(device.services, "services"),
+        "properties": view_entries(device.properties, "properties"),
+    }
+
+
+def next_view(
+    current: Mapping[str, Any] | None,
+    incoming: Mapping[str, Any],
+    device: InventoryDevice | None,
+    *,
+    strict: bool = False,
+) -> dict[str, Any] | None:
+    """This node's view after a write: what it sent, then the row for the rest.
+
+    A list the write did not carry keeps the view it had. A node linked to a row
+    always ends up with both lists, so "not in the view" can mean one thing
+    only: this canvas does not show it. That is what keeps a service a later scan
+    discovers off every canvas until someone turns it on.
+
+    A node getting its *first* view is the exception: an empty list there means
+    the writer had nothing to say about it, not that the user hid everything —
+    creating a node for an already-scanned device sends no services and must
+    still draw the ones the row holds. ``strict`` turns that off for the one
+    caller whose empty list is a real answer: the legacy backfill, where the
+    node's own columns are the whole of what that canvas used to show.
+    """
+    if device is None:
+        return dict(current) if current else None
+    out: dict[str, Any] = dict(current or {})
+    first_view = current is None
+    seed = view_of_device(device)
+    for kind in VIEW_LISTS:
+        entries = incoming.get(kind)
+        if entries or (entries is not None and (strict or not first_view)):
+            out[kind] = entries
+        elif kind not in out:
+            out[kind] = seed[kind]
+    return out
+
+
+def apply_view(items: list[Any] | None, entries: Any, kind: str) -> list[Any]:
+    """The row's facts as one node draws them: its order, its visibility.
+
+    Without a view — furniture, or a node whose row was linked by an older
+    version — everything shows, in the row's own order. With one, an item the
+    view does not list is appended hidden rather than dropped, so a service a
+    scan added is one toggle away instead of invisible.
+    """
+    key_of = _VIEW_KEY[kind]
+    facts = list(items or [])
+    if not isinstance(entries, list):
+        return facts
+
+    by_key: dict[str, Any] = {}
+    for item in facts:
+        by_key.setdefault(key_of(item), item)
+
+    out: list[Any] = []
+    taken: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        key = str(entry.get("key"))
+        item = by_key.get(key)
+        if item is None or key in taken:
+            continue  # Deleted from the row since — the view catches up on write.
+        taken.add(key)
+        out.append(_stamped(item, bool(entry.get("visible", True))))
+    for item in facts:
+        if key_of(item) not in taken:
+            out.append(_stamped(item, False))
+    return out
+
+
+def _stamped(item: Any, visible: bool) -> Any:
+    """``item`` carrying this node's verdict on whether it is drawn.
+
+    A shown item that never had a ``visible`` key does not gain one: services
+    have always travelled without it, and readers treat its absence as shown.
+    Only hiding is news, and properties keep the explicit flag they arrived with.
+    """
+    if not isinstance(item, dict):
+        return item
+    if visible and "visible" not in item:
+        return dict(item)
+    return {**item, "visible": visible}
+
+
 def merge_services(base: list[Any] | None, incoming: list[Any] | None) -> list[Any]:
     """Union two service lists on (port, protocol, name); incoming wins."""
     out: list[Any] = [dict(s) if isinstance(s, dict) else s for s in (base or [])]
@@ -378,6 +524,7 @@ async def link_facts(
     replace_lists: bool = False,
     only_changed: bool = False,
     changed_fields: list[str] | None = None,
+    strict_view: bool = False,
 ) -> InventoryDevice | None:
     """Point one node at its inventory row, creating or merging as needed.
 
@@ -434,6 +581,13 @@ async def link_facts(
         device.discovery_sources = add_source(device.discovery_sources, CANVAS_SOURCE)
 
     node.device_id = device.id
+    # Order and visibility are this node's, not the device's, so they are taken
+    # from the full payload — never from the `changed_fields`/`only_changed`
+    # narrowing above, which exists to protect the *shared* row from a stale
+    # snapshot. A node's own view has no other writer to collide with.
+    node.display_view = next_view(
+        node.display_view, view_from_facts(facts), device, strict=strict_view
+    )
     return device
 
 
@@ -444,8 +598,14 @@ def node_columns(payload: Mapping[str, Any]) -> dict[str, Any]:
     inventory row now, so they are dropped here and applied through
     :func:`link_facts` instead.
     """
-    allowed = {c.name for c in Node.__table__.columns}
+    allowed = {c.name for c in Node.__table__.columns} - _NODE_DERIVED_COLUMNS
     return {k: v for k, v in payload.items() if k in allowed}
+
+
+# Node columns the server derives rather than accepts: `display_view` is read
+# back out of the services and properties a payload carries (see
+# :func:`view_from_facts`), so a client sending one directly is ignored.
+_NODE_DERIVED_COLUMNS = frozenset({"display_view"})
 
 
 # Fields that are both a node column and a device fact: the node keeps a copy so
@@ -502,6 +662,9 @@ def hydrated_node(node: Node, device: InventoryDevice | None) -> dict[str, Any]:
     payload: dict[str, Any] = {
         c.name: getattr(node, c.name) for c in node.__table__.columns
     }
+    # An implementation detail of the split, not part of the wire shape: the
+    # view is reported *through* the services and properties it orders.
+    view = payload.pop("display_view", None) or {}
     if device is None:
         return payload
 
@@ -509,8 +672,8 @@ def hydrated_node(node: Node, device: InventoryDevice | None) -> dict[str, Any]:
         payload[field] = getattr(device, field, None)
     payload["label"] = device.label or node.label
     payload["type"] = device.type or node.type
-    payload["services"] = device.services or []
-    payload["properties"] = device.properties or []
+    payload["services"] = apply_view(device.services, view.get("services"), "services")
+    payload["properties"] = apply_view(device.properties, view.get("properties"), "properties")
     payload["show_hardware"] = bool(device.show_hardware)
     payload["ieee_address"] = device.ieee_address
     payload["status"] = device.status_live or "unknown"
@@ -591,6 +754,56 @@ async def _row_is_missing_facts(db: AsyncSession, device_id: str, facts: Mapping
     )
 
 
+async def seed_node_views(
+    db: AsyncSession, *, drawn: Callable[[], Mapping[str, Mapping[str, Any]]] | None = None
+) -> int:
+    """Give every linked node with no view one it can be held to.
+
+    Runs once, on the boot that adds `nodes.display_view`. Without it every
+    pre-existing node would fall through to "no view, show everything" and the
+    next scan would push a newly fingerprinted service onto all of them at once —
+    the leak this column exists to stop.
+
+    ``drawn`` returns a map of node id to the services and properties that node
+    itself carried before 3.3.0 unioned them onto the row — the caller reads
+    them out of the pre-upgrade backup, and is only asked to when there is
+    actually a node to seed. Where it has an answer that answer wins, restoring
+    the arrangement the user made; where it does not, the row is the seed and
+    the canvas keeps showing exactly what it shows today. Does not commit.
+    """
+    nodes = list(
+        (
+            await db.execute(
+                select(Node).where(Node.device_id.isnot(None), Node.display_view.is_(None))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not nodes:
+        return 0
+    devices = await load_devices_for(db, nodes)
+    # Read the backup only now: on every later boot this function returns above
+    # and no file is opened at all.
+    was_drawn = drawn() if drawn is not None else {}
+    seeded = 0
+    for node in nodes:
+        device = devices.get(node.device_id or "")
+        if device is None:
+            continue
+        was = was_drawn.get(node.id)
+        # `strict`: an empty list in the backup is this canvas' real answer —
+        # it drew no service — and must not be read as "say nothing, show all".
+        node.display_view = (
+            next_view(None, view_from_facts(was), device, strict=True)
+            if was
+            else view_of_device(device)
+        )
+        seeded += 1
+    await db.flush()
+    return seeded
+
+
 async def backfill_node_devices(db: AsyncSession) -> dict[str, int]:
     """Link every pre-3.3.0 canvas node to a Device Inventory row.
 
@@ -660,7 +873,16 @@ async def backfill_node_devices(db: AsyncSession) -> dict[str, int]:
                 # A node that is already linked only has its gaps filled: whatever
                 # is on the row was written after the migration and is newer.
                 device = await link_facts(
-                    db, node, facts, overwrite_scalars=node.device_id is None
+                    db,
+                    node,
+                    facts,
+                    overwrite_scalars=node.device_id is None,
+                    # The node's own columns are exactly what this canvas drew
+                    # before the upgrade, empty lists included — so they define
+                    # its view outright. Anything else the row carries (a service
+                    # a scan fingerprinted, a property another canvas added)
+                    # stays hidden here rather than appearing on every canvas.
+                    strict_view=True,
                 )
                 if device is None:
                     continue

@@ -40,7 +40,9 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
   const colors = resolveNodeColors(data, activeTheme)
   const statusColor = theme.colors.statusColors[data.status]
   const isOnline = data.status === 'online'
-  const services = data.services ?? []
+  // Hiding a service is a property of this node, not of the device: another
+  // canvas drawing the same device answers for itself.
+  const services = (data.services ?? []).filter((svc) => svc.visible !== false)
   const showServices = data.custom_colors?.show_services === true
   const serviceHost = data.ip ? primaryIp(data.ip) : data.hostname
 
