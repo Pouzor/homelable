@@ -2,11 +2,20 @@ import json
 import logging
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
+
+
+def origin_of(url: str) -> str:
+    """`scheme://host[:port]` of an absolute URL, or "" when it has none."""
+    parts = urlsplit(url)
+    if not parts.scheme or not parts.netloc:
+        return ""
+    return f"{parts.scheme}://{parts.netloc}"
 
 def _read_version() -> str:
     for candidate in [
@@ -88,6 +97,16 @@ class Settings(BaseSettings):
                         raise ValueError(f"{name} must use HTTPS when OIDC_COOKIE_SECURE=true")
             if "*" in self.cors_origins:
                 raise ValueError("CORS_ORIGINS cannot contain '*' when AUTH_MODE=oidc")
+            app_origin = origin_of(self.oidc_redirect_uri)
+            allowed = {value.rstrip("/") for value in self.cors_origins}
+            if app_origin and app_origin not in allowed:
+                logger.warning(
+                    "CORS_ORIGINS does not list %s (the origin of OIDC_REDIRECT_URI). "
+                    "The CSRF check accepts that origin anyway, but add it to CORS_ORIGINS "
+                    "so browser requests are not rejected: CORS_ORIGINS=[\"%s\"]",
+                    app_origin,
+                    app_origin,
+                )
         return self
 
     # Scanner

@@ -336,6 +336,80 @@ async def test_oidc_cookie_mutations_require_csrf_and_allowed_origin(client: Asy
     assert (await client.get("/api/v1/auth/me")).status_code == 401
 
 
+async def test_oidc_mutation_allows_app_origin_missing_from_cors_origins(
+    client: AsyncClient, oidc_settings
+):
+    """Regression for #356: a same-origin reverse-proxy deploy needs no CORS, so
+    CORS_ORIGINS is left at its localhost default while the browser still sends
+    Origin — every POST used to 403."""
+    oidc_settings.cors_origins = ["http://localhost:5173", "http://localhost:3000"]
+    fake_client = FakeOIDCClient(token={
+        "userinfo": {
+            "iss": "https://idp.example/application/o/homelable/",
+            "sub": "user-123",
+            "preferred_username": "alice",
+        },
+    })
+    with patch("app.api.routes.auth.get_oidc_client", return_value=fake_client):
+        await client.get("/api/v1/auth/oidc/callback")
+    csrf_token = (await client.get("/api/v1/auth/me")).json()["csrf_token"]
+
+    created = await client.post(
+        "/api/v1/designs",
+        json={"name": "From OIDC", "design_type": "network"},
+        headers={"Origin": "http://test", "X-Homelable-CSRF": csrf_token},
+    )
+    assert created.status_code == 201
+
+    # The fallback widens the allowlist by exactly one origin, nothing more.
+    evil = await client.post(
+        "/api/v1/designs",
+        json={"name": "Nope", "design_type": "network"},
+        headers={"Origin": "https://evil.example", "X-Homelable-CSRF": csrf_token},
+    )
+    assert evil.status_code == 403
+
+
+def test_origin_is_allowed_falls_back_to_the_oidc_redirect_origin(oidc_settings):
+    from app.core.security import origin_is_allowed
+
+    oidc_settings.cors_origins = ["http://localhost:3000"]
+    oidc_settings.oidc_redirect_uri = "https://homelable.example.com/api/v1/auth/oidc/callback"
+
+    assert origin_is_allowed("https://homelable.example.com") is True
+    assert origin_is_allowed("https://homelable.example.com/") is True
+    assert origin_is_allowed("http://localhost:3000") is True
+    assert origin_is_allowed("https://evil.example") is False
+    assert origin_is_allowed(None) is False
+
+    # A redirect URI that is not an absolute URL contributes no origin.
+    oidc_settings.oidc_redirect_uri = "/api/v1/auth/oidc/callback"
+    assert origin_is_allowed("https://homelable.example.com") is False
+
+
+def test_oidc_settings_warn_when_cors_origins_omits_the_app_origin(caplog):
+    from app.core.config import Settings
+
+    base = {
+        "secret_key": "x" * 32,
+        "auth_mode": "oidc",
+        "oidc_discovery_url": "https://idp.example/.well-known/openid-configuration",
+        "oidc_client_id": "homelable",
+        "oidc_client_secret": "secret",
+        "oidc_redirect_uri": "https://homelable.example.com/api/v1/auth/oidc/callback",
+    }
+
+    with caplog.at_level("WARNING"):
+        Settings(**base, cors_origins=["http://localhost:3000"])
+    assert "https://homelable.example.com" in caplog.text
+    assert "CORS_ORIGINS" in caplog.text
+
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        Settings(**base, cors_origins=["https://homelable.example.com/"])
+    assert caplog.text == ""
+
+
 async def test_local_bearer_logout_does_not_require_csrf(client: AsyncClient, headers):
     res = await client.post("/api/v1/auth/logout", headers=headers)
     assert res.status_code == 204
