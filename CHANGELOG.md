@@ -5,6 +5,13 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.3.2] - 2026-08-17
+
+### Fixes
+
+- Devices upgraded from 3.2.0 keep their ip, services, hostname, notes and hardware. The 3.3.0 migration aborted on timestamps SQLite returns as text, so nothing was carried across to the Device Inventory and every device read back blank. (#347, #348)
+- A canvas saved while an earlier migration was stuck no longer loses its device facts: the migration now fills the blank inventory row that save created, instead of skipping the node and dropping the columns holding its only copy. (#347)
+
 ## [3.3.1] - 2026-08-17
 
 ### Fixes
