@@ -5,6 +5,16 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.3.3] - 2026-08-17
+
+### Features
+
+- Each node now keeps its own view of a device's services and properties: order and visibility are per node, so a service the scanner fingerprinted no longer appears on every canvas drawing that device, and a property added on one schematic stays there. The facts still live on the inventory row — hiding is per node, deleting is device-wide. Upgrades keep what each canvas showed today. (#357)
+
+### Fixes
+
+- The one-off view seed no longer re-opens the pre-upgrade backup on every boot: a node pointing at a deleted device kept matching the seed query and logged a recovery that recovered nothing. (#357)
+
 ## [3.3.2] - 2026-08-17
 
 ### Fixes
