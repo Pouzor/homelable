@@ -386,6 +386,133 @@ class TestBackfill:
         assert (await db_session.execute(select(InventoryDevice))).scalars().all() == []
 
     @pytest.mark.asyncio
+    async def test_carries_over_timestamps_stored_as_text(self, db_session):
+        """The legacy columns are read with raw SQL, so SQLite hands the DATETIME
+        ones back as strings. Writing one straight into the row raises
+        ``TypeError: SQLite DateTime type only accepts Python datetime and date
+        objects`` — which used to abort the whole backfill (issue #347)."""
+        await self._legacy_nodes_table(db_session)
+        design = await _design(db_session)
+        node_id = await self._legacy_node(
+            db_session,
+            design,
+            ip="10.0.0.5",
+            label="Dockerhost",
+            status="online",
+            last_seen="2026-08-15 04:10:22.123456",
+            last_scan="2026-08-15 04:00:00",
+        )
+
+        stats = await backfill_node_devices(db_session)
+        await db_session.commit()
+
+        assert stats == {"linked": 1, "created": 1, "merged": 0, "skipped": 0}
+        node = await db_session.get(Node, node_id)
+        assert node is not None
+        device = await db_session.get(InventoryDevice, node.device_id)
+        assert device is not None
+        assert device.last_seen == datetime(2026, 8, 15, 4, 10, 22, 123456)
+        assert device.last_scan == datetime(2026, 8, 15, 4, 0, 0)
+        assert device.status_live == "online"
+
+    @pytest.mark.asyncio
+    async def test_a_stamp_it_cannot_parse_costs_only_the_stamp(self, db_session):
+        await self._legacy_nodes_table(db_session)
+        design = await _design(db_session)
+        await self._legacy_node(db_session, design, ip="10.0.0.5", last_seen="not a date")
+
+        stats = await backfill_node_devices(db_session)
+        await db_session.commit()
+
+        assert stats["linked"] == 1
+        device = (await db_session.execute(select(InventoryDevice))).scalars().one()
+        assert device.last_seen is None
+        assert device.ip == "10.0.0.5"
+
+    @pytest.mark.asyncio
+    async def test_one_unwritable_node_does_not_cost_the_others_their_link(self, db_session, monkeypatch):
+        """Whatever a single node raises — not only a constraint violation — the
+        rest of the canvas still gets linked."""
+        await self._legacy_nodes_table(db_session)
+        design = await _design(db_session)
+        await self._legacy_node(db_session, design, ip="10.0.0.5", label="good")
+        await self._legacy_node(db_session, design, ip="10.0.0.6", label="bad")
+
+        import app.services.inventory_sync as module
+
+        real = module.link_facts
+
+        async def link_facts(db, node, facts, **kwargs):
+            if facts.get("ip") == "10.0.0.6":
+                raise TypeError("SQLite DateTime type only accepts Python datetime")
+            return await real(db, node, facts, **kwargs)
+
+        monkeypatch.setattr(module, "link_facts", link_facts)
+
+        stats = await module.backfill_node_devices(db_session)
+        await db_session.commit()
+
+        assert stats["linked"] == 1
+        assert stats["skipped"] == 1
+        devices = (await db_session.execute(select(InventoryDevice))).scalars().all()
+        assert [d.ip for d in devices] == ["10.0.0.5"]
+
+    @pytest.mark.asyncio
+    async def test_fills_a_blank_row_a_stuck_canvas_save_created(self, db_session):
+        """A save made while an earlier migration was stuck linked the node to a
+        row minted from a blank UI. Those facts only exist in the legacy columns,
+        and the drop is about to remove them — so fill the row before it does."""
+        await self._legacy_nodes_table(db_session)
+        design = await _design(db_session)
+        db_session.add(InventoryDevice(id="d-blank", ip="", label="Dockerhost", services=[]))
+        await db_session.commit()
+        node_id = await self._legacy_node(
+            db_session, design, label="Dockerhost", ip="192.168.0.42", hostname="clara.lan",
+            notes="in the cupboard", services=[{"port": 443, "protocol": "tcp", "service_name": "https"}],
+        )
+        node = await db_session.get(Node, node_id)
+        node.device_id = "d-blank"
+        await db_session.commit()
+
+        stats = await backfill_node_devices(db_session)
+        await db_session.commit()
+
+        assert stats["linked"] == 1
+        device = await db_session.get(InventoryDevice, "d-blank")
+        assert device is not None
+        assert device.ip == "192.168.0.42"
+        assert device.hostname == "clara.lan"
+        assert device.notes == "in the cupboard"
+        assert [s["service_name"] for s in device.services] == ["https"]
+
+    @pytest.mark.asyncio
+    async def test_leaves_a_linked_row_that_already_has_the_facts_alone(self, db_session):
+        """The mirror of the above: a row a user has since edited is not reverted
+        to what the node's abandoned columns still say."""
+        await self._legacy_nodes_table(db_session)
+        design = await _design(db_session)
+        db_session.add(InventoryDevice(
+            id="d-1", ip="192.168.0.99", hostname="renamed.lan",
+            label="Dockerhost", type="docker_host",
+        ))
+        await db_session.commit()
+        node_id = await self._legacy_node(
+            db_session, design, ip="192.168.0.42", hostname="clara.lan", label="Dockerhost"
+        )
+        node = await db_session.get(Node, node_id)
+        node.device_id = "d-1"
+        await db_session.commit()
+
+        stats = await backfill_node_devices(db_session)
+        await db_session.commit()
+
+        assert stats["linked"] == 0
+        device = await db_session.get(InventoryDevice, "d-1")
+        assert device is not None
+        assert device.ip == "192.168.0.99"
+        assert device.hostname == "renamed.lan"
+
+    @pytest.mark.asyncio
     async def test_is_a_no_op_on_a_second_run(self, db_session):
         await self._legacy_nodes_table(db_session)
         design = await _design(db_session)
