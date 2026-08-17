@@ -5,6 +5,14 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.3.4] - 2026-08-17
+
+### Fixes
+
+- A network scan no longer deletes the services you added by hand. The scanner replaced a device's whole service list with what it fingerprinted, so one scan wiped manual entries on every canvas at once and brought back the ones you had deleted. It merges now. (#347)
+- A node whose services were all replaced under it no longer renders empty: when nothing a node's view names is left on the device, the device's own list is drawn instead of hiding everything. (#347)
+- Properties added while running 3.3.0–3.3.2 survive the 3.3.3 upgrade. The view recovered from the pre-3.3.0 backup could not know about them, so they were hidden on every canvas; they are kept visible, and the per-canvas arrangement the backup does know is still restored. (#347)
+
 ## [3.3.3] - 2026-08-17
 
 ### Features
