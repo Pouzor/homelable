@@ -146,11 +146,12 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
           <div className="flex flex-col gap-1 px-2.5 py-1.5 overflow-hidden">
             {visibleProperties.map((prop) => {
               const Icon = resolvePropertyIcon(prop.icon)
+              const hasValue = Boolean(prop.value.trim())
               return (
                 <div key={prop.key} className="flex items-center gap-1 font-mono text-[10px] min-w-0 overflow-hidden" style={{ color: theme.colors.nodeSubtextColor }}>
                   {Icon && <Icon size={9} className="shrink-0" />}
-                  <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
-                  {prop.value.trim() && (
+                  <span className={hasValue ? 'truncate max-w-15 shrink-0' : 'truncate min-w-0'} title={prop.key}>{prop.key}</span>
+                  {hasValue && (
                     <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
                   )}
                 </div>

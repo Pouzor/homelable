@@ -107,6 +107,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
         {/* Properties */}
         {data.properties?.filter((p) => p.visible).map((prop, i, arr) => {
           const Icon = resolvePropertyIcon(prop.icon)
+          const hasValue = Boolean(prop.value.trim())
           return (
             <div
               key={prop.key}
@@ -119,8 +120,8 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
               }}
             >
               {Icon && <Icon size={9} className="shrink-0" />}
-              <span className="truncate max-w-15 shrink-0" title={prop.key}>{prop.key}</span>
-              {prop.value.trim() && (
+              <span className={hasValue ? 'truncate max-w-15 shrink-0' : 'truncate min-w-0'} title={prop.key}>{prop.key}</span>
+              {hasValue && (
                 <span className="truncate min-w-0" title={prop.value}>· {prop.value}</span>
               )}
             </div>
