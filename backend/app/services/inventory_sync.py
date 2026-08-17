@@ -774,7 +774,16 @@ async def seed_node_views(
     nodes = list(
         (
             await db.execute(
-                select(Node).where(Node.device_id.isnot(None), Node.display_view.is_(None))
+                select(Node).where(
+                    # A `device_id` naming a row that no longer exists cannot be
+                    # seeded from anything, and leaving it in would match this
+                    # query on every later boot — re-reading the backup file and
+                    # logging a recovery that seeds nothing. Deleting a device
+                    # leaves exactly that: SQLite runs with foreign keys off, so
+                    # the `ON DELETE SET NULL` never fires on an existing table.
+                    Node.device_id.in_(select(InventoryDevice.id)),
+                    Node.display_view.is_(None),
+                )
             )
         )
         .scalars()
@@ -789,7 +798,7 @@ async def seed_node_views(
     seeded = 0
     for node in nodes:
         device = devices.get(node.device_id or "")
-        if device is None:
+        if device is None:  # pragma: no cover - the query already excluded these
             continue
         was = was_drawn.get(node.id)
         # `strict`: an empty list in the backup is this canvas' real answer —

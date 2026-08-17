@@ -1270,6 +1270,27 @@ class TestPerNodeView:
         assert await seed_node_views(db_session) == 0
 
     @pytest.mark.asyncio
+    async def test_a_node_whose_device_was_deleted_does_not_keep_the_seed_alive(self, db_session):
+        """Deleting a device leaves `nodes.device_id` dangling — foreign keys are off.
+
+        Such a node can be seeded from nothing, so it must not keep matching the
+        query: it would re-open the pre-upgrade backup on every single boot and
+        log a recovery that recovers nothing.
+        """
+        design = await _design(db_session)
+        db_session.add(_node(design, device_id="d-gone"))
+        await db_session.commit()
+
+        reads = []
+
+        def drawn():
+            reads.append(1)
+            return {}
+
+        assert await seed_node_views(db_session, drawn=drawn) == 0
+        assert reads == []  # the backup was never opened
+
+    @pytest.mark.asyncio
     async def test_seeding_leaves_furniture_alone(self, db_session):
         design = await _design(db_session)
         node = _node(design, type="groupRect")
