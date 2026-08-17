@@ -414,3 +414,110 @@ async def test_delete_pending_refuses_a_mounted_device(client: AsyncClient, head
     assert res.status_code == 409
     listed = (await client.get("/api/v1/scan/pending", headers=headers)).json()
     assert [d["id"] for d in listed] == [pending_device.id]
+
+
+# ---------------------------------------------------------------------------
+# Per-device deep rescan (issue #350)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_rescan_device_requires_auth(client: AsyncClient, pending_device):
+    res = await client.post(f"/api/v1/scan/pending/{pending_device.id}/rescan")
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_rescan_device_creates_run_for_that_ip(client: AsyncClient, headers, pending_device):
+    with patch("app.api.routes.scan._background_device_scan", new_callable=AsyncMock) as bg:
+        res = await client.post(
+            f"/api/v1/scan/pending/{pending_device.id}/rescan", headers=headers
+        )
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["status"] == "running"
+    assert data["kind"] == "device"
+    # One host, not the configured ranges — the scan targets this device only.
+    assert data["ranges"] == ["192.168.1.100/32"]
+    bg.assert_called_once()
+    assert bg.call_args.args[1] == pending_device.id
+    # Full range unless the caller says otherwise.
+    assert bg.call_args.args[3] is True
+
+
+@pytest.mark.asyncio
+async def test_rescan_device_unknown_id_404(client: AsyncClient, headers):
+    res = await client.post(f"/api/v1/scan/pending/{uuid.uuid4()}/rescan", headers=headers)
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_rescan_device_without_ip_409(client: AsyncClient, headers, db_session):
+    device = InventoryDevice(id=str(uuid.uuid4()), ip=None, hostname="zigbee-lamp", status="pending")
+    db_session.add(device)
+    await db_session.commit()
+
+    res = await client.post(f"/api/v1/scan/pending/{device.id}/rescan", headers=headers)
+    assert res.status_code == 409
+    assert "IP" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_rescan_device_hidden_409(client: AsyncClient, headers, db_session):
+    device = InventoryDevice(id=str(uuid.uuid4()), ip="192.168.1.77", status="hidden")
+    db_session.add(device)
+    await db_session.commit()
+
+    res = await client.post(f"/api/v1/scan/pending/{device.id}/rescan", headers=headers)
+    assert res.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_rescan_device_serialized_per_device(client: AsyncClient, headers, pending_device):
+    """A second rescan while the first still runs is refused, not duplicated."""
+    with patch("app.api.routes.scan._background_device_scan", new_callable=AsyncMock):
+        first = await client.post(
+            f"/api/v1/scan/pending/{pending_device.id}/rescan", headers=headers
+        )
+        second = await client.post(
+            f"/api/v1/scan/pending/{pending_device.id}/rescan", headers=headers
+        )
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert "already running" in second.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_rescan_device_allows_a_new_run_once_the_first_finished(
+    client: AsyncClient, headers, pending_device
+):
+    with patch("app.api.routes.scan._background_device_scan", new_callable=AsyncMock):
+        first = await client.post(
+            f"/api/v1/scan/pending/{pending_device.id}/rescan", headers=headers
+        )
+        assert first.status_code == 200
+        run_id = first.json()["id"]
+        stopped = await client.post(f"/api/v1/scan/{run_id}/stop", headers=headers)
+        assert stopped.status_code == 200
+        again = await client.post(
+            f"/api/v1/scan/pending/{pending_device.id}/rescan", headers=headers
+        )
+    assert again.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_get_run_returns_status(client: AsyncClient, headers, pending_device):
+    with patch("app.api.routes.scan._background_device_scan", new_callable=AsyncMock):
+        started = await client.post(
+            f"/api/v1/scan/pending/{pending_device.id}/rescan", headers=headers
+        )
+    run_id = started.json()["id"]
+    res = await client.get(f"/api/v1/scan/runs/{run_id}", headers=headers)
+    assert res.status_code == 200
+    assert res.json()["id"] == run_id
+    assert res.json()["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_get_run_unknown_id_404(client: AsyncClient, headers):
+    res = await client.get(f"/api/v1/scan/runs/{uuid.uuid4()}", headers=headers)
+    assert res.status_code == 404

@@ -14,7 +14,7 @@
  * badges, then three columns — identity / operations / curation — so a device
  * reads in one screen instead of a scrolling column of key-value pairs.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Check,
   Copy,
@@ -23,9 +23,11 @@ import {
   HeartPulse,
   History,
   Layers,
+  Loader2,
   Network,
   Pencil,
   Plus,
+  Radar,
   StickyNote,
   Tags,
   X,
@@ -263,7 +265,16 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
   const [services, setServices] = useState<ServiceInfo[]>(device?.services ?? [])
   const [svcModal, setSvcModal] = useState<{ index: number | null; form?: ServiceFormData } | null>(null)
   const [saving, setSaving] = useState(false)
+  // The id of the deep rescan this modal started, while it is still running.
+  const [rescanRunId, setRescanRunId] = useState<string | null>(null)
+  const [rescanStarting, setRescanStarting] = useState(false)
   const activeTheme = useThemeStore((s) => s.activeTheme)
+  // Kept in a ref so the poll effect below doesn't restart — and lose its
+  // timer — every time the parent re-renders with a new callback identity.
+  const onSavedRef = useRef(onSaved)
+  onSavedRef.current = onSaved
+  const editingRef = useRef(editing)
+  editingRef.current = editing
 
   // Reset the form whenever the modal is pointed at another device — the
   // component stays mounted across card clicks in the inventory grid.
@@ -274,7 +285,48 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
     setServices(device.services ?? [])
     setEditing(false)
     setSvcModal(null)
+    setRescanRunId(null)
   }, [device])
+
+  // Wait on a running deep rescan. A full 65535-port scan takes minutes, so the
+  // run is polled rather than awaited — the user can close the modal, and the
+  // scan keeps going and still shows under Scan History.
+  const deviceId = device?.id ?? null
+  useEffect(() => {
+    if (!rescanRunId || !deviceId) return
+    let stopped = false
+    const timer = window.setInterval(async () => {
+      try {
+        const { data: run } = await scanApi.run(rescanRunId)
+        if (stopped || run.status === 'running') return
+        setRescanRunId(null)
+        if (run.status === 'error' || run.status === 'failed') {
+          toast.error(`Scan failed: ${run.error ?? 'unknown error'}`)
+          return
+        }
+        if (run.status === 'cancelled') {
+          toast.info('Scan stopped')
+          return
+        }
+        const { data: rows } = await scanApi.pending()
+        const fresh = (rows as InventoryEntry[]).find((d) => d.id === deviceId)
+        if (!fresh || stopped) return
+        // Never clobber an edit in progress — the user's unsaved services win.
+        if (!editingRef.current) setServices(fresh.services ?? [])
+        useCanvasStore.getState().applyDeviceFacts(fresh.id, deviceFactsToNodeData(fresh))
+        useCanvasStore.getState().notifyScanDeviceFound()
+        onSavedRef.current?.(fresh)
+        const n = fresh.services?.length ?? 0
+        toast.success(`Scan done — ${n} service${n !== 1 ? 's' : ''}`)
+      } catch {
+        // Transient failure: keep polling, the run is still on the server.
+      }
+    }, 3000)
+    return () => {
+      stopped = true
+      window.clearInterval(timer)
+    }
+  }, [rescanRunId, deviceId])
 
   if (!device) return null
 
@@ -299,6 +351,30 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
     setForm(toForm(device))
     setProperties(device.properties ?? [])
     setServices(device.services ?? [])
+  }
+
+  const handleRescan = async () => {
+    if (!device.ip || rescanRunId || rescanStarting) return
+    setRescanStarting(true)
+    try {
+      const res = await scanApi.rescanDevice(device.id, { full_ports: true })
+      setRescanRunId(res.data.id)
+      toast.info('Deep scan started — all 65535 ports, this takes a few minutes')
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      toast.error(detail ?? 'Could not start the scan')
+    } finally {
+      setRescanStarting(false)
+    }
+  }
+
+  const handleStopRescan = async () => {
+    if (!rescanRunId) return
+    try {
+      await scanApi.stop(rescanRunId)
+    } catch {
+      toast.error('Could not stop the scan')
+    }
   }
 
   const handleSubmitService = (data: ServiceSubmitData) => {
@@ -606,7 +682,36 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
 
                 {/* Zigbee devices have no IP services — the section would always be empty. */}
                 {!isZigbee && (
-                  <Section title={`Services found (${device.services.length})`} icon={Network}>
+                  <Section
+                    title={`Services found (${device.services.length})`}
+                    icon={Network}
+                    action={
+                      // Deep rescan: the fix for a device added before the
+                      // scanner knew its services, or one listening on a port
+                      // no curated list covers (issue #350). Needs an IP.
+                      device.ip ? (
+                        rescanRunId ? (
+                          <button
+                            onClick={handleStopRescan}
+                            data-testid="device-rescan-stop"
+                            className="flex items-center gap-1 text-[10px] text-[#f85149] hover:text-[#f85149]/80 transition-colors cursor-pointer"
+                          >
+                            <Loader2 size={10} className="animate-spin" /> Scanning — stop
+                          </button>
+                        ) : (
+                          <button
+                            onClick={handleRescan}
+                            disabled={rescanStarting}
+                            data-testid="device-rescan"
+                            title="Scan all 65535 TCP ports and refresh the services"
+                            className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Radar size={10} /> Deep scan
+                          </button>
+                        )
+                      ) : undefined
+                    }
+                  >
                     {device.services.length === 0 ? (
                       <Empty>No services detected</Empty>
                     ) : (

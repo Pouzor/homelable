@@ -109,6 +109,18 @@ export interface DeepScanConfig {
 
 export type ScanConfigData = { ranges: string[] } & DeepScanConfig
 
+/** A row of `scan_runs` — what `/scan/runs` and the device rescan return. */
+export interface ScanRunSummary {
+  id: string
+  status: 'running' | 'done' | 'cancelled' | 'error' | 'failed'
+  kind: string
+  ranges: string[]
+  devices_found: number
+  started_at: string
+  finished_at: string | null
+  error: string | null
+}
+
 // A device the backend refused to place because an equivalent node already
 // exists on the target design (same ip/mac/ieee). `existing_node_id` points at
 // the node already there so the UI can link to it.
@@ -158,8 +170,17 @@ export const scanApi = {
    */
   updatePending: (id: string, data: Partial<Omit<InventoryEntry, 'id' | 'status' | 'discovered_at'>>) =>
     api.patch<InventoryEntry>(`/scan/pending/${id}`, data),
+  /**
+   * Deep-rescan one known device: every TCP port, then re-fingerprint. Answers
+   * "this device predates the scanner knowing that service" (issue #350).
+   * Returns the ScanRun, so the caller polls `run` and can `stop` it.
+   * 409 when the device has no IP, is hidden, or is already being rescanned.
+   */
+  rescanDevice: (id: string, opts?: { full_ports?: boolean; http_probe_enabled?: boolean; verify_tls?: boolean }) =>
+    api.post<ScanRunSummary>(`/scan/pending/${id}/rescan`, opts ?? {}),
   hidden: () => api.get('/scan/hidden'),
   runs: () => api.get('/scan/runs'),
+  run: (runId: string) => api.get<ScanRunSummary>(`/scan/runs/${runId}`),
   clearPending: () => api.delete('/scan/pending'),
   /** Remove one inventory entry. 409 when a rack still mounts it. */
   deletePending: (id: string) => api.delete<{ deleted: boolean }>(`/scan/pending/${id}`),
