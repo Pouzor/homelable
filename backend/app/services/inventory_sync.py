@@ -16,10 +16,10 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import func, or_, select, text
-from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import InventoryDevice, Node
@@ -548,6 +548,49 @@ def _decode_json(value: Any) -> Any:
     return value
 
 
+# Legacy `nodes` columns SQLite stores as DATETIME. Read through raw SQL they come
+# back as text, and writing text into a DateTime column raises
+# ``TypeError: SQLite DateTime type only accepts Python datetime and date objects``.
+_LEGACY_DATETIME_COLUMNS = ("last_seen", "last_scan")
+
+
+def _decode_dt(value: Any) -> datetime | None:
+    """Raw SQL hands back DATETIME columns as text; the ORM would have parsed them.
+
+    An unparseable stamp becomes ``None`` rather than an error: `last_seen` and
+    `last_scan` are observations the status checker refreshes within a minute,
+    and losing one must not cost a node its inventory row.
+    """
+    if value is None or isinstance(value, datetime):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value.strip())
+    except ValueError:
+        logger.debug("Ignoring an unparseable legacy timestamp: %r", value)
+        return None
+
+
+async def _row_is_missing_facts(db: AsyncSession, device_id: str, facts: Mapping[str, Any]) -> bool:
+    """Does the linked row lack a fact the node's legacy columns still hold?
+
+    True only where the node has something to give and the row has nothing in
+    that field, so a node whose facts already made it across is left alone and
+    the backfill stays a no-op on later boots.
+    """
+    device = await db.get(InventoryDevice, device_id)
+    if device is None:
+        return True  # The row is gone; the node needs a new one.
+    for field in (*DEVICE_SCALARS, "label", "type", "ieee_address"):
+        if not _blank(facts.get(field)) and _blank(getattr(device, field, None)):
+            return True
+    return any(
+        facts.get(field) and not getattr(device, field, None)
+        for field in ("services", "properties")
+    )
+
+
 async def backfill_node_devices(db: AsyncSession) -> dict[str, int]:
     """Link every pre-3.3.0 canvas node to a Device Inventory row.
 
@@ -571,11 +614,16 @@ async def backfill_node_devices(db: AsyncSession) -> dict[str, int]:
 
     placeholders = ", ".join(legacy)
     furniture = ", ".join(f"'{t}'" for t in sorted(FURNITURE_TYPES))
+    # Linked nodes are read too, not just unlinked ones. A canvas saved while an
+    # earlier migration was stuck minted a *blank* inventory row from a UI that
+    # had no facts to show, and linked the node to it. Skipping those would count
+    # them as migrated and drop the columns that still hold their only copy of
+    # the ip, services and notes. A linked node is filled, never overwritten.
     rows = (
         await db.execute(
             text(
-                f"SELECT id, label, type, design_id, {placeholders} FROM nodes "
-                f"WHERE device_id IS NULL AND type NOT IN ({furniture}) "
+                f"SELECT id, label, type, design_id, device_id, {placeholders} FROM nodes "
+                f"WHERE type NOT IN ({furniture}) "
                 "ORDER BY updated_at, created_at, id"
             )
         )
@@ -588,26 +636,36 @@ async def backfill_node_devices(db: AsyncSession) -> dict[str, int]:
         facts: dict[str, Any] = {c: row[c] for c in legacy}
         facts["services"] = _decode_json(facts.get("services")) or []
         facts["properties"] = _decode_json(facts.get("properties")) or []
+        for field in _LEGACY_DATETIME_COLUMNS:
+            if field in facts:
+                facts[field] = _decode_dt(facts[field])
         facts["label"] = row["label"]
         facts["type"] = row["type"]
 
-        # One savepoint per node: a row the merge cannot write — a duplicate
-        # IEEE, a constraint no longer met — is dropped on its own rather than
-        # taking the whole backfill with it. Every node it does not link keeps
-        # its legacy columns, so nothing is lost and the next boot retries.
+        # One savepoint per node: a row the merge cannot write is dropped on its
+        # own rather than taking the whole backfill with it. Every node it does
+        # not link keeps its legacy columns, so nothing is lost and the next boot
+        # retries. The catch is deliberately broad — a node that cannot be read
+        # or written for *any* reason must not cost the others their link.
         try:
             async with db.begin_nested():
-                existing = await find_device_for(
-                    db, ip=facts.get("ip"), mac=facts.get("mac"), ieee=facts.get("ieee_address")
-                )
                 node = await db.get(Node, row["id"])
                 if node is None:  # pragma: no cover - the row was just read
                     continue
-                device = await link_facts(db, node, facts, overwrite_scalars=True)
+                if node.device_id and not await _row_is_missing_facts(db, node.device_id, facts):
+                    continue  # Already migrated, and its row holds the facts.
+                existing = await find_device_for(
+                    db, ip=facts.get("ip"), mac=facts.get("mac"), ieee=facts.get("ieee_address")
+                )
+                # A node that is already linked only has its gaps filled: whatever
+                # is on the row was written after the migration and is newer.
+                device = await link_facts(
+                    db, node, facts, overwrite_scalars=node.device_id is None
+                )
                 if device is None:
                     continue
                 await db.flush()
-        except (IntegrityError, OperationalError) as exc:
+        except Exception as exc:
             skipped += 1
             logger.warning(
                 "Inventory backfill: node %s (%s) skipped — %s", row["id"], row["label"], exc
