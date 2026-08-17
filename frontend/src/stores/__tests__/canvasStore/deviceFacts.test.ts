@@ -96,3 +96,49 @@ describe('canvasStore — applyDeviceFacts', () => {
     expect(changedFactFields(nodes[0].data, factsBaseline.n1)).toEqual(['label'])
   })
 })
+
+describe('canvasStore — applyDeviceFacts keeps each node\'s arrangement', () => {
+  beforeEach(resetStore)
+
+  const ssh = { port: 22, protocol: 'tcp' as const, service_name: 'ssh' }
+  const kuma = { port: 3001, protocol: 'tcp' as const, service_name: 'Uptime Kuma' }
+
+  const drawnAs = (id: string, services: typeof ssh[]) =>
+    makeNode(id, makeNodeData({ device_id: 'd-1', label: 'NAS', services }))
+
+  it('does not unhide a service the node hid', () => {
+    useCanvasStore.getState().loadCanvas([drawnAs('n1', [ssh, { ...kuma, visible: false }])], [])
+    // The inventory sends the row's own copy, which carries no such flag.
+    useCanvasStore.getState().applyDeviceFacts('d-1', { services: [ssh, kuma] })
+    expect(useCanvasStore.getState().nodes[0].data.services).toEqual([
+      ssh,
+      { ...kuma, visible: false },
+    ])
+  })
+
+  it('keeps this node\'s order while taking the row\'s values', () => {
+    useCanvasStore.getState().loadCanvas([drawnAs('n1', [kuma, ssh])], [])
+    useCanvasStore.getState().applyDeviceFacts('d-1', {
+      services: [{ ...ssh, path: '/admin' }, kuma],
+    })
+    expect(useCanvasStore.getState().nodes[0].data.services).toEqual([
+      kuma,
+      { ...ssh, path: '/admin' },
+    ])
+  })
+
+  it('brings a service the row gained in hidden', () => {
+    useCanvasStore.getState().loadCanvas([drawnAs('n1', [ssh])], [])
+    useCanvasStore.getState().applyDeviceFacts('d-1', { services: [ssh, kuma] })
+    expect(useCanvasStore.getState().nodes[0].data.services).toEqual([
+      ssh,
+      { ...kuma, visible: false },
+    ])
+  })
+
+  it('drops one the row lost', () => {
+    useCanvasStore.getState().loadCanvas([drawnAs('n1', [ssh, kuma])], [])
+    useCanvasStore.getState().applyDeviceFacts('d-1', { services: [ssh] })
+    expect(useCanvasStore.getState().nodes[0].data.services).toEqual([ssh])
+  })
+})

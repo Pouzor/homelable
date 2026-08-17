@@ -17,9 +17,11 @@ from app.services.inventory_sync import (
     backfill_node_devices,
     changed_facts,
     find_device_for,
+    hydrated_node,
     link_facts,
     merge_properties,
     merge_services,
+    seed_node_views,
 )
 
 
@@ -528,6 +530,61 @@ class TestBackfill:
         rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
         assert len(rows) == 1
 
+    @pytest.mark.asyncio
+    async def test_each_canvas_keeps_showing_what_it_showed(self, db_session):
+        """The upgrade must not redraw a canvas.
+
+        Two canvases drew the same host with different service lists, and the
+        scanner's row for it holds a third the user never put on either. They
+        converge on one row — so each node keeps a view of the subset it drew,
+        and the scanner's guess appears on neither.
+        """
+        await self._legacy_nodes_table(db_session)
+        ssh = {"port": 22, "protocol": "tcp", "service_name": "ssh"}
+        https = {"port": 443, "protocol": "tcp", "service_name": "https"}
+        kuma = {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"}
+        db_session.add(InventoryDevice(id="d-1", ip="10.0.0.5", services=[kuma]))
+        await db_session.commit()
+
+        one, two = await _design(db_session, "Net"), await _design(db_session, "Rack")
+        a = await self._legacy_node(db_session, one, ip="10.0.0.5", services=[ssh])
+        b = await self._legacy_node(db_session, two, ip="10.0.0.5", services=[ssh, https])
+
+        await backfill_node_devices(db_session)
+        await db_session.commit()
+
+        device = await db_session.get(InventoryDevice, "d-1")
+        assert {s["service_name"] for s in device.services} == {"Uptime Kuma", "ssh", "https"}
+        drawn = {}
+        for node_id in (a, b):
+            node = await db_session.get(Node, node_id)
+            payload = hydrated_node(node, device)
+            drawn[node_id] = [s["service_name"] for s in payload["services"] if s.get("visible", True)]
+        assert drawn[a] == ["ssh"]
+        assert drawn[b] == ["ssh", "https"]
+
+    @pytest.mark.asyncio
+    async def test_a_node_that_drew_no_service_keeps_drawing_none(self, db_session):
+        """An empty legacy list is an answer: that canvas showed no services."""
+        await self._legacy_nodes_table(db_session)
+        db_session.add(
+            InventoryDevice(
+                id="d-1", ip="10.0.0.5",
+                services=[{"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"}],
+            )
+        )
+        await db_session.commit()
+        design = await _design(db_session)
+        node_id = await self._legacy_node(db_session, design, ip="10.0.0.5", services=[])
+
+        await backfill_node_devices(db_session)
+        await db_session.commit()
+
+        node = await db_session.get(Node, node_id)
+        device = await db_session.get(InventoryDevice, "d-1")
+        payload = hydrated_node(node, device)
+        assert [s.get("visible", True) for s in payload["services"]] == [False]
+
 
 # --- routes -----------------------------------------------------------------
 
@@ -980,3 +1037,255 @@ class TestRoutesKeepTheLinkInStep:
         assert res.status_code == 200
         node = await db_session.get(Node, res.json()["node_id"])
         assert node is not None and node.device_id == "d-1"
+
+
+class TestPerNodeView:
+    """Order and visibility belong to the node, the facts to the row.
+
+    The same device drawn on two canvases is one inventory row, so without a
+    per-node view every canvas showing it inherits every service a scan ever
+    fingerprinted and every property any other canvas added.
+    """
+
+    async def _node_on(self, client, headers, design_id: str, **payload) -> dict:
+        body = {"type": "nas", "label": "NAS", "ip": "10.0.0.5", "design_id": design_id, "force": True}
+        body.update(payload)
+        res = await client.post("/api/v1/nodes", json=body, headers=body.pop("headers", None) or headers)
+        assert res.status_code == 201
+        return res.json()
+
+    @pytest.mark.asyncio
+    async def test_a_new_node_shows_what_the_row_already_holds(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """An empty payload list means "I have nothing to say", not "hide it all"."""
+        db_session.add(
+            InventoryDevice(
+                id="d-1",
+                ip="10.0.0.5",
+                services=[{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+                properties=[{"key": "Rack", "value": "A1", "icon": None, "visible": True}],
+            )
+        )
+        await db_session.commit()
+        design = await _design(db_session)
+
+        node = await self._node_on(client, headers, design)
+        assert [s["service_name"] for s in node["services"]] == ["ssh"]
+        assert all(s.get("visible", True) for s in node["services"])
+        assert node["properties"][0]["visible"] is True
+
+    @pytest.mark.asyncio
+    async def test_hiding_a_service_on_one_node_leaves_the_other_alone(
+        self, client: AsyncClient, headers, db_session
+    ):
+        db_session.add(
+            InventoryDevice(
+                id="d-1",
+                ip="10.0.0.5",
+                services=[
+                    {"port": 22, "protocol": "tcp", "service_name": "ssh"},
+                    {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"},
+                ],
+            )
+        )
+        await db_session.commit()
+        one, two = await _design(db_session, "Net"), await _design(db_session, "Rack")
+        node_a = await self._node_on(client, headers, one)
+        node_b = await self._node_on(client, headers, two)
+
+        hidden = [
+            {"port": 22, "protocol": "tcp", "service_name": "ssh"},
+            {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma", "visible": False},
+        ]
+        res = await client.patch(
+            f"/api/v1/nodes/{node_a['id']}", json={"services": hidden}, headers=headers
+        )
+        assert res.status_code == 200
+        assert [(s["service_name"], s.get("visible", True)) for s in res.json()["services"]] == [
+            ("ssh", True), ("Uptime Kuma", False),
+        ]
+
+        other = (await client.get(f"/api/v1/nodes/{node_b['id']}", headers=headers)).json()
+        assert [s.get("visible", True) for s in other["services"]] == [True, True]
+        # The service itself is untouched — hiding is not deleting.
+        device = await db_session.get(InventoryDevice, "d-1")
+        await db_session.refresh(device)
+        assert len(device.services) == 2
+
+    @pytest.mark.asyncio
+    async def test_the_order_is_per_node_too(self, client: AsyncClient, headers, db_session):
+        db_session.add(
+            InventoryDevice(
+                id="d-1",
+                ip="10.0.0.5",
+                properties=[
+                    {"key": "Rack", "value": "A1", "icon": None, "visible": True},
+                    {"key": "Owner", "value": "me", "icon": None, "visible": True},
+                ],
+            )
+        )
+        await db_session.commit()
+        one, two = await _design(db_session, "Net"), await _design(db_session, "Rack")
+        node_a = await self._node_on(client, headers, one)
+        node_b = await self._node_on(client, headers, two)
+
+        flipped = [
+            {"key": "Owner", "value": "me", "icon": None, "visible": True},
+            {"key": "Rack", "value": "A1", "icon": None, "visible": True},
+        ]
+        res = await client.patch(
+            f"/api/v1/nodes/{node_a['id']}", json={"properties": flipped}, headers=headers
+        )
+        assert [p["key"] for p in res.json()["properties"]] == ["Owner", "Rack"]
+
+        other = (await client.get(f"/api/v1/nodes/{node_b['id']}", headers=headers)).json()
+        assert [p["key"] for p in other["properties"]] == ["Rack", "Owner"]
+
+    @pytest.mark.asyncio
+    async def test_a_service_the_row_gains_later_stays_off_the_canvas(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """The leak this column exists to stop: a scan must not redraw every canvas."""
+        db_session.add(
+            InventoryDevice(
+                id="d-1", ip="10.0.0.5",
+                services=[{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+            )
+        )
+        await db_session.commit()
+        design = await _design(db_session)
+        node = await self._node_on(client, headers, design)
+
+        device = await db_session.get(InventoryDevice, "d-1")
+        device.services = [
+            *device.services,
+            {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"},
+        ]
+        await db_session.commit()
+
+        after = (await client.get(f"/api/v1/nodes/{node['id']}", headers=headers)).json()
+        assert [(s["service_name"], s.get("visible", True)) for s in after["services"]] == [
+            ("ssh", True), ("Uptime Kuma", False),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_removing_a_service_removes_it_from_the_device(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """Delete is device-wide — hiding is what a single canvas does."""
+        db_session.add(
+            InventoryDevice(
+                id="d-1", ip="10.0.0.5",
+                services=[
+                    {"port": 22, "protocol": "tcp", "service_name": "ssh"},
+                    {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"},
+                ],
+            )
+        )
+        await db_session.commit()
+        one, two = await _design(db_session, "Net"), await _design(db_session, "Rack")
+        node_a = await self._node_on(client, headers, one)
+        node_b = await self._node_on(client, headers, two)
+
+        await client.patch(
+            f"/api/v1/nodes/{node_a['id']}",
+            json={"services": [{"port": 22, "protocol": "tcp", "service_name": "ssh"}]},
+            headers=headers,
+        )
+        other = (await client.get(f"/api/v1/nodes/{node_b['id']}", headers=headers)).json()
+        assert [s["service_name"] for s in other["services"]] == ["ssh"]
+
+    @pytest.mark.asyncio
+    async def test_a_canvas_save_records_the_view_even_when_no_fact_changed(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """`changed_facts` guards the shared row, not the node's own view.
+
+        A canvas save reporting no edited fact is exactly what hiding a service
+        looks like from the row's side — nothing about the device changed. The
+        view still has to land, or the toggle would not survive the save.
+        """
+        db_session.add(
+            InventoryDevice(
+                id="d-1", ip="10.0.0.5",
+                services=[
+                    {"port": 22, "protocol": "tcp", "service_name": "ssh"},
+                    {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"},
+                ],
+            )
+        )
+        await db_session.commit()
+        design = await _design(db_session)
+        node = await self._node_on(client, headers, design)
+
+        res = await client.post(
+            "/api/v1/canvas/save",
+            json={
+                "design_id": design,
+                "nodes": [{
+                    "id": node["id"], "type": "nas", "label": "NAS", "ip": "10.0.0.5",
+                    "device_id": "d-1", "changed_facts": [], "pos_x": 10.0, "pos_y": 20.0,
+                    "services": [
+                        {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma", "visible": False},
+                        {"port": 22, "protocol": "tcp", "service_name": "ssh"},
+                    ],
+                }],
+                "edges": [],
+                "viewport": {"x": 0, "y": 0, "zoom": 1},
+            },
+            headers=headers,
+        )
+        assert res.status_code == 200
+
+        loaded = (await client.get(f"/api/v1/canvas?design_id={design}", headers=headers)).json()
+        assert [(s["service_name"], s.get("visible", True)) for s in loaded["nodes"][0]["services"]] == [
+            ("Uptime Kuma", False), ("ssh", True),
+        ]
+        device = await db_session.get(InventoryDevice, "d-1")
+        await db_session.refresh(device)
+        assert [s["service_name"] for s in device.services] == ["ssh", "Uptime Kuma"]
+
+    @pytest.mark.asyncio
+    async def test_seeding_freezes_what_a_pre_upgrade_node_showed(self, db_session):
+        """`display_view` arrives NULL on every existing node; the seed fills it."""
+        design = await _design(db_session)
+        db_session.add(
+            InventoryDevice(
+                id="d-1", ip="10.0.0.5",
+                services=[{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+            )
+        )
+        node = _node(design, device_id="d-1")
+        db_session.add(node)
+        await db_session.commit()
+
+        assert await seed_node_views(db_session) == 1
+        await db_session.commit()
+        assert node.display_view == {
+            "services": [{"key": "22|tcp|ssh", "visible": True}],
+            "properties": [],
+        }
+        # Idempotent: a second boot finds nothing without a view.
+        assert await seed_node_views(db_session) == 0
+
+    @pytest.mark.asyncio
+    async def test_seeding_leaves_furniture_alone(self, db_session):
+        design = await _design(db_session)
+        node = _node(design, type="groupRect")
+        db_session.add(node)
+        await db_session.commit()
+
+        assert await seed_node_views(db_session) == 0
+        assert node.display_view is None
+
+    @pytest.mark.asyncio
+    async def test_a_node_without_a_view_still_shows_everything(self, db_session):
+        """No view — furniture, or a node an older version linked — is not "hide all"."""
+        device = InventoryDevice(
+            id="d-1", services=[{"port": 22, "protocol": "tcp", "service_name": "ssh"}]
+        )
+        node = _node(await _design(db_session), device_id="d-1")
+        assert hydrated_node(node, device)["services"] == [
+            {"port": 22, "protocol": "tcp", "service_name": "ssh"}
+        ]

@@ -97,6 +97,10 @@ export interface ServiceInfo {
    *  several domains. Same accepted shapes as a node `ip`/`hostname`
    *  (`host`, `host:port`, `https://host/…`). */
   host?: string
+  /** Whether the node drawing this device shows the service. Per node, not per
+   *  device — the same device on another canvas keeps its own answer. Absent
+   *  means shown: the flag only appears once the service has been hidden. */
+  visible?: boolean
 }
 
 export type ServiceStatus = 'online' | 'offline' | 'unknown'

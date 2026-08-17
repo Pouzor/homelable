@@ -134,6 +134,16 @@ export function DetailPanel({ onEdit, onOpenInventory }: DetailPanelProps) {
     if (openSvcModal?.index === index) setSvcModal(null)
   }
 
+  // Per node, not per device: the same device drawn on two canvases can show a
+  // service on one and hide it on the other. Only the order and the flag are the
+  // node's — the service itself still belongs to the inventory row.
+  const handleToggleService = (index: number) => {
+    snapshotHistory()
+    updateNode(node.id, {
+      services: services.map((svc, i) => (i === index ? { ...svc, visible: svc.visible === false } : svc)),
+    })
+  }
+
   const handleStartEdit = (index: number) => {
     const svc = services[index]
     if (!svc) return
@@ -260,6 +270,7 @@ export function DetailPanel({ onEdit, onOpenInventory }: DetailPanelProps) {
                     setDragSvcIndex(null)
                     setDragOverSvcIndex(null)
                   }}
+                  onToggleVisible={() => handleToggleService(i)}
                   onEdit={() => handleStartEdit(i)}
                   onRemove={() => handleRemoveService(i)}
                 />
@@ -594,7 +605,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   web: '#00d4ff', database: '#a855f7', monitoring: '#39d353', storage: '#e3b341', security: '#f85149', remote: '#8b949e',
 }
 
-function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, onDragStart, onDragEnter, onDragEnd, onDrop, onEdit, onRemove }: {
+function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, onDragStart, onDragEnter, onDragEnd, onDrop, onToggleVisible, onEdit, onRemove }: {
   svc: ServiceInfo
   host?: string
   status?: ServiceStatus
@@ -605,6 +616,7 @@ function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, on
   onDragEnter: () => void
   onDragEnd: () => void
   onDrop: () => void
+  onToggleVisible: () => void
   onEdit: () => void
   onRemove: () => void
 }) {
@@ -615,6 +627,8 @@ function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, on
   // A live offline service overrides the category colour with red.
   const color = status === 'offline' ? '#f85149' : categoryColor
   const pathLabel = svc.path?.trim() ? svc.path.trim() : ''
+  // Absent means shown: a service only carries the flag once it has been hidden.
+  const shown = svc.visible !== false
 
   return (
     <div
@@ -692,6 +706,14 @@ function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, on
         ) : (
           <span className="w-2.5" />
         )}
+
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleVisible() }}
+          className="text-[#8b949e] hover:text-[#00d4ff] ml-0.5 cursor-pointer transition-colors"
+          title={shown ? 'Hide on node' : 'Show on node'}
+        >
+          {shown ? <Eye size={10} /> : <EyeOff size={10} />}
+        </button>
 
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }}

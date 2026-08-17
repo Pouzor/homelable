@@ -48,6 +48,35 @@ describe('changedFactFields', () => {
     expect(changedFactFields(data({ properties: [] }), base)).toEqual(['properties'])
   })
 
+  it('does not call hiding a service an edit to the device', () => {
+    const services = [
+      { port: 22, protocol: 'tcp' as const, service_name: 'ssh' },
+      { port: 3001, protocol: 'tcp' as const, service_name: 'Uptime Kuma' },
+    ]
+    const base = factsBaselineOf(data({ services }))
+    const hidden = [services[0], { ...services[1], visible: false }]
+    // Visibility belongs to this node — pushing it as a device edit would hide
+    // the service on every other canvas drawing the same row.
+    expect(changedFactFields(data({ services: hidden }), base)).toEqual([])
+  })
+
+  it('does not call reordering an edit to the device', () => {
+    const props = [
+      { key: 'Rack', value: 'A1', icon: null, visible: true },
+      { key: 'Owner', value: 'me', icon: null, visible: true },
+    ]
+    const base = factsBaselineOf(data({ properties: props }))
+    expect(changedFactFields(data({ properties: [props[1], props[0]] }), base)).toEqual([])
+  })
+
+  it('still reports a real edit to a list item', () => {
+    const props = [{ key: 'Rack', value: 'A1', icon: null, visible: true }]
+    const base = factsBaselineOf(data({ properties: props }))
+    expect(changedFactFields(data({ properties: [{ ...props[0], value: 'B2' }] }), base)).toEqual([
+      'properties',
+    ])
+  })
+
   it('treats every fact as changed with no baseline — a new node has nothing to revert', () => {
     expect(changedFactFields(data(), undefined)).toEqual([...DEVICE_FACT_FIELDS])
   })
