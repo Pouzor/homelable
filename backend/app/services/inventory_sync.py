@@ -308,6 +308,13 @@ def apply_view(items: list[Any] | None, entries: Any, kind: str) -> list[Any]:
     version — everything shows, in the row's own order. With one, an item the
     view does not list is appended hidden rather than dropped, so a service a
     scan added is one toggle away instead of invisible.
+
+    A *non-empty* view that matches nothing the row still holds is treated as
+    having no view at all. It means the row was replaced wholesale under the
+    node — every key gone, every key new — and hiding the lot would leave a node
+    drawing nothing while its view claims otherwise. An empty view is different:
+    it is a real answer ("this canvas draws none of them") and keeps hiding
+    everything.
     """
     key_of = _VIEW_KEY[kind]
     facts = list(items or [])
@@ -329,6 +336,8 @@ def apply_view(items: list[Any] | None, entries: Any, kind: str) -> list[Any]:
             continue  # Deleted from the row since — the view catches up on write.
         taken.add(key)
         out.append(_stamped(item, bool(entry.get("visible", True))))
+    if entries and not taken:
+        return facts
     for item in facts:
         if key_of(item) not in taken:
             out.append(_stamped(item, False))
@@ -754,6 +763,28 @@ async def _row_is_missing_facts(db: AsyncSession, device_id: str, facts: Mapping
     )
 
 
+def _with_later_properties(
+    view: dict[str, Any] | None, device: InventoryDevice
+) -> dict[str, Any] | None:
+    """``view``, plus the row's properties the pre-3.3.0 backup never saw.
+
+    They are what the user added while running 3.3.0-3.3.2 — the row was the
+    only place to add them then, and every canvas drew them. Recovering the old
+    view alone would take them off every canvas at once, which reads as data
+    loss. Appended in the row's order, after everything the backup placed.
+    """
+    if view is None:
+        return None
+    entries = view.get("properties")
+    if not isinstance(entries, list):
+        return view
+    listed = {str(e.get("key")) for e in entries if isinstance(e, dict)}
+    later = [e for e in view_entries(device.properties, "properties") if e["key"] not in listed]
+    if not later:
+        return view
+    return {**view, "properties": [*entries, *later]}
+
+
 async def seed_node_views(
     db: AsyncSession, *, drawn: Callable[[], Mapping[str, Mapping[str, Any]]] | None = None
 ) -> int:
@@ -770,6 +801,15 @@ async def seed_node_views(
     actually a node to seed. Where it has an answer that answer wins, restoring
     the arrangement the user made; where it does not, the row is the seed and
     the canvas keeps showing exactly what it shows today. Does not commit.
+
+    The backup is 3.2.0-era, so it can only speak for what existed then. A
+    *property* the row has gained since — one the user added by hand while
+    running 3.3.0-3.3.2, when the row was all a canvas had — appears in no
+    backup entry, and seeding strictly from the backup would hide work the user
+    has been looking at for days. Those are appended visible, keeping the
+    recovered order and hidden flags for everything the backup does know.
+    Services are not treated that way: what a row gained since 3.3.0 is mostly a
+    scan's fingerprint, and holding it back is the whole point of the view.
     """
     nodes = list(
         (
@@ -803,11 +843,11 @@ async def seed_node_views(
         was = was_drawn.get(node.id)
         # `strict`: an empty list in the backup is this canvas' real answer —
         # it drew no service — and must not be read as "say nothing, show all".
-        node.display_view = (
-            next_view(None, view_from_facts(was), device, strict=True)
-            if was
-            else view_of_device(device)
-        )
+        if was:
+            view = next_view(None, view_from_facts(was), device, strict=True)
+            node.display_view = _with_later_properties(view, device)
+        else:
+            node.display_view = view_of_device(device)
         seeded += 1
     await db.flush()
     return seeded

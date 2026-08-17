@@ -19,6 +19,7 @@ from app.db.models import InventoryDevice, ScanRun
 from app.services.discovery_sources import add_source
 from app.services.fingerprint import fingerprint_ports, suggest_node_type
 from app.services.http_probe import probe_open_ports
+from app.services.inventory_sync import merge_services
 from app.services.mac_utils import normalize_mac
 
 logger = logging.getLogger(__name__)
@@ -591,7 +592,14 @@ async def run_scan(
                 keep.mac = norm_mac or keep.mac
                 keep.hostname = host.get("hostname") or keep.hostname
                 keep.os = host.get("os") or keep.os
-                keep.services = services
+                # Union, never replace. Since 3.3.0 the row is the only copy of
+                # a device's services — every canvas drawing it reads this list
+                # — so overwriting it with the fingerprint would delete services
+                # the user added by hand, on every canvas at once. What a scan
+                # finds is added; what it no longer sees stays. A service the
+                # user does not want on a canvas is hidden by that node's view,
+                # which is where "I deleted this" belongs.
+                keep.services = merge_services(keep.services, services)
                 # Don't downgrade a Proxmox-typed guest (vm/lxc) to the generic
                 # scan guess; the importer knows the true type.
                 if not (keep.ieee_address or "").startswith("pve-"):

@@ -1301,6 +1301,104 @@ class TestPerNodeView:
         assert node.display_view is None
 
     @pytest.mark.asyncio
+    async def test_a_view_matching_nothing_left_on_the_row_shows_the_row(self, db_session):
+        """The row was replaced wholesale under the node — don't draw a blank node.
+
+        A view whose every key is gone tells us nothing about the list that
+        replaced it, and hiding all of it leaves a node showing no service while
+        "Show services" is on (#347). An *empty* view is a real answer and still
+        hides everything — that case is covered below.
+        """
+        device = InventoryDevice(
+            id="d-1",
+            services=[
+                {"port": 8080, "protocol": "tcp", "service_name": "HTTP Alt"},
+                {"port": 5001, "protocol": "tcp", "service_name": "Synology DSM HTTPS"},
+            ],
+        )
+        node = _node(
+            await _design(db_session),
+            device_id="d-1",
+            display_view={"services": [{"key": "9000|tcp|portainer", "visible": True}]},
+        )
+        assert [s["service_name"] for s in hydrated_node(node, device)["services"]] == [
+            "HTTP Alt", "Synology DSM HTTPS",
+        ]
+        assert all(s.get("visible", True) for s in hydrated_node(node, device)["services"])
+
+    @pytest.mark.asyncio
+    async def test_an_empty_view_still_hides_everything(self, db_session):
+        """"This canvas draws none of them" is an answer, not a missing view."""
+        device = InventoryDevice(
+            id="d-1", services=[{"port": 22, "protocol": "tcp", "service_name": "ssh"}]
+        )
+        node = _node(await _design(db_session), device_id="d-1", display_view={"services": []})
+        assert hydrated_node(node, device)["services"] == [
+            {"port": 22, "protocol": "tcp", "service_name": "ssh", "visible": False}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_seeding_keeps_a_property_added_after_the_backup(self, db_session):
+        """The backup is 3.2.0-era: it cannot know a property added since.
+
+        Adding one while on 3.3.0-3.3.2 wrote it to the row, and every canvas
+        drew it. Seeding strictly from the backup would take it off all of them
+        at once (#347), so it is appended visible after what the backup places.
+        """
+        design = await _design(db_session)
+        db_session.add(
+            InventoryDevice(
+                id="d-1", ip="10.0.0.5",
+                properties=[
+                    {"key": "Rack", "value": "A", "icon": None, "visible": True},
+                    {"key": "Ports", "value": "8", "icon": None, "visible": True},
+                ],
+            )
+        )
+        node = _node(design, device_id="d-1")
+        db_session.add(node)
+        await db_session.commit()
+
+        # The backup only knew "Rack", and this canvas had it hidden.
+        drawn = {node.id: {
+            "services": [],
+            "properties": [{"key": "Rack", "value": "A", "icon": None, "visible": False}],
+        }}
+        assert await seed_node_views(db_session, drawn=lambda: drawn) == 1
+        await db_session.commit()
+
+        assert node.display_view["properties"] == [
+            {"key": "rack", "visible": False},   # recovered, still hidden here
+            {"key": "ports", "visible": True},   # added since the backup, kept
+        ]
+
+    @pytest.mark.asyncio
+    async def test_seeding_still_holds_back_a_service_found_since_the_backup(self, db_session):
+        """Services are not treated that way: a scan's find stays off the canvas."""
+        design = await _design(db_session)
+        db_session.add(
+            InventoryDevice(
+                id="d-1", ip="10.0.0.5",
+                services=[
+                    {"port": 22, "protocol": "tcp", "service_name": "ssh"},
+                    {"port": 5001, "protocol": "tcp", "service_name": "Synology DSM HTTPS"},
+                ],
+            )
+        )
+        node = _node(design, device_id="d-1")
+        db_session.add(node)
+        await db_session.commit()
+
+        drawn = {node.id: {
+            "services": [{"port": 22, "protocol": "tcp", "service_name": "ssh"}],
+            "properties": [],
+        }}
+        assert await seed_node_views(db_session, drawn=lambda: drawn) == 1
+        await db_session.commit()
+
+        assert node.display_view["services"] == [{"key": "22|tcp|ssh", "visible": True}]
+
+    @pytest.mark.asyncio
     async def test_a_node_without_a_view_still_shows_everything(self, db_session):
         """No view — furniture, or a node an older version linked — is not "hide all"."""
         device = InventoryDevice(

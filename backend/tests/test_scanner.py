@@ -751,6 +751,48 @@ async def test_run_scan_merges_proxmox_row_by_mac(mem_db):
 
 
 @pytest.mark.asyncio
+async def test_run_scan_keeps_services_the_fingerprint_cannot_see(mem_db):
+    """A re-scan unions its fingerprint onto the row — it never replaces it.
+
+    Since 3.3.0 the row is the only copy of a device's services and every canvas
+    drawing it reads that list, so overwriting it with what nmap happened to
+    match would delete hand-added services everywhere at once (#347).
+    """
+    from app.services.scanner import run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        session.add(InventoryDevice(
+            id="row-1", ip="192.168.1.60", status="approved",
+            discovery_source="arp", discovery_sources=["arp"],
+            services=[
+                {"port": 9000, "protocol": "tcp", "service_name": "Portainer", "path": "/#!/home"},
+                {"port": 22, "protocol": "tcp", "service_name": "ssh"},
+            ],
+        ))
+        await session.commit()
+
+    nmap_hosts = [{"ip": "192.168.1.60", "hostname": "docker.lan", "mac": None, "os": None,
+                   "open_ports": [{"port": 22, "protocol": "tcp", "banner": "OpenSSH 9.2"}]}]
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", return_value=nmap_hosts), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(["192.168.1.0/24"], session, run_id)
+
+    async with mem_db() as session:
+        row = await session.get(InventoryDevice, "row-1")
+
+    by_port = {s["port"]: s for s in row.services}
+    assert by_port[9000]["service_name"] == "Portainer"  # hand-added, untouched
+    assert by_port[9000]["path"] == "/#!/home"
+    assert 22 in by_port                                 # what the scan saw is still there
+    assert row.status == "approved"
+
+
+@pytest.mark.asyncio
 async def test_run_scan_mdns_skipped_if_already_in_nmap(mem_db):
     """If nmap and mDNS both find the same IP, it should not be double-counted."""
     from app.services.scanner import run_scan

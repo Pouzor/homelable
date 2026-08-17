@@ -300,6 +300,54 @@ async def test_a_database_already_on_3_3_recovers_its_layout_from_the_backup(db_
     await engine.dispose()
 
 
+async def test_a_property_added_while_on_3_3_survives_the_recovery(db_320):
+    """The backup is 3.2.0-era and cannot know what the user added afterwards.
+
+    On 3.3.0-3.3.2 the row was the only place to add a property, and every
+    canvas drew it. Recovering the view strictly from the backup would hide it
+    on all of them at once — the "my properties disappeared" half of #347. The
+    scanner's service find is still held back: only properties are appended.
+    """
+    _, engine = db_320
+    await _build_320(engine)
+    rack = '[{"key": "Rack", "value": "A", "icon": null, "visible": true}]'
+    ssh = '[{"port": 22, "protocol": "tcp", "service_name": "ssh"}]'
+    async with engine.begin() as conn:
+        await conn.exec_driver_sql(
+            f"UPDATE nodes SET properties = '{rack}', services = '{ssh}' WHERE id = 'n1'"
+        )
+
+    await database.init_db()  # 3.2.0 -> 3.3.x, and the backup that predates it.
+    kuma = {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"}
+    await _wind_back_to_3_3_2(engine, kuma)
+
+    from app.db.models import InventoryDevice, Node
+
+    session_factory = database.async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        node = await session.get(Node, "n1")
+        device = await session.get(InventoryDevice, node.device_id)
+        # What the user re-added by hand while running 3.3.x.
+        device.properties = [
+            *device.properties,
+            {"key": "Ports", "value": "8", "icon": None, "visible": True},
+        ]
+        await session.commit()
+
+    await database.init_db()
+
+    async with session_factory() as session:
+        node = await session.get(Node, "n1")
+        device = await session.get(InventoryDevice, node.device_id)
+        payload = inventory_sync.hydrated_node(node, device)
+        assert [(p["key"], p.get("visible", True)) for p in payload["properties"]] == [
+            ("Rack", True), ("Ports", True),
+        ]
+        # And the scan's find is still off this canvas.
+        assert [s["service_name"] for s in payload["services"] if s.get("visible", True)] == ["ssh"]
+    await engine.dispose()
+
+
 async def test_without_a_usable_backup_the_row_is_the_seed(db_320):
     """No backup to recover from: keep showing what the canvas shows today.
 
