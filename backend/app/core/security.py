@@ -14,7 +14,7 @@ from jwt import InvalidTokenError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse
 
-from app.core.config import settings
+from app.core.config import origin_of, settings
 
 ACCESS_TOKEN_USE = "access"
 OIDC_SESSION_TOKEN_USE = "oidc_session"
@@ -153,6 +153,13 @@ def origin_is_allowed(origin: str | None) -> bool:
     if not origin:
         return False
     allowed_origins = {value.rstrip("/") for value in settings.cors_origins}
+    # A same-origin deployment behind a reverse proxy needs no CORS, so
+    # CORS_ORIGINS is often left at its localhost default — yet browsers still
+    # send Origin on unsafe methods. The OIDC callback URL is served by this app,
+    # so its origin is the app's own and is always a legitimate CSRF origin.
+    app_origin = origin_of(settings.oidc_redirect_uri)
+    if app_origin:
+        allowed_origins.add(app_origin)
     return origin.rstrip("/") in allowed_origins
 
 
