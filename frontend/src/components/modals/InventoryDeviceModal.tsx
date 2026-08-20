@@ -317,7 +317,14 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
         useCanvasStore.getState().notifyScanDeviceFound()
         onSavedRef.current?.(fresh)
         const n = fresh.services?.length ?? 0
-        toast.success(`Scan done — ${n} service${n !== 1 ? 's' : ''}`)
+        const summary = `${n} service${n !== 1 ? 's' : ''}`
+        // A done run can still carry an advisory: the sweep ran out of budget
+        // before every port range. Saying "done" flat would read as complete.
+        if (run.error) {
+          toast.warning(`Scan partial — ${summary}. ${run.error}`)
+        } else {
+          toast.success(`Scan done — ${summary}`)
+        }
       } catch {
         // Transient failure: keep polling, the run is still on the server.
       }

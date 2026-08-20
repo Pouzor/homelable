@@ -125,6 +125,29 @@ describe('InventoryDeviceModal — deep rescan', () => {
     expect(mockRun.mock.calls.length).toBe(calls)
   })
 
+  it('says partial when the sweep ran out of budget', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const { toast } = await import('sonner')
+    const fresh = makeDevice({ services: [{ port: 22, protocol: 'tcp', service_name: 'SSH' }] })
+    render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
+    fireEvent.click(screen.getByTestId('device-rescan'))
+    await waitFor(() => expect(screen.getByTestId('device-rescan-stop')).toBeInTheDocument())
+
+    // A done run carrying an advisory — it scanned part of the range only.
+    mockRun.mockResolvedValue({
+      data: { id: 'run-1', status: 'done', error: 'Scanned 3/8 port ranges (1 open) — the rest was not reached' },
+    })
+    mockPending.mockResolvedValue({ data: [fresh] })
+    await act(async () => { await vi.advanceTimersByTimeAsync(3100) })
+
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        expect.stringContaining('Scan partial — 1 service')
+      )
+    )
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
   it('surfaces a failed run instead of silently ending', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const { toast } = await import('sonner')

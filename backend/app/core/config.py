@@ -117,6 +117,14 @@ class Settings(BaseSettings):
     # ports survive a timeout regardless; raise this on slow/overlay networks.
     scanner_version_host_timeout: int = 60
 
+    # Per-device deep rescan: total time budget in seconds, checked between port
+    # slices. Unprivileged nmap falls back to a connect scan (-sT), and a host
+    # that drops packets makes every filtered port wait out its RTT — the whole
+    # range against such a host runs ~20-45 min. When the budget is spent the
+    # run keeps what it found and says how much it did not reach. This is NOT an
+    # nmap --host-timeout: that one discards a host's results wholesale.
+    scanner_deep_host_timeout: int = 2700
+
     # Deep scan — persisted defaults (overridable per-scan from the scan dialog).
     # http_ranges: extra nmap port ranges, opt-in, no default. Probe + TLS off by default.
     scanner_http_ranges: list[str] = []

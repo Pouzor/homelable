@@ -375,6 +375,58 @@ def test_nmap_scan_single_non_root_uses_connect_scan():
     assert result["open_ports"][0]["banner"] == "nginx 1.24"
 
 
+def test_nmap_scan_single_discovery_is_unbounded_by_default():
+    """The range scan's discovery pass keeps its authoritative, untimed run."""
+    from app.services.scanner import _nmap_scan_single
+
+    host = {"ip": "192.168.1.14", "hostname": None, "mac": None, "os": None, "open_ports": []}
+    disc = _fake_scanner("192.168.1.14", {})
+
+    with patch("app.services.scanner.nmap.PortScanner", side_effect=[disc]), \
+         patch("app.services.scanner.os.geteuid", return_value=1000):
+        _nmap_scan_single(host)
+
+    args = disc.scan.call_args.kwargs["arguments"]
+    assert "--host-timeout" not in args
+    assert "--min-rate" not in args
+
+
+def test_nmap_scan_single_bounded_never_sets_a_host_timeout():
+    """A deep slice drops retries — never --host-timeout.
+
+    nmap answers a host timeout with "Skipping host <ip> due to host timeout"
+    and throws away every port it had already found, so a ceiling here turns a
+    slow scan into one that reports nothing. The time on a dropping host goes to
+    the retry pass — measured 2x — so that is what the deep scan gives up.
+    """
+    from app.services.scanner import _nmap_scan_single
+
+    host = {"ip": "192.168.1.15", "hostname": None, "mac": None, "os": None, "open_ports": []}
+    disc = _fake_scanner("192.168.1.15", {})
+
+    with patch("app.services.scanner.nmap.PortScanner", side_effect=[disc]), \
+         patch("app.services.scanner.os.geteuid", return_value=1000):
+        _nmap_scan_single(host, "1-8192", True)
+
+    args = disc.scan.call_args.kwargs["arguments"]
+    assert "-p 1-8192" in args
+    assert "--host-timeout" not in args
+    assert "--max-retries 0" in args
+
+
+def test_deep_port_chunks_cover_every_port_once():
+    from app.services.scanner import _deep_port_chunks
+
+    chunks = _deep_port_chunks(8192)
+    assert chunks[0] == "1-8192"
+    assert chunks[-1].endswith("-65535")
+    covered = []
+    for c in chunks:
+        lo, hi = (int(x) for x in c.split("-"))
+        covered.extend(range(lo, hi + 1))
+    assert covered == list(range(1, 65536))
+
+
 # ---------------------------------------------------------------------------
 # _nmap_scan
 # ---------------------------------------------------------------------------
@@ -1055,9 +1107,15 @@ async def test_run_device_scan_refreshes_services_and_marks_run_done(mem_db):
         session.add(InventoryDevice(id="d1", ip="192.168.1.9", status="approved", services=[]))
         await session.commit()
 
-    def _scanned(host_dict, port_spec):
-        assert port_spec == "1-65535"
-        host_dict["open_ports"] = [{"port": 22, "protocol": "tcp", "banner": "OpenSSH 9.2"}]
+    seen_specs = []
+
+    def _scanned(host_dict, port_spec, bounded=False):
+        seen_specs.append(port_spec)
+        # A full-range rescan is always bounded, or it never ends.
+        assert bounded is True
+        # Only the slice holding 22 reports it — the union is the caller's job.
+        if port_spec == "1-8192":
+            host_dict["open_ports"] = [{"port": 22, "protocol": "tcp", "banner": "OpenSSH 9.2"}]
         return host_dict
 
     async with mem_db() as session:
@@ -1093,7 +1151,7 @@ async def test_run_device_scan_keeps_hand_added_services(mem_db):
         session.add(InventoryDevice(id="d1", ip="192.168.1.9", status="pending", services=[hand_added]))
         await session.commit()
 
-    def _scanned(host_dict, port_spec):
+    def _scanned(host_dict, port_spec, bounded=False):
         host_dict["open_ports"] = [{"port": 22, "protocol": "tcp", "banner": "OpenSSH 9.2"}]
         return host_dict
 
@@ -1158,3 +1216,81 @@ async def test_run_device_scan_skips_nmap_when_cancelled(mem_db):
     assert run.status == "cancelled"
     # The run cleans up its cancellation flag on the way out.
     assert run_id not in _cancelled_runs
+
+
+@pytest.mark.asyncio
+async def test_run_device_scan_unions_ports_across_slices(mem_db):
+    """Every slice contributes; a slow one costs only its own ports."""
+    from app.services.scanner import _deep_port_chunks, run_device_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(ScanRun(id=run_id, status="running", kind="device", ranges=["192.168.1.9/32"]))
+        session.add(InventoryDevice(id="d1", ip="192.168.1.9", status="pending", services=[]))
+        await session.commit()
+
+    def _scanned(host_dict, port_spec, bounded=False):
+        lo = int(port_spec.split("-")[0])
+        if lo == 1:
+            host_dict["open_ports"] = [{"port": 22, "protocol": "tcp", "banner": ""}]
+        elif lo == 8193:
+            host_dict["open_ports"] = [{"port": 8096, "protocol": "tcp", "banner": ""}]
+        return host_dict
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan_single", side_effect=_scanned), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_device_scan("d1", session, run_id)
+
+    async with mem_db() as session:
+        device = await session.get(InventoryDevice, "d1")
+        run = await session.get(ScanRun, run_id)
+
+    assert device is not None and run is not None
+    assert {s.get("port") for s in device.services} == {22, 8096}
+    # A complete sweep carries no advisory.
+    assert run.error is None
+    assert len(_deep_port_chunks()) == 8
+
+
+@pytest.mark.asyncio
+async def test_run_device_scan_keeps_what_it_found_when_the_budget_runs_out(mem_db):
+    """A spent budget stops the sweep — it never discards the ports found.
+
+    The earlier --host-timeout did exactly that (nmap skips the host wholesale),
+    which is why a deep scan could come back empty on a slow host.
+    """
+    from app.services.scanner import run_device_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(ScanRun(id=run_id, status="running", kind="device", ranges=["192.168.1.9/32"]))
+        session.add(InventoryDevice(id="d1", ip="192.168.1.9", status="pending", services=[]))
+        await session.commit()
+
+    calls = []
+
+    def _scanned(host_dict, port_spec, bounded=False):
+        calls.append(port_spec)
+        host_dict["open_ports"] = [{"port": 22, "protocol": "tcp", "banner": ""}]
+        return host_dict
+
+    async with mem_db() as session:
+        # Budget already spent when the first slice returns.
+        with patch("app.services.scanner._nmap_scan_single", side_effect=_scanned), \
+             patch("app.services.scanner.settings") as mock_settings, \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            mock_settings.scanner_deep_host_timeout = -1
+            await run_device_scan("d1", session, run_id)
+
+    async with mem_db() as session:
+        device = await session.get(InventoryDevice, "d1")
+        run = await session.get(ScanRun, run_id)
+
+    assert calls == ["1-8192"]
+    assert device is not None and run is not None
+    assert {s.get("port") for s in device.services} == {22}
+    assert run.status == "done"
+    # Partial coverage is reported, never passed off as a full sweep.
+    assert run.error is not None
+    assert "1/8" in run.error

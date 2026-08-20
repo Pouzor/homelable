@@ -7,6 +7,7 @@ import re
 import socket
 import subprocess
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -65,6 +66,18 @@ def _valid_port_range(spec: str) -> bool:
 # Every TCP port. Used by the per-device deep rescan, which trades minutes of
 # nmap time for a service list that no curated port list can promise.
 _FULL_PORTS = "1-65535"
+
+# The deep rescan runs the full range in slices, one nmap call each, unioning
+# what they find. A slice that runs long costs only its own ports — where a
+# single 65535-port call that overruns costs everything (see _nmap_scan_single).
+# It also gives the run somewhere to notice a stop request, and somewhere to
+# give up when the budget is spent, without abandoning the ports already found.
+_DEEP_CHUNK_SIZE = 8192
+
+
+def _deep_port_chunks(size: int = _DEEP_CHUNK_SIZE) -> list[str]:
+    """Slice the whole TCP range into nmap ``-p`` specs of ``size`` ports."""
+    return [f"{start}-{min(start + size - 1, 65535)}" for start in range(1, 65536, size)]
 
 
 def _build_port_spec(http_ranges: list[str] | None, full: bool = False) -> str:
@@ -249,7 +262,9 @@ async def _ping_sweep(target: str, run_id: str | None = None) -> dict[str, dict[
     return alive
 
 
-def _nmap_scan_single(host_dict: dict[str, Any], port_spec: str = _EXTRA_PORTS) -> dict[str, Any]:
+def _nmap_scan_single(
+    host_dict: dict[str, Any], port_spec: str = _EXTRA_PORTS, bounded: bool = False
+) -> dict[str, Any]:
     """
     Phase 2 — single-IP port scan with service detection.
     Runs in a thread (blocking). Returns the host dict enriched with open_ports.
@@ -273,8 +288,26 @@ def _nmap_scan_single(host_dict: dict[str, Any], port_spec: str = _EXTRA_PORTS) 
     # -sT without root but being explicit avoids edge cases.
     scan_type = "-sS" if os.geteuid() == 0 else "-sT"
 
-    # --- Pass A: port discovery (no -sV, no host-timeout) ---
+    # --- Pass A: port discovery (no -sV) ---
+    # Default timing for the range scan: its ports are authoritative and a
+    # curated port list is fast either way.
+    #
+    # ``bounded`` is the deep rescan's timing, and carries NO --host-timeout on
+    # purpose: nmap answers a host timeout with "Skipping host <ip> due to host
+    # timeout" and discards *every* port it had already found, so a ceiling here
+    # turns a slow scan into one that reports nothing. The caller bounds total
+    # runtime by slicing the range instead.
+    #
+    # What costs the time is a host that drops packets: 8188 of 8192 ports
+    # filtered, each waiting out its probe. Measured against such a host, the
+    # retry pass is the whole cost — 8192 ports took 329s at --max-retries 1
+    # and 164s at 0, finding the same ports. Capping the RTT changed nothing
+    # (329s), so it is not set. Dropping retries risks missing a port that
+    # loses its one probe; that trade belongs to the deep scan alone, and the
+    # curated-port range scan keeps nmap's default retries.
     discovery_args = f"{scan_type} --open -T4 -Pn -p {port_spec}"
+    if bounded:
+        discovery_args += " --max-retries 0 --min-rate 2000"
     logger.debug("[Phase 2] %s discovery args: %s", ip, discovery_args)
     nm_disc = nmap.PortScanner()
     try:
@@ -757,8 +790,46 @@ async def run_device_scan(
             "open_ports": [],
         }
 
-        if not _is_cancelled(run_id):
-            host = await asyncio.to_thread(_nmap_scan_single, host, port_spec)
+        # The full range goes out in slices so a stop request lands within one
+        # slice instead of at the end, and so a spent budget keeps the ports
+        # found so far. A curated port list is one call, as before.
+        chunks = _deep_port_chunks() if full_ports else [port_spec]
+        deadline = time.monotonic() + settings.scanner_deep_host_timeout
+        found: list[dict[str, Any]] = []
+        seen: set[tuple[str, int]] = set()
+        skipped = 0
+
+        for i, chunk in enumerate(chunks):
+            if _is_cancelled(run_id):
+                skipped = len(chunks) - i
+                break
+            if i and time.monotonic() > deadline:
+                skipped = len(chunks) - i
+                logger.warning(
+                    "[Deep scan] %s — budget of %ds spent, %d port range(s) not scanned",
+                    host["ip"], settings.scanner_deep_host_timeout, skipped,
+                )
+                break
+            # bounded: retry-free timing, for a host that drops packets.
+            scanned = await asyncio.to_thread(
+                _nmap_scan_single, dict(host), chunk, full_ports
+            )
+            for port in scanned.get("open_ports") or []:
+                key = (port["protocol"], port["port"])
+                if key not in seen:
+                    seen.add(key)
+                    found.append(port)
+            host["mac"] = host["mac"] or scanned.get("mac")
+            host["os"] = scanned.get("os") or host["os"]
+
+        host["open_ports"] = found
+        # A partial sweep still says what it saw; the row unions it in.
+        partial = (
+            f"Scanned {len(chunks) - skipped}/{len(chunks)} port ranges "
+            f"({len(found)} open) — the rest was not reached"
+            if skipped
+            else None
+        )
 
         devices_found = 0
         if not _is_cancelled(run_id):
@@ -775,6 +846,11 @@ async def run_device_scan(
         if run:
             run.status = "cancelled" if _is_cancelled(run_id) else "done"
             run.devices_found = devices_found
+            # Not a failure: a done run carrying an advisory, the way a Proxmox
+            # import reports what it could not see. Never let a partial sweep
+            # read as a complete one.
+            if partial and run.status == "done":
+                run.error = partial
             run.finished_at = datetime.now(timezone.utc)
             await db.commit()
 
