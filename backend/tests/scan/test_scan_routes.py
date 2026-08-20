@@ -445,6 +445,50 @@ async def test_rescan_device_creates_run_for_that_ip(client: AsyncClient, header
 
 
 @pytest.mark.asyncio
+async def test_rescan_device_passes_the_requested_port_range(
+    client: AsyncClient, headers, pending_device
+):
+    """The dialog's range reaches the scanner verbatim."""
+    with patch("app.api.routes.scan._background_device_scan", new_callable=AsyncMock) as bg:
+        res = await client.post(
+            f"/api/v1/scan/pending/{pending_device.id}/rescan",
+            headers=headers,
+            json={"ports": " 80,443,8000-9000 "},
+        )
+    assert res.status_code == 200, res.text
+    assert bg.call_args.args[4] == "80,443,8000-9000"
+
+
+@pytest.mark.asyncio
+async def test_rescan_device_rejects_an_unusable_port_range(
+    client: AsyncClient, headers, pending_device
+):
+    """A bad spec is refused here, not handed to nmap."""
+    for bad in ["0", "65536", "100-50", "80,", "http"]:
+        res = await client.post(
+            f"/api/v1/scan/pending/{pending_device.id}/rescan",
+            headers=headers,
+            json={"ports": bad},
+        )
+        assert res.status_code == 422, f"{bad}: {res.text}"
+
+
+@pytest.mark.asyncio
+async def test_rescan_device_treats_a_blank_range_as_the_full_sweep(
+    client: AsyncClient, headers, pending_device
+):
+    with patch("app.api.routes.scan._background_device_scan", new_callable=AsyncMock) as bg:
+        res = await client.post(
+            f"/api/v1/scan/pending/{pending_device.id}/rescan",
+            headers=headers,
+            json={"ports": "   "},
+        )
+    assert res.status_code == 200, res.text
+    assert bg.call_args.args[4] is None
+    assert bg.call_args.args[3] is True
+
+
+@pytest.mark.asyncio
 async def test_rescan_device_unknown_id_404(client: AsyncClient, headers):
     res = await client.post(f"/api/v1/scan/pending/{uuid.uuid4()}/rescan", headers=headers)
     assert res.status_code == 404

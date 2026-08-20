@@ -35,6 +35,7 @@ from app.services.node_dedupe import dedupe_nodes_by_device, find_duplicate_node
 from app.services.scanner import (
     DeepScanOptions,
     _valid_port_range,
+    _valid_port_spec,
     request_cancel,
     run_device_scan,
     run_scan,
@@ -191,6 +192,7 @@ async def _background_device_scan(
     device_id: str,
     deep_scan: DeepScanOptions | None = None,
     full_ports: bool = True,
+    ports: str | None = None,
 ) -> None:
     async with AsyncSessionLocal() as db:
         try:
@@ -200,6 +202,7 @@ async def _background_device_scan(
                 run_id,
                 deep_scan=deep_scan or DeepScanOptions(),
                 full_ports=full_ports,
+                ports=ports,
             )
         except Exception:
             logger.exception("Device scan run %s failed unexpectedly", run_id)
@@ -246,11 +249,26 @@ async def trigger_scan(
 
 
 class RescanDeviceRequest(BaseModel):
-    """Per-device deep rescan. Defaults to every TCP port — that is the point."""
+    """Per-device deep rescan. Defaults to every TCP port — that is the point.
+
+    ``ports`` narrows the sweep to what the user typed in the deep-scan dialog
+    (``80,443``, ``1-1024``); it wins over ``full_ports``.
+    """
 
     full_ports: bool = True
+    ports: str | None = None
     http_probe_enabled: bool | None = None
     verify_tls: bool | None = None
+
+    @field_validator("ports")
+    @classmethod
+    def _check_ports(cls, v: str | None) -> str | None:
+        if v is None or not v.strip():
+            return None
+        spec = v.strip()
+        if not _valid_port_spec(spec):
+            raise ValueError("Invalid port range")
+        return spec
 
 
 @router.post("/pending/{device_id}/rescan", response_model=ScanRunResponse)
@@ -297,7 +315,7 @@ async def rescan_device(
     await db.commit()
     await db.refresh(run)
     background_tasks.add_task(
-        _background_device_scan, run.id, device_id, deep_scan, p.full_ports
+        _background_device_scan, run.id, device_id, deep_scan, p.full_ports, p.ports
     )
     return run
 

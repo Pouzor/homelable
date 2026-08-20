@@ -42,6 +42,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PropertyList } from '@/components/common/PropertyList'
 import { ServiceModal } from './ServiceModal'
+import { DeepScanModal } from './DeepScanModal'
 import { scanApi } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useThemeStore } from '@/stores/themeStore'
@@ -51,6 +52,7 @@ import { NODE_TYPE_DEFAULT_ICONS } from '@/utils/nodeIcons'
 import { isRackDevice, orderedSources, SOURCE_META } from '@/utils/deviceSources'
 import { DEVICE_TYPE_GROUPS } from '@/utils/nodeTypeGroups'
 import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
+import { countPorts } from '@/utils/portSpec'
 import { serviceToForm, type ServiceFormData, type ServiceSubmitData } from '@/utils/serviceForm'
 import { NODE_TYPE_LABELS, type CheckMethod, type InventoryEntry, type NodeProperty, type NodeType, type ServiceInfo } from '@/types'
 import modalStyles from './modal-interactive.module.css'
@@ -268,6 +270,8 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
   // The id of the deep rescan this modal started, while it is still running.
   const [rescanRunId, setRescanRunId] = useState<string | null>(null)
   const [rescanStarting, setRescanStarting] = useState(false)
+  // The port-range dialog, opened by the Deep scan link.
+  const [deepScanOpen, setDeepScanOpen] = useState(false)
   const activeTheme = useThemeStore((s) => s.activeTheme)
   // Kept in a ref so the poll effect below doesn't restart — and lose its
   // timer — every time the parent re-renders with a new callback identity.
@@ -286,6 +290,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
     setEditing(false)
     setSvcModal(null)
     setRescanRunId(null)
+    setDeepScanOpen(false)
   }, [device])
 
   // Wait on a running deep rescan. A full 65535-port scan takes minutes, so the
@@ -360,13 +365,14 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
     setServices(device.services ?? [])
   }
 
-  const handleRescan = async () => {
+  const handleRescan = async (ports: string) => {
     if (!device.ip || rescanRunId || rescanStarting) return
     setRescanStarting(true)
     try {
-      const res = await scanApi.rescanDevice(device.id, { full_ports: true })
+      const res = await scanApi.rescanDevice(device.id, { ports })
       setRescanRunId(res.data.id)
-      toast.info('Deep scan started — all 65535 ports, this takes a few minutes')
+      const n = countPorts(ports)
+      toast.info(`Deep scan started — ${n.toLocaleString('en-US')} ports, this takes a few minutes`)
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
       toast.error(detail ?? 'Could not start the scan')
@@ -707,10 +713,10 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                           </button>
                         ) : (
                           <button
-                            onClick={handleRescan}
+                            onClick={() => setDeepScanOpen(true)}
                             disabled={rescanStarting}
                             data-testid="device-rescan"
-                            title="Scan all 65535 TCP ports and refresh the services"
+                            title="Pick a port range and refresh the services"
                             className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Radar size={10} /> Deep scan
@@ -867,6 +873,15 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
             </div>
           )}
         </div>
+
+        {deepScanOpen && (
+          <DeepScanModal
+            open
+            target={device.ip}
+            onClose={() => setDeepScanOpen(false)}
+            onStart={handleRescan}
+          />
+        )}
 
         {svcModal && (
           <ServiceModal

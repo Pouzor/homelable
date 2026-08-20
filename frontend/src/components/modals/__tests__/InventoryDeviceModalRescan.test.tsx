@@ -39,6 +39,15 @@ function makeDevice(overrides: Partial<InventoryEntry> = {}): InventoryEntry {
   }
 }
 
+/** The link opens the port-range dialog; the scan starts from there. */
+async function startScan() {
+  fireEvent.click(screen.getByTestId('device-rescan'))
+  await waitFor(() => expect(screen.getByTestId('deep-scan-start')).toBeInTheDocument())
+  // The start resolves a promise that sets state — act() keeps that update
+  // inside the test's control, fake timers or not.
+  await act(async () => { fireEvent.click(screen.getByTestId('deep-scan-start')) })
+}
+
 const noop = { onClose: vi.fn(), onApprove: vi.fn(), onHide: vi.fn(), onIgnore: vi.fn() }
 
 beforeEach(() => {
@@ -74,16 +83,42 @@ describe('InventoryDeviceModal — deep rescan', () => {
 
   it('scans every port and swaps to a stop control while it runs', async () => {
     render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
-    fireEvent.click(screen.getByTestId('device-rescan'))
+    await startScan()
 
     await waitFor(() => expect(screen.getByTestId('device-rescan-stop')).toBeInTheDocument())
-    expect(mockRescanDevice).toHaveBeenCalledWith('dev-1', { full_ports: true })
+    expect(mockRescanDevice).toHaveBeenCalledWith('dev-1', { ports: '1-65535' })
     expect(screen.queryByTestId('device-rescan')).toBeNull()
+  })
+
+  it('sends the range the user typed instead of the whole space', async () => {
+    render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
+    fireEvent.click(screen.getByTestId('device-rescan'))
+    const input = await screen.findByTestId('deep-scan-ports')
+    expect(input).toHaveValue('1-65535')
+
+    fireEvent.change(input, { target: { value: '80,443,8000-9000' } })
+    fireEvent.click(screen.getByTestId('deep-scan-start'))
+
+    await waitFor(() =>
+      expect(mockRescanDevice).toHaveBeenCalledWith('dev-1', { ports: '80,443,8000-9000' })
+    )
+  })
+
+  it('refuses to start on a range nmap could not use', async () => {
+    render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
+    fireEvent.click(screen.getByTestId('device-rescan'))
+    const input = await screen.findByTestId('deep-scan-ports')
+
+    fireEvent.change(input, { target: { value: '99999' } })
+    expect(screen.getByTestId('deep-scan-start')).toBeDisabled()
+
+    fireEvent.click(screen.getByTestId('deep-scan-start'))
+    expect(mockRescanDevice).not.toHaveBeenCalled()
   })
 
   it('stops the run through the same ScanRun the header uses', async () => {
     render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
-    fireEvent.click(screen.getByTestId('device-rescan'))
+    await startScan()
     await waitFor(() => expect(screen.getByTestId('device-rescan-stop')).toBeInTheDocument())
 
     fireEvent.click(screen.getByTestId('device-rescan-stop'))
@@ -96,7 +131,7 @@ describe('InventoryDeviceModal — deep rescan', () => {
     })
     const { toast } = await import('sonner')
     render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
-    fireEvent.click(screen.getByTestId('device-rescan'))
+    await startScan()
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith('A scan is already running for this device')
@@ -111,7 +146,7 @@ describe('InventoryDeviceModal — deep rescan', () => {
       services: [{ port: 8096, protocol: 'tcp', service_name: 'Jellyfin' }],
     })
     render(<InventoryDeviceModal {...noop} onSaved={onSaved} device={makeDevice()} />)
-    fireEvent.click(screen.getByTestId('device-rescan'))
+    await startScan()
     await waitFor(() => expect(screen.getByTestId('device-rescan-stop')).toBeInTheDocument())
 
     mockRun.mockResolvedValue({ data: { id: 'run-1', status: 'done', error: null } })
@@ -130,7 +165,7 @@ describe('InventoryDeviceModal — deep rescan', () => {
     const { toast } = await import('sonner')
     const fresh = makeDevice({ services: [{ port: 22, protocol: 'tcp', service_name: 'SSH' }] })
     render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
-    fireEvent.click(screen.getByTestId('device-rescan'))
+    await startScan()
     await waitFor(() => expect(screen.getByTestId('device-rescan-stop')).toBeInTheDocument())
 
     // A done run carrying an advisory — it scanned part of the range only.
@@ -152,7 +187,7 @@ describe('InventoryDeviceModal — deep rescan', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const { toast } = await import('sonner')
     render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
-    fireEvent.click(screen.getByTestId('device-rescan'))
+    await startScan()
     await waitFor(() => expect(screen.getByTestId('device-rescan-stop')).toBeInTheDocument())
 
     mockRun.mockResolvedValue({ data: { id: 'run-1', status: 'error', error: 'nmap missing' } })
