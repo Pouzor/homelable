@@ -85,6 +85,49 @@ class TestMergeRules:
         assert out[1]["port"] == 80
 
 
+    def test_a_scan_never_repaints_an_icon_the_user_picked(self):
+        """Every "Scan network" used to overwrite a hand-picked brand icon."""
+        base = [
+            {"port": 80, "protocol": "tcp", "service_name": "http",
+             "icon": "brand:pihole", "category": "network"},
+        ]
+        # What fingerprint_ports returns for the same port: its own guess.
+        incoming = [
+            {"port": 80, "protocol": "tcp", "service_name": "http",
+             "icon": "Globe", "category": "web"},
+        ]
+        out = merge_services(base, incoming, discovered=True)
+        assert len(out) == 1
+        assert out[0]["icon"] == "brand:pihole"
+        assert out[0]["category"] == "network"
+
+    def test_a_scan_still_fills_an_icon_the_service_never_had(self):
+        out = merge_services(
+            [{"port": 80, "protocol": "tcp", "service_name": "http"}],
+            [{"port": 80, "protocol": "tcp", "service_name": "http",
+              "icon": "Globe", "category": "web"}],
+            discovered=True,
+        )
+        assert out[0]["icon"] == "Globe"
+        assert out[0]["category"] == "web"
+
+    def test_a_user_edit_still_changes_the_icon(self):
+        """The guard is for scanner output only — an edit is an edit."""
+        out = merge_services(
+            [{"port": 80, "protocol": "tcp", "service_name": "http", "icon": "Globe"}],
+            [{"port": 80, "protocol": "tcp", "service_name": "http", "icon": "brand:pihole"}],
+        )
+        assert out[0]["icon"] == "brand:pihole"
+
+    def test_services_keep_an_established_icon_when_incoming_has_none(self):
+        """A blank field is silence, not a reset — mirrors merge_properties."""
+        out = merge_services(
+            [{"port": 80, "protocol": "tcp", "service_name": "http", "icon": "brand:pihole"}],
+            [{"port": 80, "protocol": "tcp", "service_name": "http", "icon": None}],
+        )
+        assert out[0]["icon"] == "brand:pihole"
+
+
 class TestChangedFacts:
     """What a save is allowed to write: its edit, not its whole snapshot."""
 

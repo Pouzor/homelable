@@ -674,7 +674,9 @@ async def process_host(
         # finds is added; what it no longer sees stays. A service the
         # user does not want on a canvas is hidden by that node's view,
         # which is where "I deleted this" belongs.
-        keep.services = merge_services(keep.services, services)
+        # discovered=: the fingerprint may add services and refresh what it
+        # knows, but never repaints an icon or category the user chose.
+        keep.services = merge_services(keep.services, services, discovered=True)
         # Don't downgrade a Proxmox-typed guest (vm/lxc) to the generic
         # scan guess; the importer knows the true type.
         if not (keep.ieee_address or "").startswith("pve-"):

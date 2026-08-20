@@ -1190,6 +1190,50 @@ async def test_run_device_scan_keeps_hand_added_services(mem_db):
 
 
 @pytest.mark.asyncio
+async def test_scan_keeps_the_icon_the_user_picked_for_a_service(mem_db):
+    """Regression: every scan used to repaint hand-picked service icons.
+
+    The fingerprint guesses an icon from the port; the user's choice is the
+    only one that means anything, so a rescan leaves it where it is.
+    """
+    from app.services.scanner import run_device_scan
+
+    run_id = _make_run_id()
+    curated = {
+        "port": 22,
+        "protocol": "tcp",
+        "service_name": "ssh",
+        "icon": "brand:openssh",
+        "category": "remote",
+    }
+    async with mem_db() as session:
+        session.add(ScanRun(id=run_id, status="running", kind="device", ranges=["192.168.1.9/32"]))
+        session.add(InventoryDevice(id="d1", ip="192.168.1.9", status="approved", services=[curated]))
+        await session.commit()
+
+    def _scanned(host_dict, port_spec, bounded=False):
+        host_dict["open_ports"] = [{"port": 22, "protocol": "tcp", "banner": "OpenSSH 9.2"}]
+        return host_dict
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan_single", side_effect=_scanned), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_device_scan("d1", session, run_id)
+
+    async with mem_db() as session:
+        device = await session.get(InventoryDevice, "d1")
+
+    assert device is not None
+    matches = [s for s in device.services if s.get("port") == 22]
+    # Merged in place — the name key is case-insensitive, so "SSH" from the
+    # signature does not append a second row next to the user's "ssh".
+    assert len(matches) == 1
+    ssh = matches[0]
+    assert ssh["icon"] == "brand:openssh"
+    assert ssh["category"] == "remote"
+
+
+@pytest.mark.asyncio
 async def test_run_device_scan_marks_run_error_when_device_has_no_ip(mem_db):
     from app.services.scanner import run_device_scan
 
