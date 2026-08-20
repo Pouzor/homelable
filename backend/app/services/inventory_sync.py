@@ -358,8 +358,26 @@ def _stamped(item: Any, visible: bool) -> Any:
     return {**item, "visible": visible}
 
 
-def merge_services(base: list[Any] | None, incoming: list[Any] | None) -> list[Any]:
-    """Union two service lists on (port, protocol, name); incoming wins."""
+# How a service looks is the user's call. A fingerprint only ever guesses it
+# from a port number and a banner, so a scan that re-finds a known service must
+# not repaint the icon someone picked by hand — that happened on every "Scan
+# network", across every canvas drawing the device, at once.
+_CURATED_SERVICE_FIELDS = ("icon", "category")
+
+
+def merge_services(
+    base: list[Any] | None,
+    incoming: list[Any] | None,
+    *,
+    discovered: bool = False,
+) -> list[Any]:
+    """Union two service lists on (port, protocol, name); incoming wins.
+
+    ``discovered`` marks ``incoming`` as scanner output rather than a user edit:
+    it still adds services and refreshes facts, but leaves an established icon
+    and category alone. Either way a blank incoming value never clears one that
+    is already set — an absent field is silence, not a reset.
+    """
     out: list[Any] = [dict(s) if isinstance(s, dict) else s for s in (base or [])]
     index = {_service_key(s): i for i, s in enumerate(out)}
     for svc in incoming or []:
@@ -369,7 +387,12 @@ def merge_services(base: list[Any] | None, incoming: list[Any] | None) -> list[A
             out.append(dict(svc) if isinstance(svc, dict) else svc)
             index[key] = len(out) - 1
         elif isinstance(svc, dict) and isinstance(out[pos], dict):
-            out[pos] = {**out[pos], **svc}
+            merged = {**out[pos], **svc}
+            for field_name in _CURATED_SERVICE_FIELDS:
+                established = out[pos].get(field_name)
+                if established and (discovered or not svc.get(field_name)):
+                    merged[field_name] = established
+            out[pos] = merged
         else:
             out[pos] = svc
     return out
