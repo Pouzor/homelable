@@ -12,9 +12,14 @@ from app.services.scanner import _cancelled_runs, request_cancel, run_scan
 
 
 @pytest.mark.asyncio
-async def test_background_scan_marks_run_failed_on_exception(mem_db):
-    """If run_scan() raises, the ScanRun must transition running → failed and the
-    session rollback path must execute without a follow-on exception."""
+async def test_background_scan_marks_run_errored_on_exception(mem_db):
+    """If run_scan() raises, the ScanRun must transition running → error and the
+    session rollback path must execute without a follow-on exception.
+
+    "error" and not "failed": one condition, one name — it is what run_scan
+    writes when it catches the failure itself, and the only one Scan History
+    filters and colours.
+    """
     from app.api.routes.scan import _background_scan
 
     async with mem_db() as session:
@@ -36,13 +41,13 @@ async def test_background_scan_marks_run_failed_on_exception(mem_db):
     async with mem_db() as session:
         refreshed = await session.get(ScanRun, run_id)
         assert refreshed is not None
-        assert refreshed.status == "failed"
+        assert refreshed.status == "error"
 
 
 @pytest.mark.asyncio
 async def test_background_scan_leaves_non_running_status_alone(mem_db):
     """If the run was already stopped/cancelled before run_scan failed, _background_scan
-    must NOT overwrite that terminal status with 'failed'."""
+    must NOT overwrite that terminal status with 'error'."""
     from app.api.routes.scan import _background_scan
 
     async with mem_db() as session:
@@ -436,3 +441,30 @@ async def test_run_scan_updates_existing_pending_device(db_session: AsyncSession
     # Services and hostname should be updated
     assert device.hostname == "myhost.lan"
     assert any(s["port"] == 8096 for s in device.services)
+
+
+@pytest.mark.asyncio
+async def test_background_device_scan_marks_run_errored_on_exception(mem_db):
+    """Same word as the network scan — a device run that blows up reads alike."""
+    from app.api.routes.scan import _background_device_scan
+
+    async with mem_db() as session:
+        run = ScanRun(status="running", kind="device", ranges=["10.0.0.5/32"])
+        session.add(run)
+        await session.commit()
+        run_id = run.id
+
+    with (
+        patch("app.api.routes.scan.AsyncSessionLocal", mem_db),
+        patch(
+            "app.api.routes.scan.run_device_scan",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        await _background_device_scan(run_id, "d1")
+
+    async with mem_db() as session:
+        refreshed = await session.get(ScanRun, run_id)
+        assert refreshed is not None
+        assert refreshed.status == "error"

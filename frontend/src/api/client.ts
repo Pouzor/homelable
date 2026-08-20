@@ -112,6 +112,8 @@ export type ScanConfigData = { ranges: string[] } & DeepScanConfig
 /** A row of `scan_runs` — what `/scan/runs` and the device rescan return. */
 export interface ScanRunSummary {
   id: string
+  // 'failed' is legacy: runs recorded before the backend settled on 'error'
+  // for the same condition. Still read, never written.
   status: 'running' | 'done' | 'cancelled' | 'error' | 'failed'
   kind: string
   ranges: string[]

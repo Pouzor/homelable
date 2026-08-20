@@ -160,6 +160,49 @@ describe('InventoryDeviceModal — deep rescan', () => {
     expect(mockRun.mock.calls.length).toBe(calls)
   })
 
+  it('keeps an edit in progress when the scan lands', async () => {
+    // The parent patches the row in place on onSaved (`setSelected(saved)`),
+    // handing down a new object for the same device. That must not throw away
+    // a form the user is still filling in — a deep scan runs for minutes.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const onSaved = vi.fn()
+    const device = makeDevice()
+    const fresh = makeDevice({
+      services: [{ port: 8096, protocol: 'tcp', service_name: 'Jellyfin' }],
+    })
+    const { rerender } = render(
+      <InventoryDeviceModal {...noop} onSaved={onSaved} device={device} />
+    )
+    await startScan()
+    await waitFor(() => expect(screen.getByTestId('device-rescan-stop')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByPlaceholderText('Display name'), { target: { value: 'Media box' } })
+
+    mockRun.mockResolvedValue({ data: { id: 'run-1', status: 'done', error: null } })
+    mockPending.mockResolvedValue({ data: [fresh] })
+    await act(async () => { await vi.advanceTimersByTimeAsync(3100) })
+
+    // The fresh row still reaches the canvas and the grid — the scan is not
+    // discarded just because a form is open.
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(fresh))
+    rerender(<InventoryDeviceModal {...noop} onSaved={onSaved} device={fresh} />)
+
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Media box')).toBeInTheDocument()
+  })
+
+  it('still resets the form when pointed at another device', async () => {
+    const { rerender } = render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(screen.getByPlaceholderText('Display name'), { target: { value: 'Media box' } })
+
+    rerender(<InventoryDeviceModal {...noop} device={makeDevice({ id: 'dev-2' })} />)
+
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
+    expect(screen.queryByDisplayValue('Media box')).toBeNull()
+  })
+
   it('says partial when the sweep ran out of budget', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const { toast } = await import('sonner')

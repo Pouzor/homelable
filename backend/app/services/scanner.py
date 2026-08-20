@@ -856,6 +856,11 @@ async def run_device_scan(
             "os": device.os,
             "open_ports": [],
         }
+        # A rescan re-observes a device through the source it already has; it
+        # is not a network discovery. Hardcoding "arp" here would tell a
+        # Proxmox guest, a rack mount or a hand-added host that the network
+        # scanner found it, and it would then answer that source filter.
+        source = device.discovery_source or "arp"
 
         # The full range goes out in slices so a stop request lands within one
         # slice instead of at the end, and so a spent budget keeps the ports
@@ -912,7 +917,7 @@ async def run_device_scan(
             # The row is being rescanned on the user's request, so it is never
             # "hidden" from itself — the route rejects hidden devices upfront.
             outcome = await process_host(
-                db, host, hidden_ips=set(), deep_scan=deep_scan, discovery_source="arp"
+                db, host, hidden_ips=set(), deep_scan=deep_scan, discovery_source=source
             )
             if outcome == "created":
                 devices_found = 1
