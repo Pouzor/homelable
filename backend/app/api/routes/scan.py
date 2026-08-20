@@ -183,7 +183,10 @@ async def _background_scan(
             await db.rollback()
             run = await db.get(ScanRun, run_id)
             if run and run.status == "running":
-                run.status = "failed"
+                # "error", the same word run_scan / run_device_scan write when
+                # they fail themselves — one condition, one name. Scan History
+                # filters and colours that one; "failed" showed up unlabelled.
+                run.status = "error"
                 await db.commit()
 
 
@@ -209,7 +212,10 @@ async def _background_device_scan(
             await db.rollback()
             run = await db.get(ScanRun, run_id)
             if run and run.status == "running":
-                run.status = "failed"
+                # "error", the same word run_scan / run_device_scan write when
+                # they fail themselves — one condition, one name. Scan History
+                # filters and colours that one; "failed" showed up unlabelled.
+                run.status = "error"
                 await db.commit()
 
 

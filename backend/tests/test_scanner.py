@@ -1234,6 +1234,45 @@ async def test_scan_keeps_the_icon_the_user_picked_for_a_service(mem_db):
 
 
 @pytest.mark.asyncio
+async def test_run_device_scan_keeps_the_device_own_discovery_source(mem_db):
+    """A rescan re-observes a device; it does not discover it on the network.
+
+    Tagging every rescanned device "arp" told a Proxmox guest or a hand-added
+    host that the network scanner found it, and it then answered that filter.
+    """
+    from app.services.scanner import run_device_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(ScanRun(id=run_id, status="running", kind="device", ranges=["192.168.1.9/32"]))
+        session.add(InventoryDevice(
+            id="d1",
+            ip="192.168.1.9",
+            status="approved",
+            services=[],
+            discovery_source="proxmox",
+            discovery_sources=["proxmox"],
+        ))
+        await session.commit()
+
+    def _scanned(host_dict, port_spec, bounded=False):
+        host_dict["open_ports"] = [{"port": 8006, "protocol": "tcp", "banner": ""}]
+        return host_dict
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan_single", side_effect=_scanned), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_device_scan("d1", session, run_id, ports="8006")
+
+    async with mem_db() as session:
+        device = await session.get(InventoryDevice, "d1")
+
+    assert device is not None
+    assert device.discovery_sources == ["proxmox"]
+    assert device.discovery_source == "proxmox"
+
+
+@pytest.mark.asyncio
 async def test_run_device_scan_marks_run_error_when_device_has_no_ip(mem_db):
     from app.services.scanner import run_device_scan
 

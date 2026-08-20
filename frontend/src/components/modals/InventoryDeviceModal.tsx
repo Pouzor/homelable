@@ -279,24 +279,35 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
   onSavedRef.current = onSaved
   const editingRef = useRef(editing)
   editingRef.current = editing
+  // Read by the reset effect, which keys on the id alone — the object itself
+  // must not be a dependency.
+  const deviceRef = useRef(device)
+  deviceRef.current = device
 
-  // Reset the form whenever the modal is pointed at another device — the
+  // Reset the form whenever the modal is pointed at *another* device — the
   // component stays mounted across card clicks in the inventory grid.
+  //
+  // Keyed on the id, never on the object: the parent hands down a fresh
+  // `device` every time the row is refreshed from anywhere — a finishing deep
+  // rescan, a status push, a save — and resetting on those would drop an edit
+  // in progress along with the mode itself. A refreshed row is not a different
+  // device, and only a different device is a reason to throw the form away.
+  const deviceId = device?.id ?? null
   useEffect(() => {
-    if (!device) return
-    setForm(toForm(device))
-    setProperties(device.properties ?? [])
-    setServices(device.services ?? [])
+    const d = deviceRef.current
+    if (!d) return
+    setForm(toForm(d))
+    setProperties(d.properties ?? [])
+    setServices(d.services ?? [])
     setEditing(false)
     setSvcModal(null)
     setRescanRunId(null)
     setDeepScanOpen(false)
-  }, [device])
+  }, [deviceId])
 
   // Wait on a running deep rescan. A full 65535-port scan takes minutes, so the
   // run is polled rather than awaited — the user can close the modal, and the
   // scan keeps going and still shows under Scan History.
-  const deviceId = device?.id ?? null
   useEffect(() => {
     if (!rescanRunId || !deviceId) return
     let stopped = false
