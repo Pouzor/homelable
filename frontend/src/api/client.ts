@@ -176,7 +176,7 @@ export const scanApi = {
    * Returns the ScanRun, so the caller polls `run` and can `stop` it.
    * 409 when the device has no IP, is hidden, or is already being rescanned.
    */
-  rescanDevice: (id: string, opts?: { full_ports?: boolean; http_probe_enabled?: boolean; verify_tls?: boolean }) =>
+  rescanDevice: (id: string, opts?: { full_ports?: boolean; ports?: string; http_probe_enabled?: boolean; verify_tls?: boolean }) =>
     api.post<ScanRunSummary>(`/scan/pending/${id}/rescan`, opts ?? {}),
   hidden: () => api.get('/scan/hidden'),
   runs: () => api.get('/scan/runs'),

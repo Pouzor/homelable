@@ -75,9 +75,67 @@ _FULL_PORTS = "1-65535"
 _DEEP_CHUNK_SIZE = 8192
 
 
+def _parse_port_spec(spec: str) -> list[tuple[int, int]]:
+    """Parse an nmap ``-p`` spec into sorted, merged ``(start, end)`` ranges.
+
+    Accepts what the user can type in the deep-scan dialog: ``80``,
+    ``8000-9000``, or a comma list of both. Returns ``[]`` for anything invalid
+    — the caller turns that into a 422 rather than handing nmap a bad ``-p``.
+    """
+    ranges: list[tuple[int, int]] = []
+    for token in (t.strip() for t in spec.split(",")):
+        if not token or not _valid_port_range(token):
+            return []
+        parts = [int(p) for p in token.split("-")]
+        ranges.append((parts[0], parts[-1]))
+    if not ranges:
+        return []
+    ranges.sort()
+    merged = [ranges[0]]
+    for start, end in ranges[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end + 1:
+            merged[-1] = (last_start, max(last_end, end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _valid_port_spec(spec: str) -> bool:
+    """True when ``spec`` is a usable comma list of ports/ranges."""
+    return bool(_parse_port_spec(spec))
+
+
+def _port_chunks(spec: str, size: int = _DEEP_CHUNK_SIZE) -> list[str]:
+    """Slice a port spec into nmap ``-p`` specs of at most ``size`` ports each.
+
+    Ranges are packed, not scanned one call per range: ``80,443`` is one chunk,
+    not two, while ``1-65535`` becomes eight. Each chunk is a scan boundary —
+    where a stop request lands and where the time budget is checked.
+    """
+    chunks: list[str] = []
+    current: list[str] = []
+    budget = size
+    for start, end in _parse_port_spec(spec):
+        cursor = start
+        while cursor <= end:
+            take = min(budget, end - cursor + 1)
+            stop = cursor + take - 1
+            current.append(f"{cursor}-{stop}" if stop > cursor else str(cursor))
+            budget -= take
+            cursor = stop + 1
+            if budget == 0:
+                chunks.append(",".join(current))
+                current = []
+                budget = size
+    if current:
+        chunks.append(",".join(current))
+    return chunks
+
+
 def _deep_port_chunks(size: int = _DEEP_CHUNK_SIZE) -> list[str]:
     """Slice the whole TCP range into nmap ``-p`` specs of ``size`` ports."""
-    return [f"{start}-{min(start + size - 1, 65535)}" for start in range(1, 65536, size)]
+    return _port_chunks(_FULL_PORTS, size)
 
 
 def _build_port_spec(http_ranges: list[str] | None, full: bool = False) -> str:
@@ -763,6 +821,7 @@ async def run_device_scan(
     run_id: str,
     deep_scan: DeepScanOptions | None = None,
     full_ports: bool = True,
+    ports: str | None = None,
 ) -> None:
     """Deep-rescan one known device and refresh its inventory row.
 
@@ -771,11 +830,17 @@ async def run_device_scan(
     TCP ports, which is the point of the feature — a device added before the
     scanner knew a service, or listening on a port no curated list covers.
     Minutes, not seconds; the run is cancellable like any other.
+
+    ``ports`` narrows that to a user-chosen spec (``80,443``, ``1-1024``) and
+    wins over ``full_ports`` — the dialog prefills the full range, so a caller
+    that passes something else means it.
     """
     from app.api.routes.status import broadcast_scan_update
 
     deep_scan = deep_scan or DeepScanOptions()
-    port_spec = _build_port_spec(deep_scan.http_ranges, full=full_ports)
+    port_spec = (
+        ports if ports else _build_port_spec(deep_scan.http_ranges, full=full_ports)
+    )
 
     try:
         device = await db.get(InventoryDevice, device_id)
@@ -793,7 +858,16 @@ async def run_device_scan(
         # The full range goes out in slices so a stop request lands within one
         # slice instead of at the end, and so a spent budget keeps the ports
         # found so far. A curated port list is one call, as before.
-        chunks = _deep_port_chunks() if full_ports else [port_spec]
+        if ports:
+            chunks = _port_chunks(ports)
+        elif full_ports:
+            chunks = _deep_port_chunks()
+        else:
+            chunks = [port_spec]
+        # Retry-free timing pays for itself over thousands of ports on a host
+        # that drops packets; over a handful it only costs accuracy.
+        total_ports = sum(end - start + 1 for start, end in _parse_port_spec(port_spec))
+        bounded = total_ports > _DEEP_CHUNK_SIZE
         deadline = time.monotonic() + settings.scanner_deep_host_timeout
         found: list[dict[str, Any]] = []
         seen: set[tuple[str, int]] = set()
@@ -812,7 +886,7 @@ async def run_device_scan(
                 break
             # bounded: retry-free timing, for a host that drops packets.
             scanned = await asyncio.to_thread(
-                _nmap_scan_single, dict(host), chunk, full_ports
+                _nmap_scan_single, dict(host), chunk, bounded
             )
             for port in scanned.get("open_ports") or []:
                 key = (port["protocol"], port["port"])

@@ -427,6 +427,27 @@ def test_deep_port_chunks_cover_every_port_once():
     assert covered == list(range(1, 65536))
 
 
+def test_port_chunks_pack_ranges_and_honour_the_slice_size():
+    from app.services.scanner import _port_chunks
+
+    # Small ranges share one call instead of one call each.
+    assert _port_chunks("80,443,8000-9000") == ["80,443,8000-9000"]
+    # A range wider than the slice is cut at the slice boundary.
+    assert _port_chunks("1-100", 40) == ["1-40", "41-80", "81-100"]
+    # Overlapping input is merged before slicing, so no port is scanned twice.
+    assert _port_chunks("1-100,50-200", 1000) == ["1-200"]
+    assert _port_chunks("nonsense") == []
+
+
+def test_parse_port_spec_rejects_what_nmap_could_not_use():
+    from app.services.scanner import _parse_port_spec, _valid_port_spec
+
+    for bad in ["", "  ", "0", "65536", "100-50", "80,", "http", "-80"]:
+        assert _parse_port_spec(bad) == [], bad
+        assert _valid_port_spec(bad) is False, bad
+    assert _valid_port_spec("80,443,8000-9000") is True
+
+
 # ---------------------------------------------------------------------------
 # _nmap_scan
 # ---------------------------------------------------------------------------
@@ -1251,6 +1272,44 @@ async def test_run_device_scan_unions_ports_across_slices(mem_db):
     # A complete sweep carries no advisory.
     assert run.error is None
     assert len(_deep_port_chunks()) == 8
+
+
+@pytest.mark.asyncio
+async def test_run_device_scan_honours_a_requested_port_range(mem_db):
+    """A user-chosen range replaces the full sweep — and skips retry-free timing.
+
+    A handful of ports is cheap enough to scan properly; the bounded flags only
+    pay off over thousands of them.
+    """
+    from app.services.scanner import run_device_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(ScanRun(id=run_id, status="running", kind="device", ranges=["192.168.1.9/32"]))
+        session.add(InventoryDevice(id="d1", ip="192.168.1.9", status="pending", services=[]))
+        await session.commit()
+
+    calls = []
+
+    def _scanned(host_dict, port_spec, bounded=False):
+        calls.append((port_spec, bounded))
+        host_dict["open_ports"] = [{"port": 8096, "protocol": "tcp", "banner": ""}]
+        return host_dict
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan_single", side_effect=_scanned), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_device_scan("d1", session, run_id, ports="8000-9000")
+
+    async with mem_db() as session:
+        device = await session.get(InventoryDevice, "d1")
+        run = await session.get(ScanRun, run_id)
+
+    assert calls == [("8000-9000", False)]
+    assert device is not None and run is not None
+    assert {s.get("port") for s in device.services} == {8096}
+    assert run.status == "done"
+    assert run.error is None
 
 
 @pytest.mark.asyncio
