@@ -5,6 +5,20 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.3.5] - 2026-08-21
+
+### Features
+
+- Deep-scan a single device from its inventory detail: the Services section gets a **Deep scan** button that sweeps the device over a port range you pick, prefilled with the full 1-65535 range and narrowable when you know where the service lives. The run is a normal Scan Run, so stop, progress and Scan History work as usual, and the fresh services are merged in — never replacing what you added by hand. (#363)
+
+### Fixes
+
+- A deep rescan of a slow host no longer comes back empty. The run hit its timeout and nmap discarded every port it had already found; the full range is now scanned in slices, a partial sweep is reported as partial instead of passed off as complete, and the timeout is a total budget between slices rather than an nmap flag. (#363)
+- A scan no longer repaints the service icons you picked by hand: the fingerprint's guess overwrote your choice, and cleared it outright on a port no signature covers. Since 3.3.0 the inventory row is the only copy, so one scan changed the service on every canvas at once. (#363)
+- A rescan finishing while you edit a device no longer throws the edit away, and it no longer tags every device it touches as network-discovered — a Proxmox guest, a rack mount or a hand-added host keeps its own source. A failed run is also recorded as `error`, the status Scan History filters and colours. (#363)
+- A property with no value gets the full node width for its label instead of being truncated against empty space. (#362)
+- A same-origin OIDC deployment behind a reverse proxy no longer answers 403 to every write. The CSRF check validated the browser's `Origin` against `CORS_ORIGINS` alone; the app's own origin, taken from `OIDC_REDIRECT_URI`, is accepted too, and startup warns when `CORS_ORIGINS` omits it. (#360)
+
 ## [3.3.4] - 2026-08-17
 
 ### Fixes
