@@ -7,12 +7,13 @@
  */
 import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 
-export type SourceBucket = 'ip' | 'zigbee' | 'zwave' | 'proxmox' | 'rack' | 'canvas'
+export type SourceBucket = 'ip' | 'zigbee' | 'zwave' | 'proxmox' | 'synology' | 'rack' | 'canvas'
 
 export const SOURCE_META: Record<SourceBucket, { color: string; label: string }> = {
   zigbee: { color: '#00d4ff', label: 'ZIGBEE' },
   zwave: { color: '#ff6e00', label: 'Z-WAVE' },
   proxmox: { color: '#e57000', label: 'PROXMOX' },
+  synology: { color: '#1e8fff', label: 'SYNOLOGY' },
   ip: { color: '#a855f7', label: 'IP' },
   rack: { color: '#39d353', label: 'RACK' },
   // Documented straight on a canvas — no scan ever saw it.
@@ -20,7 +21,7 @@ export const SOURCE_META: Record<SourceBucket, { color: string; label: string }>
 }
 
 // Stable badge order (IP first — it's the primary discovery path).
-const SOURCE_ORDER: SourceBucket[] = ['ip', 'proxmox', 'zigbee', 'zwave', 'rack', 'canvas']
+const SOURCE_ORDER: SourceBucket[] = ['ip', 'proxmox', 'synology', 'zigbee', 'zwave', 'rack', 'canvas']
 
 /** Every source bucket that has observed this device. A device found by both an
  *  IP scan and a Proxmox import returns {ip, proxmox}. */
@@ -33,6 +34,7 @@ export function sourceBuckets(d: InventoryEntry): Set<SourceBucket> {
     if (s === 'zwave') buckets.add('zwave')
     else if (s === 'zigbee') buckets.add('zigbee')
     else if (s === 'proxmox') buckets.add('proxmox')
+    else if (s === 'synology') buckets.add('synology')
     // Created from a rack canvas: inventory gear that never lands on a
     // logical canvas.
     else if (s === 'rack') buckets.add('rack')

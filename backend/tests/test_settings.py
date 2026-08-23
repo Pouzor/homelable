@@ -152,6 +152,53 @@ def test_save_overrides_omits_proxmox_connection_config(tmp_path):
     assert written["proxmox_sync_interval"] == 900
 
 
+def test_synology_connection_config_is_env_only_never_from_overrides(tmp_path):
+    """Connection config (host/port/verify_tls) is env-only: a stale value in
+    scan_config.json must be ignored so it can never clobber the env. Only the
+    auto-sync activation is read back."""
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    s.synology_host = "nas.local"
+    s.synology_port = 5001
+    s.synology_verify_tls = True
+    (tmp_path / "scan_config.json").write_text(json.dumps({
+        "synology_host": "stale-host",
+        "synology_port": 9999,
+        "synology_verify_tls": False,
+        "synology_username": "stale",
+        "synology_password": "stale",
+        "synology_sync_enabled": True,
+        "synology_sync_interval": 600,
+    }))
+    s.load_overrides()
+    assert s.synology_host == "nas.local"
+    assert s.synology_port == 5001
+    assert s.synology_verify_tls is True
+    assert s.synology_sync_enabled is True
+    assert s.synology_sync_interval == 600
+
+
+def test_save_overrides_omits_synology_connection_config(tmp_path):
+    """save_overrides must never write host/port/verify_tls (nor credentials) —
+    only the sync activation."""
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    s.synology_host = "nas.local"
+    s.synology_username = "hl"
+    s.synology_password = "secret"
+    s.synology_sync_enabled = True
+    s.synology_sync_interval = 900
+    s.save_overrides()
+    raw = (tmp_path / "scan_config.json").read_text()
+    assert "secret" not in raw
+    written = json.loads(raw)
+    assert "synology_host" not in written
+    assert "synology_port" not in written
+    assert "synology_verify_tls" not in written
+    assert "synology_username" not in written
+    assert "synology_password" not in written
+    assert written["synology_sync_enabled"] is True
+    assert written["synology_sync_interval"] == 900
+
+
 def test_mesh_connection_config_is_env_only_never_from_overrides(tmp_path):
     """Zigbee/Z-Wave MQTT connection config (host/port/credentials/topic/tls) is
     env-only: stale values in scan_config.json must be ignored. Only the

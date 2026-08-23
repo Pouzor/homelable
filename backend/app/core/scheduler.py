@@ -191,6 +191,42 @@ async def _run_proxmox_sync() -> None:
     )
 
 
+async def _run_synology_sync() -> None:
+    """Fetch the Synology NAS and upsert it into pending (auto-sync).
+
+    Records a ScanRun (kind=synology) so the scheduled sync shows in Scan
+    history, exactly like the manual /sync-now and /import-pending paths.
+    """
+    if not settings.synology_sync_enabled:
+        return
+    if not (settings.synology_host and settings.synology_username and settings.synology_password):
+        logger.warning("Synology auto-sync enabled but host/credentials not configured — skipping")
+        return
+    from app.api.routes.synology import _background_synology_import
+    from app.db.models import ScanRun
+
+    async with AsyncSessionLocal() as db:
+        run = ScanRun(
+            status="running",
+            kind="synology",
+            ranges=[f"{settings.synology_host}:{settings.synology_port}"],
+        )
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    await _background_synology_import(
+        run_id,
+        settings.synology_host,
+        settings.synology_port,
+        settings.synology_username,
+        settings.synology_password,
+        settings.synology_verify_tls,
+        None,
+    )
+
+
 async def _run_mesh_sync(kind: str) -> None:
     """Shared auto-sync for the MQTT mesh imports (Zigbee / Z-Wave).
 
@@ -266,6 +302,17 @@ def _add_proxmox_sync_job() -> None:
     )
 
 
+def _add_synology_sync_job() -> None:
+    scheduler.add_job(
+        _run_synology_sync,
+        "interval",
+        seconds=settings.synology_sync_interval,
+        id="synology_sync",
+        max_instances=1,
+        coalesce=True,
+    )
+
+
 def _add_zigbee_sync_job() -> None:
     scheduler.add_job(
         _run_zigbee_sync,
@@ -308,6 +355,8 @@ def start_scheduler() -> None:
         _add_service_check_job()
     if settings.proxmox_sync_enabled:
         _add_proxmox_sync_job()
+    if settings.synology_sync_enabled:
+        _add_synology_sync_job()
     if settings.zigbee_sync_enabled:
         _add_zigbee_sync_job()
     if settings.zwave_sync_enabled:
@@ -375,6 +424,31 @@ def set_proxmox_sync_enabled(enabled: bool) -> None:
     elif not enabled and job:
         scheduler.remove_job("proxmox_sync")
         logger.info("Proxmox auto-sync disabled")
+
+
+def reschedule_synology_sync(interval_seconds: int) -> None:
+    """Update the Synology auto-sync interval on the running scheduler (if enabled)."""
+    if interval_seconds < 300:
+        raise ValueError(f"interval_seconds must be >= 300, got {interval_seconds}")
+    if not scheduler.running:
+        logger.warning("Scheduler not running, skipping reschedule")
+        return
+    if scheduler.get_job("synology_sync"):
+        scheduler.reschedule_job("synology_sync", trigger="interval", seconds=interval_seconds)
+        logger.info("Synology auto-sync rescheduled to every %ds", interval_seconds)
+
+
+def set_synology_sync_enabled(enabled: bool) -> None:
+    """Add or remove the Synology auto-sync job on the running scheduler."""
+    if not scheduler.running:
+        return
+    job = scheduler.get_job("synology_sync")
+    if enabled and not job:
+        _add_synology_sync_job()
+        logger.info("Synology auto-sync enabled — every %ds", settings.synology_sync_interval)
+    elif not enabled and job:
+        scheduler.remove_job("synology_sync")
+        logger.info("Synology auto-sync disabled")
 
 
 def reschedule_zigbee_sync(interval_seconds: int) -> None:

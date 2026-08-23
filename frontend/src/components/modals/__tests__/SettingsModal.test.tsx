@@ -23,9 +23,14 @@ vi.mock('@/api/client', () => ({
     saveConfig: vi.fn(),
     syncNow: vi.fn(),
   },
+  synologyApi: {
+    getConfig: vi.fn(),
+    saveConfig: vi.fn(),
+    syncNow: vi.fn(),
+  },
 }))
 
-import { settingsApi, proxmoxApi, zigbeeApi, zwaveApi } from '@/api/client'
+import { settingsApi, proxmoxApi, zigbeeApi, zwaveApi, synologyApi } from '@/api/client'
 import { toast } from 'sonner'
 import { useCanvasStore } from '@/stores/canvasStore'
 
@@ -44,6 +49,9 @@ describe('SettingsModal', () => {
     vi.mocked(zwaveApi.getConfig).mockRejectedValue(new Error('not configured'))
     vi.mocked(zwaveApi.saveConfig).mockResolvedValue({ data: {} } as never)
     vi.mocked(zwaveApi.syncNow).mockResolvedValue({ data: { status: 'running' } } as never)
+    vi.mocked(synologyApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(synologyApi.saveConfig).mockResolvedValue({ data: {} } as never)
+    vi.mocked(synologyApi.syncNow).mockResolvedValue({ data: { status: 'running' } } as never)
     vi.mocked(toast.success).mockReset()
     vi.mocked(toast.error).mockReset()
   })
@@ -170,6 +178,34 @@ describe('SettingsModal', () => {
     render(<SettingsModal open onClose={vi.fn()} />)
     await screen.findByDisplayValue('60')
     expect(screen.queryByRole('button', { name: 'Re-sync now' })).toBeNull()
+  })
+
+  it('persists only Synology sync fields (not connection config) on Save', async () => {
+    vi.mocked(synologyApi.getConfig).mockResolvedValue({
+      data: { host: 'nas', port: 5001, verify_tls: true, sync_enabled: true, sync_interval: 3600, credentials_configured: true },
+    } as never)
+    vi.mocked(synologyApi.saveConfig).mockResolvedValue({ data: {} } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await screen.findByDisplayValue('60')
+    await waitFor(() => expect(screen.getByLabelText('Toggle Synology auto-sync')).toBeChecked())
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(synologyApi.saveConfig).toHaveBeenCalledWith({ sync_enabled: true, sync_interval: 3600 })
+    })
+  })
+
+  it('triggers an immediate Synology sync from the Re-sync now button', async () => {
+    vi.mocked(synologyApi.getConfig).mockResolvedValue({
+      data: { host: 'nas', port: 5001, verify_tls: true, sync_enabled: false, sync_interval: 3600, credentials_configured: true },
+    } as never)
+    vi.mocked(synologyApi.syncNow).mockResolvedValue({ data: { status: 'running' } } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const btn = await screen.findByRole('button', { name: 'Re-sync now' })
+    fireEvent.click(btn)
+    await waitFor(() => {
+      expect(synologyApi.syncNow).toHaveBeenCalledOnce()
+      expect(toast.success).toHaveBeenCalledWith('Synology sync started')
+    })
   })
 
   it('persists only Zigbee sync fields (not connection config) on Save', async () => {

@@ -27,6 +27,7 @@ import { SettingsModal } from '@/components/modals/SettingsModal'
 import { ZigbeeImportModal } from '@/components/zigbee/ZigbeeImportModal'
 import { ZwaveImportModal } from '@/components/zwave/ZwaveImportModal'
 import { ProxmoxImportModal } from '@/components/proxmox/ProxmoxImportModal'
+import { SynologyImportModal } from '@/components/synology/SynologyImportModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
 import { TextModal, type TextFormData } from '@/components/modals/TextModal'
 import { ThemeModal } from '@/components/modals/ThemeModal'
@@ -59,6 +60,7 @@ import type { NodeData, EdgeData, CustomStyleDef, DesignType, FloorMapConfig, No
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 import type { ZwaveNode, ZwaveEdge } from '@/components/zwave/types'
 import type { ProxmoxNode, ProxmoxEdge } from '@/components/proxmox/types'
+import type { SynologyNode } from '@/components/synology/types'
 import { buildProxmoxClusterEdges } from '@/components/proxmox/clusterEdges'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
@@ -141,6 +143,7 @@ export default function App() {
   const [zigbeeImportOpen, setZigbeeImportOpen] = useState(false)
   const [zwaveImportOpen, setZwaveImportOpen] = useState(false)
   const [proxmoxImportOpen, setProxmoxImportOpen] = useState(false)
+  const [synologyImportOpen, setSynologyImportOpen] = useState(false)
 
   // Declare handleSave before the Ctrl+S effect so it is in scope.
   // Returns true on success, false on failure — the design-switch effect relies
@@ -925,6 +928,42 @@ export default function App() {
     markUnsaved()
   }, [addNode, onConnect, snapshotHistory, markUnsaved])
 
+  const handleSynologyAddToCanvas = useCallback((syNodes: SynologyNode[]) => {
+    snapshotHistory()
+    const COLS = 4
+    const SPACING_X = 190
+    const SPACING_Y = 110
+    const cols = Math.min(COLS, syNodes.length)
+    const rows = Math.ceil(syNodes.length / COLS)
+    const origin = getCenteredPosition(cols * SPACING_X, rows * SPACING_Y)
+    syNodes.forEach((sn, i) => {
+      const col = i % COLS
+      const row = Math.floor(i / COLS)
+      const position = { x: origin.x + col * SPACING_X, y: origin.y + row * SPACING_Y }
+      const newNode: import('@xyflow/react').Node<NodeData> = {
+        id: sn.id,
+        type: 'nas',
+        position,
+        data: {
+          label: sn.label,
+          type: 'nas',
+          status: (sn.status === 'online' ? 'online' : 'unknown') as NodeData['status'],
+          services: [],
+          ...(sn.ip ? { ip: sn.ip } : {}),
+          ...(sn.hostname ? { hostname: sn.hostname } : {}),
+        },
+      }
+      addNode(newNode)
+    })
+    const importedIds = new Set(syNodes.map((sn) => sn.id))
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((n) => ({ ...n, selected: importedIds.has(n.id) })),
+      selectedNodeIds: Array.from(importedIds),
+      selectedNodeId: importedIds.size === 1 ? Array.from(importedIds)[0] : null,
+    }))
+    markUnsaved()
+  }, [addNode, snapshotHistory, markUnsaved])
+
   const handleEdgeConnect = useCallback((connection: Connection) => {
     setPendingConnection(connection)
   }, [])
@@ -1011,6 +1050,7 @@ export default function App() {
             onZigbeeImport={() => setZigbeeImportOpen(true)}
             onZwaveImport={() => setZwaveImportOpen(true)}
             onProxmoxImport={() => setProxmoxImportOpen(true)}
+            onSynologyImport={() => setSynologyImportOpen(true)}
             onSave={handleSave}
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenHistory={() => setScanHistoryOpen(true)}
@@ -1176,6 +1216,17 @@ export default function App() {
             onAddToCanvas={handleProxmoxAddToCanvas}
             onInventoryImported={() => {
               toast.success('Proxmox import started — check Scan History for results')
+            }}
+          />
+        )}
+
+        {!STANDALONE && (
+          <SynologyImportModal
+            open={synologyImportOpen}
+            onClose={() => setSynologyImportOpen(false)}
+            onAddToCanvas={handleSynologyAddToCanvas}
+            onInventoryImported={() => {
+              toast.success('Synology import started — check Scan History for results')
             }}
           />
         )}

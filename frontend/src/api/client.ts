@@ -283,6 +283,65 @@ export const proxmoxApi = {
     }>('/proxmox/sync-now'),
 }
 
+export interface SynologyConnection {
+  host: string
+  port: number
+  username?: string
+  password?: string
+  otp_code?: string
+  verify_tls?: boolean
+}
+
+export interface SynologyConfigData {
+  host: string
+  port: number
+  verify_tls: boolean
+  sync_enabled: boolean
+  sync_interval: number
+  credentials_configured: boolean
+}
+
+export const synologyApi = {
+  testConnection: (data: SynologyConnection) =>
+    api.post<{ connected: boolean; message: string }>('/synology/test-connection', data),
+
+  importNetwork: (data: SynologyConnection) =>
+    api.post<{
+      nodes: import('@/components/synology/types').SynologyNode[]
+      device_count: number
+    }>('/synology/import', data),
+
+  importToPending: (data: SynologyConnection) =>
+    api.post<{
+      id: string
+      status: string
+      kind: string
+      ranges: string[]
+      devices_found: number
+      started_at: string
+      finished_at: string | null
+      error: string | null
+    }>('/synology/import-pending', data),
+
+  getConfig: () => api.get<SynologyConfigData>('/synology/config'),
+  // Only the auto-sync activation is persisted. Connection config
+  // (host/port/username/password/verify_tls) is env-only and never sent.
+  saveConfig: (data: { sync_enabled: boolean; sync_interval: number }) =>
+    api.post<SynologyConfigData>('/synology/config', data),
+
+  syncNow: () =>
+    api.post<{
+      id: string
+      status: string
+      kind: string
+      ranges: string[]
+      devices_found: number
+      started_at: string
+      finished_at: string | null
+      error: string | null
+    }>('/synology/sync-now'),
+}
+
 export const designsApi = {
   list: () => api.get<import('@/types').Design[]>('/designs'),
   create: (data: { name: string; icon?: string; design_type?: string }) =>

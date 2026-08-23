@@ -166,6 +166,18 @@ class Settings(BaseSettings):
     proxmox_sync_enabled: bool = False
     proxmox_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
 
+    # Synology DSM import.
+    # Username/password = real credentials → env/.env ONLY, never persisted by
+    # the app to scan_config.json and never returned by the API. Use a dedicated
+    # limited DSM user (no 2FA) for auto-sync. One-off imports can pass an OTP.
+    synology_username: str = ""
+    synology_password: str = ""
+    synology_host: str = ""
+    synology_port: int = 5001
+    synology_verify_tls: bool = True
+    synology_sync_enabled: bool = False
+    synology_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+
     # Zigbee2MQTT auto-sync import.
     # MQTT credentials are secrets → env/.env ONLY, never persisted by the app to
     # scan_config.json and never returned by the API. Only the auto-sync
@@ -228,6 +240,12 @@ class Settings(BaseSettings):
                 self.proxmox_sync_enabled = bool(data["proxmox_sync_enabled"])
             if "proxmox_sync_interval" in data:
                 self.proxmox_sync_interval = int(data["proxmox_sync_interval"])
+            # Synology auto-sync activation only. Connection config (host, port,
+            # username, password, verify_tls) is env-only by design.
+            if "synology_sync_enabled" in data:
+                self.synology_sync_enabled = bool(data["synology_sync_enabled"])
+            if "synology_sync_interval" in data:
+                self.synology_sync_interval = int(data["synology_sync_interval"])
             # Zigbee/Z-Wave: only the auto-sync activation is persisted. MQTT
             # connection config (host, port, credentials, topic, tls) is env-only
             # by design — never read from or written to this file.
@@ -258,6 +276,10 @@ class Settings(BaseSettings):
             # be written to disk — that is the single source of truth.
             "proxmox_sync_enabled": self.proxmox_sync_enabled,
             "proxmox_sync_interval": self.proxmox_sync_interval,
+            # Synology: only the auto-sync activation is persisted. Connection
+            # config (host, port, username, password, verify_tls) is env-only.
+            "synology_sync_enabled": self.synology_sync_enabled,
+            "synology_sync_interval": self.synology_sync_interval,
             # Zigbee/Z-Wave: only the auto-sync activation is persisted. MQTT
             # connection config (host/port/credentials/topic/tls) is env-only.
             "zigbee_sync_enabled": self.zigbee_sync_enabled,

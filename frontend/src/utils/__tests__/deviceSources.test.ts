@@ -24,6 +24,11 @@ describe('sourceBuckets', () => {
     expect([...buckets].sort()).toEqual(['ip', 'proxmox'])
   })
 
+  it('returns both IP and Synology for a merged device', () => {
+    const buckets = sourceBuckets(device({ discovery_sources: ['arp', 'synology'] }))
+    expect([...buckets].sort()).toEqual(['ip', 'synology'])
+  })
+
   it('maps arp and mdns to the single ip bucket', () => {
     expect([...sourceBuckets(device({ discovery_sources: ['arp'] }))]).toEqual(['ip'])
     expect([...sourceBuckets(device({ discovery_sources: ['mdns'] }))]).toEqual(['ip'])
@@ -32,6 +37,7 @@ describe('sourceBuckets', () => {
   it('falls back to legacy discovery_source when discovery_sources is empty', () => {
     expect([...sourceBuckets(device({ discovery_source: 'zigbee' }))]).toEqual(['zigbee'])
     expect([...sourceBuckets(device({ discovery_source: 'proxmox' }))]).toEqual(['proxmox'])
+    expect([...sourceBuckets(device({ discovery_source: 'synology' }))]).toEqual(['synology'])
   })
 
   it('uses the ieee heuristic when no source is recorded', () => {
@@ -45,6 +51,10 @@ describe('sourceBuckets', () => {
 describe('orderedSources', () => {
   it('renders IP before Proxmox regardless of input order', () => {
     expect(orderedSources(device({ discovery_sources: ['proxmox', 'arp'] }))).toEqual(['ip', 'proxmox'])
+  })
+
+  it('renders IP before Synology regardless of input order', () => {
+    expect(orderedSources(device({ discovery_sources: ['synology', 'arp'] }))).toEqual(['ip', 'synology'])
   })
 })
 

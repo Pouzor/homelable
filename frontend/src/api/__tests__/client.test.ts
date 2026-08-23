@@ -269,4 +269,22 @@ describe('api/client', () => {
     mod.proxmoxApi.saveConfig(conf)
     expect(api.post).toHaveBeenCalledWith('/proxmox/config', conf)
   })
+
+  it('synologyApi.testConnection/importNetwork/importToPending', () => {
+    const cfg = { host: 'nas', port: 5001, username: 'hl', password: 's', verify_tls: true }
+    mod.synologyApi.testConnection(cfg)
+    expect(api.post).toHaveBeenCalledWith('/synology/test-connection', cfg)
+    mod.synologyApi.importNetwork(cfg)
+    expect(api.post).toHaveBeenCalledWith('/synology/import', cfg)
+    mod.synologyApi.importToPending(cfg)
+    expect(api.post).toHaveBeenCalledWith('/synology/import-pending', cfg)
+  })
+
+  it('synologyApi.getConfig/saveConfig hit /synology/config', () => {
+    mod.synologyApi.getConfig()
+    expect(api.get).toHaveBeenCalledWith('/synology/config')
+    const conf = { sync_enabled: false, sync_interval: 3600 }
+    mod.synologyApi.saveConfig(conf)
+    expect(api.post).toHaveBeenCalledWith('/synology/config', conf)
+  })
 })

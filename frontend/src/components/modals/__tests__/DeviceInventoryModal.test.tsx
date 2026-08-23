@@ -107,6 +107,25 @@ const DEVICE_PROXMOX = {
   discovered_at: '2026-01-04T00:00:00Z',
 }
 
+const DEVICE_SYNOLOGY = {
+  id: 'dev-syno',
+  ip: '192.168.1.20',
+  hostname: 'nas',
+  mac: null,
+  os: null,
+  services: [],
+  suggested_type: 'nas',
+  status: 'pending',
+  discovery_source: 'synology',
+  discovery_sources: ['synology'],
+  ieee_address: 'syno-1230ABC',
+  friendly_name: 'nas',
+  vendor: 'Synology',
+  model: 'DS1821+',
+  properties: [{ key: 'Model', value: 'DS1821+', icon: null, visible: false }],
+  discovered_at: '2026-01-07T00:00:00Z',
+}
+
 const DEVICE_RACK = {
   id: 'dev-rack',
   ip: null,
@@ -241,6 +260,15 @@ describe('DeviceInventoryModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Proxmox' }))
     expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
     expect(screen.getByTestId('pending-card-dev-d')).toBeInTheDocument()
+  })
+
+  it('filters by source (synology only)', async () => {
+    mockPending.mockResolvedValue({ data: [DEVICE_IP, DEVICE_SYNOLOGY] })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Synology' }))
+    expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
+    expect(screen.getByTestId('pending-card-dev-syno')).toBeInTheDocument()
   })
 
   it('filters by suggested type', async () => {

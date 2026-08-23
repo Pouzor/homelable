@@ -6,9 +6,11 @@ import {
   proxmoxApi,
   zigbeeApi,
   zwaveApi,
+  synologyApi,
   type ProxmoxConfigData,
   type ZigbeeConfigData,
   type ZwaveConfigData,
+  type SynologyConfigData,
 } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useWalkthroughStore } from '@/stores/walkthroughStore'
@@ -130,6 +132,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [zwSyncEnabled, setZwSyncEnabled] = useState(false)
   const [zwInterval, setZwInterval] = useState(3600)
   const [zwSyncing, setZwSyncing] = useState(false)
+  const [syConfig, setSyConfig] = useState<SynologyConfigData | null>(null)
+  const [sySyncEnabled, setSySyncEnabled] = useState(false)
+  const [syInterval, setSyInterval] = useState(3600)
+  const [sySyncing, setSySyncing] = useState(false)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
   const hideIp = useCanvasStore((s) => s.hideIp)
@@ -165,6 +171,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setZwInterval(res.data.sync_interval)
       })
       .catch(() => {/* zwave not configured */})
+    synologyApi.getConfig()
+      .then((res) => {
+        setSyConfig(res.data)
+        setSySyncEnabled(res.data.sync_enabled)
+        setSyInterval(res.data.sync_interval)
+      })
+      .catch(() => {/* synology not configured */})
   }, [open])
 
   useEffect(() => subscribeAlignmentSettings(setAlignment), [])
@@ -218,6 +231,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     }
   }
 
+  const handleSySyncNow = async () => {
+    setSySyncing(true)
+    try {
+      await synologyApi.syncNow()
+      toast.success('Synology sync started')
+    } catch {
+      toast.error('Failed to start Synology sync')
+    } finally {
+      setSySyncing(false)
+    }
+  }
+
   const handleSave = async () => {
     // Canvas prefs (alignment, hide-IP) persist on change; only the backend
     // status-check interval needs an API round-trip.
@@ -251,6 +276,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         await zwaveApi.saveConfig({
           sync_enabled: zwSyncEnabled,
           sync_interval: zwInterval,
+        })
+      }
+      if (syConfig) {
+        await synologyApi.saveConfig({
+          sync_enabled: sySyncEnabled,
+          sync_interval: syInterval,
         })
       }
       toast.success('Settings saved')
@@ -509,6 +540,69 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 ) : (
                   <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
                     Set <span className="font-mono">PROXMOX_HOST</span> in the server .env to enable manual re-sync.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+          )}
+
+          {/* Synology auto-sync */}
+          {!STANDALONE && syConfig && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Synology auto-sync</span>
+            {!syConfig.credentials_configured ? (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                No credentials configured. Set <span className="font-mono">SYNOLOGY_USERNAME</span> and{' '}
+                <span className="font-mono">SYNOLOGY_PASSWORD</span> in the server .env to enable auto-sync.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Auto-sync Synology inventory</span>
+                  <input
+                    type="checkbox"
+                    checked={sySyncEnabled}
+                    onChange={(e) => setSySyncEnabled(e.target.checked)}
+                    className="cursor-pointer accent-[#1e8fff]"
+                    aria-label="Toggle Synology auto-sync"
+                  />
+                </label>
+                <div className={sySyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={300}
+                      max={86400}
+                      value={syInterval}
+                      onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setSyInterval(v) }}
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#1e8fff]"
+                      aria-label="Synology sync interval"
+                    />
+                    <span className="text-xs text-muted-foreground">seconds</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    Re-imports the NAS into the pending inventory. Min 300s (5 min).
+                  </p>
+                </div>
+                {syConfig.host ? (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      onClick={handleSySyncNow}
+                      disabled={sySyncing}
+                      className="h-7 text-xs border-[#1e8fff] text-[#1e8fff] hover:bg-[#1e8fff]/10"
+                    >
+                      {sySyncing ? 'Syncing…' : 'Re-sync now'}
+                    </Button>
+                    <span className="text-[10px] text-muted-foreground leading-tight">
+                      Runs one import immediately using the server .env config.
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
+                    Set <span className="font-mono">SYNOLOGY_HOST</span> in the server .env to enable manual re-sync.
                   </p>
                 )}
               </>
