@@ -23,14 +23,15 @@ Here's what Homelable can do. One line on what each feature is, then how to swit
 9. [Zigbee Import](#9-zigbee-import-)
 10. [Z-Wave Import](#10-z-wave-import-)
 11. [Proxmox VE Import](#11-proxmox-ve-import-)
-12. [Device Inventory](#12-device-inventory-)
-13. [Live Status Monitoring](#13-live-status-monitoring-)
-14. [Export (PNG / SVG / YAML / Markdown)](#14-export)
-15. [Live View (read-only public canvas)](#15-live-view-)
-16. [Gethomepage Widget](#16-gethomepage-widget-)
-17. [MCP Server (AI integration)](#17-mcp-server-)
-18. [Settings & Shortcuts](#18-settings--shortcuts)
-19. [Authentication (Local / OpenID Connect)](#19-authentication-local--openid-connect-)
+12. [Synology DSM Import](#12-synology-dsm-import-)
+13. [Device Inventory](#13-device-inventory-)
+14. [Live Status Monitoring](#14-live-status-monitoring-)
+15. [Export (PNG / SVG / YAML / Markdown)](#15-export)
+16. [Live View (read-only public canvas)](#16-live-view-)
+17. [Gethomepage Widget](#17-gethomepage-widget-)
+18. [MCP Server (AI integration)](#18-mcp-server-)
+19. [Settings & Shortcuts](#19-settings--shortcuts)
+20. [Authentication (Local / OpenID Connect)](#20-authentication-local--openid-connect-)
 
 ---
 
@@ -176,7 +177,21 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 
 ---
 
-## 12. Device Inventory 🔒
+## 12. Synology DSM Import 🔒
+
+**What:** Pull your **Synology NAS** in over the DSM Web API — a typed `nas` node with model, serial, RAM, volume capacity and disk health. Optional scheduled **auto-sync**; an IP already found by a scan is merged, not duplicated.
+
+**Use:**
+1. Create a limited DSM user (Control Panel → User & Group). Skip 2FA on that account if you want auto-sync.
+2. Sidebar → **Synology Import**.
+3. Enter host, port (default `5001`), and username/password — or leave blank to use the server credentials. One-off imports can send an OTP.
+4. **Test Connection** → send to **Pending** or the **Canvas** → import → pick the NAS → **Add N to Canvas**.
+
+The NAS maps to type `nas`. Credentials are env-only, never stored on disk, never returned by the API. Enable auto-sync from **Settings** once `SYNOLOGY_USERNAME` / `SYNOLOGY_PASSWORD` are set. More: [docs/synology-import.md](./docs/synology-import.md).
+
+---
+
+## 13. Device Inventory 🔒
 
 **What:** The holding pen for everything found by a scan or import that isn't on the canvas yet, plus a separate **Hidden Devices** list.
 
@@ -187,7 +202,7 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 
 ---
 
-## 13. Live Status Monitoring 🔒
+## 14. Live Status Monitoring 🔒
 
 **What:** Keeps checking each node and shows its status (🟢 online / 🔴 offline / ⚫ unknown) right on the canvas.
 
@@ -208,7 +223,7 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 
 ---
 
-## 14. Export
+## 15. Export
 
 **What:** Get your canvas out as a picture or as structured data.
 
@@ -220,7 +235,7 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 
 ---
 
-## 15. Live View 🔒
+## 16. Live View 🔒
 
 **What:** A read-only, no-login snapshot of a canvas you can share on your LAN. Off by default.
 
@@ -232,7 +247,7 @@ Pan and zoom only, no editing. Click a node with an IP and it opens in a new tab
 
 ---
 
-## 16. Gethomepage Widget 🔒
+## 17. Gethomepage Widget 🔒
 
 **What:** A tiny JSON stats endpoint for [gethomepage](https://gethomepage.dev)'s `customapi` widget. Off by default.
 
@@ -244,7 +259,7 @@ Widget snippet lives in the [README](./README.md#gethomepage-widget-read-only-st
 
 ---
 
-## 17. MCP Server 🔒
+## 18. MCP Server 🔒
 
 **What:** A [Model Context Protocol](https://modelcontextprotocol.io) server so an MCP client (Claude Code, Claude Desktop, Open WebUI…) can read and change your topology. Optional, runs as its own service.
 
@@ -262,7 +277,7 @@ The AI can list nodes/edges/canvas/pending/scans, add/update/delete nodes and ed
 
 ---
 
-## 18. Settings & Shortcuts
+## 19. Settings & Shortcuts
 
 **What:** App config and keyboard shortcuts.
 
@@ -273,7 +288,7 @@ The AI can list nodes/edges/canvas/pending/scans, add/update/delete nodes and ed
 
 ---
 
-## 19. Authentication (Local / OpenID Connect) 🔒
+## 20. Authentication (Local / OpenID Connect) 🔒
 
 **What:** Homelable protects the app behind a login. Two exclusive modes, set once in `.env` with `AUTH_MODE`:
 - **`local`** (default) — a single username + bcrypt-hashed password. Nothing changes for existing installs.

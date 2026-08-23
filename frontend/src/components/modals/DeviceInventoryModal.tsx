@@ -585,6 +585,12 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 Proxmox
               </button>
               <button
+                onClick={() => setSourceFilter('synology')}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'synology' ? 'bg-[#1e8fff]/20 text-[#1e8fff]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+              >
+                Synology
+              </button>
+              <button
                 onClick={() => setSourceFilter('rack')}
                 className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'rack' ? 'bg-[#39d353]/20 text-[#39d353]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
                 title="Gear created from a rack canvas"

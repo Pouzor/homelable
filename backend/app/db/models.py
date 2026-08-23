@@ -223,7 +223,7 @@ class InventoryDevice(Base):
     suggested_type: Mapped[str | None] = mapped_column(String)
     status: Mapped[str] = mapped_column(String, default="pending")
     # Origin/primary source (first discovery): "arp"/"mdns"/"zigbee"/"zwave"/
-    # "proxmox". Kept for back-compat; `discovery_sources` is the full set.
+    # "proxmox"/"synology". Kept for back-compat; `discovery_sources` is the full set.
     discovery_source: Mapped[str | None] = mapped_column(String)
     # All sources that have observed this device. A device found by both an IP
     # scan and a Proxmox import carries e.g. ["arp", "proxmox"] and shows under

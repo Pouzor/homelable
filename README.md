@@ -25,6 +25,7 @@
   <a href="#network-scanner">Network Scanner</a> ·
   <a href="#zigbee2mqtt-import">Zigbee / Z-Wave</a> ·
   <a href="#proxmox-ve-import">Proxmox</a> ·
+  <a href="#synology-dsm-import">Synology</a> ·
   <a href="#live-view-read-only-public-canvas">Live View</a> ·
   <a href="#mcp-server-ai-integration-optional">MCP Server</a>
 </p>
@@ -57,7 +58,7 @@ If you are running  <img width="22" height="22" align="top" alt="New_Home_Assist
 
 ## Features
 
-From one-click **network scans** and **Proxmox / Zigbee / Z-Wave** imports to **live status monitoring**, floor plans, **rack canvases** with port-to-port patching, multi-canvas layouts and an **MCP server** for AI assistants — Homelable maps and watches your whole homelab.
+From one-click **network scans** and **Proxmox / Synology / Zigbee / Z-Wave** imports to **live status monitoring**, floor plans, **rack canvases** with port-to-port patching, multi-canvas layouts and an **MCP server** for AI assistants — Homelable maps and watches your whole homelab.
 
 Every feature, with how to turn it on and use it, is described in **[FEATURES.md](./FEATURES.md)**.
 
@@ -238,6 +239,29 @@ Homelable can import your **Proxmox VE** inventory over the Proxmox REST API —
 Each host is linked to its guests with a `virtual` edge. vCPU / RAM / disk are imported as node properties (hidden by default). Enable **auto-sync** from Settings once a server token is configured (`PROXMOX_TOKEN_ID` / `PROXMOX_TOKEN_SECRET`).
 
 > **Full documentation:** [docs/proxmox-import.md](./docs/proxmox-import.md)
+
+---
+
+## Synology DSM Import
+
+Homelable can import your **Synology NAS** over the DSM Web API — the box arrives as a typed `nas` node with model, serial, RAM, volume capacity and disk health, and can auto-sync on a schedule. An IP or MAC already found by a network scan is merged in place (no duplicates).
+
+### Prerequisites
+
+- A reachable **Synology NAS** (default DSM HTTPS port `5001`)
+- A **limited DSM user** (Control Panel → User & Group). Auto-sync needs that account **without** 2FA; one-off imports can send an OTP.
+
+### Usage
+
+1. Click **Synology Import** in the left sidebar (below "Proxmox Import")
+2. Enter the host, port (default `5001`), and username/password — or leave credentials blank to use the server-configured ones
+3. Click **Test Connection** to verify reachability + login
+4. Choose a target — **Pending section** or **Canvas directly** — then **Import to Pending** / **Fetch Inventory**
+5. Select the NAS and click **Add N to Canvas**
+
+The NAS maps to type `nas`. RAM / disk / DSM version are imported as node properties (hidden by default). Enable **auto-sync** from Settings once server credentials are configured (`SYNOLOGY_USERNAME` / `SYNOLOGY_PASSWORD`).
+
+> **Full documentation:** [docs/synology-import.md](./docs/synology-import.md)
 
 ---
 

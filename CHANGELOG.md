@@ -5,6 +5,12 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Features
+
+- Import a **Synology NAS** over the DSM Web API the same way Proxmox is imported: Sidebar → **Synology Import**, test the connection, drop the box into pending inventory or onto the canvas as a `nas` node with model, serial, RAM, volume capacity and disk health. An IP or MAC already found by a scan is merged in place. Optional scheduled auto-sync uses `SYNOLOGY_USERNAME` / `SYNOLOGY_PASSWORD` from the server env only — never written to disk, never returned by the API.
+
 ## [3.3.5] - 2026-08-21
 
 ### Features

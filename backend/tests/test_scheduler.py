@@ -9,15 +9,18 @@ from app.core.scheduler import (
     _run_proxmox_sync,
     _run_service_checks,
     _run_status_checks,
+    _run_synology_sync,
     _run_zigbee_sync,
     _run_zwave_sync,
     reschedule_proxmox_sync,
     reschedule_service_checks,
     reschedule_status_checks,
+    reschedule_synology_sync,
     reschedule_zigbee_sync,
     reschedule_zwave_sync,
     set_proxmox_sync_enabled,
     set_service_checks_enabled,
+    set_synology_sync_enabled,
     set_zigbee_sync_enabled,
     set_zwave_sync_enabled,
     start_scheduler,
@@ -216,6 +219,7 @@ def test_scheduler_uses_settings_interval():
         mock_settings.status_checker_interval = 45
         mock_settings.service_check_enabled = False
         mock_settings.proxmox_sync_enabled = False
+        mock_settings.synology_sync_enabled = False
         mock_settings.zigbee_sync_enabled = False
         mock_settings.zwave_sync_enabled = False
         start_scheduler()
@@ -231,6 +235,7 @@ def test_start_and_stop_scheduler():
         mock_settings.status_checker_interval = 60
         mock_settings.service_check_enabled = False
         mock_settings.proxmox_sync_enabled = False
+        mock_settings.synology_sync_enabled = False
         mock_settings.zigbee_sync_enabled = False
         mock_settings.zwave_sync_enabled = False
         start_scheduler()
@@ -326,6 +331,7 @@ def test_start_scheduler_adds_service_job_when_enabled():
         mock_settings.service_check_enabled = True
         mock_settings.service_check_interval = 300
         mock_settings.proxmox_sync_enabled = False
+        mock_settings.synology_sync_enabled = False
         mock_settings.zigbee_sync_enabled = False
         mock_settings.zwave_sync_enabled = False
         start_scheduler()
@@ -413,6 +419,91 @@ async def test_run_proxmox_sync_records_scan_run(mem_db):
     mock_bg.assert_awaited_once_with(
         run.id, "pve", 8006, "root@pam!tok", "secret", False,
     )
+
+
+# ---------------------------------------------------------------------------
+# Synology auto-sync job
+# ---------------------------------------------------------------------------
+
+def test_set_synology_sync_enabled_adds_and_removes_job():
+    mock_sched = MagicMock()
+    mock_sched.running = True
+    with patch("app.core.scheduler.scheduler", mock_sched), \
+         patch("app.core.scheduler.settings") as mock_settings:
+        mock_settings.synology_sync_interval = 3600
+        mock_sched.get_job.return_value = None
+        set_synology_sync_enabled(True)
+        mock_sched.add_job.assert_called_once()
+        mock_sched.get_job.return_value = MagicMock()
+        set_synology_sync_enabled(False)
+        mock_sched.remove_job.assert_called_once_with("synology_sync")
+
+
+def test_reschedule_synology_sync_rejects_short_interval():
+    with pytest.raises(ValueError):
+        reschedule_synology_sync(60)
+
+
+@pytest.mark.asyncio
+async def test_run_synology_sync_skips_when_disabled():
+    with patch("app.core.scheduler.settings") as mock_settings:
+        mock_settings.synology_sync_enabled = False
+        await _run_synology_sync()
+
+
+@pytest.mark.asyncio
+async def test_run_synology_sync_skips_when_no_credentials():
+    with patch("app.core.scheduler.settings") as mock_settings:
+        mock_settings.synology_sync_enabled = True
+        mock_settings.synology_host = "nas"
+        mock_settings.synology_username = ""
+        mock_settings.synology_password = ""
+        await _run_synology_sync()
+
+
+def _synology_settings(mock_settings):
+    mock_settings.synology_sync_enabled = True
+    mock_settings.synology_host = "nas"
+    mock_settings.synology_port = 5001
+    mock_settings.synology_username = "hl"
+    mock_settings.synology_password = "secret"
+    mock_settings.synology_verify_tls = False
+
+
+@pytest.mark.asyncio
+async def test_run_synology_sync_records_scan_run(mem_db):
+    """Auto-sync must create a ScanRun (kind=synology) so it shows in Scan
+    history, then delegate to the shared background import with the run id."""
+    from app.db.models import ScanRun
+
+    with (
+        patch("app.core.scheduler.settings") as mock_settings,
+        patch("app.core.scheduler.AsyncSessionLocal", mem_db),
+        patch(
+            "app.api.routes.synology._background_synology_import",
+            new_callable=AsyncMock,
+        ) as mock_bg,
+    ):
+        _synology_settings(mock_settings)
+        await _run_synology_sync()
+
+    async with mem_db() as db:
+        from sqlalchemy import select
+        run = (await db.execute(select(ScanRun))).scalars().one()
+    assert run.kind == "synology"
+    assert run.ranges == ["nas:5001"]
+
+    mock_bg.assert_awaited_once_with(
+        run.id, "nas", 5001, "hl", "secret", False, None,
+    )
+
+
+def test_reschedule_synology_sync_noop_when_not_running():
+    mock_sched = MagicMock()
+    mock_sched.running = False
+    with patch("app.core.scheduler.scheduler", mock_sched):
+        reschedule_synology_sync(600)
+    mock_sched.reschedule_job.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -551,6 +642,7 @@ def test_start_scheduler_adds_mesh_jobs_when_enabled():
         mock_settings.status_checker_interval = 60
         mock_settings.service_check_enabled = False
         mock_settings.proxmox_sync_enabled = False
+        mock_settings.synology_sync_enabled = False
         mock_settings.zigbee_sync_enabled = True
         mock_settings.zigbee_sync_interval = 3600
         mock_settings.zwave_sync_enabled = True

@@ -75,6 +75,8 @@ const defaultProps = {
   onScan: vi.fn(),
   onZigbeeImport: vi.fn(),
   onZwaveImport: vi.fn(),
+  onProxmoxImport: vi.fn(),
+  onSynologyImport: vi.fn(),
   onSave: vi.fn(),
   onOpenSettings: vi.fn(),
   onOpenHistory: vi.fn(),
@@ -193,6 +195,12 @@ describe('Sidebar', () => {
     render(<Sidebar {...defaultProps} />)
     fireEvent.click(screen.getByText('Z-Wave Import'))
     expect(defaultProps.onZwaveImport).toHaveBeenCalledOnce()
+  })
+
+  it('calls onSynologyImport when Synology Import is clicked', () => {
+    render(<Sidebar {...defaultProps} />)
+    fireEvent.click(screen.getByText('Synology Import'))
+    expect(defaultProps.onSynologyImport).toHaveBeenCalledOnce()
   })
 
   it('calls onSave when Save Canvas is clicked', () => {
@@ -360,6 +368,7 @@ describe('Sidebar (rack canvas)', () => {
     expect(screen.queryByText('Zigbee Import')).not.toBeInTheDocument()
     expect(screen.queryByText('Z-Wave Import')).not.toBeInTheDocument()
     expect(screen.queryByText('Proxmox Import')).not.toBeInTheDocument()
+    expect(screen.queryByText('Synology Import')).not.toBeInTheDocument()
     // The Device Inventory stays: a rack mounts what the scans found.
     expect(screen.getByText('Device Inventory')).toBeInTheDocument()
   })
@@ -451,6 +460,7 @@ describe('Sidebar (standalone)', () => {
   it('hides scan-dependent items but keeps canvas actions', async () => {
     await renderStandalone()
     expect(screen.queryByText('Scan Network')).not.toBeInTheDocument()
+    expect(screen.queryByText('Synology Import')).not.toBeInTheDocument()
     expect(screen.queryByText('Device Inventory')).not.toBeInTheDocument()
     expect(screen.queryByText('Logout')).not.toBeInTheDocument()
     expect(screen.getByText('Add Node')).toBeInTheDocument()

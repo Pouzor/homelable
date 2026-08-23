@@ -215,4 +215,24 @@ describe('ScanHistoryModal', () => {
     expect(screen.getByText('9 found')).toBeDefined()
     expect(screen.queryByText('3 found')).toBeNull()
   })
+
+  it('shows a synology run under its own kind, not IP', async () => {
+    const SYNOLOGY_RUN = {
+      id: 'run-8',
+      status: 'done',
+      kind: 'synology',
+      ranges: ['nas:5001'],
+      devices_found: 1,
+      started_at: new Date().toISOString(),
+      finished_at: new Date().toISOString(),
+      error: null,
+    }
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [DONE_RUN, SYNOLOGY_RUN] } as never)
+    renderModal()
+    await waitFor(() => expect(screen.getAllByText('done').length).toBe(2))
+    expect(screen.getAllByText('Synology').length).toBeGreaterThanOrEqual(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Synology' }))
+    expect(screen.getByText('1 found')).toBeDefined()
+    expect(screen.queryByText('3 found')).toBeNull()
+  })
 })
