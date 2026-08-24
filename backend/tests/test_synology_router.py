@@ -10,9 +10,10 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.api.routes.scan import _resolve_pending_links_for_ieee
 from app.api.routes.synology import _background_synology_import, _persist_pending_import
 from app.core.config import settings
-from app.db.models import InventoryDevice, Node
+from app.db.models import Design, Edge, InventoryDevice, InventoryDeviceLink, Node
 
 
 @pytest.fixture(autouse=True)
@@ -23,6 +24,25 @@ def _clear_env_credentials():
     settings.synology_password = ""
     yield
     settings.synology_username, settings.synology_password = user, pw
+
+
+def _container_node(name: str = "immich", *, ip: str | None = None) -> dict:
+    ieee = f"syno-1230ABC-ct-{name}"
+    return {
+        "id": ieee,
+        "label": name,
+        "type": "docker_container",
+        "ieee_address": ieee,
+        "hostname": name,
+        "ip": ip,
+        "mac": None,
+        "status": "online",
+        "vendor": "Synology",
+        "model": "Container",
+        "image": f"{name}:latest",
+        "ports": "0.0.0.0:2283->2283/tcp",
+        "parent_ieee": "syno-1230ABC",
+    }
 
 
 def _nas_node(ip: str | None = "192.168.1.20", mac: str | None = "aa:bb:cc:dd:ee:ff") -> dict:
@@ -294,8 +314,60 @@ async def test_persist_keeps_hidden_hidden(db_session) -> None:
 @pytest.mark.asyncio
 async def test_persist_never_deletes(db_session) -> None:
     await _persist_pending_import(db_session, [_nas_node()])
-    other = {**_nas_node(), "ieee_address": "syno-OTHER", "id": "syno-OTHER", "serial": "OTHER"}
+    other = {
+        **_nas_node(ip="192.168.1.30", mac="11:22:33:44:55:66"),
+        "ieee_address": "syno-OTHER", "id": "syno-OTHER", "serial": "OTHER",
+    }
     await _persist_pending_import(db_session, [other])
     rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
     ieees = {r.ieee_address for r in rows}
     assert "syno-1230ABC" in ieees and "syno-OTHER" in ieees
+
+
+@pytest.mark.asyncio
+async def test_persist_creates_container_without_merging_nas_ip(db_session) -> None:
+    await _persist_pending_import(db_session, [_nas_node(), _container_node(ip="192.168.1.20")])
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert {r.suggested_type for r in rows} == {"nas", "docker_container"}
+    container = next(r for r in rows if r.suggested_type == "docker_container")
+    assert container.ieee_address == "syno-1230ABC-ct-immich"
+    assert container.friendly_name == "immich"
+    nas = next(r for r in rows if r.suggested_type == "nas")
+    assert nas.ieee_address == "syno-1230ABC"
+
+
+@pytest.mark.asyncio
+async def test_persist_records_nas_to_container_links(db_session) -> None:
+    await _persist_pending_import(db_session, [_nas_node(), _container_node()])
+    links = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
+    assert len(links) == 1
+    assert links[0].discovery_source == "synology"
+    assert links[0].source_ieee == "syno-1230ABC"
+    assert links[0].target_ieee == "syno-1230ABC-ct-immich"
+
+
+@pytest.mark.asyncio
+async def test_synology_link_resolves_to_virtual_edge(db_session) -> None:
+    design = Design(id=str(uuid.uuid4()), name="d")
+    db_session.add(design)
+    nas = InventoryDevice(id=str(uuid.uuid4()), ieee_address="syno-1230ABC", status="approved")
+    ct = InventoryDevice(id=str(uuid.uuid4()), ieee_address="syno-1230ABC-ct-immich", status="approved")
+    db_session.add_all([nas, ct])
+    await db_session.flush()
+    db_session.add_all([
+        Node(id=str(uuid.uuid4()), type="nas", label="nas", device_id=nas.id,
+             pos_x=0, pos_y=0, design_id=design.id),
+        Node(id=str(uuid.uuid4()), type="docker_container", label="immich", device_id=ct.id,
+             pos_x=0, pos_y=0, design_id=design.id),
+        InventoryDeviceLink(
+            id=str(uuid.uuid4()), source_ieee="syno-1230ABC",
+            target_ieee="syno-1230ABC-ct-immich", discovery_source="synology",
+        ),
+    ])
+    await db_session.commit()
+
+    await _resolve_pending_links_for_ieee(db_session, "syno-1230ABC", design.id)
+    edge = (await db_session.execute(select(Edge))).scalars().one()
+    assert edge.type == "virtual"
+    assert edge.source_handle == "bottom"
+    assert edge.target_handle == "top"

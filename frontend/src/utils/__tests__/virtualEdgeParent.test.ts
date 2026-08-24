@@ -10,8 +10,8 @@ describe('getValidParentTypes', () => {
     expect(getValidParentTypes('vm')).toEqual(['proxmox', 'vm', 'lxc', 'docker_host'])
   })
 
-  it('returns docker_host/lxc/vm/proxmox for docker_container', () => {
-    expect(getValidParentTypes('docker_container')).toEqual(['docker_host', 'lxc', 'vm', 'proxmox'])
+  it('returns docker_host/lxc/vm/proxmox/nas for docker_container', () => {
+    expect(getValidParentTypes('docker_container')).toEqual(['docker_host', 'lxc', 'vm', 'proxmox', 'nas'])
   })
 
   it('returns empty list for types that cannot have a parent', () => {
@@ -103,6 +103,22 @@ describe('resolveVirtualEdgeParent', () => {
       { id: 'dc1', type: 'docker_container' },
     )
     expect(res).toEqual({ childId: 'dc1', parentId: 'px1' })
+  })
+
+  it('nests docker_container under nas', () => {
+    const res = resolveVirtualEdgeParent(
+      { id: 'dc1', type: 'docker_container' },
+      { id: 'nas1', type: 'nas' },
+    )
+    expect(res).toEqual({ childId: 'dc1', parentId: 'nas1' })
+  })
+
+  it('nests docker_container under nas (reverse direction)', () => {
+    const res = resolveVirtualEdgeParent(
+      { id: 'nas1', type: 'nas' },
+      { id: 'dc1', type: 'docker_container' },
+    )
+    expect(res).toEqual({ childId: 'dc1', parentId: 'nas1' })
   })
 
   it('returns null when docker_container links to unsupported parent type', () => {

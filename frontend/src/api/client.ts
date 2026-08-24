@@ -308,6 +308,7 @@ export const synologyApi = {
   importNetwork: (data: SynologyConnection) =>
     api.post<{
       nodes: import('@/components/synology/types').SynologyNode[]
+      edges: import('@/components/synology/types').SynologyEdge[]
       device_count: number
     }>('/synology/import', data),
 

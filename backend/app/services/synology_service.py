@@ -2,7 +2,8 @@
 
 Mirrors the Proxmox import pipeline, but talks to DSM (``/webapi``) over HTTPS
 with a username + password session instead of an API token. It returns a
-homelable ``nas`` node dict; DB persistence lives in the route layer
+homelable ``nas`` node plus any Container Manager / Docker containers as
+``docker_container`` nodes; DB persistence lives in the route layer
 (``app.api.routes.synology``).
 
 Auth uses ``SYNO.API.Auth`` login (session SID). A dedicated limited DSM user
@@ -45,7 +46,15 @@ _INFO_APIS = ",".join([
     "SYNO.Core.Network",
     "SYNO.Core.Network.Ethernet",
     "SYNO.Core.System.Utilization",
+    "SYNO.Docker.Container",
+    "SYNO.Container.Container",
 ])
+
+# Container Manager (newer) and Docker package (older) list APIs.
+_CONTAINER_LIST_APIS = (
+    ("SYNO.Docker.Container", "list", 1),
+    ("SYNO.Container.Container", "list", 1),
+)
 
 
 def _sanitize_synology_error(exc: BaseException) -> str:
@@ -351,6 +360,108 @@ def build_synology_properties(node: dict[str, Any]) -> list[dict[str, Any]]:
     return props
 
 
+def _iter_container_entries(payload: Any) -> list[dict[str, Any]]:
+    """Normalize DSM Docker / Container Manager list payloads to dict rows."""
+    if isinstance(payload, list):
+        return [row for row in payload if isinstance(row, dict)]
+    if not isinstance(payload, dict):
+        return []
+    for key in ("containers", "container", "data"):
+        val = payload.get(key)
+        if isinstance(val, list):
+            return [row for row in val if isinstance(row, dict)]
+    return []
+
+
+def _container_name(raw: dict[str, Any]) -> str | None:
+    names = raw.get("Names")
+    if isinstance(names, list) and names:
+        first = names[0]
+        if isinstance(first, str) and first.strip():
+            return first.strip().lstrip("/")
+    name = _first_str(raw.get("name"), raw.get("Name"))
+    return name.lstrip("/") if name else None
+
+
+def _container_running(raw: dict[str, Any]) -> bool:
+    if raw.get("up") is True or raw.get("is_running") is True:
+        return True
+    status = str(raw.get("status") or raw.get("State") or raw.get("state") or "").lower()
+    return status in {"running", "up"} or status.startswith("up ")
+
+
+def _container_ports(raw: dict[str, Any]) -> str | None:
+    ports = raw.get("ports") or raw.get("Ports") or raw.get("port_bindings")
+    if isinstance(ports, str) and ports.strip():
+        return ports.strip()
+    if isinstance(ports, list):
+        parts: list[str] = []
+        for entry in ports:
+            if isinstance(entry, str) and entry.strip():
+                parts.append(entry.strip())
+            elif isinstance(entry, dict):
+                public = entry.get("PublicPort") or entry.get("host_port") or entry.get("ip")
+                private = entry.get("PrivatePort") or entry.get("container_port") or entry.get("port")
+                proto = entry.get("Type") or entry.get("protocol") or "tcp"
+                if public and private:
+                    parts.append(f"{public}->{private}/{proto}")
+                elif private:
+                    parts.append(f"{private}/{proto}")
+        return ", ".join(parts) if parts else None
+    return None
+
+
+def build_synology_container_node(
+    raw: dict[str, Any], parent_ieee: str
+) -> dict[str, Any] | None:
+    """Build a homelable ``docker_container`` node from a DSM container row."""
+    name = _container_name(raw)
+    if not name:
+        return None
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or "container"
+    ieee = f"{parent_ieee}-ct-{safe}"
+    image = _first_str(raw.get("image"), raw.get("Image"))
+    ports = _container_ports(raw)
+    running = _container_running(raw)
+    return {
+        "id": ieee,
+        "label": name,
+        "type": "docker_container",
+        "ieee_address": ieee,
+        "hostname": name,
+        "ip": None,
+        "mac": None,
+        "status": "online" if running else "offline",
+        "vendor": "Synology",
+        "model": "Container",
+        "image": image,
+        "ports": ports,
+        "parent_ieee": parent_ieee,
+    }
+
+
+def build_synology_container_properties(node: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build hidden NodeProperty rows for a Synology Docker container."""
+    props: list[dict[str, Any]] = []
+    if node.get("image"):
+        props.append({"key": "Image", "value": str(node["image"]), "icon": None, "visible": False})
+    if node.get("ports"):
+        props.append({"key": "Ports", "value": str(node["ports"]), "icon": None, "visible": False})
+    props.append({"key": "Source", "value": "Synology Container Manager", "icon": None, "visible": False})
+    return props
+
+
+def build_synology_guest_edges(nodes: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """NAS → container links, same shape as Proxmox host → LXC edges."""
+    edges: list[dict[str, str]] = []
+    for node in nodes:
+        parent = node.get("parent_ieee")
+        child = node.get("ieee_address") or node.get("id")
+        if node.get("type") == "docker_container" and parent and child:
+            edges.append({"source": str(parent), "target": str(child)})
+    return edges
+
+
 def default_check(host: str, port: int, verify_tls: bool) -> tuple[str, str]:
     """Live-status check to apply on a freshly imported NAS.
 
@@ -476,17 +587,46 @@ async def _call(
         logger.warning("DSM %s.%s returned error %s", api_name, method, payload.get("error"))
         return None
     data = payload.get("data", payload)
-    return data if isinstance(data, dict) or isinstance(data, list) else None
+    return data if isinstance(data, dict | list) else None
 
 
-async def _fetch_nas(
+async def _list_containers(
+    client: httpx.AsyncClient,
+    api_map: dict[str, Any],
+    sid: str,
+    parent_ieee: str,
+) -> list[dict[str, Any]]:
+    """Best-effort Container Manager / Docker list. Empty if the package is absent."""
+    extra_attempts: tuple[dict[str, Any] | None, ...] = ({"limit": "-1", "offset": "0"}, None)
+    payload: Any = None
+    for api_name, method, version in _CONTAINER_LIST_APIS:
+        for extra in extra_attempts:
+            payload = await _call(client, api_map, api_name, method, version, sid, extra)
+            if payload is not None:
+                break
+        if payload is not None:
+            break
+    if payload is None:
+        return []
+    nodes: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in _iter_container_entries(payload):
+        node = build_synology_container_node(raw, parent_ieee)
+        if node is None or node["id"] in seen:
+            continue
+        seen.add(node["id"])
+        nodes.append(node)
+    return nodes
+
+
+async def _fetch_inventory(
     client: httpx.AsyncClient,
     username: str,
     password: str,
     otp_code: str | None,
     host: str,
-) -> dict[str, Any]:
-    """Login, collect system/storage/network, logout. Returns one nas node."""
+) -> list[dict[str, Any]]:
+    """Login, collect NAS + Docker containers, logout."""
     api_map = await _query_api_map(client)
     sid = await _login(client, api_map, username, password, otp_code)
     try:
@@ -516,7 +656,9 @@ async def _fetch_nas(
             hostname = _first_str(net_raw.get("server_name"), net_raw.get("hostname"))
             if hostname:
                 system_raw = {**system_raw, "hostname": hostname}
-        return build_synology_node(system_raw, storage_raw, ip, mac, host)
+        nas = build_synology_node(system_raw, storage_raw, ip, mac, host)
+        containers = await _list_containers(client, api_map, sid, nas["ieee_address"])
+        return [nas, *containers]
     finally:
         await _logout(client, api_map, sid)
 
@@ -529,7 +671,7 @@ async def fetch_synology_inventory(
     verify_tls: bool = True,
     otp_code: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Fetch the NAS from DSM and return a one-item node list.
+    """Fetch the NAS and Container Manager containers from DSM.
 
     Raises:
         ConnectionError: transport/DNS/TLS/auth failures (sanitized message).
@@ -542,15 +684,16 @@ async def fetch_synology_inventory(
             verify=verify_tls,
             timeout=timeout,
         ) as client:
-            node = await _fetch_nas(client, username, password, otp_code, host)
+            nodes = await _fetch_inventory(client, username, password, otp_code, host)
     except ConnectionError:
         raise
     except httpx.HTTPStatusError as exc:
         raise ConnectionError(_sanitize_synology_error(exc)) from exc
     except httpx.HTTPError as exc:
         raise ConnectionError(_sanitize_synology_error(exc)) from exc
-    node["check_method"], node["check_target"] = default_check(host, port, verify_tls)
-    return [node]
+    if nodes:
+        nodes[0]["check_method"], nodes[0]["check_target"] = default_check(host, port, verify_tls)
+    return nodes
 
 
 async def test_synology_connection(

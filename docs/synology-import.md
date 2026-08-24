@@ -2,7 +2,9 @@
 
 This feature connects Homelable to your Synology NAS, reads system and storage
 facts over the DSM Web API, and drops the box onto the canvas as a typed `nas`
-node — with hostname, model, RAM, volume capacity and disk health. It can also
+node — with hostname, model, RAM, volume capacity and disk health. **Container
+Manager / Docker containers** are imported as `docker_container` nodes linked to
+the NAS the same way Proxmox LXC guests are linked to a host. It can also
 **sync** on a schedule so inventory keeps up with the NAS, and it **merges**
 with a device already discovered by a network scan (same IP or MAC is updated
 in place, not duplicated).
@@ -16,7 +18,12 @@ in place, not duplicated).
 
 - **API-based discovery** — Logs into DSM (`/webapi`) with a dedicated user and
   reads `SYNO.Core.System` + `SYNO.Storage.CGI.Storage`.
-- **Typed node** — The NAS maps to the existing Homelable `nas` type.
+- **Typed nodes** — The NAS maps to the existing Homelable `nas` type.
+  Container Manager (or the older Docker package) containers map to
+  `docker_container`.
+- **Hierarchy** — Each container is linked to the NAS with a `virtual` edge,
+  matching Proxmox host → LXC. Host-network containers keep their own identity
+  (`syno-{serial}-ct-{name}`) so they are never merged into the NAS by IP.
 - **Hardware specs** — RAM, total volume size, per-volume used%, disk health
   and DSM version are imported as node properties (hidden by default — toggle
   them on from the right panel).
@@ -26,8 +33,8 @@ in place, not duplicated).
 - **Live status** — A fresh import sets an HTTPS (or TCP, if TLS verify is off)
   check against the DSM port so Live Status works without extra setup.
 
-Volumes, shares, Virtual Machine Manager guests and Container Manager are **not**
-imported as extra canvas nodes in this version.
+Volumes, shares and Virtual Machine Manager guests are **not** imported as
+extra canvas nodes in this version.
 
 ---
 
@@ -43,8 +50,9 @@ In DSM:
 
 1. **Control Panel → User & Group → Create**.
 2. Name it something like `homelable`. Give it a strong password.
-3. Under **Applications**, grant **DSM** (that's enough — Homelable is
-   read-only). Deny File Station / Photo Station / etc. if you prefer.
+3. Under **Applications**, grant **DSM**. If you want containers imported, also
+   grant **Container Manager** (or **Docker** on older DSM). Deny File Station /
+   Photo Station / etc. if you prefer.
 4. Do **not** enable 2FA on this account if you want **auto-sync**. One-off
    imports in the dialog can send an OTP; the scheduled job cannot.
 
@@ -95,10 +103,10 @@ login; red shows a sanitized error.
 
 ### 4. Choose an import target
 
-- **Pending section** — The NAS is queued in the Device Inventory for review
-  (and tracked as a scan run in Scan History). Approve, hide, or delete it.
-- **Canvas directly** — The NAS is fetched and shown in the dialog so you can
-  add it immediately.
+- **Pending section** — The NAS and containers are queued in the Device Inventory
+  for review (and tracked as a scan run in Scan History). Approve, hide, or delete each.
+- **Canvas directly** — Devices are fetched and shown grouped (NAS / Containers)
+  in the dialog so you can pick which ones to add immediately.
 
 ### 5. Fetch inventory
 
@@ -108,11 +116,14 @@ Click **Import to Pending** (or **Fetch Inventory** in canvas mode). Homelable w
 3. Read system info (model, serial, RAM, DSM version)
 4. Read storage (volumes + disks)
 5. Resolve LAN IP/MAC best-effort
-6. Log out
+6. List Container Manager / Docker containers (skipped if the package is absent)
+7. Log out
 
 ### 6. Select and add to canvas
 
-(Canvas mode) Check the NAS, then **Add N to Canvas**.
+(Canvas mode) Devices are grouped by type (NAS / Containers). Use the checkboxes
+to pick which to add, then **Add N to Canvas**. NAS→container `virtual` edges
+are created automatically.
 
 ---
 
@@ -121,11 +132,13 @@ Click **Import to Pending** (or **Fetch Inventory** in canvas mode). Homelable w
 | DSM (`/webapi`) | Homelable type | Notes |
 |---|---|---|
 | The NAS itself | `nas` | Identity `syno-{serial}` |
+| `SYNO.Docker.Container` / `SYNO.Container.Container` | `docker_container` | Nested under the NAS via a `virtual` edge |
 | `status` reachable | node status online | |
 | `ram_size` | RAM property (GB) | hidden by default |
 | volume totals | Disk property (GB) | hidden by default |
 | per-volume used% | Volume N properties | hidden by default |
 | disk health | Disks property | hidden by default |
+| container image / ports | Image, Ports properties | hidden by default |
 | serial + hostname | synthetic identity (`syno-…`) | stable across re-imports |
 
 ---
@@ -138,10 +151,10 @@ Click **Import to Pending** (or **Fetch Inventory** in canvas mode). Homelable w
    credentials are configured.
 3. Toggle **Auto-sync Synology inventory** and set the interval (min 300 s).
 
-On each run, Homelable re-imports the NAS into the pending section:
-- A new NAS appears as **pending** for review.
+On each run, Homelable re-imports the NAS and its containers into the pending section:
+- A new NAS or container appears as **pending** for review.
 - An existing device is **updated in place** (status, specs, IP).
-- Nothing is ever deleted — a NAS removed from the network is left on your canvas.
+- Nothing is ever deleted — a NAS or container removed from the network is left on your canvas.
 
 Auto-sync cannot send an OTP. Use a DSM user **without** 2FA for the scheduled job.
 
@@ -149,8 +162,9 @@ Auto-sync cannot send an OTP. Use a DSM user **without** 2FA for the scheduled j
 
 ## Supported Versions
 
-Works with DSM 6.x / 7.x Web API (`/webapi`). No extra Synology packages are
-required. QuickConnect hostnames are not supported — use a LAN IP or local DNS
+Works with DSM 6.x / 7.x Web API (`/webapi`). Container listing uses Container
+Manager or the older Docker package when installed; the NAS still imports
+without it. QuickConnect hostnames are not supported — use a LAN IP or local DNS
 name.
 
 ---

@@ -68,6 +68,59 @@ def test_volume_and_disk_summaries() -> None:
     assert svc._disk_summary(storage) == "1/2 healthy"
 
 
+def test_iter_container_entries_accepts_list_and_wrapped_payloads() -> None:
+    raw = {"name": "immich", "image": "immich:latest", "status": "running"}
+    assert svc._iter_container_entries([raw]) == [raw]
+    assert svc._iter_container_entries({"containers": [raw]}) == [raw]
+    assert svc._iter_container_entries({"container": [raw]}) == [raw]
+    assert svc._iter_container_entries(None) == []
+
+
+def test_build_container_node_and_properties() -> None:
+    node = svc.build_synology_container_node(
+        {"name": "/immich", "image": "ghcr.io/immich-app/immich-server:latest", "status": "running", "id": "abc123def"},
+        parent_ieee="syno-1230ABC",
+    )
+    assert node is not None
+    assert node["type"] == "docker_container"
+    assert node["label"] == "immich"
+    assert node["ieee_address"] == "syno-1230ABC-ct-immich"
+    assert node["parent_ieee"] == "syno-1230ABC"
+    assert node["status"] == "online"
+    assert node["ip"] is None
+    assert node["vendor"] == "Synology"
+    props = svc.build_synology_container_properties(node)
+    keys = {p["key"] for p in props}
+    assert {"Image", "Source"} <= keys
+    assert all(p["visible"] is False for p in props)
+
+
+def test_build_container_node_docker_api_shape_and_stopped() -> None:
+    node = svc.build_synology_container_node(
+        {"Names": ["/redis"], "Image": "redis:7", "State": "exited", "Id": "deadbeef", "Ports": "0.0.0.0:6379->6379/tcp"},
+        parent_ieee="syno-1230ABC",
+    )
+    assert node is not None
+    assert node["label"] == "redis"
+    assert node["status"] == "offline"
+    assert node["image"] == "redis:7"
+    assert node["ports"] == "0.0.0.0:6379->6379/tcp"
+    keys = {p["key"] for p in svc.build_synology_container_properties(node)}
+    assert "Ports" in keys
+
+
+def test_build_container_node_skips_nameless() -> None:
+    assert svc.build_synology_container_node({"status": "running"}, "syno-1230ABC") is None
+
+
+def test_guest_edges_link_containers_to_nas() -> None:
+    nas = {"id": "syno-1230ABC", "ieee_address": "syno-1230ABC", "type": "nas"}
+    ct = {"id": "syno-1230ABC-ct-immich", "ieee_address": "syno-1230ABC-ct-immich", "type": "docker_container", "parent_ieee": "syno-1230ABC"}
+    assert svc.build_synology_guest_edges([nas, ct]) == [
+        {"source": "syno-1230ABC", "target": "syno-1230ABC-ct-immich"}
+    ]
+
+
 def test_build_node_and_properties() -> None:
     system = {
         "model": "DS1821+",
@@ -122,8 +175,8 @@ def test_auth_error_messages() -> None:
 
 
 def _api_of(request: httpx.Request) -> tuple[str | None, str | None]:
-    q = {k: v[0] for k, v in parse_qs(str(request.url.query)).items()}
-    api, method = q.get("api"), q.get("method")
+    params = request.url.params
+    api, method = params.get("api"), params.get("method")
     if request.content:
         body = {k: v[0] for k, v in parse_qs(request.content.decode()).items()}
         api = api or body.get("api")
@@ -175,13 +228,43 @@ def _dsm_handler(request: httpx.Request) -> httpx.Response:
 async def test_fetch_inventory_happy_path() -> None:
     transport = httpx.MockTransport(_dsm_handler)
     async with httpx.AsyncClient(base_url="https://nas:5001", transport=transport) as client:
-        node = await svc._fetch_nas(client, "user", "pass", None, "192.168.1.20")
-    assert node["type"] == "nas"
+        nodes = await svc._fetch_inventory(client, "user", "pass", None, "192.168.1.20")
+    node = next(n for n in nodes if n["type"] == "nas")
     assert node["ieee_address"] == "syno-1230ABC"
     assert node["ip"] == "192.168.1.20"
     assert node["mac"] == "aa:bb:cc:dd:ee:ff"
     assert node["model"] == "DS1821+"
     assert node["ram_gb"] == 8.0
+
+
+@pytest.mark.asyncio
+async def test_fetch_inventory_includes_docker_containers() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        api, method = _api_of(request)
+        if api == "SYNO.Docker.Container" and method == "list":
+            return _ok({"containers": [
+                {"name": "immich", "image": "immich:latest", "status": "running", "id": "aaa"},
+                {"name": "redis", "image": "redis:7", "status": "exited", "id": "bbb"},
+            ]})
+        return _dsm_handler(request)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(base_url="https://nas:5001", transport=transport) as client:
+        nodes = await svc._fetch_inventory(client, "user", "pass", None, "192.168.1.20")
+    types = [n["type"] for n in nodes]
+    assert types.count("nas") == 1
+    containers = [n for n in nodes if n["type"] == "docker_container"]
+    assert {n["label"] for n in containers} == {"immich", "redis"}
+    assert all(n["parent_ieee"] == "syno-1230ABC" for n in containers)
+    assert {n["status"] for n in containers} == {"online", "offline"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_inventory_skips_missing_docker_api() -> None:
+    transport = httpx.MockTransport(_dsm_handler)
+    async with httpx.AsyncClient(base_url="https://nas:5001", transport=transport) as client:
+        nodes = await svc._fetch_inventory(client, "user", "pass", None, "nas")
+    assert [n["type"] for n in nodes] == ["nas"]
 
 
 @pytest.mark.asyncio
@@ -259,7 +342,7 @@ async def test_logout_always_runs_after_fetch() -> None:
 
     transport = httpx.MockTransport(handler)
     async with httpx.AsyncClient(base_url="https://nas:5001", transport=transport) as client:
-        await svc._fetch_nas(client, "user", "pass", None, "nas")
+        await svc._fetch_inventory(client, "user", "pass", None, "nas")
     assert "SYNO.API.Auth.login" in calls
     assert "SYNO.API.Auth.logout" in calls
     assert calls.index("SYNO.API.Auth.logout") > calls.index("SYNO.API.Auth.login")

@@ -60,7 +60,7 @@ import type { NodeData, EdgeData, CustomStyleDef, DesignType, FloorMapConfig, No
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 import type { ZwaveNode, ZwaveEdge } from '@/components/zwave/types'
 import type { ProxmoxNode, ProxmoxEdge } from '@/components/proxmox/types'
-import type { SynologyNode } from '@/components/synology/types'
+import type { SynologyNode, SynologyEdge } from '@/components/synology/types'
 import { buildProxmoxClusterEdges } from '@/components/proxmox/clusterEdges'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
@@ -928,7 +928,7 @@ export default function App() {
     markUnsaved()
   }, [addNode, onConnect, snapshotHistory, markUnsaved])
 
-  const handleSynologyAddToCanvas = useCallback((syNodes: SynologyNode[]) => {
+  const handleSynologyAddToCanvas = useCallback((syNodes: SynologyNode[], syEdges: SynologyEdge[] = []) => {
     snapshotHistory()
     const COLS = 4
     const SPACING_X = 190
@@ -942,11 +942,11 @@ export default function App() {
       const position = { x: origin.x + col * SPACING_X, y: origin.y + row * SPACING_Y }
       const newNode: import('@xyflow/react').Node<NodeData> = {
         id: sn.id,
-        type: 'nas',
+        type: sn.type,
         position,
         data: {
           label: sn.label,
-          type: 'nas',
+          type: sn.type,
           status: (sn.status === 'online' ? 'online' : 'unknown') as NodeData['status'],
           services: [],
           ...(sn.ip ? { ip: sn.ip } : {}),
@@ -955,6 +955,15 @@ export default function App() {
       }
       addNode(newNode)
     })
+    syEdges.forEach((se) => {
+      onConnect({
+        source: se.source,
+        sourceHandle: 'bottom',
+        target: se.target,
+        targetHandle: 'top-t',
+        type: 'virtual',
+      } as unknown as import('@xyflow/react').Connection)
+    })
     const importedIds = new Set(syNodes.map((sn) => sn.id))
     useCanvasStore.setState((state) => ({
       nodes: state.nodes.map((n) => ({ ...n, selected: importedIds.has(n.id) })),
@@ -962,7 +971,7 @@ export default function App() {
       selectedNodeId: importedIds.size === 1 ? Array.from(importedIds)[0] : null,
     }))
     markUnsaved()
-  }, [addNode, snapshotHistory, markUnsaved])
+  }, [addNode, snapshotHistory, markUnsaved, onConnect])
 
   const handleEdgeConnect = useCallback((connection: Connection) => {
     setPendingConnection(connection)

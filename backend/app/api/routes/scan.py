@@ -980,10 +980,10 @@ async def _resolve_pending_links_for_ieee(
         # bare source id, and React Flow resolves the bare id to that side). A
         # '-t' target id does not resolve here and RF falls back to the top
         # handle, so never emit one.
-        #   proxmox         → 'virtual' host→guest, vertical (bottom → top)
+        #   proxmox / synology → 'virtual' host→guest, vertical (bottom → top)
         #   proxmox_cluster → 'cluster' host↔host, horizontal (right → left)
         #   anything else   → 'iot' mesh link, vertical
-        if link.discovery_source == "proxmox":
+        if link.discovery_source in ("proxmox", "synology"):
             edge_type, src_handle, tgt_handle = "virtual", "bottom", "top"
         elif link.discovery_source == "proxmox_cluster":
             edge_type, src_handle, tgt_handle = "cluster", "right", "left"

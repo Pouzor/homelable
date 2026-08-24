@@ -30,13 +30,13 @@ class SynologyTestConnectionResponse(BaseModel):
 
 
 class SynologyNodeOut(BaseModel):
-    """A homelable-ready node representation of a Synology NAS."""
+    """A homelable-ready node representation of a Synology NAS or container."""
 
     model_config = ConfigDict(extra="ignore")
 
     id: str
     label: str
-    type: str  # nas
+    type: str  # nas | docker_container
     ieee_address: str
     hostname: str | None = None
     ip: str | None = None
@@ -46,10 +46,19 @@ class SynologyNodeOut(BaseModel):
     disk_gb: float | None = None
     vendor: str | None = None
     model: str | None = None
+    parent_ieee: str | None = None
+    image: str | None = None
+    ports: str | None = None
+
+
+class SynologyEdgeOut(BaseModel):
+    source: str
+    target: str
 
 
 class SynologyImportResponse(BaseModel):
     nodes: list[SynologyNodeOut]
+    edges: list[SynologyEdgeOut] = []
     device_count: int
 
 
@@ -59,6 +68,7 @@ class SynologyImportPendingResponse(BaseModel):
     pending_created: int
     pending_updated: int
     device_count: int
+    links_recorded: int = 0
 
 
 class SynologyConfig(BaseModel):

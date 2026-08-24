@@ -27,6 +27,11 @@ const sampleNodes = [
     ieee_address: 'syno-1230ABC', hostname: 'nas', ip: '192.168.1.20', status: 'online',
     ram_gb: 16, disk_gb: 32, vendor: 'Synology', model: 'DS1821+',
   },
+  {
+    id: 'syno-1230ABC-ct-immich', label: 'immich', type: 'docker_container' as const,
+    ieee_address: 'syno-1230ABC-ct-immich', hostname: 'immich', status: 'online',
+    vendor: 'Synology', model: 'Container', parent_ieee: 'syno-1230ABC',
+  },
 ]
 
 describe('SynologyImportModal', () => {
@@ -86,7 +91,7 @@ describe('SynologyImportModal', () => {
 
   it('fetches inventory in canvas mode', async () => {
     vi.mocked(synologyApi.importNetwork).mockResolvedValue({
-      data: { nodes: sampleNodes, device_count: 1 },
+      data: { nodes: sampleNodes, edges: [{ source: 'syno-1230ABC', target: 'syno-1230ABC-ct-immich' }], device_count: 2 },
     } as never)
     render(<SynologyImportModal {...defaultProps} />)
     fireEvent.click(screen.getByRole('radio', { name: /canvas directly/i }))
@@ -94,8 +99,27 @@ describe('SynologyImportModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /fetch inventory/i }))
     await waitFor(() => {
       expect(screen.getByText('nas')).toBeDefined()
+      expect(screen.getByText('immich')).toBeDefined()
     })
-    expect(toast.success).toHaveBeenCalledWith('Found 1 device')
+    expect(screen.getByText(/NAS \(1\)/)).toBeDefined()
+    expect(screen.getByText(/Containers \(1\)/)).toBeDefined()
+    expect(toast.success).toHaveBeenCalledWith('Found 2 devices')
+  })
+
+  it('adds selected devices and host-to-container edges to the canvas', async () => {
+    vi.mocked(synologyApi.importNetwork).mockResolvedValue({
+      data: { nodes: sampleNodes, edges: [{ source: 'syno-1230ABC', target: 'syno-1230ABC-ct-immich' }], device_count: 2 },
+    } as never)
+    render(<SynologyImportModal {...defaultProps} />)
+    fireEvent.click(screen.getByRole('radio', { name: /canvas directly/i }))
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.x or nas.local'), { target: { value: 'nas' } })
+    fireEvent.click(screen.getByRole('button', { name: /fetch inventory/i }))
+    await waitFor(() => expect(screen.getByText('immich')).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: /add 2 to canvas/i }))
+    expect(defaultProps.onAddToCanvas).toHaveBeenCalledWith(
+      sampleNodes,
+      [{ source: 'syno-1230ABC', target: 'syno-1230ABC-ct-immich' }],
+    )
   })
 
   it('sends credentials from the form in the payload', async () => {

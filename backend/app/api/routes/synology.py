@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,11 +21,12 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.scheduler import reschedule_synology_sync, set_synology_sync_enabled
 from app.db.database import AsyncSessionLocal, get_db
-from app.db.models import InventoryDevice, Node, ScanRun
+from app.db.models import InventoryDevice, InventoryDeviceLink, Node, ScanRun
 from app.schemas.scan import ScanRunResponse
 from app.schemas.synology import (
     SynologyConfig,
     SynologyConnectionRequest,
+    SynologyEdgeOut,
     SynologyImportPendingResponse,
     SynologyImportResponse,
     SynologyNodeOut,
@@ -35,6 +37,8 @@ from app.services.discovery_sources import add_source
 from app.services.mac_utils import normalize_mac
 from app.services.node_dedupe import dedupe_nodes_by_device
 from app.services.synology_service import (
+    build_synology_container_properties,
+    build_synology_guest_edges,
     build_synology_properties,
     fetch_synology_inventory,
     merge_synology_properties,
@@ -85,7 +89,7 @@ async def import_synology(
     payload: SynologyConnectionRequest,
     _: str = Depends(get_current_user),
 ) -> SynologyImportResponse:
-    """Fetch the NAS and return a node ready for canvas drop."""
+    """Fetch the NAS and containers and return nodes + edges ready for canvas drop."""
     username, password = _resolve_credentials(payload)
     try:
         nodes_raw = await fetch_synology_inventory(
@@ -105,7 +109,8 @@ async def import_synology(
         raise HTTPException(status_code=500, detail="Unexpected error during Synology import") from exc
 
     nodes = [SynologyNodeOut.model_validate(n) for n in nodes_raw]
-    return SynologyImportResponse(nodes=nodes, device_count=len(nodes))
+    edges = [SynologyEdgeOut.model_validate(e) for e in build_synology_guest_edges(nodes_raw)]
+    return SynologyImportResponse(nodes=nodes, edges=edges, device_count=len(nodes))
 
 
 @router.post("/import-pending", response_model=ScanRunResponse)
@@ -222,12 +227,13 @@ async def _persist_pending_import(
 ) -> SynologyImportPendingResponse:
     """Upsert Synology nodes into device_inventory.
 
-    Two-tier identity (order matters):
+    Two-tier identity for the NAS (order matters):
       1. Match an existing canvas Node or pending row by **IP** or **MAC**
          (merge into a device previously found by a scan) — never duplicate.
       2. Else match by synthetic ``ieee_address`` (``syno-...``).
 
-    Update-in-place only. Nothing is ever deleted; hidden rows stay hidden.
+    Docker containers match by ieee only so a host-network container is never
+    merged into the NAS. Update-in-place only. Nothing is ever deleted.
     """
     await dedupe_nodes_by_device(db)
 
@@ -238,11 +244,16 @@ async def _persist_pending_import(
         ieee = n.get("ieee_address")
         if not ieee:
             continue
-        ip = n.get("ip")
-        mac = normalize_mac(n.get("mac"))
-        props = build_synology_properties(n)
+        is_container = n.get("type") == "docker_container"
+        ip = None if is_container else n.get("ip")
+        mac = None if is_container else normalize_mac(n.get("mac"))
+        props = (
+            build_synology_container_properties(n)
+            if is_container
+            else build_synology_properties(n)
+        )
 
-        pending = await _find_pending(db, ieee, ip, mac)
+        pending = await _find_pending(db, ieee, ip, mac, ieee_only=is_container)
         drawn = bool(
             pending
             and (
@@ -262,17 +273,27 @@ async def _persist_pending_import(
             pending.disk_gb = pending.disk_gb or n.get("disk_gb")
             pending_updated += 1
 
+    links_recorded = await _replace_guest_links(db, build_synology_guest_edges(nodes_raw))
     await db.commit()
     return SynologyImportPendingResponse(
         pending_created=pending_created,
         pending_updated=pending_updated,
         device_count=len(nodes_raw),
+        links_recorded=links_recorded,
     )
 
 
 async def _find_pending(
-    db: AsyncSession, ieee: str, ip: str | None, mac: str | None
+    db: AsyncSession,
+    ieee: str,
+    ip: str | None,
+    mac: str | None,
+    ieee_only: bool = False,
 ) -> InventoryDevice | None:
+    if ieee_only:
+        return (
+            await db.execute(select(InventoryDevice).where(InventoryDevice.ieee_address == ieee))
+        ).scalars().first()
     filters = [InventoryDevice.ieee_address == ieee]
     if ip:
         filters.append(InventoryDevice.ip == ip)
@@ -281,6 +302,26 @@ async def _find_pending(
     return (
         await db.execute(select(InventoryDevice).where(or_(*filters)))
     ).scalars().first()
+
+
+async def _replace_guest_links(
+    db: AsyncSession, edges_raw: list[dict[str, Any]]
+) -> int:
+    """Wipe NAS→container links and re-insert the freshly discovered set."""
+    await db.execute(
+        sa_delete(InventoryDeviceLink).where(InventoryDeviceLink.discovery_source == _SYNOLOGY_SOURCE)
+    )
+    recorded = 0
+    seen: set[tuple[str, str]] = set()
+    for edge in edges_raw:
+        src = edge.get("source")
+        tgt = edge.get("target")
+        if not src or not tgt or (src, tgt) in seen:
+            continue
+        seen.add((src, tgt))
+        db.add(InventoryDeviceLink(source_ieee=src, target_ieee=tgt, discovery_source=_SYNOLOGY_SOURCE))
+        recorded += 1
+    return recorded
 
 
 def _new_pending(
@@ -303,8 +344,8 @@ def _new_pending(
         properties=props,
         ram_gb=n.get("ram_gb"),
         disk_gb=n.get("disk_gb"),
-        check_method=n.get("check_method"),
-        check_target=n.get("check_target"),
+        check_method=n.get("check_method") if n.get("type") != "docker_container" else None,
+        check_target=n.get("check_target") if n.get("type") != "docker_container" else None,
         status=status,
         discovery_source=_SYNOLOGY_SOURCE,
         discovery_sources=[_SYNOLOGY_SOURCE],

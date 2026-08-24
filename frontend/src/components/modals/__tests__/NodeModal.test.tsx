@@ -374,6 +374,14 @@ describe('NodeModal', () => {
     expect(screen.getByText('Parent Container')).toBeDefined()
   })
 
+  it('renders Parent Container for docker_container when only a NAS candidate exists', () => {
+    renderModal({
+      initial: { ...BASE, type: 'docker_container' },
+      parentCandidates: [{ id: 'nas1', label: 'DiskStation', type: 'nas' }],
+    })
+    expect(screen.getByText('Parent Container')).toBeDefined()
+  })
+
   it('renders Parent Container for lxc when proxmox candidate exists', () => {
     renderModal({
       initial: { ...BASE, type: 'lxc' },

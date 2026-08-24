@@ -1,23 +1,38 @@
 import { useState } from 'react'
-import { HardDrive, CheckCircle2, XCircle, Loader2, Plus } from 'lucide-react'
+import { HardDrive, Package, CheckCircle2, XCircle, Loader2, Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { synologyApi, type SynologyConnection } from '@/api/client'
 import { toast } from 'sonner'
-import type { SynologyNode } from './types'
+import type { SynologyEdge, SynologyNode, SynologyNodeType } from './types'
 
 interface SynologyImportModalProps {
   open: boolean
   onClose: () => void
-  onAddToCanvas: (nodes: SynologyNode[]) => void
+  onAddToCanvas: (nodes: SynologyNode[], edges: SynologyEdge[]) => void
   onInventoryImported?: () => void
 }
 
 type ImportMode = 'pending' | 'canvas'
 
 const ACCENT = '#1e8fff'
+
+const DEVICE_TYPE_ICON: Record<SynologyNodeType, typeof HardDrive> = {
+  nas: HardDrive,
+  docker_container: Package,
+}
+
+const DEVICE_TYPE_LABEL: Record<SynologyNodeType, string> = {
+  nas: 'NAS',
+  docker_container: 'Containers',
+}
+
+const DEVICE_TYPE_COLOR: Record<SynologyNodeType, string> = {
+  nas: '#1e8fff',
+  docker_container: '#39d353',
+}
 
 interface ConnectionForm {
   host: string
@@ -43,6 +58,7 @@ export function SynologyImportModal({ open, onClose, onAddToCanvas, onInventoryI
   const [connectionMsg, setConnectionMsg] = useState('')
   const [loading, setLoading] = useState(false)
   const [devices, setDevices] = useState<SynologyNode[]>([])
+  const [edges, setEdges] = useState<SynologyEdge[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [importMode, setImportMode] = useState<ImportMode>('pending')
 
@@ -90,6 +106,7 @@ export function SynologyImportModal({ open, onClose, onAddToCanvas, onInventoryI
       } else {
         const res = await synologyApi.importNetwork(buildPayload())
         setDevices(res.data.nodes)
+        setEdges(res.data.edges ?? [])
         setChecked(new Set(res.data.nodes.map((n) => n.id)))
         if (res.data.device_count === 0) {
           toast.info('No Synology NAS found')
@@ -117,18 +134,26 @@ export function SynologyImportModal({ open, onClose, onAddToCanvas, onInventoryI
 
   const handleAddToCanvas = () => {
     const selectedDevices = devices.filter((d) => checked.has(d.id))
-    onAddToCanvas(selectedDevices)
+    const selectedIds = new Set(selectedDevices.map((d) => d.id))
+    const selectedEdges = edges.filter((e) => selectedIds.has(e.source) && selectedIds.has(e.target))
+    onAddToCanvas(selectedDevices, selectedEdges)
     toast.success(`Added ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''} to canvas`)
     onClose()
   }
 
   const handleClose = () => {
     setDevices([])
+    setEdges([])
     setChecked(new Set())
     setConnectionStatus('idle')
     setConnectionMsg('')
     setImportMode('pending')
     onClose()
+  }
+
+  const groupedDevices: Record<SynologyNodeType, SynologyNode[]> = {
+    nas: devices.filter((d) => d.type === 'nas'),
+    docker_container: devices.filter((d) => d.type === 'docker_container'),
   }
 
   return (
@@ -297,48 +322,57 @@ export function SynologyImportModal({ open, onClose, onAddToCanvas, onInventoryI
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center gap-1.5 mb-1">
-                  <HardDrive size={11} style={{ color: ACCENT }} />
-                  <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color: ACCENT }}>
-                    NAS ({devices.length})
-                  </span>
-                </div>
-                {devices.map((device) => (
-                  <div
-                    key={device.id}
-                    className={`flex items-start gap-2 p-2 mb-1 rounded-md text-xs cursor-pointer transition-colors border ${
-                      checked.has(device.id)
-                        ? 'bg-[#21262d] border-[#1e8fff]/40'
-                        : 'bg-[#21262d] border-transparent hover:bg-[#30363d]'
-                    }`}
-                    onClick={() => toggleCheck(device.id)}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked.has(device.id)}
-                      onChange={() => toggleCheck(device.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-3 h-3 mt-0.5 cursor-pointer shrink-0"
-                      style={{ accentColor: ACCENT }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-foreground font-medium truncate">{device.label}</div>
-                      {device.ip && (
-                        <div className="font-mono text-[10px] text-muted-foreground truncate">{device.ip}</div>
-                      )}
-                      <div className="text-[10px] text-muted-foreground truncate">
-                        {[
-                          device.model,
-                          device.ram_gb ? `${device.ram_gb} GB RAM` : null,
-                          device.disk_gb ? `${device.disk_gb} GB disk` : null,
-                          device.status,
-                        ].filter(Boolean).join(' · ')}
+              {(Object.entries(groupedDevices) as [SynologyNodeType, SynologyNode[]][])
+                .filter(([, group]) => group.length > 0)
+                .map(([type, group]) => {
+                  const Icon = DEVICE_TYPE_ICON[type]
+                  const color = DEVICE_TYPE_COLOR[type]
+                  return (
+                    <div key={type}>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Icon size={11} style={{ color }} />
+                        <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color }}>
+                          {DEVICE_TYPE_LABEL[type]} ({group.length})
+                        </span>
                       </div>
+                      {group.map((device) => (
+                        <div
+                          key={device.id}
+                          className={`flex items-start gap-2 p-2 mb-1 rounded-md text-xs cursor-pointer transition-colors border ${
+                            checked.has(device.id)
+                              ? 'bg-[#21262d] border-[#1e8fff]/40'
+                              : 'bg-[#21262d] border-transparent hover:bg-[#30363d]'
+                          }`}
+                          onClick={() => toggleCheck(device.id)}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked.has(device.id)}
+                            onChange={() => toggleCheck(device.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-3 h-3 mt-0.5 cursor-pointer shrink-0"
+                            style={{ accentColor: ACCENT }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-foreground font-medium truncate">{device.label}</div>
+                            {device.ip && (
+                              <div className="font-mono text-[10px] text-muted-foreground truncate">{device.ip}</div>
+                            )}
+                            <div className="text-[10px] text-muted-foreground truncate">
+                              {[
+                                device.image,
+                                device.model,
+                                device.ram_gb ? `${device.ram_gb} GB RAM` : null,
+                                device.disk_gb ? `${device.disk_gb} GB disk` : null,
+                                device.status,
+                              ].filter(Boolean).join(' · ')}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
-              </div>
+                  )
+                })}
             </div>
           )}
         </div>
