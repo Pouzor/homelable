@@ -48,8 +48,8 @@ If you are running  <img width="22" height="22" align="top" alt="New_Home_Assist
 <p align="center">
   <img src="docs/homelable1.png" alt="Homelable canvas overview" width="100%" />
   <img  alt="Homelable Device inventory" src="https://github.com/user-attachments/assets/f3903ac8-354d-4873-81ba-1914971890ed" />
-  <img width="49.5%" alt="Homelable Custom node" src="https://github.com/user-attachments/assets/813725b1-376b-4bad-bb1f-0985f3bc7546" />
-  <img width="49.5%"  alt="Homelable Zigbee Network" src="https://github.com/user-attachments/assets/35e18d11-8363-498d-ae3d-642685cac76d" />
+ 
+<img alt="Rack display" src="https://github.com/user-attachments/assets/43273605-4f46-4163-8aea-8bf8a76a3f76" />
 
 </p>
 
