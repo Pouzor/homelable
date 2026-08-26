@@ -28,7 +28,8 @@ from app.api.routes import settings as settings_routes
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
 from app.core.security import OIDCCSRFMiddleware
-from app.db.database import init_db
+from app.db.database import AsyncSessionLocal, init_db
+from app.services.scanner import reconcile_orphan_runs
 
 
 @asynccontextmanager
@@ -45,6 +46,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logging.getLogger("app.services.scanner").setLevel(logging.INFO)
     await init_db()
     settings.load_overrides()
+    # A scan runs on a background thread in this process, so anything still
+    # flagged "running" now was orphaned by a previous one that died mid-scan.
+    async with AsyncSessionLocal() as db:
+        await reconcile_orphan_runs(db)
     start_scheduler()
     yield
     stop_scheduler()
