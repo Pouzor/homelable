@@ -16,12 +16,33 @@ logger = logging.getLogger(__name__)
 
 # Headers that commonly carry the application name.
 _SIGNAL_HEADERS = ("Server", "X-Powered-By")
-# Cap how much body we read when hunting for <title> — avoids large downloads.
+# Cap how much body we read when hunting for <title>. This is a cap on the
+# download itself, not just on what we scan: the body is streamed and the
+# connection dropped once we hold this much. Some endpoints stream without end
+# and send no Content-Length (bandwidth-test endpoints, MJPEG cameras), so
+# buffering a full response would OOM the backend.
 _MAX_BODY_BYTES = 64 * 1024
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 _PROBE_TIMEOUT = 3.0
 # Ports we never bother probing over HTTP (not web services).
 _NON_HTTP_PORTS = frozenset({22, 21, 23, 25, 53, 110, 143, 161, 162, 179, 445, 3306, 5432, 6379})
+
+
+async def _read_capped(resp: httpx.Response) -> str:
+    """Read at most _MAX_BODY_BYTES of a streaming response, then stop."""
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in resp.aiter_bytes():
+        chunks.append(chunk)
+        size += len(chunk)
+        if size >= _MAX_BODY_BYTES:
+            break
+    raw = b"".join(chunks)[:_MAX_BODY_BYTES]
+    encoding = resp.charset_encoding or "utf-8"
+    try:
+        return raw.decode(encoding, errors="replace")
+    except LookupError:
+        return raw.decode("utf-8", errors="replace")
 
 
 def _extract_title(body: str) -> str | None:
@@ -34,11 +55,11 @@ def _extract_title(body: str) -> str | None:
 
 async def _probe_scheme(client: httpx.AsyncClient, url: str) -> dict[str, Any] | None:
     try:
-        resp = await client.get(url, follow_redirects=True)
+        async with client.stream("GET", url, follow_redirects=True) as resp:
+            headers = {h: resp.headers[h] for h in _SIGNAL_HEADERS if h in resp.headers}
+            body = await _read_capped(resp)
     except (httpx.HTTPError, OSError):
         return None
-    headers = {h: resp.headers[h] for h in _SIGNAL_HEADERS if h in resp.headers}
-    body = resp.text[:_MAX_BODY_BYTES] if resp.text else ""
     title = _extract_title(body)
     if not title and not headers:
         return None
