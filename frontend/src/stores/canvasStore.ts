@@ -14,6 +14,7 @@ import { generateUUID } from '@/utils/uuid'
 import { normalizeHandle, removedHandleIds, handleCountField, sideDefault, handleId, SIDES } from '@/utils/handleUtils'
 import { applyOpacity } from '@/utils/colorUtils'
 import { readHideIp, writeHideIp } from '@/utils/ipDisplay'
+import { isValidCidr, isZoneSubnetCandidate } from '@/utils/subnet'
 import { CONTAINER_MODE_TYPES } from '@/utils/virtualEdgeParent'
 import {
   changedFactFields,
@@ -28,6 +29,18 @@ type Clipboard = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
 
 /** Resolve a node's effective parent id from either the RF field or domain data. */
 const parentIdOf = (n: Node<NodeData>): string | undefined => n.parentId ?? n.data.parent_id ?? undefined
+
+// Zone subnet import: the grid the arrivals are packed on, in zone-relative
+// pixels. A cell is one node box plus the gap that follows it.
+const DEFAULT_ZONE_WIDTH = 360
+const DEFAULT_ZONE_HEIGHT = 240
+const ZONE_CELL_W = 180
+const ZONE_CELL_H = 110
+const ZONE_CELL_GAP = 20
+const ZONE_PAD_X = 32
+// Leaves the label band at the top of the zone clear.
+const ZONE_PAD_TOP = 40
+const ZONE_PAD_BOTTOM = 16
 
 /**
  * Whether a node change represents a real user edit that should dirty the canvas.
@@ -198,6 +211,9 @@ interface CanvasState {
   addToGroup: (groupId: string, childId: string) => void
   addToContainer: (containerId: string, childId: string) => void
   addToZone: (zoneId: string, childId: string) => void
+  /** Move every free node whose IP falls in `cidr` into the zone. Returns the
+   *  count moved; 0 for an invalid CIDR or no match. */
+  importZoneSubnet: (zoneId: string, cidr: string) => number
   removeFromGroup: (groupId: string, childId: string) => void
   markSaved: () => void
   markUnsaved: () => void
@@ -218,7 +234,7 @@ interface CanvasState {
   applyAllCustomStyles: (def: CustomStyleDef) => void
 }
 
-export const useCanvasStore = create<CanvasState>((rawSet) => {
+export const useCanvasStore = create<CanvasState>((rawSet, get) => {
   // Wrap set so any update that flips hasUnsavedChanges to true also bumps
   // editSeq. This centralises the "an edit happened" signal instead of touching
   // every one of the ~two dozen mutating actions. Actions that update state
@@ -968,6 +984,106 @@ export const useCanvasStore = create<CanvasState>((rawSet) => {
         future: [],
       }
     }),
+
+  // Pull every free node whose IP falls inside `cidr` into a zone, laying them
+  // out on a grid in the zone's free space. Deliberately additive and one-shot:
+  // the CIDR is never stored, nothing is ever ejected, and running it twice with
+  // two subnets leaves both sets inside. Undo reverses the whole import at once.
+  importZoneSubnet: (zoneId, cidr) => {
+    const state = get()
+    const zone = state.nodes.find((n) => n.id === zoneId)
+    if (!zone || zone.data.type !== 'groupRect') return 0
+    if (!isValidCidr(cidr)) return 0
+
+    const matches = state.nodes.filter((n) => isZoneSubnetCandidate(n, cidr, zoneId))
+    if (matches.length === 0) return 0
+
+    const moved = new Set(matches.map((n) => n.id))
+    const zoneWidth = zone.width ?? DEFAULT_ZONE_WIDTH
+    const zoneHeight = zone.height ?? DEFAULT_ZONE_HEIGHT
+
+    // Boxes already inside the zone, in zone-relative coordinates. New arrivals
+    // are packed around them rather than on top of them.
+    const occupied = state.nodes
+      .filter((n) => n.parentId === zoneId && !moved.has(n.id))
+      .map((n) => ({
+        x: n.position.x,
+        y: n.position.y,
+        w: n.width ?? ZONE_CELL_W - ZONE_CELL_GAP,
+        h: n.height ?? ZONE_CELL_H - ZONE_CELL_GAP,
+      }))
+
+    const columns = Math.max(1, Math.floor((zoneWidth - ZONE_PAD_X) / ZONE_CELL_W))
+    const overlaps = (x: number, y: number) =>
+      occupied.some(
+        (b) =>
+          x < b.x + b.w &&
+          x + ZONE_CELL_W - ZONE_CELL_GAP > b.x &&
+          y < b.y + b.h &&
+          y + ZONE_CELL_H - ZONE_CELL_GAP > b.y,
+      )
+
+    // Row-major scan for the first free cell per arrival. Rows keep going past
+    // the current height; the zone grows at the end to cover the last one used.
+    const placements = new Map<string, { x: number; y: number }>()
+    let cursor = 0
+    let maxBottom = 0
+    for (const node of matches) {
+      let x = 0
+      let y = 0
+      for (;;) {
+        x = ZONE_PAD_X / 2 + (cursor % columns) * ZONE_CELL_W
+        y = ZONE_PAD_TOP + Math.floor(cursor / columns) * ZONE_CELL_H
+        cursor += 1
+        if (!overlaps(x, y)) break
+      }
+      placements.set(node.id, { x, y })
+      occupied.push({ x, y, w: ZONE_CELL_W - ZONE_CELL_GAP, h: ZONE_CELL_H - ZONE_CELL_GAP })
+      maxBottom = Math.max(maxBottom, y + ZONE_CELL_H)
+    }
+
+    const grownHeight = Math.max(zoneHeight, maxBottom + ZONE_PAD_BOTTOM)
+
+    set((s) => {
+      const updated = s.nodes.map((n) => {
+        if (n.id === zoneId) {
+          return grownHeight === zoneHeight
+            ? n
+            : {
+                ...n,
+                height: grownHeight,
+                data: {
+                  ...n.data,
+                  custom_colors: { ...(n.data.custom_colors ?? {}), height: grownHeight },
+                },
+              }
+        }
+        const at = placements.get(n.id)
+        if (!at) return n
+        return {
+          ...n,
+          parentId: zoneId,
+          position: at,
+          selected: false,
+          data: { ...n.data, parent_id: zoneId },
+        }
+      })
+
+      // React Flow requires a parent to precede its children in the array.
+      const others = updated.filter((n) => !moved.has(n.id))
+      const children = updated.filter((n) => moved.has(n.id))
+      const zoneIdx = others.findIndex((n) => n.id === zoneId)
+
+      return {
+        nodes: [...others.slice(0, zoneIdx + 1), ...children, ...others.slice(zoneIdx + 1)],
+        hasUnsavedChanges: true,
+        past: [...s.past.slice(-49), { nodes: s.nodes, edges: s.edges }],
+        future: [],
+      }
+    })
+
+    return matches.length
+  },
 
   // Release a single child from a group back to the canvas. Group stays.
   removeFromGroup: (groupId, childId) =>
