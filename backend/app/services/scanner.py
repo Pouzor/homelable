@@ -947,3 +947,33 @@ async def run_device_scan(
     finally:
         with _cancelled_lock:
             _cancelled_runs.discard(run_id)
+
+
+async def reconcile_orphan_runs(db: AsyncSession) -> int:
+    """
+    Mark every scan run still flagged `running` at startup as errored.
+
+    Scans live on a background thread inside this process, so nothing can
+    legitimately be `running` the moment we boot: any such row belongs to a
+    previous process that died mid-scan (an OOM kill, `docker stop`, a crash).
+    Left alone the row is immortal, and it also locks the target out — the
+    trigger endpoints reject a new scan while one is `running` for the same
+    range, so a single kill blocks re-scanning for good.
+
+    Returns the number of rows reconciled.
+    """
+    orphans = (
+        await db.execute(select(ScanRun).where(ScanRun.status == "running"))
+    ).scalars().all()
+    if not orphans:
+        return 0
+    now = datetime.now(timezone.utc)
+    for run in orphans:
+        # "error" is the word run_scan and run_device_scan already write when
+        # they fail; Scan History filters and colours that one.
+        run.status = "error"
+        run.error = "Interrupted: the backend restarted while this scan was running"
+        run.finished_at = now
+    await db.commit()
+    logger.warning("Reconciled %d scan run(s) left running by a previous process", len(orphans))
+    return len(orphans)

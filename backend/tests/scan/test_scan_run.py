@@ -8,7 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import InventoryDevice, Node, ScanRun
-from app.services.scanner import _cancelled_runs, request_cancel, run_scan
+from app.services.scanner import (
+    _cancelled_runs,
+    reconcile_orphan_runs,
+    request_cancel,
+    run_scan,
+)
 
 
 @pytest.mark.asyncio
@@ -468,3 +473,101 @@ async def test_background_device_scan_marks_run_errored_on_exception(mem_db):
         refreshed = await session.get(ScanRun, run_id)
         assert refreshed is not None
         assert refreshed.status == "error"
+
+
+# --- reconcile_orphan_runs (issue #374) --------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reconcile_orphan_runs_marks_running_as_error(mem_db):
+    """A run left "running" by a process that died mid-scan is immortal, and it
+    also locks its range out of future scans. Startup must reconcile it."""
+    async with mem_db() as session:
+        orphan = ScanRun(status="running", ranges=["10.0.0.0/24"])
+        session.add(orphan)
+        await session.commit()
+        orphan_id = orphan.id
+
+        assert await reconcile_orphan_runs(session) == 1
+
+        reconciled = await session.get(ScanRun, orphan_id)
+        # "error", not "failed" — one condition, one name, and the only status
+        # Scan History filters and colours.
+        assert reconciled.status == "error"
+        assert reconciled.finished_at is not None
+        assert "restarted" in reconciled.error
+
+
+@pytest.mark.asyncio
+async def test_reconcile_orphan_runs_leaves_finished_runs_alone(mem_db):
+    """Only "running" is orphaned. Terminal rows must not be rewritten."""
+    async with mem_db() as session:
+        done = ScanRun(status="done", ranges=["10.0.0.0/24"], devices_found=7)
+        cancelled = ScanRun(status="cancelled", ranges=["10.0.1.0/24"])
+        errored = ScanRun(status="error", ranges=["10.0.2.0/24"], error="nmap missing")
+        session.add_all([done, cancelled, errored])
+        await session.commit()
+        ids = (done.id, cancelled.id, errored.id)
+
+        assert await reconcile_orphan_runs(session) == 0
+
+        for run_id, expected in zip(ids, ("done", "cancelled", "error"), strict=True):
+            assert (await session.get(ScanRun, run_id)).status == expected
+        # The pre-existing error message must survive untouched.
+        assert (await session.get(ScanRun, ids[2])).error == "nmap missing"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_orphan_runs_handles_several_and_an_empty_table(mem_db):
+    async with mem_db() as session:
+        # Nothing to do on a fresh database.
+        assert await reconcile_orphan_runs(session) == 0
+
+        session.add_all([
+            ScanRun(status="running", ranges=["10.0.0.0/24"]),
+            ScanRun(status="running", kind="device", ranges=["10.0.0.5"]),
+            ScanRun(status="done", ranges=["10.0.1.0/24"]),
+        ])
+        await session.commit()
+
+        assert await reconcile_orphan_runs(session) == 2
+        remaining = (
+            await session.execute(select(ScanRun).where(ScanRun.status == "running"))
+        ).scalars().all()
+        assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_reconcile_orphan_runs_unblocks_a_new_scan(mem_db):
+    """The point of the reconcile: the trigger endpoints reject a scan while one
+    is "running" for the same target, so an orphan blocks that range for good."""
+    async with mem_db() as session:
+        session.add(ScanRun(status="running", kind="device", ranges=["10.0.0.5"]))
+        await session.commit()
+
+        await reconcile_orphan_runs(session)
+
+        blocking = (
+            await session.execute(
+                select(ScanRun).where(
+                    ScanRun.status == "running", ScanRun.kind == "device"
+                )
+            )
+        ).scalars().all()
+        assert not any("10.0.0.5" in (r.ranges or []) for r in blocking)
+
+
+@pytest.mark.asyncio
+async def test_lifespan_reconciles_orphan_runs_at_startup():
+    """The reconcile is worthless unless startup actually calls it."""
+    from app.main import app as fastapi_app
+    from app.main import lifespan
+
+    with patch("app.main.init_db", new=AsyncMock()), \
+         patch("app.main.start_scheduler"), \
+         patch("app.main.stop_scheduler"), \
+         patch("app.main.reconcile_orphan_runs", new=AsyncMock()) as reconcile:
+        async with lifespan(fastapi_app):
+            pass
+
+    reconcile.assert_awaited_once()
