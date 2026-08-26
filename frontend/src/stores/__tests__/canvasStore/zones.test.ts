@@ -253,6 +253,40 @@ describe('canvasStore — importZoneSubnet', () => {
     expect(ids.indexOf('z1')).toBeLessThan(ids.indexOf('n2'))
   })
 
+  it('keeps an arrival that is itself a parent ahead of the children it leaves behind', () => {
+    // A Proxmox host matches the subnet; its VM does not move, because it
+    // already has a parent. The host must still be listed before the VM.
+    useCanvasStore.setState({
+      nodes: [
+        device('proxmox', '192.168.1.10'),
+        { ...device('vm1', '10.0.0.1'), parentId: 'proxmox' },
+        zone('z1'),
+      ],
+    })
+
+    expect(useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')).toBe(1)
+
+    const nodes = useCanvasStore.getState().nodes
+    const ids = nodes.map((n) => n.id)
+    expect(nodes.find((n) => n.id === 'proxmox')!.parentId).toBe('z1')
+    expect(nodes.find((n) => n.id === 'vm1')!.parentId).toBe('proxmox')
+    expect(ids.indexOf('z1')).toBeLessThan(ids.indexOf('proxmox'))
+    expect(ids.indexOf('proxmox')).toBeLessThan(ids.indexOf('vm1'))
+  })
+
+  it('leaves an already-valid order untouched', () => {
+    useCanvasStore.setState({
+      nodes: [zone('z1'), device('a', '10.0.0.1'), device('b', '10.0.0.2'), device('hit', '192.168.1.10')],
+    })
+    useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')
+
+    // Only the matched node moves in the array; the untouched ones keep their
+    // relative order.
+    const ids = useCanvasStore.getState().nodes.map((n) => n.id)
+    expect(ids.indexOf('a')).toBeLessThan(ids.indexOf('b'))
+    expect(ids[0]).toBe('z1')
+  })
+
   it('is additive: a second subnet keeps the first import inside', () => {
     useCanvasStore.setState({
       nodes: [zone('z1'), device('n1', '192.168.1.10'), device('n2', '10.0.0.5')],

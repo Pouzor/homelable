@@ -30,6 +30,32 @@ type Clipboard = { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] }
 /** Resolve a node's effective parent id from either the RF field or domain data. */
 const parentIdOf = (n: Node<NodeData>): string | undefined => n.parentId ?? n.data.parent_id ?? undefined
 
+/**
+ * Reorder so every node follows its parent, which is what React Flow needs to
+ * resolve nesting — a child listed first renders detached and logs a
+ * parent-not-found error. Order is otherwise preserved: a list that is already
+ * valid comes back untouched. A parent cycle terminates instead of recursing.
+ */
+function orderParentsFirst(nodes: Node<NodeData>[]): Node<NodeData>[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const emitted = new Set<string>()
+  const visiting = new Set<string>()
+  const out: Node<NodeData>[] = []
+
+  const visit = (n: Node<NodeData>) => {
+    if (emitted.has(n.id) || visiting.has(n.id)) return
+    visiting.add(n.id)
+    const parent = n.parentId ? byId.get(n.parentId) : undefined
+    if (parent) visit(parent)
+    visiting.delete(n.id)
+    emitted.add(n.id)
+    out.push(n)
+  }
+
+  for (const n of nodes) visit(n)
+  return out
+}
+
 // Zone subnet import: the grid the arrivals are packed on, in zone-relative
 // pixels. A cell is one node box plus the gap that follows it.
 const DEFAULT_ZONE_WIDTH = 360
@@ -1069,13 +1095,13 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
         }
       })
 
-      // React Flow requires a parent to precede its children in the array.
-      const others = updated.filter((n) => !moved.has(n.id))
-      const children = updated.filter((n) => moved.has(n.id))
-      const zoneIdx = others.findIndex((n) => n.id === zoneId)
-
       return {
-        nodes: [...others.slice(0, zoneIdx + 1), ...children, ...others.slice(zoneIdx + 1)],
+        // React Flow requires a parent to precede its children in the array.
+        // Reordering the whole list covers both directions at once: the zone
+        // ahead of its new children, and an arrival that is itself a parent
+        // (a Proxmox host with nested VMs, whose children stay put because
+        // they already have a parent) ahead of the children it left behind.
+        nodes: orderParentsFirst(updated),
         hasUnsavedChanges: true,
         past: [...s.past.slice(-49), { nodes: s.nodes, edges: s.edges }],
         future: [],
