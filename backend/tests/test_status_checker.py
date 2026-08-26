@@ -1,6 +1,7 @@
 """Tests for status_checker service: each check method."""
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from app.services.status_checker import (
@@ -13,16 +14,31 @@ from app.services.status_checker import (
 )
 
 
+class _TransportClient:
+    """
+    Patch target for httpx.AsyncClient that routes through a MockTransport.
+
+    Real client, fake network: _http_get exercises the genuine httpx request
+    path (including .stream()) instead of a mock that would happily accept any
+    call shape.
+    """
+
+    def __init__(self, handler):
+        self._handler = handler
+        # Bound before patching, so building the real client here does not
+        # recurse back into this stand-in.
+        self._real = httpx.AsyncClient
+        self.kwargs = []
+
+    def __call__(self, **kwargs):
+        self.kwargs.append(dict(kwargs))
+        kwargs.pop("verify", None)
+        return self._real(transport=httpx.MockTransport(self._handler), **kwargs)
+
+
 def _mock_httpx_client(status_code):
     """Build a stand-in for httpx.AsyncClient whose GET returns status_code."""
-    resp = MagicMock()
-    resp.status_code = status_code
-    client = MagicMock()
-    client.get = AsyncMock(return_value=resp)
-    ctx = MagicMock()
-    ctx.__aenter__ = AsyncMock(return_value=client)
-    ctx.__aexit__ = AsyncMock(return_value=False)
-    return MagicMock(return_value=ctx)
+    return _TransportClient(lambda request: httpx.Response(status_code))
 
 # --- check_node dispatcher ---
 
@@ -553,6 +569,43 @@ async def test_check_services_empty_list():
 
 
 # --- _http_get status-code interpretation (real primitive, mocked transport) ---
+
+# --- Regression: an endless response body must not be buffered (issue #375) ---
+
+_CHUNK = b"\0" * 65536
+
+
+def _endless_body(counter: dict):
+    """
+    A body that never ends and declares no Content-Length — the Freebox
+    bandwidth-test endpoint from issue #375. Bounded at 512 chunks (32 MiB) so
+    a regression fails the test instead of hanging the suite forever.
+    """
+
+    async def gen():
+        for _ in range(512):
+            counter["chunks"] += 1
+            yield _CHUNK
+
+    return gen()
+
+
+@pytest.mark.asyncio
+async def test_http_get_does_not_read_the_body():
+    # _http_get only needs the status line. Buffering the body of an endless
+    # stream is what OOM-killed the backend, so assert not one byte is pulled.
+    counter = {"chunks": 0}
+    factory = _TransportClient(
+        lambda request: httpx.Response(
+            200,
+            headers={"Content-Type": "application/octet-stream"},
+            content=_endless_body(counter),
+        )
+    )
+    with patch("app.services.status_checker.httpx.AsyncClient", factory):
+        assert await _http_get("http://192.168.1.254:8095/") is True
+    assert counter["chunks"] == 0
+
 
 @pytest.mark.asyncio
 async def test_http_get_true_on_2xx():

@@ -103,8 +103,16 @@ async def _ping(host: str) -> bool:
 
 
 async def _http_get(url: str, verify: bool = False) -> bool:
-    async with httpx.AsyncClient(verify=verify, timeout=5) as client:
-        resp = await client.get(url, follow_redirects=True)
+    # Only the status line matters here. A plain .get() buffers the whole body
+    # first, and some endpoints stream without end (bandwidth-test endpoints,
+    # MJPEG cameras, log tails) — enough to OOM the backend. timeout=5 does not
+    # save us: httpx applies it per network operation, not to the total time
+    # spent draining a socket that keeps delivering data. stream() closes the
+    # connection on exit without draining it.
+    async with (
+        httpx.AsyncClient(verify=verify, timeout=5) as client,
+        client.stream("GET", url, follow_redirects=True) as resp,
+    ):
         return resp.status_code < 500
 
 
