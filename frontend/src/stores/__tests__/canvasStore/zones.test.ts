@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { makeNode } from '@/test/factories'
+import { serializeNode, deserializeApiNode, type ApiNode } from '@/utils/canvasSerializer'
 
 function resetStore() {
   useCanvasStore.setState({
@@ -238,8 +239,14 @@ describe('canvasStore — importZoneSubnet', () => {
 
     const z = useCanvasStore.getState().nodes.find((n) => n.id === 'z1')!
     expect(z.height!).toBeGreaterThan(300)
-    // The renderer reads the persisted size back out of custom_colors.
-    expect(z.data.custom_colors?.height).toBe(z.height)
+
+    // The grown height has to survive a save/load round-trip. A zone has no
+    // height column, so the serializer stashes it in the custom_colors blob
+    // on the way out and hoists it back on the way in.
+    const wire = serializeNode(z) as { custom_colors: { height: number } }
+    expect(wire.custom_colors.height).toBe(z.height)
+    const reloaded = deserializeApiNode(wire as unknown as ApiNode, new Map())
+    expect(reloaded.height).toBe(z.height)
   })
 
   it('keeps the parent ahead of its new children, as React Flow requires', () => {
