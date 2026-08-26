@@ -133,3 +133,149 @@ describe('canvasStore — zone (groupRect) parenting', () => {
     expect(detached.position).toEqual({ x: 160, y: 220 })
   })
 })
+
+describe('canvasStore — importZoneSubnet', () => {
+  beforeEach(resetStore)
+
+  const device = (id: string, ip: string | undefined, over: Partial<ReturnType<typeof makeNode>> = {}) => ({
+    ...makeNode(id, { ip }),
+    position: { x: 900, y: 900 },
+    ...over,
+  })
+
+  it('moves every free device in range into the zone and reports the count', () => {
+    useCanvasStore.setState({
+      nodes: [zone('z1'), device('n1', '192.168.1.10'), device('n2', '192.168.1.11')],
+    })
+
+    const moved = useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')
+
+    expect(moved).toBe(2)
+    const nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'n1')!.parentId).toBe('z1')
+    expect(nodes.find((n) => n.id === 'n2')!.parentId).toBe('z1')
+  })
+
+  it('leaves out-of-range and address-less devices on the canvas', () => {
+    useCanvasStore.setState({
+      nodes: [zone('z1'), device('in', '192.168.1.10'), device('out', '10.0.0.1'), device('bare', undefined)],
+    })
+
+    expect(useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')).toBe(1)
+    const nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'out')!.parentId).toBeUndefined()
+    expect(nodes.find((n) => n.id === 'bare')!.parentId).toBeUndefined()
+  })
+
+  it('never steals a node that already has a parent', () => {
+    useCanvasStore.setState({
+      nodes: [
+        zone('z1'),
+        zone('z2', 800, 100),
+        { ...device('n1', '192.168.1.10'), parentId: 'z2' },
+      ],
+    })
+
+    expect(useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')).toBe(0)
+    expect(useCanvasStore.getState().nodes.find((n) => n.id === 'n1')!.parentId).toBe('z2')
+  })
+
+  it('never swallows another zone, even one carrying an IP', () => {
+    useCanvasStore.setState({
+      nodes: [zone('z1'), { ...zone('z2', 800, 100), data: { ...zone('z2').data, ip: '192.168.1.9' } }],
+    })
+
+    expect(useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')).toBe(0)
+    expect(useCanvasStore.getState().nodes.find((n) => n.id === 'z2')!.parentId).toBeUndefined()
+  })
+
+  it('is a no-op for an invalid CIDR, a missing zone and a non-zone target', () => {
+    useCanvasStore.setState({ nodes: [zone('z1'), device('n1', '192.168.1.10'), device('plain', '192.168.1.11')] })
+    const before = useCanvasStore.getState().nodes
+
+    expect(useCanvasStore.getState().importZoneSubnet('z1', 'nonsense')).toBe(0)
+    expect(useCanvasStore.getState().importZoneSubnet('nope', '192.168.1.0/24')).toBe(0)
+    expect(useCanvasStore.getState().importZoneSubnet('plain', '192.168.1.0/24')).toBe(0)
+    expect(useCanvasStore.getState().nodes).toBe(before)
+  })
+
+  it('lays arrivals out on a non-overlapping grid inside the zone', () => {
+    useCanvasStore.setState({
+      nodes: [zone('z1'), device('n1', '192.168.1.10'), device('n2', '192.168.1.11')],
+    })
+    useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')
+
+    const nodes = useCanvasStore.getState().nodes
+    const a = nodes.find((n) => n.id === 'n1')!.position
+    const b = nodes.find((n) => n.id === 'n2')!.position
+    expect(a).not.toEqual(b)
+    // Zone-relative and clear of the label band at the top.
+    for (const p of [a, b]) {
+      expect(p.x).toBeGreaterThanOrEqual(0)
+      expect(p.y).toBeGreaterThanOrEqual(40)
+    }
+  })
+
+  it('packs around the boxes already inside the zone', () => {
+    useCanvasStore.setState({
+      nodes: [
+        zone('z1'),
+        { ...device('sitting', '10.0.0.1'), parentId: 'z1', position: { x: 16, y: 40 }, width: 160, height: 90 },
+        device('n1', '192.168.1.10'),
+      ],
+    })
+    useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')
+
+    const placed = useCanvasStore.getState().nodes.find((n) => n.id === 'n1')!.position
+    expect(placed).not.toEqual({ x: 16, y: 40 })
+  })
+
+  it('grows the zone when the arrivals overflow its height', () => {
+    const many = Array.from({ length: 12 }, (_, i) => device(`n${i}`, `192.168.1.${i + 10}`))
+    useCanvasStore.setState({ nodes: [zone('z1'), ...many] })
+
+    useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')
+
+    const z = useCanvasStore.getState().nodes.find((n) => n.id === 'z1')!
+    expect(z.height!).toBeGreaterThan(300)
+    // The renderer reads the persisted size back out of custom_colors.
+    expect(z.data.custom_colors?.height).toBe(z.height)
+  })
+
+  it('keeps the parent ahead of its new children, as React Flow requires', () => {
+    useCanvasStore.setState({
+      nodes: [device('n1', '192.168.1.10'), zone('z1'), device('n2', '192.168.1.11')],
+    })
+    useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')
+
+    const ids = useCanvasStore.getState().nodes.map((n) => n.id)
+    expect(ids.indexOf('z1')).toBeLessThan(ids.indexOf('n1'))
+    expect(ids.indexOf('z1')).toBeLessThan(ids.indexOf('n2'))
+  })
+
+  it('is additive: a second subnet keeps the first import inside', () => {
+    useCanvasStore.setState({
+      nodes: [zone('z1'), device('n1', '192.168.1.10'), device('n2', '10.0.0.5')],
+    })
+    useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')
+    useCanvasStore.getState().importZoneSubnet('z1', '10.0.0.0/8')
+
+    const nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'n1')!.parentId).toBe('z1')
+    expect(nodes.find((n) => n.id === 'n2')!.parentId).toBe('z1')
+  })
+
+  it('marks the canvas unsaved and undoes the whole import in one step', () => {
+    useCanvasStore.setState({
+      nodes: [zone('z1'), device('n1', '192.168.1.10'), device('n2', '192.168.1.11')],
+    })
+    useCanvasStore.getState().importZoneSubnet('z1', '192.168.1.0/24')
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+
+    useCanvasStore.getState().undo()
+
+    const nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'n1')!.parentId).toBeUndefined()
+    expect(nodes.find((n) => n.id === 'n2')!.parentId).toBeUndefined()
+  })
+})

@@ -15,6 +15,7 @@ import { parseYamlToCanvas } from '@/utils/importYaml'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { toast } from 'sonner'
+import { isZoneSubnetCandidate } from '@/utils/subnet'
 import { CanvasContainer } from '@/components/canvas/CanvasContainer'
 import { Sidebar } from '@/components/panels/Sidebar'
 import { Toolbar } from '@/components/panels/Toolbar'
@@ -64,7 +65,7 @@ import { buildProxmoxClusterEdges } from '@/components/proxmox/clusterEdges'
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 export default function App() {
-  const { loadCanvas, applyLayout, markSaved, markUnsaved, hasUnsavedChanges, editSeq, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addToGroup, addToContainer, addToZone, floorMap, setFloorMap } = useCanvasStore()
+  const { loadCanvas, applyLayout, markSaved, markUnsaved, hasUnsavedChanges, editSeq, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addToGroup, addToContainer, addToZone, importZoneSubnet, floorMap, setFloorMap } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated, isInitialized } = useAuthStore()
   const authBootstrapStarted = useRef(false)
@@ -526,6 +527,26 @@ export default function App() {
     toast.success(`Added "${data.label}"`)
   }, [addNode, nodes, snapshotHistory])
 
+  // Subnet import is a one-shot action on an existing zone, so on the Add modal
+  // there is no zone to run it against yet: the CIDR is held here and applied
+  // once, right after the zone is created. Cleared whenever that modal closes.
+  const pendingZoneSubnet = useRef<string | null>(null)
+
+  const countSubnetMatches = useCallback(
+    (cidr: string, zoneId?: string) =>
+      nodes.filter((n) => isZoneSubnetCandidate(n, cidr, zoneId)).length,
+    [nodes],
+  )
+
+  const reportSubnetImport = useCallback((moved: number, cidr: string) => {
+    if (moved === 0) toast.info(`No unparented device in ${cidr}`)
+    else toast.success(`Moved ${moved} device${moved > 1 ? 's' : ''} from ${cidr} into the zone`)
+  }, [])
+
+  const handleImportSubnetIntoZone = useCallback((zoneId: string, cidr: string) => {
+    reportSubnetImport(importZoneSubnet(zoneId, cidr), cidr)
+  }, [importZoneSubnet, reportSubnetImport])
+
   const handleAddGroupRect = useCallback((data: GroupRectFormData) => {
     snapshotHistory()
     const id = generateUUID()
@@ -556,7 +577,12 @@ export default function App() {
       zIndex: data.z_order - 10,
     }
     addNode(newNode)
-  }, [addNode, snapshotHistory])
+
+    const cidr = pendingZoneSubnet.current
+    pendingZoneSubnet.current = null
+    // addNode has already committed, so the zone is in the store by now.
+    if (cidr) reportSubnetImport(importZoneSubnet(id, cidr), cidr)
+  }, [addNode, snapshotHistory, importZoneSubnet, reportSubnetImport])
 
   const handleUpdateGroupRect = useCallback((data: GroupRectFormData) => {
     if (!editingGroupRectId) return
@@ -1190,8 +1216,11 @@ export default function App() {
 
         <GroupRectModal
           open={addGroupRectOpen}
-          onClose={() => setAddGroupRectOpen(false)}
+          onClose={() => { pendingZoneSubnet.current = null; setAddGroupRectOpen(false) }}
           onSubmit={handleAddGroupRect}
+          onImportSubnet={(cidr) => { pendingZoneSubnet.current = cidr }}
+          countSubnetMatches={(cidr) => countSubnetMatches(cidr)}
+          importOnSubmit
           title="Add Zone"
         />
 
@@ -1202,6 +1231,8 @@ export default function App() {
           onClose={() => setEditingGroupRectId(null)}
           onSubmit={handleUpdateGroupRect}
           onDelete={handleDeleteGroupRect}
+          onImportSubnet={(cidr) => { if (editingGroupRectId) handleImportSubnetIntoZone(editingGroupRectId, cidr) }}
+          countSubnetMatches={(cidr) => countSubnetMatches(cidr, editingGroupRectId ?? undefined)}
           initial={(() => {
             const n = editingGroupRectId ? nodes.find((nd) => nd.id === editingGroupRectId) : null
             if (!n) return undefined

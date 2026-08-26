@@ -345,3 +345,110 @@ describe('GroupRectModal font label rendering', () => {
     expect(trigger.textContent).toContain('comic-sans-9000')
   })
 })
+
+describe('GroupRectModal — subnet import', () => {
+  const setup = (props: Partial<React.ComponentProps<typeof GroupRectModal>> = {}) => {
+    const onImportSubnet = vi.fn()
+    const onSubmit = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <GroupRectModal
+        open
+        onClose={onClose}
+        onSubmit={onSubmit}
+        onImportSubnet={onImportSubnet}
+        countSubnetMatches={() => 3}
+        title="Edit Zone"
+        {...props}
+      />
+    )
+    return { onImportSubnet, onSubmit, onClose }
+  }
+
+  it('hides the whole section when no import handler is given', () => {
+    render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} />)
+    expect(screen.queryByText('Import devices by subnet')).toBeNull()
+  })
+
+  it('renders the field and disables Import until a CIDR is valid', () => {
+    setup()
+    const button = screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+
+    fireEvent.change(screen.getByLabelText('Subnet'), { target: { value: '192.168.1.0/24' } })
+    expect(button.disabled).toBe(false)
+  })
+
+  it('explains an invalid CIDR instead of silently doing nothing', () => {
+    setup()
+    fireEvent.change(screen.getByLabelText('Subnet'), { target: { value: '192.168.1.0/99' } })
+    expect(screen.getByText(/Not a valid IPv4 CIDR/)).toBeInTheDocument()
+    expect((screen.getByRole('button', { name: 'Import' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('previews how many devices would move', () => {
+    setup()
+    fireEvent.change(screen.getByLabelText('Subnet'), { target: { value: '192.168.1.0/24' } })
+    expect(screen.getByText('3 devices will move into this zone.')).toBeInTheDocument()
+  })
+
+  it('imports without submitting or closing the form, and clears the field', () => {
+    const { onImportSubnet, onSubmit, onClose } = setup()
+    const field = screen.getByLabelText('Subnet') as HTMLInputElement
+    fireEvent.change(field, { target: { value: '192.168.1.0/24' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+
+    expect(onImportSubnet).toHaveBeenCalledWith('192.168.1.0/24')
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(field.value).toBe('')
+  })
+
+  it('runs the import on Enter rather than submitting the zone', () => {
+    const { onImportSubnet, onSubmit } = setup()
+    const field = screen.getByLabelText('Subnet')
+    fireEvent.change(field, { target: { value: '10.0.0.0/8' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+
+    expect(onImportSubnet).toHaveBeenCalledWith('10.0.0.0/8')
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('never submits the CIDR as zone data — it is an argument, not a property', () => {
+    const { onSubmit } = setup()
+    fireEvent.change(screen.getByLabelText('Subnet'), { target: { value: '192.168.1.0/24' } })
+    fireEvent.click(screen.getByText('Save'))
+    expect(Object.keys(onSubmit.mock.calls[0][0])).not.toContain('subnet')
+  })
+
+  describe('add mode (importOnSubmit)', () => {
+    it('drops the Import button — there is no zone to import into yet', () => {
+      setup({ importOnSubmit: true, title: 'Add Zone' })
+      expect(screen.getByText('Import devices by subnet')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Import' })).toBeNull()
+    })
+
+    it('says the move happens on creation', () => {
+      setup({ importOnSubmit: true, title: 'Add Zone' })
+      fireEvent.change(screen.getByLabelText('Subnet'), { target: { value: '192.168.1.0/24' } })
+      expect(screen.getByText('3 devices will move into this zone when you add it.')).toBeInTheDocument()
+    })
+
+    it('hands the CIDR over before submitting, so the caller can apply it to the new zone', () => {
+      const { onImportSubnet, onSubmit } = setup({ importOnSubmit: true, title: 'Add Zone' })
+      fireEvent.change(screen.getByLabelText('Subnet'), { target: { value: '192.168.1.0/24' } })
+      fireEvent.click(screen.getByText('Add'))
+
+      expect(onImportSubnet).toHaveBeenCalledWith('192.168.1.0/24')
+      expect(onSubmit).toHaveBeenCalledOnce()
+      expect(onImportSubnet.mock.invocationCallOrder[0]).toBeLessThan(onSubmit.mock.invocationCallOrder[0])
+    })
+
+    it('submits normally when the field is left empty', () => {
+      const { onImportSubnet, onSubmit } = setup({ importOnSubmit: true, title: 'Add Zone' })
+      fireEvent.click(screen.getByText('Add'))
+      expect(onImportSubnet).not.toHaveBeenCalled()
+      expect(onSubmit).toHaveBeenCalledOnce()
+    })
+  })
+})

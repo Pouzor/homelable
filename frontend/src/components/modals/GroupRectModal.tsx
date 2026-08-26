@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { TextPosition } from '@/types'
 import { hexToRgba, rgbaToHex8 } from '@/utils/colorUtils'
+import { isValidCidr } from '@/utils/subnet'
 import styles from './GroupRectModal.module.css'
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'none'
@@ -98,16 +99,51 @@ interface GroupRectModalProps {
   onDelete?: () => void
   initial?: Partial<GroupRectFormData>
   title?: string
+  /** Run the subnet import for a valid CIDR. Omit to hide the whole section. */
+  onImportSubnet?: (cidr: string) => void
+  /** How many unparented devices a CIDR would pull in — drives the preview line. */
+  countSubnetMatches?: (cidr: string) => number
+  /**
+   * Add mode: the zone does not exist yet, so there is nothing to import into
+   * until it is created. The CIDR is handed over on submit instead of via an
+   * Import button, which would otherwise look like it did nothing.
+   */
+  importOnSubmit?: boolean
 }
 
-export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, title = 'Add Zone' }: GroupRectModalProps) {
+export function GroupRectModal({
+  open,
+  onClose,
+  onSubmit,
+  onDelete,
+  initial,
+  title = 'Add Zone',
+  onImportSubnet,
+  countSubnetMatches,
+  importOnSubmit = false,
+}: GroupRectModalProps) {
   const [form, setForm] = useState<GroupRectFormData>({ ...DEFAULT_FORM, ...initial })
+  const [subnet, setSubnet] = useState('')
+
+  const cidrValid = isValidCidr(subnet)
+  const showCidrError = subnet.trim() !== '' && !cidrValid
+  const canImport = cidrValid && !!onImportSubnet
+  const matchCount = cidrValid && countSubnetMatches ? countSubnetMatches(subnet) : null
+
+  const handleImport = () => {
+    if (!canImport) return
+    onImportSubnet!(subnet)
+    setSubnet('')
+  }
 
   const set = <K extends keyof GroupRectFormData>(key: K, value: GroupRectFormData[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    // Hand the CIDR over first: the caller queues it, then creates the zone and
+    // runs the import against it.
+    if (importOnSubmit && canImport) onImportSubnet!(subnet)
     onSubmit(form)
     onClose()
   }
@@ -354,6 +390,57 @@ export function GroupRectModal({ open, onClose, onSubmit, onDelete, initial, tit
           </div>
           </div>{/* ── end RIGHT column ── */}
           </div>{/* ── end 2-column grid ── */}
+
+          {/* ── Import devices by subnet ──
+              Deliberately NOT part of the form: the CIDR is an argument to a
+              one-shot action, never a property of the zone, so it is not
+              submitted, not persisted, and cleared after each run. */}
+          {onImportSubnet && (
+            <div className="flex flex-col gap-2 pt-3 border-t border-[#30363d]">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                Import devices by subnet
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={subnet}
+                  onChange={(e) => setSubnet(e.target.value)}
+                  placeholder="192.168.1.0/24"
+                  aria-label="Subnet"
+                  className={`bg-[#21262d] border-[#30363d] text-sm h-8 font-mono ${modalStyles['modal-radius']}`}
+                  style={showCidrError ? { borderColor: '#f85149' } : undefined}
+                  // Enter runs the import instead of submitting the whole form —
+                  // except in add mode, where submitting IS how the import runs.
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !importOnSubmit) {
+                      e.preventDefault()
+                      handleImport()
+                    }
+                  }}
+                />
+                {!importOnSubmit && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!canImport}
+                    className="cursor-pointer border-[#30363d] bg-[#21262d] shrink-0"
+                    onClick={handleImport}
+                  >
+                    Import
+                  </Button>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground/70">
+                {showCidrError
+                  ? <span className="text-[#f85149]">Not a valid IPv4 CIDR — try 192.168.1.0/24</span>
+                  : matchCount === null
+                    ? 'Moves every unparented device in that range into this zone. Nothing is removed.'
+                    : matchCount === 0
+                      ? 'No unparented device in that range.'
+                      : `${matchCount} device${matchCount > 1 ? 's' : ''} will move into this zone${importOnSubmit ? ' when you add it' : ''}.`}
+              </p>
+            </div>
+          )}
 
           <div className="flex justify-between gap-2 pt-1">
             {onDelete && (
