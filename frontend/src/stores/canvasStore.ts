@@ -1072,17 +1072,11 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
 
     set((s) => {
       const updated = s.nodes.map((n) => {
+        // `height` is the only live field: the serializer stashes it into the
+        // custom_colors blob on save, since the nodes table has no height
+        // column for a zone, and hoists it back out on load.
         if (n.id === zoneId) {
-          return grownHeight === zoneHeight
-            ? n
-            : {
-                ...n,
-                height: grownHeight,
-                data: {
-                  ...n.data,
-                  custom_colors: { ...(n.data.custom_colors ?? {}), height: grownHeight },
-                },
-              }
+          return grownHeight === zoneHeight ? n : { ...n, height: grownHeight }
         }
         const at = placements.get(n.id)
         if (!at) return n
