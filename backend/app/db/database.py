@@ -494,6 +494,7 @@ async def init_db() -> None:
     await _backfill_node_devices()
     await _drop_legacy_node_columns()
     await _seed_node_views()
+    await _backfill_zone_size()
 
 
 
@@ -750,6 +751,66 @@ async def _seed_node_views() -> None:
                 logger.info("Seeded the service/property view of %d node(s)", seeded)
     except Exception as exc:  # pragma: no cover - defensive, boot must not die
         logger.warning("Seeding the node service/property views failed: %s", exc)
+
+
+async def _backfill_zone_size() -> None:
+    """Move a zone's size out of the custom_colors blob into the real columns.
+
+    Every node type stored its size in `nodes.width` / `nodes.height` except
+    `groupRect`, which stashed it inside the `custom_colors` JSON alongside its
+    colours. The serializer writes the columns for zones too now, so a canvas
+    saved before this upgrade would come back at the default 360x240 without
+    this backfill.
+
+    Only fills a column that is still NULL, so it cannot overwrite a size the
+    user has set since, and re-running it is a no-op. Parsed in Python rather
+    than with `json_extract`, so it does not depend on the SQLite build being
+    compiled with JSON1.
+
+    Never fatal: the reader falls back to the blob, so the worst case of a
+    failure here is that the geometry keeps coming from where it always did.
+    """
+    try:
+        async with engine.begin() as conn:
+            rows = (
+                await conn.exec_driver_sql(
+                    "SELECT id, custom_colors FROM nodes "
+                    "WHERE type = 'groupRect' AND custom_colors IS NOT NULL "
+                    "AND (width IS NULL OR height IS NULL)"
+                )
+            ).fetchall()
+
+            moved = 0
+            for node_id, blob in rows:
+                if isinstance(blob, str):
+                    try:
+                        blob = _json.loads(blob)
+                    except ValueError:
+                        continue
+                if not isinstance(blob, dict):
+                    continue
+
+                width, height = blob.get("width"), blob.get("height")
+                # A bool is an int in Python; a size that is not a real number
+                # is left alone rather than written as garbage.
+                if not isinstance(width, int | float) or isinstance(width, bool):
+                    width = None
+                if not isinstance(height, int | float) or isinstance(height, bool):
+                    height = None
+                if width is None and height is None:
+                    continue
+
+                await conn.exec_driver_sql(
+                    "UPDATE nodes SET width = COALESCE(width, ?), height = COALESCE(height, ?) "
+                    "WHERE id = ?",
+                    (width, height, node_id),
+                )
+                moved += 1
+
+            if moved:
+                logger.info("Moved the size of %d zone(s) to the width/height columns", moved)
+    except Exception as exc:  # pragma: no cover - defensive, boot must not die
+        logger.warning("Backfilling zone width/height failed: %s", exc)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

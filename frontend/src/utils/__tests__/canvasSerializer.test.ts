@@ -165,7 +165,7 @@ describe('serializeNode — regular node', () => {
 // ── serializeNode — groupRect ─────────────────────────────────────────────────
 
 describe('serializeNode — groupRect', () => {
-  it('stores dimensions inside custom_colors', () => {
+  it('stores dimensions in the width/height columns, like every other node type', () => {
     const node = makeRfNode({
       type: 'groupRect',
       data: { label: 'Zone A', type: 'groupRect', status: 'unknown', services: [] },
@@ -173,8 +173,25 @@ describe('serializeNode — groupRect', () => {
       height: 250,
     })
     const result = serializeNode(node)
-    expect((result.custom_colors as Record<string, unknown>).width).toBe(400)
-    expect((result.custom_colors as Record<string, unknown>).height).toBe(250)
+    expect(result.width).toBe(400)
+    expect(result.height).toBe(250)
+  })
+
+  it('keeps the size out of the style blob, so the two cannot drift apart', () => {
+    const node = makeRfNode({
+      type: 'groupRect',
+      // A zone loaded before the move still carries the legacy keys in memory.
+      data: {
+        label: 'Z', type: 'groupRect', status: 'unknown', services: [],
+        custom_colors: { border: '#aaa', width: 111, height: 222 },
+      },
+      width: 400,
+      height: 250,
+    })
+    const cc = serializeNode(node).custom_colors as Record<string, unknown>
+    expect(cc.width).toBeUndefined()
+    expect(cc.height).toBeUndefined()
+    expect(cc.border).toBe('#aaa')
   })
 
   it('prefers explicit width/height over measured, falling back to measured per-axis', () => {
@@ -184,15 +201,15 @@ describe('serializeNode — groupRect', () => {
     }
     const result = serializeNode(node)
     // Explicit width wins; height has no explicit value so it uses measured.
-    expect((result.custom_colors as Record<string, unknown>).width).toBe(400)
-    expect((result.custom_colors as Record<string, unknown>).height).toBe(260)
+    expect(result.width).toBe(400)
+    expect(result.height).toBe(260)
   })
 
   it('falls back to defaults when no dimensions available', () => {
     const node = makeRfNode({ type: 'groupRect', data: { label: 'Z', type: 'groupRect', status: 'unknown', services: [] } })
     const result = serializeNode(node)
-    expect((result.custom_colors as Record<string, unknown>).width).toBe(360)
-    expect((result.custom_colors as Record<string, unknown>).height).toBe(240)
+    expect(result.width).toBe(360)
+    expect(result.height).toBe(240)
   })
 
   it('preserves existing custom_colors fields alongside dimensions', () => {
@@ -205,8 +222,8 @@ describe('serializeNode — groupRect', () => {
     const cc = result.custom_colors as Record<string, unknown>
     expect(cc.border).toBe('#aaa')
     expect(cc.z_order).toBe(2)
-    expect(cc.width).toBe(300)
-    expect(cc.height).toBe(200)
+    expect(result.width).toBe(300)
+    expect(result.height).toBe(200)
   })
 })
 
@@ -420,9 +437,9 @@ describe('deserializeApiNode — regular node', () => {
 describe('deserializeApiNode — groupRect', () => {
   const emptyMap = new Map<string, boolean>()
 
-  it('restores width/height from custom_colors', () => {
+  it('restores width/height from the columns', () => {
     const result = deserializeApiNode(
-      makeApiNode({ type: 'groupRect', custom_colors: { width: 400, height: 250, z_order: 2 } }),
+      makeApiNode({ type: 'groupRect', width: 400, height: 250, custom_colors: { z_order: 2 } }),
       emptyMap,
     )
     expect(result.width).toBe(400)
@@ -430,7 +447,27 @@ describe('deserializeApiNode — groupRect', () => {
     expect(result.zIndex).toBe(-8)
   })
 
-  it('defaults to 360x240 when custom_colors has no dimensions', () => {
+  it('still reads a legacy canvas that kept its size in custom_colors', () => {
+    // Saved before the size moved to the columns, and not yet migrated: no
+    // fallback here means the zone comes back at the default 360x240.
+    const result = deserializeApiNode(
+      makeApiNode({ type: 'groupRect', custom_colors: { width: 400, height: 250, z_order: 2 } }),
+      emptyMap,
+    )
+    expect(result.width).toBe(400)
+    expect(result.height).toBe(250)
+  })
+
+  it('lets the columns win over a stale legacy blob', () => {
+    const result = deserializeApiNode(
+      makeApiNode({ type: 'groupRect', width: 500, height: 300, custom_colors: { width: 111, height: 222 } }),
+      emptyMap,
+    )
+    expect(result.width).toBe(500)
+    expect(result.height).toBe(300)
+  })
+
+  it('defaults to 360x240 when neither source has dimensions', () => {
     const result = deserializeApiNode(makeApiNode({ type: 'groupRect' }), emptyMap)
     expect(result.width).toBe(360)
     expect(result.height).toBe(240)

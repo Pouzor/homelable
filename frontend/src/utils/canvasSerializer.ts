@@ -64,6 +64,18 @@ export interface ApiEdge {
 
 // ── Serialization (RF node → API save payload) ───────────────────────────────
 
+/** Drop the legacy geometry keys from a zone's style blob — its size lives in
+ *  the `width`/`height` columns now, and a stale copy here would be the one an
+ *  older canvas reads back. */
+function omitZoneSize(
+  colors: NodeData['custom_colors'],
+): Record<string, unknown> {
+  if (!colors) return {}
+  return Object.fromEntries(
+    Object.entries(colors).filter(([key]) => key !== 'width' && key !== 'height'),
+  )
+}
+
 export function serializeNode(
   n: Node<NodeData>,
   factsBaseline?: FactsBaseline,
@@ -89,10 +101,14 @@ export function serializeNode(
       custom_icon: null,
       pos_x: n.position.x,
       pos_y: n.position.y,
+      // A zone's size goes in the real columns, like every other node type.
+      // It used to live in the custom_colors blob; `width`/`height` are
+      // stripped from it below so the two cannot drift apart, and a canvas
+      // saved before the change is migrated by `_backfill_zone_size`.
+      width: n.width ?? n.measured?.width ?? 360,
+      height: n.height ?? n.measured?.height ?? 240,
       custom_colors: {
-        ...n.data.custom_colors,
-        width: n.width ?? n.measured?.width ?? 360,
-        height: n.height ?? n.measured?.height ?? 240,
+        ...omitZoneSize(n.data.custom_colors),
         // Stash collapse state inside custom_colors so the API/YAML blob does
         // not need a new column. Hoisted back to `data.collapsed` on load.
         collapsed: n.data.collapsed ?? false,
@@ -182,8 +198,11 @@ export function deserializeApiNode(
 ): Node<NodeData> {
   const normalizedType = n.type === 'docker' ? 'docker_host' : n.type
   if (n.type === 'groupRect') {
-    const w = (n.custom_colors?.width as number | undefined) ?? 360
-    const h = (n.custom_colors?.height as number | undefined) ?? 240
+    // Prefer the real columns; fall back to the custom_colors stash for a
+    // canvas saved before the size moved out of it, and which the backend
+    // backfill has not reached (a payload from an older server, an import).
+    const w = n.width ?? (n.custom_colors?.width as number | undefined) ?? 360
+    const h = n.height ?? (n.custom_colors?.height as number | undefined) ?? 240
     const z = (n.custom_colors?.z_order as number | undefined) ?? 1
     // Hoist persisted collapse flag from the custom_colors stash to a
     // first-class field on NodeData. Tolerates legacy saves that already had

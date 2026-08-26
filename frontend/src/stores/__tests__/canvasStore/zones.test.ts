@@ -240,12 +240,10 @@ describe('canvasStore — importZoneSubnet', () => {
     const z = useCanvasStore.getState().nodes.find((n) => n.id === 'z1')!
     expect(z.height!).toBeGreaterThan(300)
 
-    // The grown height has to survive a save/load round-trip. A zone has no
-    // height column, so the serializer stashes it in the custom_colors blob
-    // on the way out and hoists it back on the way in.
-    const wire = serializeNode(z) as { custom_colors: { height: number } }
-    expect(wire.custom_colors.height).toBe(z.height)
-    const reloaded = deserializeApiNode(wire as unknown as ApiNode, new Map())
+    // The grown height has to survive a save/load round-trip.
+    const wire = serializeNode(z) as unknown as ApiNode
+    expect(wire.height).toBe(z.height)
+    const reloaded = deserializeApiNode(wire, new Map())
     expect(reloaded.height).toBe(z.height)
   })
 
