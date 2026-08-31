@@ -334,6 +334,24 @@ def test_start_scheduler_adds_service_job_when_enabled():
     assert "service_checks" in job_ids
 
 
+def test_start_scheduler_adds_kubernetes_job_only_when_explicitly_enabled():
+    mock_sched = MagicMock()
+    with patch("app.core.scheduler.settings") as mock_settings, patch(
+        "app.core.scheduler.AsyncIOScheduler", return_value=mock_sched
+    ):
+        mock_settings.status_checker_interval = 60
+        mock_settings.service_check_enabled = False
+        mock_settings.proxmox_sync_enabled = False
+        mock_settings.zigbee_sync_enabled = False
+        mock_settings.zwave_sync_enabled = False
+        mock_settings.kubernetes_enabled = True
+        mock_settings.kubernetes_sync_interval = 300
+        start_scheduler()
+
+    job_ids = [kw.get("id") for _, kw in mock_sched.add_job.call_args_list]
+    assert "kubernetes_sync" in job_ids
+
+
 # ---------------------------------------------------------------------------
 # Proxmox auto-sync job
 # ---------------------------------------------------------------------------

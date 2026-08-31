@@ -308,3 +308,68 @@ class ScanRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class KubernetesCluster(Base):
+    """A configured, observed Kubernetes cluster.
+
+    This is deliberately independent of the editable canvas and physical
+    inventory.  Kubernetes resource UIDs have a very different lifecycle from
+    devices, and sync must never create or delete user-owned canvas objects.
+    """
+
+    __tablename__ = "kubernetes_clusters"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class KubernetesResource(Base):
+    """Sanitized observed resource from a successful topology reconciliation."""
+
+    __tablename__ = "kubernetes_resources"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    cluster_id: Mapped[str] = mapped_column(
+        String, ForeignKey("kubernetes_clusters.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    namespace: Mapped[str | None] = mapped_column(String, index=True, nullable=True)
+    status: Mapped[str | None] = mapped_column(String, nullable=True)
+    properties: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
+
+
+class KubernetesRelationship(Base):
+    """Sanitized relationship from a successful topology reconciliation."""
+
+    __tablename__ = "kubernetes_relationships"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    cluster_id: Mapped[str] = mapped_column(
+        String, ForeignKey("kubernetes_clusters.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    source: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    target: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    properties: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+
+class KubernetesSyncState(Base):
+    """Sync freshness and safe diagnostics for the last attempted collection."""
+
+    __tablename__ = "kubernetes_sync_state"
+
+    cluster_id: Mapped[str] = mapped_column(
+        String, ForeignKey("kubernetes_clusters.id", ondelete="CASCADE"), primary_key=True
+    )
+    status: Mapped[str] = mapped_column(String, nullable=False, default="never")
+    last_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_successful_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    object_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    relationship_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
