@@ -31,6 +31,7 @@ Here's what Homelable can do. One line on what each feature is, then how to swit
 17. [MCP Server (AI integration)](#17-mcp-server-)
 18. [Settings & Shortcuts](#18-settings--shortcuts)
 19. [Authentication (Local / OpenID Connect)](#19-authentication-local--openid-connect-)
+20. [Kubernetes Topology](#20-kubernetes-topology-)
 
 ---
 
@@ -287,6 +288,19 @@ The AI can list nodes/edges/canvas/pending/scans, add/update/delete nodes and ed
 **How it protects you:** provider tokens are exchanged server-side and never touch the browser — Homelable issues its own short-lived, `__Host-`, HttpOnly, `SameSite=Lax` session cookie. Discovery metadata, issuer, audience, signature, expiry, nonce, state and PKCE are all validated; cookie-authenticated writes require a CSRF token and an allowed `Origin`; the status WebSocket authenticates from the cookie and validates `Origin`. Local Bearer auth and the MCP service key keep working unchanged. Full config, provider examples and troubleshooting: [docs/oidc-auth.md](./docs/oidc-auth.md).
 
 > OIDC is Full-mode only — the no-backend standalone build has no login.
+
+---
+
+## 20. Kubernetes Topology 🔒
+
+**What:** A separate, read-only map of one Kubernetes cluster: **Ingress → Service → workload → Pod → Node**. It is observed state, not an editable canvas, and includes external endpoints for selectorless Services.
+
+**Use:**
+1. Deploy the backend in the cluster with the least-privilege reader ServiceAccount from [docs/kubernetes-topology.md](./docs/kubernetes-topology.md).
+2. Set `KUBERNETES_ENABLED=true` and `KUBERNETES_SOURCE=in_cluster`, then restart the backend.
+3. Select **Kubernetes** in the sidebar. Pods and nodes stay collapsed until you expand the workload you are investigating.
+
+The collector only lists the resources required to explain topology; it cannot change the cluster and never returns Secrets, ConfigMaps, labels, annotations, container environment, logs, or credentials. Agents can read the same sanitized snapshot through `homelable://kubernetes/topology`. For an agent that must not receive canvas or scan tools, run a separate MCP listener with `MCP_READ_ONLY=true`. Full RBAC, data boundaries, sync state, and advanced read-only-kubeconfig setup: [docs/kubernetes-topology.md](./docs/kubernetes-topology.md).
 
 ---
 

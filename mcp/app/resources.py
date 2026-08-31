@@ -9,6 +9,12 @@ RESOURCE_LIST = [
     Resource(uri="homelable://edges",          name="Edges",           description="All network edges/links", mimeType="application/json"),
     Resource(uri="homelable://scan/pending",   name="Pending devices", description="Discovered devices awaiting approval", mimeType="application/json"),
     Resource(uri="homelable://scan/runs",      name="Scan history",    description="Recent scan run history", mimeType="application/json"),
+    Resource(
+        uri="homelable://kubernetes/topology",
+        name="Kubernetes topology",
+        description="Read-only, sanitized observed Kubernetes topology (resources, relationships, and sync state)",
+        mimeType="application/json",
+    ),
 ]
 
 ROUTES = {
@@ -17,6 +23,7 @@ ROUTES = {
     "homelable://edges":        "/api/v1/edges",
     "homelable://scan/pending": "/api/v1/scan/pending",
     "homelable://scan/runs":    "/api/v1/scan/runs",
+    "homelable://kubernetes/topology": "/api/v1/kubernetes/topology",
 }
 
 

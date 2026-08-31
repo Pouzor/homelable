@@ -204,16 +204,20 @@ def _build_tools() -> list[Tool]:
 TOOLS = _build_tools()
 
 
-def register_tools(server: Server):
+def register_tools(server: Server, *, read_only: bool = False):
 
     @server.list_tools()
     async def list_tools():
-        return TOOLS
+        return [] if read_only else TOOLS
 
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict):
-        result = await _dispatch(name, arguments)
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+    # Deliberately do not register a call_tool handler in read-only mode. This
+    # makes a dedicated read-only MCP process safe even if a client bypasses
+    # tool discovery and attempts to call a legacy canvas mutation tool.
+    if not read_only:
+        @server.call_tool()
+        async def call_tool(name: str, arguments: dict):
+            result = await _dispatch(name, arguments)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
 def _slim_canvas(raw: dict) -> dict:

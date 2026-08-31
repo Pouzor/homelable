@@ -2,6 +2,7 @@ import pytest
 from pydantic import AnyUrl
 from unittest.mock import AsyncMock, patch
 from app.resources import read_resource
+from app.resources import RESOURCE_LIST
 
 
 @pytest.fixture
@@ -40,6 +41,23 @@ async def test_read_single_node(mock_backend):
 async def test_read_scan_pending(mock_backend):
     await read_resource("homelable://scan/pending")
     mock_backend.get.assert_called_once_with("/api/v1/scan/pending")
+
+
+@pytest.mark.anyio
+async def test_read_kubernetes_topology(mock_backend):
+    result = await read_resource("homelable://kubernetes/topology")
+
+    mock_backend.get.assert_called_once_with("/api/v1/kubernetes/topology")
+    assert len(result) == 1
+    assert result[0].type == "text"
+
+
+def test_kubernetes_topology_is_a_read_only_resource():
+    resource = next(item for item in RESOURCE_LIST if str(item.uri) == "homelable://kubernetes/topology")
+
+    assert resource.name == "Kubernetes topology"
+    assert resource.mimeType == "application/json"
+    assert "read-only" in resource.description.lower()
 
 
 @pytest.mark.anyio
