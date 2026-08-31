@@ -121,7 +121,11 @@ async def dedupe_nodes_by_device(db: AsyncSession) -> int:
             await db.execute(select(Node).where(Node.parent_id.in_(dup_ids)))
         ).scalars().all()
         for child in children:
-            child.parent_id = canonical.id
+            # The canonical node may itself have been nested under one of its
+            # own duplicates. Re-pointing it here would make it its own parent,
+            # which freezes it on the canvas (#370) — detach it instead. Mirrors
+            # the self-loop edge deletion below.
+            child.parent_id = None if child.id == canonical.id else canonical.id
 
         all_edges = (
             await db.execute(

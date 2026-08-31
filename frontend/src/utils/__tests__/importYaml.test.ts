@@ -339,6 +339,26 @@ describe('parseYamlToCanvas', () => {
     warnSpy.mockRestore()
   })
 
+  // #370 — parents resolve by label, so a node naming its own label mapped
+  // back to itself and imported as its own parent, which freezes it on canvas.
+  it('warns and skips a parent label that resolves to the node itself', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const yaml = `
+- nodeType: lxc
+  label: "pihole"
+  parent:
+    label: "pihole"
+    linkType: virtual
+`
+    const { nodes, edges } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    expect(nodes).toHaveLength(1)
+    expect(nodes[0].parentId).toBeUndefined()
+    expect(nodes[0].data.parent_id).toBeUndefined()
+    expect(edges).toHaveLength(0)
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('its own parent'))
+    warnSpy.mockRestore()
+  })
+
   // Regression for issue #208.
   it('restores edge connection points from the YAML link', () => {
     const yaml = `

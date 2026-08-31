@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useCanvasStore } from '@/stores/canvasStore'
 import type { NodeChange, Node } from '@xyflow/react'
 import type { NodeData } from '@/types'
-import { makeNode, makeEdge } from '@/test/factories'
+import { makeNode, makeNodeData, makeEdge } from '@/test/factories'
 
 function resetStore() {
   useCanvasStore.setState({
@@ -101,5 +101,41 @@ describe('canvasStore — edge waypoints follow dragged nodes (#279)', () => {
     })
     useCanvasStore.getState().onNodesChange([{ type: 'select', id: 'a', selected: true }])
     expect(useCanvasStore.getState().edges[0].data!.waypoints).toEqual([{ x: 100, y: 100 }])
+  })
+
+  // #370 — a corrupt row pointing a node at itself made the child walk recurse
+  // forever. The overflow was thrown inside onNodesChange's reducer, so the
+  // whole state update was discarded: the node selected but never moved.
+  it('moves a node that is recorded as its own parent', () => {
+    useCanvasStore.setState({
+      nodes: [makeNode({ id: 'a', position: { x: 0, y: 0 }, data: makeNodeData({ parent_id: 'a' }) })],
+      edges: [],
+    })
+    useCanvasStore.getState().onNodesChange([posChange('a', 40, 40)])
+    expect(useCanvasStore.getState().nodes[0].position).toEqual({ x: 40, y: 40 })
+  })
+
+  it('translates waypoints once for a self-parented node instead of hanging', () => {
+    useCanvasStore.setState({
+      nodes: [
+        makeNode({ id: 'a', position: { x: 0, y: 0 }, data: makeNodeData({ parent_id: 'a' }) }),
+        makeNode('b', {}),
+      ],
+      edges: [makeEdge('e1', 'a', 'b', { data: { type: 'ethernet', waypoints: [{ x: 100, y: 100 }] } })],
+    })
+    useCanvasStore.getState().onNodesChange([posChange('a', 10, 10)])
+    expect(useCanvasStore.getState().edges[0].data!.waypoints).toEqual([{ x: 110, y: 110 }])
+  })
+
+  it('survives a longer parent cycle (a -> b -> a)', () => {
+    useCanvasStore.setState({
+      nodes: [
+        makeNode({ id: 'a', position: { x: 0, y: 0 }, data: makeNodeData({ parent_id: 'b' }) }),
+        makeNode({ id: 'b', position: { x: 0, y: 0 }, data: makeNodeData({ parent_id: 'a' }) }),
+      ],
+      edges: [],
+    })
+    useCanvasStore.getState().onNodesChange([posChange('a', 25, 25)])
+    expect(useCanvasStore.getState().nodes[0].position).toEqual({ x: 25, y: 25 })
   })
 })

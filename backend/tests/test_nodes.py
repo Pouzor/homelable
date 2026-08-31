@@ -403,3 +403,41 @@ async def test_list_nodes_without_label_param_returns_all(client: AsyncClient, h
     res = await client.get("/api/v1/nodes", headers=headers)
     assert res.status_code == 200
     assert len(res.json()) == 3
+
+
+# ── self-parent guard (#370) ─────────────────────────────────────────────────
+
+async def test_update_node_ignores_a_parent_id_pointing_at_itself(client: AsyncClient, headers: dict):
+    create = await client.post(
+        "/api/v1/nodes", json={"type": "lxc", "label": "pihole", "status": "unknown"}, headers=headers
+    )
+    node_id = create.json()["id"]
+
+    res = await client.patch(
+        f"/api/v1/nodes/{node_id}", json={"parent_id": node_id, "label": "renamed"}, headers=headers
+    )
+
+    assert res.status_code == 200
+    assert res.json()["parent_id"] is None
+    # The key is dropped, not the whole edit.
+    assert res.json()["label"] == "renamed"
+
+
+async def test_update_node_self_parent_leaves_a_real_parent_alone(client: AsyncClient, headers: dict):
+    host = await client.post(
+        "/api/v1/nodes",
+        json={"type": "proxmox", "label": "pve", "status": "unknown", "container_mode": True},
+        headers=headers,
+    )
+    host_id = host.json()["id"]
+    child = await client.post(
+        "/api/v1/nodes",
+        json={"type": "lxc", "label": "pihole", "status": "unknown", "parent_id": host_id},
+        headers=headers,
+    )
+    child_id = child.json()["id"]
+
+    res = await client.patch(f"/api/v1/nodes/{child_id}", json={"parent_id": child_id}, headers=headers)
+
+    assert res.status_code == 200
+    assert res.json()["parent_id"] == host_id

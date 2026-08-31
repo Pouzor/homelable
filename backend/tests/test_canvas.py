@@ -706,3 +706,37 @@ async def test_save_canvas_custom_style_overwrite(client: AsyncClient, headers: 
     canvas = (await client.get("/api/v1/canvas", headers=headers)).json()
     assert "proxmox" in canvas["custom_style"]["nodes"]
     assert "server" not in canvas["custom_style"]["nodes"]
+
+
+# ── self-parent guard (#370) ─────────────────────────────────────────────────
+
+async def test_save_canvas_drops_a_node_parented_to_itself(client: AsyncClient, headers: dict):
+    # A self-parent row freezes the node on the canvas and survives a reload, so
+    # the save normalizes it away. Dropped rather than rejected: a canvas that
+    # already carries the bad row must still be able to save.
+    n = node_payload(type="lxc", label="pihole")
+    n["parent_id"] = n["id"]
+
+    res = await client.post(
+        "/api/v1/canvas/save", json={"nodes": [n], "edges": [], "viewport": {}}, headers=headers
+    )
+    assert res.status_code == 200
+
+    saved = (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"]
+    assert len(saved) == 1
+    assert saved[0]["parent_id"] is None
+
+
+async def test_save_canvas_keeps_a_real_parent(client: AsyncClient, headers: dict):
+    host = node_payload(type="proxmox", label="pve", container_mode=True)
+    child = node_payload(type="lxc", label="pihole", parent_id=host["id"])
+
+    res = await client.post(
+        "/api/v1/canvas/save",
+        json={"nodes": [host, child], "edges": [], "viewport": {}},
+        headers=headers,
+    )
+    assert res.status_code == 200
+
+    saved = {n["label"]: n for n in (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"]}
+    assert saved["pihole"]["parent_id"] == host["id"]
