@@ -219,7 +219,11 @@ async def check_service(svc: dict[str, Any], host: str | None) -> str:
             port in _HTTPS_PORTS or "https" in name or "ssl" in name or "tls" in name
         ) else "http")
         url_host = _service_host(svc, host)
-        url = f"{scheme}://{url_host}" + (f":{port}" if port is not None else "")
+        # A host override usually points at a reverse proxy, where the scanned
+        # port is an internal detail that would break the public URL. Only a
+        # port typed into the override itself is used.
+        url_port = override_port if override else port
+        url = f"{scheme}://{url_host}" + (f":{url_port}" if url_port is not None else "")
         return "online" if await _http_get(url, verify=False) else "offline"
     except Exception as exc:
         logger.debug("Service check failed for %s:%s (%s)", host, port, exc)

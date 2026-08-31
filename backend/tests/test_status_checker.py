@@ -516,7 +516,14 @@ async def _captured_url(svc, host):
 @pytest.mark.asyncio
 async def test_check_service_uses_the_host_override():
     svc = {"port": 8080, "protocol": "tcp", "service_name": "blog", "host": "blog.example.com"}
-    assert await _captured_url(svc, "10.0.0.1") == "http://blog.example.com:8080"
+    assert await _captured_url(svc, "10.0.0.1") == "http://blog.example.com"
+
+
+@pytest.mark.asyncio
+async def test_check_service_drops_the_scanned_port_behind_a_reverse_proxy():
+    """Issue #382 — an override points at a proxy; the internal port breaks it."""
+    svc = {"port": 8083, "protocol": "tcp", "service_name": "blog", "host": "https://mywebserver.mydomain.com"}
+    assert await _captured_url(svc, "192.168.100.100") == "https://mywebserver.mydomain.com"
 
 
 @pytest.mark.asyncio
@@ -538,21 +545,21 @@ async def test_check_service_takes_the_port_from_the_override():
 
 
 @pytest.mark.asyncio
-async def test_check_service_lets_the_service_port_beat_the_override_port():
+async def test_check_service_keeps_the_port_typed_into_the_override():
     svc = {"port": 3000, "protocol": "tcp", "service_name": "blog", "host": "blog.example.com:8443"}
-    assert await _captured_url(svc, "10.0.0.1") == "http://blog.example.com:3000"
+    assert await _captured_url(svc, "10.0.0.1") == "http://blog.example.com:8443"
 
 
 @pytest.mark.asyncio
 async def test_check_service_uses_the_first_host_of_a_comma_list_override():
     svc = {"port": 8080, "protocol": "tcp", "service_name": "blog", "host": "blog.example.com, alt.example.com"}
-    assert await _captured_url(svc, "10.0.0.1") == "http://blog.example.com:8080"
+    assert await _captured_url(svc, "10.0.0.1") == "http://blog.example.com"
 
 
 @pytest.mark.asyncio
 async def test_check_service_brackets_an_ipv6_override():
     svc = {"port": 80, "protocol": "tcp", "service_name": "http", "host": "[2001:db8::1]:8080"}
-    assert await _captured_url(svc, "10.0.0.1") == "http://[2001:db8::1]:80"
+    assert await _captured_url(svc, "10.0.0.1") == "http://[2001:db8::1]:8080"
 
 
 @pytest.mark.asyncio

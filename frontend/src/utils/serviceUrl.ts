@@ -88,7 +88,8 @@ function formatHostname(hostname: string): string {
 export function getServiceUrl(svc: ServiceInfo, host?: string): string | null {
   // A node can serve several domains, so a service may carry its own host that
   // overrides the node one.
-  const effectiveHost = svc.host?.trim() || host
+  const overrideHost = svc.host?.trim()
+  const effectiveHost = overrideHost || host
   if (!effectiveHost) return null
   if (svc.protocol === 'udp') return null // UDP — not HTTP
 
@@ -106,7 +107,12 @@ export function getServiceUrl(svc: ServiceInfo, host?: string): string | null {
       ? 'https'
       : 'http'
   )
+  // A host override usually points at a reverse proxy, where the scanned port
+  // is an internal detail that would break the public URL. Only a port typed
+  // into the override itself is printed.
+  const urlPort = overrideHost ? parts.port : effectivePort
+
   const base = `${protocol}://${formatHostname(parts.hostname)}`
-  const port = effectivePort != null ? `:${effectivePort}` : ''
+  const port = urlPort != null ? `:${urlPort}` : ''
   return `${base}${port}${normalizePath(svc.path)}`
 }
