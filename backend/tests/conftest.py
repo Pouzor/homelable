@@ -1,3 +1,4 @@
+import importlib
 import os
 
 # Must be set before any app import so pydantic-settings can resolve the required field.
@@ -28,8 +29,31 @@ async def db_session():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    # Background tasks open their own session through `AsyncSessionLocal` — the
+    # request-scoped `get_db` override does not reach them. Left alone they would
+    # run against the *real* configured database, so point the factory at the
+    # test engine everywhere it was imported by name.
+    patched = [
+        importlib.import_module(name)
+        for name in (
+            "app.db.database",
+            "app.api.routes.zigbee",
+            "app.api.routes.zwave",
+            "app.api.routes.proxmox",
+            "app.api.routes.scan",
+        )
+    ]
+    originals = [
+        (module, getattr(module, "AsyncSessionLocal", None)) for module in patched
+    ]
+    for module, original in originals:
+        if original is not None:
+            module.AsyncSessionLocal = session_factory
     async with session_factory() as session:
         yield session
+    for module, original in originals:
+        if original is not None:
+            module.AsyncSessionLocal = original
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
