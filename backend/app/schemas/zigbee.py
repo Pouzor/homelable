@@ -73,6 +73,21 @@ class ZigbeeImportResponse(BaseModel):
     device_count: int
 
 
+class ZigbeeImportJob(BaseModel):
+    """Handle returned when a canvas import is queued."""
+
+    job_id: str
+    status: str  # running | done | error
+
+
+class ZigbeeImportJobResult(BaseModel):
+    """Poll response for a canvas import. ``result`` is set once done."""
+
+    job_id: str
+    status: str  # running | done
+    result: ZigbeeImportResponse | None = None
+
+
 class ZigbeeTestConnectionResponse(BaseModel):
     connected: bool
     message: str

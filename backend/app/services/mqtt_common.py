@@ -13,6 +13,8 @@ import logging
 import ssl
 from typing import Any
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -21,7 +23,10 @@ except ImportError:  # pragma: no cover
     aiomqtt = None  # type: ignore[assignment]
 
 _CONNECTION_TIMEOUT = 5.0   # seconds to verify broker reachability
-_RESPONSE_TIMEOUT = 300.0   # seconds to wait for a gateway response (large meshes are slow)
+# Fallback wait for a gateway response. The effective value comes from
+# ``settings.mqtt_response_timeout`` (env MQTT_RESPONSE_TIMEOUT), read at call
+# time so an operator with a large mesh can raise it without a code change.
+_RESPONSE_TIMEOUT = 300.0
 
 
 def _sanitize_mqtt_error(exc: BaseException) -> str:
@@ -71,10 +76,13 @@ async def request_response(
     password: str | None = None,
     tls: bool = False,
     tls_insecure: bool = False,
-    response_timeout: float = _RESPONSE_TIMEOUT,
+    response_timeout: float | None = None,
 ) -> dict[str, Any]:
     """Publish ``request_payload`` to ``request_topic`` and return the first
     JSON message received on ``response_topic`` as a dict.
+
+    ``response_timeout`` defaults to ``settings.mqtt_response_timeout``
+    (env ``MQTT_RESPONSE_TIMEOUT``, 300 s) — a large mesh can take minutes.
 
     Raises:
         ImportError: if aiomqtt is not installed.
@@ -87,6 +95,14 @@ async def request_response(
             "aiomqtt is required for MQTT import. "
             "Install it with: pip install aiomqtt"
         )
+
+    timeout = (
+        float(settings.mqtt_response_timeout)
+        if response_timeout is None
+        else response_timeout
+    )
+    if timeout <= 0:
+        timeout = _RESPONSE_TIMEOUT
 
     response_payload: dict[str, Any] = {}
     tls_context = _build_tls_context(tls_insecure) if tls else None
@@ -122,12 +138,15 @@ async def request_response(
                         raise ValueError(f"Malformed MQTT response: {exc}") from exc
                     return
 
-            await asyncio.wait_for(_wait_for_response(), timeout=response_timeout)
+            await asyncio.wait_for(_wait_for_response(), timeout=timeout)
 
     except aiomqtt.MqttError as exc:
         raise ConnectionError(_sanitize_mqtt_error(exc)) from exc
     except asyncio.TimeoutError as exc:
-        raise TimeoutError("Timed out waiting for MQTT response") from exc
+        raise TimeoutError(
+            f"Timed out waiting for MQTT response after {timeout:g}s — "
+            "raise MQTT_RESPONSE_TIMEOUT if your mesh is large"
+        ) from exc
 
     if not response_payload:
         raise ValueError("Empty MQTT response received")

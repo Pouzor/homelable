@@ -7,6 +7,7 @@ import json
 import logging
 from typing import Any
 
+from app.core.config import settings
 from app.services.mqtt_common import _build_tls_context, _sanitize_mqtt_error
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,10 @@ except ImportError:  # pragma: no cover
 _NETWORKMAP_REQUEST_TOPIC = "{base_topic}/bridge/request/networkmap"
 _NETWORKMAP_RESPONSE_TOPIC = "{base_topic}/bridge/response/networkmap"
 _CONNECTION_TIMEOUT = 5.0   # seconds to verify broker reachability
-_NETWORKMAP_TIMEOUT = 300.0  # seconds to wait for the networkmap response (large meshes can be slow)
+# Fallback wait for the networkmap response. The effective value comes from
+# ``settings.zigbee_networkmap_timeout`` (env ZIGBEE_NETWORKMAP_TIMEOUT), read at
+# call time so an operator with a large mesh can raise it without a code change.
+_NETWORKMAP_TIMEOUT = 300.0
 
 # Re-exported for backwards compatibility — these now live in mqtt_common.
 __all__ = ["_build_tls_context", "_sanitize_mqtt_error"]
@@ -238,8 +242,13 @@ async def fetch_networkmap(
     password: str | None = None,
     tls: bool = False,
     tls_insecure: bool = False,
+    response_timeout: float | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Connect to the MQTT broker, request the Z2M networkmap, and return (nodes, edges).
+
+    ``response_timeout`` defaults to ``settings.zigbee_networkmap_timeout``
+    (env ``ZIGBEE_NETWORKMAP_TIMEOUT``, 300 s) — a 200+ device mesh can take
+    minutes to answer.
 
     Raises:
         TimeoutError: if the broker does not respond in time.
@@ -251,6 +260,14 @@ async def fetch_networkmap(
             "aiomqtt is required for Zigbee import. "
             "Install it with: pip install aiomqtt"
         )
+
+    timeout = (
+        float(settings.zigbee_networkmap_timeout)
+        if response_timeout is None
+        else response_timeout
+    )
+    if timeout <= 0:
+        timeout = _NETWORKMAP_TIMEOUT
 
     request_topic = _NETWORKMAP_REQUEST_TOPIC.format(base_topic=base_topic)
     response_topic = _NETWORKMAP_RESPONSE_TOPIC.format(base_topic=base_topic)
@@ -295,12 +312,15 @@ async def fetch_networkmap(
                         ) from exc
                     return
 
-            await asyncio.wait_for(_wait_for_response(), timeout=_NETWORKMAP_TIMEOUT)
+            await asyncio.wait_for(_wait_for_response(), timeout=timeout)
 
     except aiomqtt.MqttError as exc:
         raise ConnectionError(_sanitize_mqtt_error(exc)) from exc
     except asyncio.TimeoutError as exc:
-        raise TimeoutError("Timed out waiting for networkmap response") from exc
+        raise TimeoutError(
+            f"Timed out waiting for networkmap response after {timeout:g}s — "
+            "raise ZIGBEE_NETWORKMAP_TIMEOUT if your mesh is large"
+        ) from exc
 
     if not response_payload:
         raise ValueError("Empty networkmap response received")

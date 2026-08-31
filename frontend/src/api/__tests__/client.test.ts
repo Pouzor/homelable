@@ -242,6 +242,11 @@ describe('api/client', () => {
     expect(api.post).toHaveBeenCalledWith('/zigbee/import-pending', cfg)
   })
 
+  it('zigbeeApi.getImportJob polls the job by id', () => {
+    mod.zigbeeApi.getImportJob('job-1')
+    expect(api.get).toHaveBeenCalledWith('/zigbee/import/job-1')
+  })
+
   it('zwaveApi.testConnection/importNetwork/importToPending', () => {
     const cfg = { mqtt_host: 'h', mqtt_port: 1883, prefix: 'zwave', gateway_name: 'zwavejs2mqtt' }
     mod.zwaveApi.testConnection(cfg)
