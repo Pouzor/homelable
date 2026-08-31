@@ -34,6 +34,7 @@ from app.schemas.proxmox import (
 )
 from app.schemas.scan import ScanRunResponse
 from app.services.discovery_sources import add_source
+from app.services.inventory_sync import attach_device_ids
 from app.services.mac_utils import normalize_mac
 from app.services.node_dedupe import dedupe_nodes_by_device
 from app.services.proxmox_service import (
@@ -88,6 +89,7 @@ async def test_connection_endpoint(
 @router.post("/import", response_model=ProxmoxImportResponse)
 async def import_proxmox(
     payload: ProxmoxConnectionRequest,
+    db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ) -> ProxmoxImportResponse:
     """Fetch the inventory and return nodes + edges ready for canvas drop."""
@@ -107,6 +109,12 @@ async def import_proxmox(
     except Exception as exc:
         logger.exception("Unexpected error during Proxmox import")
         raise HTTPException(status_code=500, detail="Unexpected error during Proxmox import") from exc
+
+    # A canvas import is an import: the guests land in the Device Inventory too,
+    # and each node carries the id of the row it draws so the canvas save links
+    # to it instead of minting a second row for the same guest.
+    await _persist_pending_import(db, nodes_raw, edges_raw)
+    nodes_raw = await attach_device_ids(db, nodes_raw)
 
     nodes = [ProxmoxNodeOut(**n) for n in nodes_raw]
     edges = [ProxmoxEdgeOut(**e) for e in edges_raw]

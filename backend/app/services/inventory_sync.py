@@ -612,6 +612,12 @@ async def link_facts(
         )
         device.discovery_sources = add_source(device.discovery_sources, CANVAS_SOURCE)
 
+    # A row a node draws is past the pending queue — the mirror of the
+    # "approved but no longer drawn -> pending" revival the imports do. A hidden
+    # row stays hidden: the user hid it on purpose.
+    if device.status == "pending":
+        device.status = "approved"
+
     node.device_id = device.id
     # Order and visibility are this node's, not the device's, so they are taken
     # from the full payload — never from the `changed_fields`/`only_changed`
@@ -981,3 +987,27 @@ async def backfill_node_devices(db: AsyncSession) -> dict[str, int]:
 
     await db.flush()
     return {"linked": linked, "created": created, "merged": merged, "skipped": skipped}
+
+
+async def attach_device_ids(
+    db: AsyncSession, nodes_raw: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Stamp each imported node with the inventory row that already owns it.
+
+    A canvas-direct import upserts the inventory first, so the node dropped on
+    the canvas can point straight at that row instead of minting a second one
+    on the next save. Matching goes through :func:`find_device_for`, so a
+    Proxmox guest merged into a scanned row by ip/mac resolves too.
+
+    Returns new dicts — the caller's payload is left untouched.
+    """
+    stamped: list[dict[str, Any]] = []
+    for node in nodes_raw:
+        device = await find_device_for(
+            db,
+            ip=node.get("ip"),
+            mac=node.get("mac"),
+            ieee=node.get("ieee_address"),
+        )
+        stamped.append({**node, "device_id": device.id} if device else dict(node))
+    return stamped

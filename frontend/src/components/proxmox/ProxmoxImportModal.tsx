@@ -159,7 +159,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onInventoryIm
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="bg-[#161b22] border-border max-w-xl max-h-[85vh] flex flex-col">
+      <DialogContent className="bg-[#161b22] border-border max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Server size={16} style={{ color: ACCENT }} />
@@ -169,7 +169,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onInventoryIm
 
         <div className="flex-1 overflow-y-auto space-y-4 py-2 min-h-0">
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
               <div className="col-span-2 space-y-1">
                 <Label className="text-xs text-muted-foreground">Proxmox Host</Label>
                 <Input
@@ -209,7 +209,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onInventoryIm
                   className="text-sm bg-[#0d1117] border-border"
                 />
               </div>
-              <div className="col-span-2 flex items-center gap-4 pt-1">
+              <div className="col-span-2 flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
@@ -238,32 +238,34 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onInventoryIm
               </div>
             )}
 
-            <div className="flex items-center gap-3 text-xs">
-              <span className="text-muted-foreground">Send devices to:</span>
-              <label className="flex items-center gap-1.5 cursor-pointer text-foreground">
-                <input
-                  type="radio"
-                  name="proxmox-import-mode"
-                  checked={importMode === 'pending'}
-                  onChange={() => setImportMode('pending')}
-                  className="cursor-pointer"
-                  style={{ accentColor: ACCENT }}
-                />
-                Pending section
-              </label>
-              <label className="flex items-center gap-1.5 cursor-pointer text-foreground">
-                <input
-                  type="radio"
-                  name="proxmox-import-mode"
-                  checked={importMode === 'canvas'}
-                  onChange={() => setImportMode('canvas')}
-                  className="cursor-pointer"
-                  style={{ accentColor: ACCENT }}
-                />
-                Canvas directly
-              </label>
+            <div className="space-y-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5">
+              <span className="block text-xs text-muted-foreground">Send devices to</span>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+                <label className="flex items-center gap-1.5 cursor-pointer text-foreground">
+                  <input
+                    type="radio"
+                    name="proxmox-import-mode"
+                    checked={importMode === 'pending'}
+                    onChange={() => setImportMode('pending')}
+                    className="cursor-pointer"
+                    style={{ accentColor: ACCENT }}
+                  />
+                  Device inventory only
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer text-foreground">
+                  <input
+                    type="radio"
+                    name="proxmox-import-mode"
+                    checked={importMode === 'canvas'}
+                    onChange={() => setImportMode('canvas')}
+                    className="cursor-pointer"
+                    style={{ accentColor: ACCENT }}
+                  />
+                  Inventory + canvas
+                </label>
+              </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 pt-1">
               <Button
                 size="sm"
                 variant="ghost"
@@ -284,7 +286,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onInventoryIm
                 disabled={loading || connectionStatus === 'testing'}
               >
                 {loading ? <Loader2 size={13} className="animate-spin" /> : <Server size={13} />}
-                {importMode === 'pending' ? 'Import to Pending' : 'Fetch Inventory'}
+                {importMode === 'pending' ? 'Import to Inventory' : 'Fetch Guests'}
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground italic">

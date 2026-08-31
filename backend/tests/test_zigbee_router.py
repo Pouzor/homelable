@@ -915,3 +915,91 @@ async def test_sync_now_rejected_without_host(
 async def test_sync_now_requires_auth(client: AsyncClient) -> None:
     res = await client.post("/api/v1/zigbee/sync-now")
     assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_canvas_import_also_lands_in_device_inventory(
+    client: AsyncClient, headers: dict, db_session
+) -> None:
+    """A canvas import is an import: the devices reach the Device Inventory too."""
+    from sqlalchemy import select
+
+    from app.db.models import InventoryDevice
+
+    with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
+        mock_fetch.return_value = (_SAMPLE_NODES, _SAMPLE_EDGES)
+        job_id = await _start_canvas_import(
+            client, headers, {"mqtt_host": "localhost", "mqtt_port": 1883}
+        )
+
+    res = await client.get(f"/api/v1/zigbee/import/{job_id}", headers=headers)
+    nodes = res.json()["result"]["nodes"]
+
+    rows = (
+        await db_session.execute(
+            select(InventoryDevice).where(InventoryDevice.discovery_source == "zigbee")
+        )
+    ).scalars().all()
+    by_ieee = {r.ieee_address: r for r in rows}
+    assert set(by_ieee) == {"0x00000000", "0x00000001"}
+
+    # Each node names the row it draws, so the canvas save links to it rather
+    # than minting a second, IEEE-less row.
+    for node in nodes:
+        assert node["device_id"] == by_ieee[node["ieee_address"]].id
+
+
+@pytest.mark.asyncio
+async def test_canvas_import_reuses_the_existing_inventory_row(
+    client: AsyncClient, headers: dict, db_session
+) -> None:
+    from sqlalchemy import select
+
+    from app.db.models import InventoryDevice
+
+    existing = InventoryDevice(
+        ieee_address="0x00000001",
+        friendly_name="router_1",
+        status="pending",
+        discovery_source="zigbee",
+    )
+    db_session.add(existing)
+    await db_session.commit()
+    existing_id = existing.id
+
+    with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
+        mock_fetch.return_value = (_SAMPLE_NODES, _SAMPLE_EDGES)
+        job_id = await _start_canvas_import(
+            client, headers, {"mqtt_host": "localhost", "mqtt_port": 1883}
+        )
+
+    res = await client.get(f"/api/v1/zigbee/import/{job_id}", headers=headers)
+    router = next(
+        n for n in res.json()["result"]["nodes"] if n["ieee_address"] == "0x00000001"
+    )
+    assert router["device_id"] == existing_id
+    rows = (
+        await db_session.execute(
+            select(InventoryDevice).where(InventoryDevice.ieee_address == "0x00000001")
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_canvas_import_failure_is_reported_on_the_job(
+    client: AsyncClient, headers: dict
+) -> None:
+    """A failed inventory write fails the job rather than returning half a map."""
+    with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch, patch(
+        "app.api.routes.zigbee._persist_pending_import",
+        new=AsyncMock(side_effect=ValueError("inventory write failed")),
+    ):
+        mock_fetch.return_value = (_SAMPLE_NODES, _SAMPLE_EDGES)
+        job_id = await _start_canvas_import(
+            client, headers, {"mqtt_host": "localhost", "mqtt_port": 1883}
+        )
+
+    res = await client.get(f"/api/v1/zigbee/import/{job_id}", headers=headers)
+    assert res.status_code == 422
+    assert "inventory write failed" in res.json()["detail"]

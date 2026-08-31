@@ -16,6 +16,9 @@ export interface ProxmoxNode {
   vendor?: string | null
   model?: string | null
   parent_ieee?: string | null
+  /** Device Inventory row this node draws — stamped by the import so the
+   * canvas save links to it instead of minting a second row. */
+  device_id?: string | null
 }
 
 export interface ProxmoxEdge {

@@ -601,3 +601,79 @@ async def test_sync_now_rejected_without_host(
 async def test_sync_now_requires_auth(client: AsyncClient) -> None:
     res = await client.post("/api/v1/zwave/sync-now")
     assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_import_also_lands_in_device_inventory(
+    client: AsyncClient, headers: dict, db_session
+) -> None:
+    """A canvas import is an import: the devices reach the Device Inventory too."""
+    from sqlalchemy import select
+
+    from app.db.models import InventoryDevice
+
+    with patch("app.api.routes.zwave.fetch_zwave_network") as mock_fetch:
+        mock_fetch.return_value = (_SAMPLE_NODES, _SAMPLE_EDGES)
+        res = await client.post(
+            "/api/v1/zwave/import",
+            json={"mqtt_host": "localhost", "mqtt_port": 1883},
+            headers=headers,
+        )
+    assert res.status_code == 200
+
+    rows = (
+        await db_session.execute(
+            select(InventoryDevice).where(InventoryDevice.discovery_source == "zwave")
+        )
+    ).scalars().all()
+    by_ieee = {r.ieee_address: r for r in rows}
+    assert set(by_ieee) == {"zwave-0xh-1", "zwave-0xh-2"}
+
+    # Every returned node names the row it draws, so the canvas save links to it
+    # rather than minting a second one.
+    for node in res.json()["nodes"]:
+        assert node["device_id"] == by_ieee[node["ieee_address"]].id
+
+
+@pytest.mark.asyncio
+async def test_import_reuses_the_existing_inventory_row(
+    client: AsyncClient, headers: dict, db_session
+) -> None:
+    """A device already in the inventory is pointed at, not duplicated."""
+    from sqlalchemy import select
+
+    from app.db.models import InventoryDevice
+
+    existing = InventoryDevice(
+        ieee_address="zwave-0xh-1",
+        friendly_name="Controller",
+        status="pending",
+        discovery_source="zwave",
+    )
+    db_session.add(existing)
+    await db_session.commit()
+    existing_id = existing.id
+
+    with patch("app.api.routes.zwave.fetch_zwave_network") as mock_fetch:
+        mock_fetch.return_value = (_SAMPLE_NODES, _SAMPLE_EDGES)
+        res = await client.post(
+            "/api/v1/zwave/import",
+            json={"mqtt_host": "localhost", "mqtt_port": 1883},
+            headers=headers,
+        )
+    assert res.status_code == 200
+
+    count = len(
+        (
+            await db_session.execute(
+                select(InventoryDevice).where(
+                    InventoryDevice.ieee_address == "zwave-0xh-1"
+                )
+            )
+        ).scalars().all()
+    )
+    assert count == 1
+    coordinator = next(
+        n for n in res.json()["nodes"] if n["ieee_address"] == "zwave-0xh-1"
+    )
+    assert coordinator["device_id"] == existing_id

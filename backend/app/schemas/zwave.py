@@ -50,6 +50,10 @@ class ZwaveNodeOut(BaseModel):
     vendor: str | None = None
     lqi: int | None = None
     parent_id: str | None = None
+    # The Device Inventory row this node draws, stamped by the import. The
+    # canvas carries it back on save so the node links to that row rather
+    # than minting a second one for the same device.
+    device_id: str | None = None
 
 
 class ZwaveEdgeOut(BaseModel):

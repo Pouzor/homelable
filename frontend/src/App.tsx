@@ -813,6 +813,9 @@ export default function App() {
           type: zn.type as NodeData['type'],
           status: 'unknown' as const,
           services: [],
+          // The import already upserted the Device Inventory row; carry its id so
+          // the canvas save links to that row instead of minting a second one.
+          ...(zn.device_id ? { device_id: zn.device_id } : {}),
           ...(zn.lqi != null ? { properties: [{ key: 'LQI', value: String(zn.lqi), icon: 'signal', visible: true }] } : {}),
           ...(zn.model ? { os: zn.model } : {}),
           ...(zn.parent_id ? { parent_id: zn.parent_id } : {}),
@@ -863,6 +866,8 @@ export default function App() {
           type: zn.type as NodeData['type'],
           status: 'unknown' as const,
           services: [],
+          // Same as the Zigbee import: the row exists already, point at it.
+          ...(zn.device_id ? { device_id: zn.device_id } : {}),
           ...(zn.model ? { os: zn.model } : {}),
           ...(zn.parent_id ? { parent_id: zn.parent_id } : {}),
         },
@@ -915,6 +920,8 @@ export default function App() {
           type: pn.type as NodeData['type'],
           status: (pn.status === 'online' ? 'online' : 'unknown') as NodeData['status'],
           services: [],
+          // Same as the Zigbee import: the row exists already, point at it.
+          ...(pn.device_id ? { device_id: pn.device_id } : {}),
           ...(pn.ip ? { ip: pn.ip } : {}),
           ...(pn.hostname ? { hostname: pn.hostname } : {}),
           ...(isClusterHost ? { left_handles: 1, right_handles: 1 } : {}),

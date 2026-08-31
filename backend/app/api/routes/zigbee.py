@@ -30,6 +30,7 @@ from app.schemas.zigbee import (
     ZigbeeTestConnectionResponse,
 )
 from app.services.import_jobs import create_job, fail_job, finish_job, get_job
+from app.services.inventory_sync import attach_device_ids
 from app.services.node_dedupe import dedupe_nodes_by_device
 from app.services.zigbee_service import (
     build_zigbee_properties,
@@ -125,6 +126,18 @@ async def _background_canvas_import(job_id: str, payload: ZigbeeImportRequest) -
             tls=payload.mqtt_tls,
             tls_insecure=payload.mqtt_tls_insecure,
         )
+    except Exception as exc:
+        status, detail = _import_error(exc)
+        fail_job(job_id, detail, status)
+        return
+
+    # A canvas import is an import: the devices land in the Device Inventory
+    # too, and each node carries the id of the row it draws so the canvas save
+    # links to it instead of minting a second, IEEE-less row.
+    try:
+        async with AsyncSessionLocal() as db:
+            await _persist_pending_import(db, nodes_raw, edges_raw)
+            nodes_raw = await attach_device_ids(db, nodes_raw)
     except Exception as exc:
         status, detail = _import_error(exc)
         fail_job(job_id, detail, status)
