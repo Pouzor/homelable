@@ -97,7 +97,7 @@ describe('ZwaveImportModal', () => {
   })
 
   const selectCanvasMode = () => {
-    fireEvent.click(screen.getByRole('radio', { name: /canvas directly/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /inventory \+ canvas/i }))
   }
 
   it('fetches devices and renders them grouped by type', async () => {
@@ -158,7 +158,7 @@ describe('ZwaveImportModal', () => {
     fireEvent.change(screen.getByPlaceholderText('192.168.1.x or mqtt.local'), {
       target: { value: '192.168.1.100' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /import to pending/i }))
+    fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
 
     await waitFor(() => {
       expect(zwaveApi.importToPending).toHaveBeenCalled()

@@ -27,6 +27,7 @@ from app.schemas.zwave import (
     ZwaveTestConnectionRequest,
     ZwaveTestConnectionResponse,
 )
+from app.services.inventory_sync import attach_device_ids
 from app.services.node_dedupe import dedupe_nodes_by_device
 from app.services.zwave_service import (
     build_zwave_properties,
@@ -51,6 +52,7 @@ router = APIRouter()
 @router.post("/import", response_model=ZwaveImportResponse)
 async def import_zwave_network(
     payload: ZwaveImportRequest,
+    db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ) -> ZwaveImportResponse:
     """Fetch the Z-Wave node list and return nodes + edges ready for canvas drop.
@@ -81,6 +83,12 @@ async def import_zwave_network(
     except Exception as exc:
         logger.exception("Unexpected error during Z-Wave import")
         raise HTTPException(status_code=500, detail="Unexpected error during Z-Wave import") from exc
+
+    # A canvas import is an import: the devices land in the Device Inventory too,
+    # and each node carries the id of the row it draws so the canvas save links
+    # to it instead of minting a second, IEEE-less row.
+    await _persist_pending_import(db, nodes_raw, edges_raw)
+    nodes_raw = await attach_device_ids(db, nodes_raw)
 
     nodes = [ZwaveNodeOut(**n) for n in nodes_raw]
     edges = [ZwaveEdgeOut(**e) for e in edges_raw]

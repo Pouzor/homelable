@@ -114,7 +114,7 @@ describe('ZigbeeImportModal', () => {
   })
 
   const selectCanvasMode = () => {
-    fireEvent.click(screen.getByRole('radio', { name: /canvas directly/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /inventory \+ canvas/i }))
   }
 
   /** A canvas import now answers with a job id; the payload arrives from a poll. */
@@ -183,6 +183,28 @@ describe('ZigbeeImportModal', () => {
     })
   })
 
+  it('forwards the device_id the import stamped on each node', async () => {
+    // The import upserted the Device Inventory server-side; the id it returns is
+    // what lets the placed node draw that row instead of minting a second one.
+    mockCanvasImport({
+      nodes: sampleNodes.map((n, i) => ({ ...n, device_id: `dev-${i}` })),
+      edges: [],
+      device_count: 2,
+    })
+
+    startCanvasFetch()
+
+    await waitFor(() => screen.getByText('Coordinator'))
+    fireEvent.click(screen.getByRole('button', { name: /add.*canvas/i }))
+
+    await waitFor(() => expect(defaultProps.onAddToCanvas).toHaveBeenCalledOnce())
+    const [nodes] = defaultProps.onAddToCanvas.mock.calls[0]
+    expect(nodes.map((n: { device_id?: string | null }) => n.device_id)).toEqual([
+      'dev-0',
+      'dev-1',
+    ])
+  })
+
   it('calls onClose when Cancel is clicked', () => {
     render(<ZigbeeImportModal {...defaultProps} />)
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -207,7 +229,7 @@ describe('ZigbeeImportModal', () => {
     render(<ZigbeeImportModal {...defaultProps} onInventoryImported={onInventoryImported} />)
     const hostInput = screen.getByPlaceholderText('192.168.1.x or mqtt.local')
     fireEvent.change(hostInput, { target: { value: '192.168.1.100' } })
-    fireEvent.click(screen.getByRole('button', { name: /import to pending/i }))
+    fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
 
     await waitFor(() => {
       expect(zigbeeApi.importToPending).toHaveBeenCalled()

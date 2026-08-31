@@ -83,7 +83,7 @@ describe('ProxmoxImportModal', () => {
     } as never)
     render(<ProxmoxImportModal {...defaultProps} />)
     fireEvent.change(screen.getByPlaceholderText('192.168.1.x or pve.local'), { target: { value: 'pve' } })
-    fireEvent.click(screen.getByRole('button', { name: /import to pending/i }))
+    fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
     await waitFor(() => expect(proxmoxApi.importToPending).toHaveBeenCalled())
     expect(defaultProps.onInventoryImported).toHaveBeenCalled()
     expect(proxmoxApi.importNetwork).not.toHaveBeenCalled()
@@ -94,9 +94,9 @@ describe('ProxmoxImportModal', () => {
       data: { nodes: sampleNodes, edges: [{ source: 'pve-node-pve1', target: 'pve-pve1-101' }], device_count: 2 },
     } as never)
     render(<ProxmoxImportModal {...defaultProps} />)
-    fireEvent.click(screen.getByRole('radio', { name: /canvas directly/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /inventory \+ canvas/i }))
     fireEvent.change(screen.getByPlaceholderText('192.168.1.x or pve.local'), { target: { value: 'pve' } })
-    fireEvent.click(screen.getByRole('button', { name: /fetch inventory/i }))
+    fireEvent.click(screen.getByRole('button', { name: /fetch guests/i }))
     await waitFor(() => {
       expect(screen.getByText('pve1')).toBeDefined()
       expect(screen.getByText('web')).toBeDefined()
@@ -109,10 +109,10 @@ describe('ProxmoxImportModal', () => {
       data: { nodes: [], edges: [], device_count: 0 },
     } as never)
     render(<ProxmoxImportModal {...defaultProps} />)
-    fireEvent.click(screen.getByRole('radio', { name: /canvas directly/i }))
+    fireEvent.click(screen.getByRole('radio', { name: /inventory \+ canvas/i }))
     fireEvent.change(screen.getByPlaceholderText('192.168.1.x or pve.local'), { target: { value: 'pve' } })
     fireEvent.change(screen.getByPlaceholderText('user@pam!tokenname'), { target: { value: 'root@pam!hl' } })
-    fireEvent.click(screen.getByRole('button', { name: /fetch inventory/i }))
+    fireEvent.click(screen.getByRole('button', { name: /fetch guests/i }))
     await waitFor(() => expect(proxmoxApi.importNetwork).toHaveBeenCalled())
     const payload = vi.mocked(proxmoxApi.importNetwork).mock.calls[0][0]
     expect(payload.token_id).toBe('root@pam!hl')

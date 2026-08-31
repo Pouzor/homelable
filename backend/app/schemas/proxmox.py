@@ -41,6 +41,10 @@ class ProxmoxNodeOut(BaseModel):
     vendor: str | None = None
     model: str | None = None
     parent_ieee: str | None = None
+    # The Device Inventory row this node draws, stamped by the import. The
+    # canvas carries it back on save so the node links to that row rather
+    # than minting a second one for the same device.
+    device_id: str | None = None
 
 
 class ProxmoxEdgeOut(BaseModel):

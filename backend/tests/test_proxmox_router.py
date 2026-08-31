@@ -509,3 +509,62 @@ async def test_persist_never_deletes(db_session) -> None:
     rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
     ieees = {r.ieee_address for r in rows}
     assert "pve-pve1-101" in ieees and "pve-pve1-202" in ieees
+
+
+@pytest.mark.asyncio
+async def test_canvas_import_also_lands_in_device_inventory(
+    client: AsyncClient, headers: dict, db_session
+) -> None:
+    """A canvas import is an import: the guests reach the Device Inventory too."""
+    nodes = [_host_node(), _guest_node(101, "10.0.0.5")]
+    with patch("app.api.routes.proxmox.fetch_proxmox_inventory") as mock_fetch:
+        mock_fetch.return_value = (nodes, [])
+        res = await client.post(
+            "/api/v1/proxmox/import",
+            json={
+                "host": "pve1",
+                "token_id": "root@pam!t",
+                "token_secret": "s",
+            },
+            headers=headers,
+        )
+    assert res.status_code == 200, res.text
+
+    rows = (
+        await db_session.execute(
+            select(InventoryDevice).where(InventoryDevice.discovery_source == "proxmox")
+        )
+    ).scalars().all()
+    by_ieee = {r.ieee_address: r for r in rows}
+    assert set(by_ieee) == {"pve-node-pve1", "pve-pve1-101"}
+    for node in res.json()["nodes"]:
+        assert node["device_id"] == by_ieee[node["ieee_address"]].id
+
+
+@pytest.mark.asyncio
+async def test_canvas_import_points_at_the_row_matched_by_ip(
+    client: AsyncClient, headers: dict, db_session
+) -> None:
+    """A guest merged into a scanned row by IP draws that row, not a new one."""
+    scanned = InventoryDevice(
+        id=str(uuid.uuid4()), ip="10.0.0.5", suggested_type="generic",
+        status="pending", discovery_source="arp", discovery_sources=["arp"],
+    )
+    db_session.add(scanned)
+    await db_session.commit()
+
+    with patch("app.api.routes.proxmox.fetch_proxmox_inventory") as mock_fetch:
+        mock_fetch.return_value = ([_guest_node(101, "10.0.0.5")], [])
+        res = await client.post(
+            "/api/v1/proxmox/import",
+            json={"host": "pve1", "token_id": "root@pam!t", "token_secret": "s"},
+            headers=headers,
+        )
+    assert res.status_code == 200, res.text
+    assert res.json()["nodes"][0]["device_id"] == scanned.id
+    rows = (
+        await db_session.execute(
+            select(InventoryDevice).where(InventoryDevice.ip == "10.0.0.5")
+        )
+    ).scalars().all()
+    assert len(rows) == 1

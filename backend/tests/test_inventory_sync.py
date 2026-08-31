@@ -279,6 +279,38 @@ class TestIeeeCollisions:
         assert device is not None and device.ieee_address == "0xAAA"
 
 
+
+
+class TestStatusOnLink:
+    """A row a node draws is past the pending queue."""
+
+    @pytest.mark.asyncio
+    async def test_pending_row_is_approved_once_a_node_draws_it(self, db_session):
+        design = await _design(db_session)
+        db_session.add(InventoryDevice(id="d-1", ip="10.0.0.5", status="pending"))
+        node = _node(design)
+        db_session.add(node)
+        await db_session.commit()
+
+        device = await link_facts(db_session, node, {"ip": "10.0.0.5"})
+        await db_session.commit()
+
+        assert device is not None and device.status == "approved"
+
+    @pytest.mark.asyncio
+    async def test_hidden_row_stays_hidden(self, db_session):
+        """The user hid it on purpose — drawing it does not undo that."""
+        design = await _design(db_session)
+        db_session.add(InventoryDevice(id="d-1", ip="10.0.0.5", status="hidden"))
+        node = _node(design)
+        db_session.add(node)
+        await db_session.commit()
+
+        device = await link_facts(db_session, node, {"ip": "10.0.0.5"})
+        await db_session.commit()
+
+        assert device is not None and device.status == "hidden"
+
 # --- the backfill -----------------------------------------------------------
 
 
