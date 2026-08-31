@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import ssl
 from unittest.mock import patch
 
 import pytest
 
+from app.core.config import settings
 from app.services.mqtt_common import (
+    _RESPONSE_TIMEOUT,
     _build_tls_context,
     _sanitize_mqtt_error,
     request_response,
@@ -181,3 +184,100 @@ async def test_test_connection_failure() -> None:
         mock_aiomqtt.MqttError = Exception
         with pytest.raises(ConnectionError):
             await _test_connection("bad", 1883)
+
+
+# ---------------------------------------------------------------------------
+# Response timeout — configurable via MQTT_RESPONSE_TIMEOUT (issue #380)
+# ---------------------------------------------------------------------------
+
+
+class _SilentClient:
+    """An MQTT client that connects but never delivers the response message."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        pass
+
+    async def subscribe(self, *_a, **_kw) -> None:
+        pass
+
+    async def publish(self, *_a, **_kw) -> None:
+        pass
+
+    @property
+    def messages(self):
+        async def _never():
+            await asyncio.Event().wait()
+            yield  # pragma: no cover
+
+        return _never()
+
+
+class _NeverMqttError(Exception):
+    """Stand-in for aiomqtt.MqttError that no test path actually raises."""
+
+
+async def _round_trip(**kwargs):
+    return await request_response(
+        mqtt_host="host",
+        mqtt_port=1883,
+        request_topic="req",
+        response_topic="res",
+        request_payload={},
+        **kwargs,
+    )
+
+
+@pytest.mark.asyncio
+async def test_request_response_uses_settings_timeout(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "mqtt_response_timeout", 0.01)
+
+    with patch("app.services.mqtt_common.aiomqtt") as mock_aiomqtt:
+        mock_aiomqtt.Client.return_value = _SilentClient()
+        mock_aiomqtt.MqttError = _NeverMqttError
+
+        with pytest.raises(TimeoutError) as ei:
+            await _round_trip()
+
+    msg = str(ei.value)
+    assert "0.01s" in msg
+    assert "MQTT_RESPONSE_TIMEOUT" in msg
+
+
+@pytest.mark.asyncio
+async def test_request_response_explicit_timeout_overrides_settings(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "mqtt_response_timeout", 999)
+
+    with patch("app.services.mqtt_common.aiomqtt") as mock_aiomqtt:
+        mock_aiomqtt.Client.return_value = _SilentClient()
+        mock_aiomqtt.MqttError = _NeverMqttError
+
+        with pytest.raises(TimeoutError) as ei:
+            await _round_trip(response_timeout=0.01)
+
+    assert "0.01s" in str(ei.value)
+
+
+@pytest.mark.asyncio
+async def test_request_response_non_positive_setting_falls_back(monkeypatch) -> None:
+    """A misconfigured 0 must not mean 'give up immediately'."""
+    monkeypatch.setattr(settings, "mqtt_response_timeout", 0)
+    captured: dict[str, float] = {}
+
+    async def _fake_wait_for(awaitable, timeout):
+        captured["timeout"] = timeout
+        awaitable.close()
+        raise asyncio.TimeoutError
+
+    with patch("app.services.mqtt_common.aiomqtt") as mock_aiomqtt:
+        mock_aiomqtt.Client.return_value = _SilentClient()
+        mock_aiomqtt.MqttError = _NeverMqttError
+        with (
+            patch("app.services.mqtt_common.asyncio.wait_for", _fake_wait_for),
+            pytest.raises(TimeoutError),
+        ):
+            await _round_trip()
+
+    assert captured["timeout"] == _RESPONSE_TIMEOUT

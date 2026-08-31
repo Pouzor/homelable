@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Network, Router, Cpu, CheckCircle2, XCircle, Loader2, Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { zigbeeApi } from '@/api/client'
+import { pollImportJob, PollAbortedError } from '@/utils/importJobPoll'
 import { toast } from 'sonner'
 import type { ZigbeeNode, ZigbeeEdge } from './types'
 
@@ -68,6 +69,10 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
   const [edges, setEdges] = useState<ZigbeeEdge[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [importMode, setImportMode] = useState<ImportMode>('pending')
+  // Aborts the canvas-import poll loop when the modal closes or unmounts.
+  const pollAbort = useRef<AbortController | null>(null)
+
+  useEffect(() => () => pollAbort.current?.abort(), [])
 
   const updateField = (field: keyof ConnectionForm, value: string) =>
     setForm((f) => ({
@@ -143,17 +148,27 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
         onInventoryImported?.(null)
         handleClose()
       } else {
-        const res = await zigbeeApi.importNetwork(buildPayload())
-        setDevices(res.data.nodes)
-        setEdges(res.data.edges)
-        setChecked(new Set(res.data.nodes.map((n) => n.id)))
-        if (res.data.device_count === 0) {
+        // The backend fetches the network map in the background and we poll for
+        // it — a large mesh takes minutes, which no reverse proxy will hold open.
+        pollAbort.current?.abort()
+        const controller = new AbortController()
+        pollAbort.current = controller
+        const start = await zigbeeApi.importNetwork(buildPayload())
+        const result = await pollImportJob(
+          async () => (await zigbeeApi.getImportJob(start.data.job_id)).data,
+          { signal: controller.signal },
+        )
+        setDevices(result.nodes)
+        setEdges(result.edges)
+        setChecked(new Set(result.nodes.map((n) => n.id)))
+        if (result.device_count === 0) {
           toast.info('No Zigbee devices found in the network map')
         } else {
-          toast.success(`Found ${res.data.device_count} device${res.data.device_count !== 1 ? 's' : ''}`)
+          toast.success(`Found ${result.device_count} device${result.device_count !== 1 ? 's' : ''}`)
         }
       }
     } catch (err: unknown) {
+      if (err instanceof PollAbortedError) return
       toast.error(extractError(err) ?? 'Failed to fetch Zigbee devices')
     } finally {
       setLoading(false)
@@ -181,6 +196,8 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
   }
 
   const handleClose = () => {
+    pollAbort.current?.abort()
+    pollAbort.current = null
     setDevices([])
     setEdges([])
     setChecked(new Set())

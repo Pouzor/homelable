@@ -179,6 +179,10 @@ class Settings(BaseSettings):
     zigbee_mqtt_tls_insecure: bool = False
     zigbee_sync_enabled: bool = False
     zigbee_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+    # Seconds to wait for the Z2M bridge to answer a networkmap request. A mesh
+    # of 200+ devices can take several minutes to build the map, so raise this
+    # if imports fail with "Timed out waiting for networkmap response".
+    zigbee_networkmap_timeout: int = 300
 
     # Z-Wave JS UI (zwavejs2mqtt) auto-sync import. Same secret/env rules.
     zwave_mqtt_host: str = ""
@@ -191,6 +195,10 @@ class Settings(BaseSettings):
     zwave_mqtt_tls_insecure: bool = False
     zwave_sync_enabled: bool = False
     zwave_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+
+    # Seconds to wait for any MQTT gateway request/response round-trip
+    # (the Z-Wave node dump today). Same rationale as the Zigbee twin above.
+    mqtt_response_timeout: int = 300
 
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"

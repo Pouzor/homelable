@@ -55,8 +55,24 @@ Click **Fetch Devices**. Homelable will:
 1. Connect to the broker
 2. Subscribe to the response topic
 3. Publish `{"type": "raw", "routes": false}` to the request topic
-4. Wait up to 60 seconds for the network map response (large meshes can take 30 s+)
+4. Wait up to `ZIGBEE_NETWORKMAP_TIMEOUT` seconds (default 300) for the network map response
 5. Parse and group devices by type
+
+The fetch runs server-side and the browser polls for the result, so a mesh that
+takes minutes to answer cannot be cut short by a reverse proxy's read timeout.
+
+### Large meshes and timeouts
+
+A network of 200+ devices can take several minutes to build its map. Two knobs:
+
+| Variable | Default | What it bounds |
+|---|---|---|
+| `ZIGBEE_NETWORKMAP_TIMEOUT` | `300` | Seconds to wait for the Z2M bridge to answer a networkmap request. Raise it if an import fails with *Timed out waiting for networkmap response*. |
+| `MQTT_RESPONSE_TIMEOUT` | `300` | The same bound for the Z-Wave MQTT round-trip. |
+
+Both apply to manual imports and to auto-sync. If you reverse-proxy the API,
+these are the only timeouts that matter — the import request itself returns
+immediately.
 
 ### 5. Select and add to canvas
 

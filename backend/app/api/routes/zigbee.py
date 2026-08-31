@@ -19,6 +19,8 @@ from app.schemas.zigbee import (
     ZigbeeConfig,
     ZigbeeCoordinatorOut,
     ZigbeeEdgeOut,
+    ZigbeeImportJob,
+    ZigbeeImportJobResult,
     ZigbeeImportPendingResponse,
     ZigbeeImportRequest,
     ZigbeeImportResponse,
@@ -27,6 +29,7 @@ from app.schemas.zigbee import (
     ZigbeeTestConnectionRequest,
     ZigbeeTestConnectionResponse,
 )
+from app.services.import_jobs import create_job, fail_job, finish_job, get_job
 from app.services.node_dedupe import dedupe_nodes_by_device
 from app.services.zigbee_service import (
     build_zigbee_properties,
@@ -48,18 +51,70 @@ async def _is_drawn(db: AsyncSession, device_id: str) -> bool:
 router = APIRouter()
 
 
-@router.post("/import", response_model=ZigbeeImportResponse)
+def _import_error(exc: BaseException) -> tuple[int, str]:
+    """Map a fetch_networkmap failure to the (status, detail) the API reports."""
+    if isinstance(exc, ImportError):
+        return 500, str(exc)
+    if isinstance(exc, ConnectionError):
+        return 502, str(exc)
+    if isinstance(exc, TimeoutError):
+        return 504, str(exc)
+    if isinstance(exc, ValueError):
+        return 422, str(exc)
+    logger.exception("Unexpected error during Zigbee import", exc_info=exc)
+    return 500, "Unexpected error during Zigbee import"
+
+
+@router.post("/import", response_model=ZigbeeImportJob, status_code=202)
 async def import_zigbee_network(
     payload: ZigbeeImportRequest,
+    background_tasks: BackgroundTasks,
     _: str = Depends(get_current_user),
-) -> ZigbeeImportResponse:
-    """Fetch the Zigbee2MQTT network map and return nodes + edges ready for canvas drop.
+) -> ZigbeeImportJob:
+    """Start a canvas import and return a job id to poll.
 
     Connects to the specified MQTT broker, publishes a networkmap request to
-    ``<base_topic>/bridge/request/networkmap``, and waits up to 60 s for the
-    response (large meshes can take 30 s+).  The devices are returned as typed homelable nodes with a
-    coordinator → router → end-device hierarchy.
+    ``<base_topic>/bridge/request/networkmap`` and waits up to
+    ``ZIGBEE_NETWORKMAP_TIMEOUT`` seconds (default 300) for the response.
+
+    The fetch runs in the background and the result is collected from
+    ``GET /zigbee/import/{job_id}``: a 200+ device mesh takes minutes to answer,
+    which outlives the read timeout of any reverse proxy sitting in front of the
+    API. Polling keeps each request short.
     """
+    job = create_job()
+    background_tasks.add_task(_background_canvas_import, job.id, payload)
+    return ZigbeeImportJob(job_id=job.id, status=job.status)
+
+
+@router.get("/import/{job_id}", response_model=ZigbeeImportJobResult)
+async def get_zigbee_import_job(
+    job_id: str,
+    _: str = Depends(get_current_user),
+) -> ZigbeeImportJobResult:
+    """Poll a canvas import started by ``POST /zigbee/import``.
+
+    While running, returns ``status="running"`` with no payload. On success the
+    nodes and edges are carried in ``result``. A failed fetch is reported as the
+    status code the synchronous route used to raise, so the client keeps
+    distinguishing a bad broker (502) from a slow mesh (504).
+    """
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Import job not found or expired")
+    if job.status == "error":
+        raise HTTPException(
+            status_code=job.error_status or 500,
+            detail=job.error or "Zigbee import failed",
+        )
+    result = None
+    if job.status == "done" and job.result is not None:
+        result = ZigbeeImportResponse(**job.result)
+    return ZigbeeImportJobResult(job_id=job.id, status=job.status, result=result)
+
+
+async def _background_canvas_import(job_id: str, payload: ZigbeeImportRequest) -> None:
+    """Fetch the network map and park the canvas-ready payload on the job."""
     try:
         nodes_raw, edges_raw = await fetch_networkmap(
             mqtt_host=payload.mqtt_host,
@@ -70,21 +125,19 @@ async def import_zigbee_network(
             tls=payload.mqtt_tls,
             tls_insecure=payload.mqtt_tls_insecure,
         )
-    except ImportError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    except ConnectionError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except TimeoutError as exc:
-        raise HTTPException(status_code=504, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Unexpected error during Zigbee import")
-        raise HTTPException(status_code=500, detail="Unexpected error during Zigbee import") from exc
+        status, detail = _import_error(exc)
+        fail_job(job_id, detail, status)
+        return
 
     nodes = [ZigbeeNodeOut(**n) for n in nodes_raw]
     edges = [ZigbeeEdgeOut(**e) for e in edges_raw]
-    return ZigbeeImportResponse(nodes=nodes, edges=edges, device_count=len(nodes))
+    finish_job(
+        job_id,
+        ZigbeeImportResponse(
+            nodes=nodes, edges=edges, device_count=len(nodes)
+        ).model_dump(),
+    )
 
 
 @router.post("/import-pending", response_model=ScanRunResponse)

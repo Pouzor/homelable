@@ -305,6 +305,8 @@ export const racksApi = {
     }),
 }
 
+export type ZigbeeImportJobStatus = 'running' | 'done' | 'error'
+
 export interface ZigbeeConfigData {
   mqtt_host: string
   mqtt_port: number
@@ -358,11 +360,20 @@ export const zigbeeApi = {
     mqtt_tls?: boolean
     mqtt_tls_insecure?: boolean
   }) =>
-    api.post<{
-      nodes: import('@/components/zigbee/types').ZigbeeNode[]
-      edges: import('@/components/zigbee/types').ZigbeeEdge[]
-      device_count: number
-    }>('/zigbee/import', data),
+    api.post<{ job_id: string; status: ZigbeeImportJobStatus }>('/zigbee/import', data),
+
+  // Poll a canvas import started by importNetwork. The fetch runs server-side
+  // so a slow mesh cannot outlive a reverse proxy's read timeout.
+  getImportJob: (jobId: string) =>
+    api.get<{
+      job_id: string
+      status: ZigbeeImportJobStatus
+      result: {
+        nodes: import('@/components/zigbee/types').ZigbeeNode[]
+        edges: import('@/components/zigbee/types').ZigbeeEdge[]
+        device_count: number
+      } | null
+    }>(`/zigbee/import/${jobId}`),
 
   importToPending: (data: {
     mqtt_host: string

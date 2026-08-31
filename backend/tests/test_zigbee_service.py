@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 from unittest.mock import patch
@@ -9,7 +10,9 @@ from unittest.mock import patch
 import aiomqtt  # noqa: F401
 import pytest
 
+from app.core.config import settings
 from app.services.zigbee_service import (
+    _NETWORKMAP_TIMEOUT,
     _find_parent_router,
     _z2m_type_to_homelable,
     fetch_networkmap,
@@ -433,6 +436,10 @@ async def test_test_mqtt_connection_failure() -> None:
             await _test_mqtt_connection("bad-host", 1883)
 
 
+class _NeverMqttError(Exception):
+    """Stand-in for aiomqtt.MqttError that no test path actually raises."""
+
+
 # ---------------------------------------------------------------------------
 # TLS context
 # ---------------------------------------------------------------------------
@@ -571,3 +578,95 @@ async def test_fetch_networkmap_does_not_leak_creds_in_connection_error() -> Non
     assert "hunter2" not in msg
     assert "admin" not in msg
     assert msg == "Authentication failed"
+
+
+# ---------------------------------------------------------------------------
+# Networkmap response timeout — configurable via ZIGBEE_NETWORKMAP_TIMEOUT
+# (issue #380: a 200+ device mesh needs longer than the hard-coded 300 s)
+# ---------------------------------------------------------------------------
+
+
+class _SilentClient:
+    """An MQTT client that connects but never delivers the response message."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        pass
+
+    async def subscribe(self, *_a, **_kw) -> None:
+        pass
+
+    async def publish(self, *_a, **_kw) -> None:
+        pass
+
+    @property
+    def messages(self):
+        async def _never():
+            await asyncio.Event().wait()
+            yield  # pragma: no cover
+
+        return _never()
+
+
+@pytest.mark.asyncio
+async def test_fetch_networkmap_uses_settings_timeout(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "zigbee_networkmap_timeout", 0.01)
+
+    with patch("app.services.zigbee_service.aiomqtt") as mock_aiomqtt:
+        mock_aiomqtt.Client.return_value = _SilentClient()
+        mock_aiomqtt.MqttError = _NeverMqttError
+
+        with pytest.raises(TimeoutError) as ei:
+            await fetch_networkmap(
+                mqtt_host="host", mqtt_port=1883, base_topic="zigbee2mqtt"
+            )
+
+    msg = str(ei.value)
+    assert "0.01s" in msg
+    assert "ZIGBEE_NETWORKMAP_TIMEOUT" in msg
+
+
+@pytest.mark.asyncio
+async def test_fetch_networkmap_explicit_timeout_overrides_settings(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "zigbee_networkmap_timeout", 999)
+
+    with patch("app.services.zigbee_service.aiomqtt") as mock_aiomqtt:
+        mock_aiomqtt.Client.return_value = _SilentClient()
+        mock_aiomqtt.MqttError = _NeverMqttError
+
+        with pytest.raises(TimeoutError) as ei:
+            await fetch_networkmap(
+                mqtt_host="host",
+                mqtt_port=1883,
+                base_topic="zigbee2mqtt",
+                response_timeout=0.01,
+            )
+
+    assert "0.01s" in str(ei.value)
+
+
+@pytest.mark.asyncio
+async def test_fetch_networkmap_non_positive_setting_falls_back(monkeypatch) -> None:
+    """A misconfigured 0 must not mean 'give up immediately'."""
+    monkeypatch.setattr(settings, "zigbee_networkmap_timeout", 0)
+    captured: dict[str, float] = {}
+
+    async def _fake_wait_for(awaitable, timeout):
+        captured["timeout"] = timeout
+        awaitable.close()
+        raise asyncio.TimeoutError
+
+    with patch("app.services.zigbee_service.aiomqtt") as mock_aiomqtt:
+        mock_aiomqtt.Client.return_value = _SilentClient()
+        mock_aiomqtt.MqttError = _NeverMqttError
+        with (
+            patch("app.services.zigbee_service.asyncio.wait_for", _fake_wait_for),
+            pytest.raises(TimeoutError),
+        ):
+            await fetch_networkmap(
+                mqtt_host="host", mqtt_port=1883, base_topic="zigbee2mqtt"
+            )
+
+    assert captured["timeout"] == _NETWORKMAP_TIMEOUT

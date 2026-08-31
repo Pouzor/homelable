@@ -7,9 +7,33 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
+from app.services.import_jobs import reset_jobs
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _clear_import_jobs() -> None:
+    """The canvas-import job registry is process-global; isolate each test."""
+    reset_jobs()
+
+
+async def _start_canvas_import(
+    client: AsyncClient, headers: dict, body: dict
+) -> str:
+    """POST /zigbee/import and return the job id.
+
+    The route is fire-and-poll: it answers 202 immediately and the fetch runs as
+    a Starlette background task, which the ASGI transport completes before this
+    await returns — so the job is already settled by the time we poll.
+    """
+    res = await client.post("/api/v1/zigbee/import", json=body, headers=headers)
+    assert res.status_code == 202, res.text
+    job_id: str = res.json()["job_id"]
+    assert res.json()["status"] == "running"
+    return job_id
 
 # ---------------------------------------------------------------------------
 # /api/v1/zigbee/test-connection
@@ -104,18 +128,18 @@ _SAMPLE_EDGES = [
 async def test_import_success(client: AsyncClient, headers: dict) -> None:
     with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
         mock_fetch.return_value = (_SAMPLE_NODES, _SAMPLE_EDGES)
-        res = await client.post(
-            "/api/v1/zigbee/import",
-            json={
-                "mqtt_host": "localhost",
-                "mqtt_port": 1883,
-                "base_topic": "zigbee2mqtt",
-            },
-            headers=headers,
+        job_id = await _start_canvas_import(
+            client,
+            headers,
+            {"mqtt_host": "localhost", "mqtt_port": 1883, "base_topic": "zigbee2mqtt"},
         )
 
+    res = await client.get(f"/api/v1/zigbee/import/{job_id}", headers=headers)
     assert res.status_code == 200
-    data = res.json()
+    body = res.json()
+    assert body["status"] == "done"
+    assert body["job_id"] == job_id
+    data = body["result"]
     assert data["device_count"] == 2
     assert len(data["nodes"]) == 2
     assert len(data["edges"]) == 1
@@ -124,21 +148,56 @@ async def test_import_success(client: AsyncClient, headers: dict) -> None:
 
 
 @pytest.mark.asyncio
+async def test_import_post_does_not_block_on_the_fetch(
+    client: AsyncClient, headers: dict
+) -> None:
+    """The POST answers 202 without a payload — that is what keeps a slow mesh
+    from outliving a reverse proxy's read timeout (issue #380)."""
+    with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
+        mock_fetch.return_value = (_SAMPLE_NODES, _SAMPLE_EDGES)
+        res = await client.post(
+            "/api/v1/zigbee/import",
+            json={"mqtt_host": "localhost", "mqtt_port": 1883},
+            headers=headers,
+        )
+    assert res.status_code == 202
+    assert set(res.json()) == {"job_id", "status"}
+
+
+@pytest.mark.asyncio
+async def test_import_job_unknown_id_returns_404(
+    client: AsyncClient, headers: dict
+) -> None:
+    res = await client.get("/api/v1/zigbee/import/no-such-job", headers=headers)
+    assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_import_job_requires_auth(client: AsyncClient, headers: dict) -> None:
+    with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
+        mock_fetch.return_value = ([], [])
+        job_id = await _start_canvas_import(
+            client, headers, {"mqtt_host": "localhost", "mqtt_port": 1883}
+        )
+    res = await client.get(f"/api/v1/zigbee/import/{job_id}")
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_import_with_credentials(client: AsyncClient, headers: dict) -> None:
     with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
         mock_fetch.return_value = ([], [])
-        res = await client.post(
-            "/api/v1/zigbee/import",
-            json={
+        await _start_canvas_import(
+            client,
+            headers,
+            {
                 "mqtt_host": "localhost",
                 "mqtt_port": 1883,
                 "mqtt_username": "admin",
                 "mqtt_password": "secret",
                 "base_topic": "z2m",
             },
-            headers=headers,
         )
-    assert res.status_code == 200
     mock_fetch.assert_called_once_with(
         mqtt_host="localhost",
         mqtt_port=1883,
@@ -154,11 +213,10 @@ async def test_import_with_credentials(client: AsyncClient, headers: dict) -> No
 async def test_import_connection_error_returns_502(client: AsyncClient, headers: dict) -> None:
     with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
         mock_fetch.side_effect = ConnectionError("broker unreachable")
-        res = await client.post(
-            "/api/v1/zigbee/import",
-            json={"mqtt_host": "bad-host", "mqtt_port": 1883},
-            headers=headers,
+        job_id = await _start_canvas_import(
+            client, headers, {"mqtt_host": "bad-host", "mqtt_port": 1883}
         )
+    res = await client.get(f"/api/v1/zigbee/import/{job_id}", headers=headers)
     assert res.status_code == 502
     assert "broker unreachable" in res.json()["detail"]
 
@@ -167,23 +225,22 @@ async def test_import_connection_error_returns_502(client: AsyncClient, headers:
 async def test_import_timeout_returns_504(client: AsyncClient, headers: dict) -> None:
     with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
         mock_fetch.side_effect = TimeoutError("timed out")
-        res = await client.post(
-            "/api/v1/zigbee/import",
-            json={"mqtt_host": "localhost", "mqtt_port": 1883},
-            headers=headers,
+        job_id = await _start_canvas_import(
+            client, headers, {"mqtt_host": "localhost", "mqtt_port": 1883}
         )
+    res = await client.get(f"/api/v1/zigbee/import/{job_id}", headers=headers)
     assert res.status_code == 504
+    assert "timed out" in res.json()["detail"]
 
 
 @pytest.mark.asyncio
 async def test_import_malformed_payload_returns_422(client: AsyncClient, headers: dict) -> None:
     with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
         mock_fetch.side_effect = ValueError("malformed response")
-        res = await client.post(
-            "/api/v1/zigbee/import",
-            json={"mqtt_host": "localhost", "mqtt_port": 1883},
-            headers=headers,
+        job_id = await _start_canvas_import(
+            client, headers, {"mqtt_host": "localhost", "mqtt_port": 1883}
         )
+    res = await client.get(f"/api/v1/zigbee/import/{job_id}", headers=headers)
     assert res.status_code == 422
 
 
@@ -201,13 +258,12 @@ async def test_import_empty_network(client: AsyncClient, headers: dict) -> None:
     """An empty Zigbee network (coordinator only) is a valid response."""
     with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
         mock_fetch.return_value = ([], [])
-        res = await client.post(
-            "/api/v1/zigbee/import",
-            json={"mqtt_host": "localhost", "mqtt_port": 1883},
-            headers=headers,
+        job_id = await _start_canvas_import(
+            client, headers, {"mqtt_host": "localhost", "mqtt_port": 1883}
         )
+    res = await client.get(f"/api/v1/zigbee/import/{job_id}", headers=headers)
     assert res.status_code == 200
-    data = res.json()
+    data = res.json()["result"]
     assert data["device_count"] == 0
     assert data["nodes"] == []
     assert data["edges"] == []
@@ -227,16 +283,11 @@ async def test_import_missing_mqtt_host(client: AsyncClient, headers: dict) -> N
 async def test_import_with_tls_passes_flags(client: AsyncClient, headers: dict) -> None:
     with patch("app.api.routes.zigbee.fetch_networkmap") as mock_fetch:
         mock_fetch.return_value = ([], [])
-        res = await client.post(
-            "/api/v1/zigbee/import",
-            json={
-                "mqtt_host": "broker.example.com",
-                "mqtt_port": 8883,
-                "mqtt_tls": True,
-            },
-            headers=headers,
+        await _start_canvas_import(
+            client,
+            headers,
+            {"mqtt_host": "broker.example.com", "mqtt_port": 8883, "mqtt_tls": True},
         )
-    assert res.status_code == 200
     kwargs = mock_fetch.call_args.kwargs
     assert kwargs["tls"] is True
     assert kwargs["tls_insecure"] is False
