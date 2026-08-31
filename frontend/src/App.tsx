@@ -56,6 +56,7 @@ import { bootstrapAuth } from '@/auth/bootstrap'
 import { RackCanvas } from '@/rack/components/RackCanvas'
 import { RackCablePanel } from '@/rack/components/RackCablePanel'
 import { useRackStore } from '@/rack/store'
+import { KubernetesTopologyView } from '@/components/kubernetes/KubernetesTopologyView'
 import type { NodeData, EdgeData, CustomStyleDef, DesignType, FloorMapConfig, NodeType } from '@/types'
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 import type { ZwaveNode, ZwaveEdge } from '@/components/zwave/types'
@@ -142,6 +143,9 @@ export default function App() {
   const [zigbeeImportOpen, setZigbeeImportOpen] = useState(false)
   const [zwaveImportOpen, setZwaveImportOpen] = useState(false)
   const [proxmoxImportOpen, setProxmoxImportOpen] = useState(false)
+  // This is intentionally separate from designs: Kubernetes resources are
+  // observed state, never editable canvas data.
+  const [showKubernetes, setShowKubernetes] = useState(false)
 
   // Declare handleSave before the Ctrl+S effect so it is in scope.
   // Returns true on success, false on failure — the design-switch effect relies
@@ -1041,9 +1045,11 @@ export default function App() {
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenHistory={() => setScanHistoryOpen(true)}
             onOpenInventory={openInventoryModal}
+            onOpenKubernetes={() => setShowKubernetes((current) => !current)}
+            showKubernetes={showKubernetes}
           />
           <div className="flex flex-col flex-1 min-w-0">
-            {loadError && (
+            {loadError && !showKubernetes && (
               <div
                 role="alert"
                 className="flex items-center justify-between gap-3 bg-[#3d1418] border-b border-[#f85149] px-4 py-2 text-sm text-[#ffa198]"
@@ -1058,50 +1064,52 @@ export default function App() {
                 </button>
               </div>
             )}
-            <Toolbar
-              onSave={handleSave}
-              onAutoLayout={handleAutoLayout}
-              onExport={handleExport}
-              onChangeStyle={() => setThemeModalOpen(true)}
-              onUndo={undo}
-              onRedo={redo}
-              onShortcuts={() => setShortcutsOpen(true)}
-              onExportMd={handleExportMd}
-              onExportYaml={handleExportYaml}
-              onImportYaml={handleImportYaml}
-              onViewOnly={handleViewOnly}
-            />
-            <div className="flex flex-1 min-h-0">
-              <div ref={canvasRef} className="flex-1 min-w-0 h-full">
-                {isRackDesign ? (
-                  <RackCanvas />
-                ) : (
-                  <CanvasContainer
-                    onConnect={handleEdgeConnect}
-                    onEdgeDoubleClick={handleEdgeDoubleClick}
-                    onNodeDoubleClick={handleNodeDoubleClick}
-                    onNodeDragStart={snapshotHistory}
-                    onRequestAddToGroup={setPendingGroupAdd}
-                    onRequestAddToContainer={setPendingContainerAdd}
-                    onRequestAddToZone={setPendingZoneAdd}
-                    onOpenInventory={(deviceId) => openInventoryModal(deviceId)}
-                  />
-                )}
-              </div>
-              {/* Rack designs keep the full width for mounted gear — a mount is
-                  edited in its own modal — but a selected cable has no plate to
-                  double-click, so it gets the rail. */}
-              {isRackDesign
-                ? <RackCablePanel />
-                : (selectedNodeId || selectedNodeIds.length > 1) && (
-                    <DetailPanel
-                      onEdit={handleEditNode}
-                      // Standalone has no Device Inventory to open (ADR-001 style
-                      // gate: the whole scan surface is backend-only).
-                      onOpenInventory={STANDALONE ? undefined : (deviceId) => openInventoryModal(deviceId)}
+            {showKubernetes ? <KubernetesTopologyView /> : <>
+              <Toolbar
+                onSave={handleSave}
+                onAutoLayout={handleAutoLayout}
+                onExport={handleExport}
+                onChangeStyle={() => setThemeModalOpen(true)}
+                onUndo={undo}
+                onRedo={redo}
+                onShortcuts={() => setShortcutsOpen(true)}
+                onExportMd={handleExportMd}
+                onExportYaml={handleExportYaml}
+                onImportYaml={handleImportYaml}
+                onViewOnly={handleViewOnly}
+              />
+              <div className="flex flex-1 min-h-0">
+                <div ref={canvasRef} className="flex-1 min-w-0 h-full">
+                  {isRackDesign ? (
+                    <RackCanvas />
+                  ) : (
+                    <CanvasContainer
+                      onConnect={handleEdgeConnect}
+                      onEdgeDoubleClick={handleEdgeDoubleClick}
+                      onNodeDoubleClick={handleNodeDoubleClick}
+                      onNodeDragStart={snapshotHistory}
+                      onRequestAddToGroup={setPendingGroupAdd}
+                      onRequestAddToContainer={setPendingContainerAdd}
+                      onRequestAddToZone={setPendingZoneAdd}
+                      onOpenInventory={(deviceId) => openInventoryModal(deviceId)}
                     />
                   )}
-            </div>
+                </div>
+                {/* Rack designs keep the full width for mounted gear — a mount is
+                    edited in its own modal — but a selected cable has no plate to
+                    double-click, so it gets the rail. */}
+                {isRackDesign
+                  ? <RackCablePanel />
+                  : (selectedNodeId || selectedNodeIds.length > 1) && (
+                      <DetailPanel
+                        onEdit={handleEditNode}
+                        // Standalone has no Device Inventory to open (ADR-001 style
+                        // gate: the whole scan surface is backend-only).
+                        onOpenInventory={STANDALONE ? undefined : (deviceId) => openInventoryModal(deviceId)}
+                      />
+                    )}
+              </div>
+            </>}
           </div>
         </div>
 
