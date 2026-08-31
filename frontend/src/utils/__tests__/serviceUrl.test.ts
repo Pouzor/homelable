@@ -86,7 +86,11 @@ describe('getServiceUrl', () => {
       ({ ...svc(port, 'tcp', 'app', path), host })
 
     it('uses the service host instead of the node one', () => {
-      expect(getServiceUrl(withHost('blog.example.com', 8080), '192.168.1.10')).toBe('http://blog.example.com:8080')
+      expect(getServiceUrl(withHost('blog.example.com', 8080), '192.168.1.10')).toBe('http://blog.example.com')
+    })
+
+    it('drops the scanned port so a reverse-proxy host stays reachable', () => {
+      expect(getServiceUrl(withHost('https://mywebserver.mydomain.com', 8083), '192.168.100.100')).toBe('https://mywebserver.mydomain.com')
     })
 
     it('falls back to the node host when the override is blank', () => {
@@ -94,7 +98,7 @@ describe('getServiceUrl', () => {
     })
 
     it('resolves against the override even when the node has no host', () => {
-      expect(getServiceUrl(withHost('blog.example.com', 80), undefined)).toBe('http://blog.example.com:80')
+      expect(getServiceUrl(withHost('blog.example.com', 80), undefined)).toBe('http://blog.example.com')
     })
 
     it('honours a scheme carried by the override', () => {
@@ -106,15 +110,20 @@ describe('getServiceUrl', () => {
     })
 
     it('appends the service path to the override host', () => {
-      expect(getServiceUrl(withHost('blog.example.com', 3000, 'admin'), '192.168.1.10')).toBe('http://blog.example.com:3000/admin')
+      expect(getServiceUrl(withHost('blog.example.com', 3000, 'admin'), '192.168.1.10')).toBe('http://blog.example.com/admin')
     })
 
     it('returns null for a scheme-only override instead of throwing', () => {
       expect(getServiceUrl(withHost('https://', 443), '192.168.1.10')).toBeNull()
     })
 
-    it('lets the service port override the port carried by the override host', () => {
-      expect(getServiceUrl(withHost('blog.example.com:8443', 3000), '192.168.1.10')).toBe('http://blog.example.com:3000')
+    it('keeps the port typed into the override host over the scanned one', () => {
+      expect(getServiceUrl(withHost('blog.example.com:8443', 3000), '192.168.1.10')).toBe('http://blog.example.com:8443')
+    })
+
+    it('still gates the override on the scanned port', () => {
+      expect(getServiceUrl(withHost('db.example.com', 3306), '192.168.1.10')).toBeNull()
+      expect(getServiceUrl(withHost('shell.example.com', 22), '192.168.1.10')).toBeNull()
     })
 
     it('still returns null for a UDP service', () => {

@@ -146,7 +146,8 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
               className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
             />
             <span className="text-[10px] text-muted-foreground/60">
-              Overrides the node host for this service only.
+              Overrides the node host for this service only. The port above is
+              dropped &mdash; add one here (host:port) if the URL needs it.
             </span>
           </div>
 

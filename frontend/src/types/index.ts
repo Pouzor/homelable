@@ -95,7 +95,9 @@ export interface ServiceInfo {
   category?: string
   /** Overrides the node host when building the service URL — one node can serve
    *  several domains. Same accepted shapes as a node `ip`/`hostname`
-   *  (`host`, `host:port`, `https://host/…`). */
+   *  (`host`, `host:port`, `https://host/…`). An override suppresses `port`:
+   *  it usually names a reverse proxy, where the scanned port breaks the URL,
+   *  so only a port written here is used. */
   host?: string
   /** Whether the node drawing this device shows the service. Per node, not per
    *  device — the same device on another canvas keeps its own answer. Absent
