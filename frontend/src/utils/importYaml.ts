@@ -158,6 +158,11 @@ export function parseYamlToCanvas(
       const parentId = labelToId.get(yn.parent.label)
       if (!parentId) {
         console.warn(`[importYaml] parent label not found: "${yn.parent.label}" — skipping relationship`)
+      } else if (parentId === node.id) {
+        // Parents resolve by label, so a node naming itself — or naming a
+        // duplicate label that maps back to it — would nest it inside itself
+        // and freeze it on the canvas (#370).
+        console.warn(`[importYaml] node "${yn.parent.label}" is its own parent — skipping relationship`)
       } else {
         // Set React Flow parentId for nesting
         node.data = { ...node.data, parent_id: parentId }

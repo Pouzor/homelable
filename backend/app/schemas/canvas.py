@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from app.schemas.edges import EdgeResponse
 from app.schemas.nodes import NodeResponse
@@ -50,6 +50,22 @@ class NodeSave(BaseModel):
     right_handles: int = 0
     pos_x: float = 0
     pos_y: float = 0
+
+    @model_validator(mode="after")
+    def drop_self_parent(self) -> "NodeSave":
+        """A node can never be its own parent.
+
+        Every parent walk on the canvas — waypoint propagation, ordering
+        parents before children, collapse — assumes an acyclic tree, and a
+        self-parent row makes the node undraggable once it is reloaded (#370).
+
+        Dropped rather than rejected: a canvas that already carries the bad row
+        must still be able to save, and a 422 here would cost the user the whole
+        save. The startup repair clears what is already persisted.
+        """
+        if self.parent_id is not None and self.parent_id == self.id:
+            self.parent_id = None
+        return self
 
 
 class EdgeSave(BaseModel):

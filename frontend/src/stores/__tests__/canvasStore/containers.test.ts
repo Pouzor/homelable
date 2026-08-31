@@ -236,4 +236,47 @@ describe('canvasStore — containers & nesting', () => {
     const childIdx = nodes.findIndex((n) => n.id === 'c1')
     expect(parentIdx).toBeLessThan(childIdx)
   })
+
+  // #370 — nothing used to stop a node being written as its own parent, and
+  // the row is fatal: it freezes the node on the canvas and survives a save.
+  it('updateNode ignores a parent_id pointing at the node itself', () => {
+    const n = { ...makeNode('n1', { container_mode: true }), position: { x: 50, y: 50 } }
+    useCanvasStore.setState({ nodes: [n] })
+
+    useCanvasStore.getState().updateNode('n1', { parent_id: 'n1', label: 'renamed' })
+
+    const after = useCanvasStore.getState().nodes[0]
+    expect(after.data.parent_id).toBeUndefined()
+    expect(after.parentId).toBeUndefined()
+    // The rest of the edit still lands — the key is dropped, not the update.
+    expect(after.data.label).toBe('renamed')
+    expect(after.position).toEqual({ x: 50, y: 50 })
+  })
+
+  it('updateNode self-parent does not detach a node from its real parent', () => {
+    const parent = { ...makeNode('p1', { container_mode: true }), position: { x: 100, y: 100 } }
+    useCanvasStore.setState({ nodes: [parent] })
+    useCanvasStore.getState().addNode({
+      ...makeNode('c1', { parent_id: 'p1' }),
+      position: { x: 140, y: 160 },
+    } as Node<NodeData>)
+
+    useCanvasStore.getState().updateNode('c1', { parent_id: 'c1' })
+
+    const child = useCanvasStore.getState().nodes.find((x) => x.id === 'c1')!
+    expect(child.parentId).toBe('p1')
+    expect(child.data.parent_id).toBe('p1')
+  })
+
+  it('addNode strips a parent_id pointing at the node itself', () => {
+    useCanvasStore.getState().addNode({
+      ...makeNode('n1', { parent_id: 'n1', container_mode: true }),
+      position: { x: 30, y: 30 },
+    } as Node<NodeData>)
+
+    const added = useCanvasStore.getState().nodes[0]
+    expect(added.data.parent_id).toBeUndefined()
+    expect(added.parentId).toBeUndefined()
+    expect(added.position).toEqual({ x: 30, y: 30 })
+  })
 })

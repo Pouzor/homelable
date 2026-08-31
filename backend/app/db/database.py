@@ -495,6 +495,7 @@ async def init_db() -> None:
     await _drop_legacy_node_columns()
     await _seed_node_views()
     await _backfill_zone_size()
+    await _repair_self_parent_nodes()
 
 
 
@@ -811,6 +812,47 @@ async def _backfill_zone_size() -> None:
                 logger.info("Moved the size of %d zone(s) to the width/height columns", moved)
     except Exception as exc:  # pragma: no cover - defensive, boot must not die
         logger.warning("Backfilling zone width/height failed: %s", exc)
+
+
+async def _repair_self_parent_nodes() -> None:
+    """Detach any node that is recorded as its own parent.
+
+    Several write paths could persist ``parent_id = id`` before the guards
+    added alongside this repair: a YAML import resolving a parent by a label
+    that mapped back to the node, the node dedupe re-pointing a canonical node
+    that had been nested under one of its own duplicates, and any client PATCH
+    or canvas save, neither of which validated it (#370).
+
+    The row is fatal on the canvas: the parent walks assume an acyclic tree, so
+    dragging the node overflowed the stack inside the change reducer and the
+    move was silently dropped — the node selected but would not move. It also
+    renders unparented, so it sits wherever its stored coordinates put it
+    rather than inside the container it appears to belong to.
+
+    Clearing the column is the only safe repair: the real parent is not
+    recoverable from the row, and NULL simply returns the node to the top level
+    where the user can re-nest it. Idempotent — a second run matches nothing.
+
+    Never fatal: a failure here leaves the row as it was, and the runtime cycle
+    guards keep the canvas usable either way.
+    """
+    try:
+        async with engine.begin() as conn:
+            rows = (
+                await conn.exec_driver_sql(
+                    "SELECT id, label FROM nodes WHERE parent_id IS NOT NULL AND parent_id = id"
+                )
+            ).fetchall()
+            if not rows:
+                return
+            await conn.exec_driver_sql(
+                "UPDATE nodes SET parent_id = NULL WHERE parent_id IS NOT NULL AND parent_id = id"
+            )
+            for node_id, label in rows:
+                logger.info("Detached self-parented node %s (%s)", node_id, label)
+            logger.info("Repaired %d node(s) recorded as their own parent", len(rows))
+    except Exception as exc:  # pragma: no cover - defensive, boot must not die
+        logger.warning("Repairing self-parented nodes failed: %s", exc)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

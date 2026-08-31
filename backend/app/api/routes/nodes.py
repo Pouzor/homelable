@@ -150,6 +150,11 @@ async def update_node(
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
     sent = body.model_dump(exclude_unset=True)
+    # A node can never be its own parent: the canvas' parent walks assume an
+    # acyclic tree and a self-parent row freezes the node on screen (#370).
+    # Dropped rather than rejected so the rest of the edit still lands.
+    if sent.get("parent_id") == node_id:
+        sent.pop("parent_id")
     for field, value in node_columns(sent).items():
         setattr(node, field, value)
     # The user edited the device, not just its drawing: push the facts down.

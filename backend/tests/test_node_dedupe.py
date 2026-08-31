@@ -135,6 +135,30 @@ async def test_repoints_child_parent(db_session):
 
 
 @pytest.mark.asyncio
+async def test_canonical_nested_under_its_own_duplicate_is_detached(db_session):
+    """#370 — re-pointing the canonical node made it its own parent.
+
+    The canonical node had been nested under one of its duplicates, so the
+    blanket re-point wrote `parent_id = id` and froze it on the canvas.
+    """
+    d = await _design(db_session)
+    device = await _device(db_session, ieee="0xFFF")
+    keep = Node(label="Host", type="proxmox", design_id=d.id, device_id=device.id)
+    db_session.add(keep)
+    await db_session.flush()
+    dup = Node(label="Host", type="proxmox", design_id=d.id, device_id=device.id)
+    db_session.add(dup)
+    await db_session.flush()
+    # The oldest node is the one that survives, and it points at the newer twin.
+    keep.parent_id = dup.id
+    await db_session.flush()
+
+    await dedupe_nodes_by_device(db_session)
+    await db_session.refresh(keep)
+    assert keep.parent_id is None
+
+
+@pytest.mark.asyncio
 async def test_idempotent_noop_when_unique(db_session):
     d = await _design(db_session)
     device = await _device(db_session, ieee="0xEEE")

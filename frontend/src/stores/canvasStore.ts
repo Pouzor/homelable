@@ -125,7 +125,15 @@ function translateWaypointsForMovedNodes(
     arr.push(n.id)
     childrenByParent.set(pid, arr)
   }
+  // A corrupt row can make a node its own parent (or close a longer cycle),
+  // and the walk below would then never terminate — the resulting stack
+  // overflow is thrown inside onNodesChange's reducer, so the whole state
+  // update is dropped and the node stops moving while still selecting (#370).
+  // Mirrors the cycle guard orderParentsFirst already carries.
+  const walked = new Set<string>()
   const propagate = (id: string, d: { dx: number; dy: number }) => {
+    if (walked.has(id)) return
+    walked.add(id)
     for (const childId of childrenByParent.get(id) ?? []) {
       // A directly-dragged child keeps its own delta; don't overwrite it.
       if (!deltaById.has(childId)) deltaById.set(childId, d)
@@ -496,6 +504,10 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
 
   addNode: (node) =>
     set((state) => {
+      // Same rule as updateNode: never let a node parent itself (#370).
+      if (node.data.parent_id === node.id) {
+        node = { ...node, data: { ...node.data, parent_id: undefined }, parentId: undefined, extent: undefined }
+      }
       const parent = node.data.parent_id ? state.nodes.find((n) => n.id === node.data.parent_id) : null
       // A visual group — and a groupRect zone — nests its children just like a
       // container-mode host.
@@ -526,8 +538,17 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
       return { nodes: [...withoutNew, enriched], hasUnsavedChanges: true }
     }),
 
-  updateNode: (id, data) =>
+  updateNode: (id, incoming) =>
     set((state) => {
+      // A node can never be its own parent. Every parent walk (waypoint
+      // propagation, parents-before-children ordering, collapse) assumes an
+      // acyclic tree, and the row survives a save, so the canvas comes back
+      // broken on the next load (#370). Drop the key and apply the rest.
+      let data = incoming
+      if (incoming.parent_id === id) {
+        data = { ...incoming }
+        delete data.parent_id
+      }
       let nodes = state.nodes.map((n) => {
         if (n.id !== id) return n
         const updated: Node<NodeData> = { ...n, data: { ...n.data, ...data } }
