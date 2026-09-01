@@ -32,9 +32,9 @@ interface CanvasContainerProps {
   onEdgeDoubleClick?: (edge: Edge<EdgeData>) => void
   onNodeDoubleClick?: (node: Node<NodeData>) => void
   onNodeDragStart?: () => void
-  onRequestAddToGroup?: (payload: { nodeId: string; groupId: string }) => void
-  onRequestAddToContainer?: (payload: { nodeId: string; containerId: string }) => void
-  onRequestAddToZone?: (payload: { nodeId: string; zoneId: string }) => void
+  onRequestAddToGroup?: (payload: { nodeIds: string[]; groupId: string }) => void
+  onRequestAddToContainer?: (payload: { nodeIds: string[]; containerId: string }) => void
+  onRequestAddToZone?: (payload: { nodeIds: string[]; zoneId: string }) => void
   onOpenInventory?: (deviceId: string) => void
 }
 
@@ -145,33 +145,55 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
 
   const { guides, onNodeDrag, onNodeDragStop } = useAlignmentGuides()
 
-  // Drop a top-level node onto a group → ask App to confirm adding it. Runs
-  // before the alignment snap so detection uses the dropped position.
+  // Drop a selection onto a group → ask App to confirm adding it. Runs before
+  // the alignment snap so detection uses the dropped position. `dragNodes` is
+  // the whole multi-selection being dragged; `dragNode` (the one under the
+  // cursor) only picks the destination.
   const handleNodeDragStop = useCallback<NonNullable<typeof onNodeDragStop>>((event, dragNode, dragNodes) => {
-    if (dragNode && dragNode.data.type !== 'group' && dragNode.data.type !== 'groupRect') {
+    // A single drag reports an empty `dragNodes` in some React Flow paths, so
+    // fall back to the dragged node itself.
+    const dragged = dragNodes && dragNodes.length > 0 ? dragNodes : dragNode ? [dragNode] : []
+    // Groups and zones are containers, never contents.
+    const movable = dragged.filter((n) => n.data.type !== 'group' && n.data.type !== 'groupRect')
+
+    if (dragNode && dragNode.data.type !== 'group' && dragNode.data.type !== 'groupRect' && movable.length > 0) {
       const intersecting = getIntersectingNodes(dragNode)
       const zoneParent = dragNode.parentId
         ? nodes.find((n) => n.id === dragNode.parentId && n.data.type === 'groupRect')
         : undefined
       if (zoneParent) {
         // Zone children are not extent-clamped, so a drop outside the zone is
-        // how the user takes a node back out of it.
+        // how the user takes a node back out of it. The whole selection leaves
+        // with it, not only the node under the cursor.
         if (!intersecting.some((n) => n.id === zoneParent.id)) {
-          removeFromGroup(zoneParent.id, dragNode.id)
+          for (const n of movable) {
+            if (n.parentId === zoneParent.id) removeFromGroup(zoneParent.id, n.id)
+          }
         }
       } else if (!dragNode.parentId) {
+        // Only free nodes join a new parent; one already nested elsewhere in the
+        // selection keeps its own parent.
+        const nodeIds = movable.filter((n) => !n.parentId).map((n) => n.id)
         const group = intersecting.find((n) => n.data.type === 'group')
         const container = intersecting.find((n) => n.id !== dragNode.id && n.data.container_mode === true)
+        // The destination can be part of the dragged selection (lasso over
+        // everything); it cannot also be one of its own new children.
+        const targetless = (targetId: string) => nodeIds.filter((id) => id !== targetId)
         if (group) {
-          onRequestAddToGroup?.({ nodeId: dragNode.id, groupId: group.id })
+          const ids = targetless(group.id)
+          if (ids.length > 0) onRequestAddToGroup?.({ nodeIds: ids, groupId: group.id })
         } else if (container) {
           // Any node in container_mode (proxmox, docker_host, …) accepts children.
-          onRequestAddToContainer?.({ nodeId: dragNode.id, containerId: container.id })
+          const ids = targetless(container.id)
+          if (ids.length > 0) onRequestAddToContainer?.({ nodeIds: ids, containerId: container.id })
         } else {
           // Zones come last: they are the loosest container and the largest, so
           // a group/container inside one still wins the drop.
           const zone = intersecting.find((n) => n.data.type === 'groupRect')
-          if (zone) onRequestAddToZone?.({ nodeId: dragNode.id, zoneId: zone.id })
+          if (zone) {
+            const ids = targetless(zone.id)
+            if (ids.length > 0) onRequestAddToZone?.({ nodeIds: ids, zoneId: zone.id })
+          }
         }
       }
     }

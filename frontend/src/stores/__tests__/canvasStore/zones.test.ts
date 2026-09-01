@@ -135,6 +135,129 @@ describe('canvasStore — zone (groupRect) parenting', () => {
   })
 })
 
+describe('canvasStore — batch parenting (#365)', () => {
+  beforeEach(resetStore)
+
+  it('addNodesToZone moves the whole selection, not just the first node', () => {
+    useCanvasStore.setState({
+      nodes: [
+        zone('z1'),
+        { ...makeNode('n1'), position: { x: 160, y: 220 } },
+        { ...makeNode('n2'), position: { x: 200, y: 260 } },
+        { ...makeNode('n3'), position: { x: 240, y: 300 } },
+      ],
+    })
+    useCanvasStore.getState().addNodesToZone('z1', ['n1', 'n2', 'n3'])
+
+    const nodes = useCanvasStore.getState().nodes
+    for (const id of ['n1', 'n2', 'n3']) {
+      const child = nodes.find((n) => n.id === id)!
+      expect(child.parentId).toBe('z1')
+      expect(child.data.parent_id).toBe('z1')
+      expect(child.extent).toBeUndefined()
+    }
+    expect(nodes.find((n) => n.id === 'n1')!.position).toEqual({ x: 60, y: 120 })
+    expect(nodes.find((n) => n.id === 'n3')!.position).toEqual({ x: 140, y: 200 })
+  })
+
+  it('undoes a batch add in a single step', () => {
+    useCanvasStore.setState({
+      nodes: [zone('z1'), makeNode('n1'), makeNode('n2')],
+    })
+    useCanvasStore.getState().addNodesToZone('z1', ['n1', 'n2'])
+    useCanvasStore.getState().undo()
+
+    const nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'n1')!.parentId).toBeUndefined()
+    expect(nodes.find((n) => n.id === 'n2')!.parentId).toBeUndefined()
+  })
+
+  it('skips a child whose own parent is in the same batch', () => {
+    useCanvasStore.setState({
+      nodes: [
+        zone('z1'),
+        { ...makeNode('host'), position: { x: 500, y: 500 } },
+        {
+          ...makeNode('vm'),
+          position: { x: 20, y: 20 },
+          parentId: 'host',
+          data: { ...makeNode('vm').data, parent_id: 'host' },
+        },
+      ],
+    })
+    useCanvasStore.getState().addNodesToZone('z1', ['host', 'vm'])
+
+    const nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'host')!.parentId).toBe('z1')
+    // The VM rides along with its host; re-parenting it would tear it out.
+    expect(nodes.find((n) => n.id === 'vm')!.parentId).toBe('host')
+    expect(nodes.find((n) => n.id === 'vm')!.position).toEqual({ x: 20, y: 20 })
+  })
+
+  it('refuses a node the zone itself descends from', () => {
+    useCanvasStore.setState({
+      nodes: [
+        makeNode('outer'),
+        {
+          ...zone('z1'),
+          parentId: 'outer',
+          data: { ...zone('z1').data, parent_id: 'outer' },
+        },
+        makeNode('n1'),
+      ],
+    })
+    useCanvasStore.getState().addNodesToZone('z1', ['outer', 'n1'])
+
+    const nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'outer')!.parentId).toBeUndefined()
+    expect(nodes.find((n) => n.id === 'n1')!.parentId).toBe('z1')
+  })
+
+  it('is a no-op when nothing in the batch is eligible', () => {
+    useCanvasStore.setState({ nodes: [zone('z1'), makeNode('n1')] })
+    useCanvasStore.getState().addToZone('z1', 'n1')
+    const before = useCanvasStore.getState().nodes
+    useCanvasStore.getState().addNodesToZone('z1', ['n1', 'z1'])
+    expect(useCanvasStore.getState().nodes).toBe(before)
+  })
+
+  it('addNodesToGroup clamps every child inside the group', () => {
+    useCanvasStore.setState({
+      nodes: [
+        { ...makeNode('g1', { type: 'group' }), type: 'group', position: { x: 100, y: 100 } },
+        { ...makeNode('n1'), position: { x: 160, y: 220 } },
+        { ...makeNode('n2'), position: { x: 100, y: 100 } },
+      ],
+    })
+    useCanvasStore.getState().addNodesToGroup('g1', ['n1', 'n2'])
+
+    const nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'n1')!.extent).toBe('parent')
+    expect(nodes.find((n) => n.id === 'n1')!.position).toEqual({ x: 60, y: 120 })
+    // Dropped on the group's own corner: clamped to the 8px inset.
+    expect(nodes.find((n) => n.id === 'n2')!.position).toEqual({ x: 8, y: 8 })
+  })
+
+  it('addNodesToContainer parents every child of a container-mode node', () => {
+    useCanvasStore.setState({
+      nodes: [
+        {
+          ...makeNode('px1', { type: 'proxmox', container_mode: true }),
+          position: { x: 100, y: 100 },
+        },
+        { ...makeNode('n1'), position: { x: 160, y: 220 } },
+        { ...makeNode('n2'), position: { x: 180, y: 240 } },
+      ],
+    })
+    useCanvasStore.getState().addNodesToContainer('px1', ['n1', 'n2'])
+
+    const nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'n1')!.parentId).toBe('px1')
+    expect(nodes.find((n) => n.id === 'n2')!.parentId).toBe('px1')
+    expect(nodes.find((n) => n.id === 'n2')!.extent).toBe('parent')
+  })
+})
+
 describe('canvasStore — importZoneSubnet', () => {
   beforeEach(resetStore)
 

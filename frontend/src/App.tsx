@@ -65,7 +65,7 @@ import { buildProxmoxClusterEdges } from '@/components/proxmox/clusterEdges'
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 export default function App() {
-  const { loadCanvas, applyLayout, markSaved, markUnsaved, hasUnsavedChanges, editSeq, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addToGroup, addToContainer, addToZone, importZoneSubnet, floorMap, setFloorMap } = useCanvasStore()
+  const { loadCanvas, applyLayout, markSaved, markUnsaved, hasUnsavedChanges, editSeq, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addNodesToGroup, addNodesToContainer, addNodesToZone, importZoneSubnet, floorMap, setFloorMap } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated, isInitialized } = useAuthStore()
   const authBootstrapStarted = useRef(false)
@@ -132,9 +132,14 @@ export default function App() {
   const [addTextOpen, setAddTextOpen] = useState(false)
   const [editNodeId, setEditNodeId] = useState<string | null>(null)
   const [pendingConnection, setPendingConnection] = useState<Connection | null>(null)
-  const [pendingGroupAdd, setPendingGroupAdd] = useState<{ nodeId: string; groupId: string } | null>(null)
-  const [pendingContainerAdd, setPendingContainerAdd] = useState<{ nodeId: string; containerId: string } | null>(null)
-  const [pendingZoneAdd, setPendingZoneAdd] = useState<{ nodeId: string; zoneId: string } | null>(null)
+  const [pendingGroupAdd, setPendingGroupAdd] = useState<{ nodeIds: string[]; groupId: string } | null>(null)
+  const [pendingContainerAdd, setPendingContainerAdd] = useState<{ nodeIds: string[]; containerId: string } | null>(null)
+  const [pendingZoneAdd, setPendingZoneAdd] = useState<{ nodeIds: string[]; zoneId: string } | null>(null)
+  // Labels for the add-to-group/container/zone confirmation, in the order dropped.
+  const labelsOf = useCallback(
+    (ids: string[]) => ids.map((id) => nodes.find((n) => n.id === id)?.data.label ?? ''),
+    [nodes],
+  )
   const [editEdgeId, setEditEdgeId] = useState<string | null>(null)
   const [scanConfigOpen, setScanConfigOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -1317,10 +1322,10 @@ export default function App() {
 
         <ConfirmAddToGroupModal
           open={!!pendingGroupAdd}
-          nodeLabel={pendingGroupAdd ? (nodes.find((n) => n.id === pendingGroupAdd.nodeId)?.data.label ?? '') : ''}
+          nodeLabels={pendingGroupAdd ? labelsOf(pendingGroupAdd.nodeIds) : []}
           targetLabel={pendingGroupAdd ? (nodes.find((n) => n.id === pendingGroupAdd.groupId)?.data.label ?? '') : ''}
           onConfirm={() => {
-            if (pendingGroupAdd) addToGroup(pendingGroupAdd.groupId, pendingGroupAdd.nodeId)
+            if (pendingGroupAdd) addNodesToGroup(pendingGroupAdd.groupId, pendingGroupAdd.nodeIds)
             setPendingGroupAdd(null)
           }}
           onCancel={() => setPendingGroupAdd(null)}
@@ -1329,10 +1334,10 @@ export default function App() {
         <ConfirmAddToGroupModal
           open={!!pendingContainerAdd}
           variant="container"
-          nodeLabel={pendingContainerAdd ? (nodes.find((n) => n.id === pendingContainerAdd.nodeId)?.data.label ?? '') : ''}
+          nodeLabels={pendingContainerAdd ? labelsOf(pendingContainerAdd.nodeIds) : []}
           targetLabel={pendingContainerAdd ? (nodes.find((n) => n.id === pendingContainerAdd.containerId)?.data.label ?? '') : ''}
           onConfirm={() => {
-            if (pendingContainerAdd) addToContainer(pendingContainerAdd.containerId, pendingContainerAdd.nodeId)
+            if (pendingContainerAdd) addNodesToContainer(pendingContainerAdd.containerId, pendingContainerAdd.nodeIds)
             setPendingContainerAdd(null)
           }}
           onCancel={() => setPendingContainerAdd(null)}
@@ -1341,10 +1346,10 @@ export default function App() {
         <ConfirmAddToGroupModal
           open={!!pendingZoneAdd}
           variant="zone"
-          nodeLabel={pendingZoneAdd ? (nodes.find((n) => n.id === pendingZoneAdd.nodeId)?.data.label ?? '') : ''}
+          nodeLabels={pendingZoneAdd ? labelsOf(pendingZoneAdd.nodeIds) : []}
           targetLabel={pendingZoneAdd ? (nodes.find((n) => n.id === pendingZoneAdd.zoneId)?.data.label ?? '') : ''}
           onConfirm={() => {
-            if (pendingZoneAdd) addToZone(pendingZoneAdd.zoneId, pendingZoneAdd.nodeId)
+            if (pendingZoneAdd) addNodesToZone(pendingZoneAdd.zoneId, pendingZoneAdd.nodeIds)
             setPendingZoneAdd(null)
           }}
           onCancel={() => setPendingZoneAdd(null)}
