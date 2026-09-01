@@ -530,3 +530,105 @@ async def test_list_hidden_devices(mock_backend):
 async def test_restore_device(mock_backend):
     await _dispatch("restore_device", {"id": "5"})
     mock_backend.post.assert_called_once_with("/api/v1/scan/pending/5/restore", {})
+
+
+# ── Zones (#365) ─────────────────────────────────────────────────────────────
+
+_ZONE_NODES = [
+    {"id": "z1", "type": "groupRect", "label": "DMZ", "pos_x": 100, "pos_y": 100, "width": 400, "height": 300},
+    {"id": "n1", "type": "router", "label": "Router", "pos_x": 160, "pos_y": 220},
+    {"id": "n2", "type": "server", "label": "NAS", "pos_x": 200, "pos_y": 260, "parent_id": "z1"},
+]
+
+
+@pytest.mark.anyio
+async def test_create_zone_posts_a_grouprect_node(mock_backend):
+    await _dispatch("create_zone", {"label": "DMZ", "pos_x": 10, "pos_y": 20})
+    mock_backend.post.assert_called_once_with("/api/v1/nodes", {
+        "type": "groupRect", "status": "unknown", "width": 360, "height": 240,
+        "label": "DMZ", "pos_x": 10, "pos_y": 20,
+    })
+
+
+@pytest.mark.anyio
+async def test_create_zone_folds_colors_into_custom_colors(mock_backend):
+    await _dispatch("create_zone", {"label": "VLAN 10", "border": "#39d353", "border_style": "dashed", "width": 500})
+    body = mock_backend.post.call_args[0][1]
+    assert body["custom_colors"] == {"border": "#39d353", "border_style": "dashed"}
+    assert body["width"] == 500
+    assert "border" not in body
+
+
+def test_create_zone_schema_requires_label():
+    tool = next(t for t in TOOLS if t.name == "create_zone")
+    assert tool.inputSchema["required"] == ["label"]
+
+
+def test_zone_type_is_not_offered_by_create_node():
+    """A zone is canvas furniture — create_node stays a device tool."""
+    tool = next(t for t in TOOLS if t.name == "create_node")
+    assert "groupRect" not in tool.inputSchema["properties"]["type"]["enum"]
+
+
+@pytest.mark.anyio
+async def test_list_zones_returns_only_zones_with_their_children(mock_backend):
+    mock_backend.get = AsyncMock(return_value=list(_ZONE_NODES))
+    result = await _dispatch("list_zones", {})
+    assert result == [{
+        "id": "z1", "label": "DMZ", "pos_x": 100, "pos_y": 100,
+        "width": 400, "height": 300, "node_ids": ["n2"],
+    }]
+
+
+@pytest.mark.anyio
+async def test_add_to_zone_rebases_positions_on_the_zone(mock_backend):
+    mock_backend.get = AsyncMock(return_value=list(_ZONE_NODES))
+    result = await _dispatch("add_to_zone", {"zone_id": "z1", "node_ids": ["n1"]})
+    mock_backend.patch.assert_called_once_with(
+        "/api/v1/nodes/n1", {"parent_id": "z1", "pos_x": 60, "pos_y": 120}
+    )
+    assert result == {"zone_id": "z1", "moved": ["n1"], "skipped": []}
+
+
+@pytest.mark.anyio
+async def test_add_to_zone_skips_the_zone_itself_and_nodes_already_in_it(mock_backend):
+    mock_backend.get = AsyncMock(return_value=list(_ZONE_NODES))
+    result = await _dispatch("add_to_zone", {"zone_id": "z1", "node_ids": ["z1", "n2", "ghost"]})
+    mock_backend.patch.assert_not_called()
+    assert result["moved"] == []
+    assert result["skipped"] == ["z1", "n2", "ghost"]
+
+
+@pytest.mark.anyio
+async def test_add_to_zone_refuses_a_node_the_zone_descends_from(mock_backend):
+    """Parenting a zone's own ancestor under it would build a cycle."""
+    mock_backend.get = AsyncMock(return_value=[
+        {"id": "outer", "type": "groupRect", "pos_x": 0, "pos_y": 0},
+        {"id": "z1", "type": "groupRect", "pos_x": 100, "pos_y": 100, "parent_id": "outer"},
+    ])
+    result = await _dispatch("add_to_zone", {"zone_id": "z1", "node_ids": ["outer"]})
+    mock_backend.patch.assert_not_called()
+    assert result["skipped"] == ["outer"]
+
+
+@pytest.mark.anyio
+async def test_add_to_zone_rejects_a_target_that_is_not_a_zone(mock_backend):
+    mock_backend.get = AsyncMock(return_value=list(_ZONE_NODES))
+    with pytest.raises(ValueError, match="is not a zone"):
+        await _dispatch("add_to_zone", {"zone_id": "n1", "node_ids": ["n2"]})
+
+
+@pytest.mark.anyio
+async def test_remove_from_zone_restores_absolute_positions(mock_backend):
+    mock_backend.get = AsyncMock(return_value=list(_ZONE_NODES))
+    result = await _dispatch("remove_from_zone", {"node_ids": ["n2", "n1"]})
+    mock_backend.patch.assert_called_once_with(
+        "/api/v1/nodes/n2", {"parent_id": None, "pos_x": 300, "pos_y": 360}
+    )
+    # n1 has no parent — nothing to detach.
+    assert result == {"detached": ["n2"], "skipped": ["n1"]}
+
+
+def test_zone_tools_are_registered():
+    names = {t.name for t in TOOLS}
+    assert {"create_zone", "list_zones", "add_to_zone", "remove_from_zone"} <= names
