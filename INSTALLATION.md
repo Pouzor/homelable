@@ -101,17 +101,22 @@ git clone https://github.com/Pouzor/homelable.git /opt/homelable
 sudo bash /opt/homelable/scripts/install-baremetal.sh
 ```
 
-The script can also clone for you — run it from anywhere and it fetches the repo
-into `INSTALL_DIR` if that directory is empty:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/scripts/install-baremetal.sh \
-  | sudo bash
-```
-
 It prompts for the admin password and the CIDR range to scan, then writes
 `backend/.env` with a generated `SECRET_KEY` and bcrypt hash. Open
 **http://\<host-ip\>:3000**.
+
+The script can also clone for you — run it from anywhere and it fetches the repo
+into `INSTALL_DIR` when that directory is empty. Piped into `bash` there is no
+terminal to prompt on, so pass the two answers as environment variables:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/scripts/install-baremetal.sh \
+  | sudo ADMIN_PASSWORD=hunter2 SCANNER_RANGES='["192.168.1.0/24"]' bash
+```
+
+Without them the prompts are skipped and their defaults apply — the password
+becomes `admin` and the range is guessed from the primary interface. The script
+warns when that happens; change the password before exposing the host.
 
 Re-running is safe and is how you upgrade — an existing `backend/.env` is kept
 untouched, everything else is rebuilt:
@@ -123,7 +128,8 @@ sudo bash scripts/install-baremetal.sh
 
 ### Options
 
-Every setting is an environment variable, so a non-interactive install is one line:
+Every setting is an environment variable. Setting them all skips every prompt,
+which is what makes an unattended install possible:
 
 ```bash
 sudo HTTP_PORT=8080 ADMIN_PASSWORD=hunter2 SCANNER_RANGES='["10.0.0.0/24"]' \
@@ -138,8 +144,8 @@ sudo HTTP_PORT=8080 ADMIN_PASSWORD=hunter2 SCANNER_RANGES='["10.0.0.0/24"]' \
 | `BACKEND_PORT` | `8000` | uvicorn port, bound to loopback |
 | `HTTP_PORT` | `3000` | nginx port |
 | `SERVER_NAME` | `_` | nginx `server_name` |
-| `ADMIN_PASSWORD` | prompt (`admin`) | Initial password for user `admin` |
-| `SCANNER_RANGES` | prompt (guessed) | JSON array of CIDRs |
+| `ADMIN_PASSWORD` | prompt, else `admin` | Initial password for user `admin` |
+| `SCANNER_RANGES` | prompt, else guessed | JSON array of CIDRs |
 | `SKIP_NGINX=1` | off | Do not install or touch nginx |
 
 ### Afterwards
