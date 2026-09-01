@@ -89,6 +89,152 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/Proxmo
 
 ---
 
+## Bare metal — no Docker
+
+`scripts/install-baremetal.sh` installs Homelable natively on a Debian 12+ /
+Ubuntu 22.04+ host (physical, VM or LXC): a Python venv and a `homelable`
+systemd unit for the backend on `127.0.0.1:8000`, the built frontend served by
+nginx on port 3000.
+
+```bash
+git clone https://github.com/Pouzor/homelable.git /opt/homelable
+sudo bash /opt/homelable/scripts/install-baremetal.sh
+```
+
+The script can also clone for you — run it from anywhere and it fetches the repo
+into `INSTALL_DIR` if that directory is empty:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Pouzor/homelable/main/scripts/install-baremetal.sh \
+  | sudo bash
+```
+
+It prompts for the admin password and the CIDR range to scan, then writes
+`backend/.env` with a generated `SECRET_KEY` and bcrypt hash. Open
+**http://\<host-ip\>:3000**.
+
+Re-running is safe and is how you upgrade — an existing `backend/.env` is kept
+untouched, everything else is rebuilt:
+
+```bash
+cd /opt/homelable && git pull
+sudo bash scripts/install-baremetal.sh
+```
+
+### Options
+
+Every setting is an environment variable, so a non-interactive install is one line:
+
+```bash
+sudo HTTP_PORT=8080 ADMIN_PASSWORD=hunter2 SCANNER_RANGES='["10.0.0.0/24"]' \
+  bash scripts/install-baremetal.sh
+```
+
+| Variable | Default | What |
+|---|---|---|
+| `INSTALL_DIR` | `/opt/homelable` | Repo root |
+| `REPO_URL` / `REPO_REF` | upstream / `main` | Used only when `INSTALL_DIR` is empty |
+| `SERVICE_USER` | `homelable` | systemd `User=` |
+| `BACKEND_PORT` | `8000` | uvicorn port, bound to loopback |
+| `HTTP_PORT` | `3000` | nginx port |
+| `SERVER_NAME` | `_` | nginx `server_name` |
+| `ADMIN_PASSWORD` | prompt (`admin`) | Initial password for user `admin` |
+| `SCANNER_RANGES` | prompt (guessed) | JSON array of CIDRs |
+| `SKIP_NGINX=1` | off | Do not install or touch nginx |
+
+### Afterwards
+
+```bash
+systemctl status homelable
+journalctl -u homelable -f
+```
+
+- Config: `/opt/homelable/backend/.env` — every other option (OIDC, MCP,
+  Proxmox, Zigbee, Z-Wave, live view) is documented in `.env.example`.
+  `systemctl restart homelable` after an edit.
+- Data: `/opt/homelable/data` — SQLite DB and uploads. Back up this folder.
+- nginx site: `/etc/nginx/sites-available/homelable`.
+
+Change the password later:
+
+```bash
+/opt/homelable/backend/.venv/bin/python -c \
+  'import bcrypt; print(bcrypt.hashpw(b"newpassword", bcrypt.gensalt()).decode())'
+# put it in backend/.env as AUTH_PASSWORD_HASH='$2b$12$...' (keep the single quotes)
+systemctl restart homelable
+```
+
+⚠️ Keep JSON values in `backend/.env` single-quoted — `CORS_ORIGINS='["http://…"]'`.
+systemd's `EnvironmentFile` parser strips bare double quotes, which breaks the
+JSON before the backend parses it. This does not apply to the Docker install.
+
+### Scanning as a non-root service
+
+The unit runs as `homelable`, not root, so nmap has no raw sockets and silently
+falls back to a TCP connect scan: hosts and open ports are still found, OS
+detection (`-O`) and SYN scan (`-sS`) are not. To grant them, uncomment in
+`/etc/systemd/system/homelable.service`:
+
+```ini
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+```
+
+then `systemctl daemon-reload && systemctl restart homelable`.
+
+### Your own reverse proxy
+
+With `SKIP_NGINX=1` the script leaves the front end to you: serve
+`/opt/homelable/frontend/dist` as a static SPA and proxy the API to the backend.
+The nginx translation of `docker/nginx.conf` — what the script writes, with
+`backend:8000` replaced by `127.0.0.1:8000`:
+
+```nginx
+server {
+    listen 3000;
+    server_name _;
+    root /opt/homelable/frontend/dist;
+    index index.html;
+
+    client_max_body_size 20M;
+
+    # WebSocket — must come before /api/ to take priority
+    location /api/v1/status/ws/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Legacy /ws/ path
+    location /ws/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+Terminating TLS in front of it means adding your own hostname to
+`CORS_ORIGINS` in `backend/.env` (`https://homelable.example`) and restarting
+the service.
+
+---
+
 ## Configuration
 
 All configuration is done via `.env` (copied from `.env.example`):
