@@ -56,6 +56,81 @@ function orderParentsFirst(nodes: Node<NodeData>[]): Node<NodeData>[] {
   return out
 }
 
+/** True when `maybeAncestorId` sits on `nodeId`'s parent chain. Cycle-safe. */
+function isAncestorOf(nodes: Node<NodeData>[], maybeAncestorId: string, nodeId: string): boolean {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const seen = new Set<string>([nodeId])
+  let current = byId.get(nodeId)
+  while (current) {
+    const pid = parentIdOf(current)
+    if (!pid || seen.has(pid)) return false
+    if (pid === maybeAncestorId) return true
+    seen.add(pid)
+    current = byId.get(pid)
+  }
+  return false
+}
+
+/**
+ * Re-parent a batch of nodes under one target in a single history entry —
+ * a multi-selection dropped on a group, a container or a zone.
+ *
+ * `clamp` is the only behavioural difference between the three: a group and a
+ * container pin their children inside the box (`extent: 'parent'`), a zone
+ * deliberately does not, so a node stays draggable back out of it.
+ *
+ * Ineligible children are dropped rather than failing the whole batch: the
+ * target itself, a node already parented to it, a node whose own parent is in
+ * the same batch (it rides along with that parent — re-parenting it would tear
+ * it out), and any node the target descends from (which would create a cycle).
+ */
+function nestNodesUnder(
+  state: CanvasState,
+  targetId: string,
+  childIds: string[],
+  opts: { isValidTarget: (n: Node<NodeData>) => boolean; clamp: boolean },
+): Partial<CanvasState> | CanvasState {
+  const target = state.nodes.find((n) => n.id === targetId)
+  if (!target || !opts.isValidTarget(target)) return state
+
+  const batch = new Set(childIds)
+  const moving = new Set<string>()
+  for (const id of batch) {
+    const child = state.nodes.find((n) => n.id === id)
+    if (!child || child.id === targetId) continue
+    const pid = parentIdOf(child)
+    if (pid === targetId) continue
+    if (pid && batch.has(pid)) continue
+    if (isAncestorOf(state.nodes, child.id, targetId)) continue
+    moving.add(id)
+  }
+  if (moving.size === 0) return state
+
+  const nodes = orderParentsFirst(
+    state.nodes.map((n) => {
+      if (!moving.has(n.id)) return n
+      // Absolute → target-relative.
+      const x = n.position.x - target.position.x
+      const y = n.position.y - target.position.y
+      return {
+        ...n,
+        parentId: targetId,
+        extent: opts.clamp ? ('parent' as const) : undefined,
+        position: opts.clamp ? { x: Math.max(8, x), y: Math.max(8, y) } : { x, y },
+        selected: false,
+        data: { ...n.data, parent_id: targetId },
+      }
+    }),
+  )
+
+  return {
+    nodes,
+    hasUnsavedChanges: true,
+    past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
+    future: [],
+  }
+}
+
 // Zone subnet import: the grid the arrivals are packed on, in zone-relative
 // pixels. A cell is one node box plus the gap that follows it.
 const DEFAULT_ZONE_WIDTH = 360
@@ -243,8 +318,14 @@ interface CanvasState {
   createGroup: (nodeIds: string[], name: string) => void
   ungroup: (groupId: string) => void
   addToGroup: (groupId: string, childId: string) => void
+  /** Batch form of addToGroup — one history entry for the whole selection. */
+  addNodesToGroup: (groupId: string, childIds: string[]) => void
   addToContainer: (containerId: string, childId: string) => void
+  /** Batch form of addToContainer. */
+  addNodesToContainer: (containerId: string, childIds: string[]) => void
   addToZone: (zoneId: string, childId: string) => void
+  /** Batch form of addToZone. */
+  addNodesToZone: (zoneId: string, childIds: string[]) => void
   /** Move every free node whose IP falls in `cidr` into the zone. Returns the
    *  count moved; 0 for an invalid CIDR or no match. */
   importZoneSubnet: (zoneId: string, cidr: string) => number
@@ -899,138 +980,46 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
       }
     }),
 
-  // Nest an existing top-level node inside a group. Inverse of removeFromGroup.
-  addToGroup: (groupId, childId) =>
-    set((state) => {
-      const group = state.nodes.find((n) => n.id === groupId)
-      const child = state.nodes.find((n) => n.id === childId)
-      if (!group || !child || group.data.type !== 'group') return state
-      if (child.id === groupId || child.parentId === groupId) return state
+  // Nest existing nodes inside a group. Inverse of removeFromGroup. The
+  // singular form is the batch of one — a multi-selection dropped on a group
+  // lands in a single history entry.
+  addToGroup: (groupId, childId) => get().addNodesToGroup(groupId, [childId]),
 
-      const updatedNodes = state.nodes.map((n) => {
-        if (n.id !== childId) return n
-        return {
-          ...n,
-          parentId: groupId,
-          extent: 'parent' as const,
-          // Absolute → group-relative. Clamp so the node stays inside the box.
-          position: {
-            x: Math.max(8, n.position.x - group.position.x),
-            y: Math.max(8, n.position.y - group.position.y),
-          },
-          selected: false,
-          data: { ...n.data, parent_id: groupId },
-        }
-      })
+  addNodesToGroup: (groupId, childIds) =>
+    set((state) =>
+      nestNodesUnder(state, groupId, childIds, {
+        isValidTarget: (n) => n.data.type === 'group',
+        clamp: true,
+      }),
+    ),
 
-      // React Flow requires the parent to precede its children in the array.
-      const others = updatedNodes.filter((n) => n.id !== childId)
-      const movedChild = updatedNodes.find((n) => n.id === childId)!
-      const groupIdx = others.findIndex((n) => n.id === groupId)
-      const nodes = [
-        ...others.slice(0, groupIdx + 1),
-        movedChild,
-        ...others.slice(groupIdx + 1),
-      ]
+  // Nest existing nodes inside a container node (proxmox / docker_host / … in
+  // container_mode). Mirrors addToGroup but the target is any node with
+  // data.container_mode === true rather than a group.
+  addToContainer: (containerId, childId) => get().addNodesToContainer(containerId, [childId]),
 
-      return {
-        nodes,
-        hasUnsavedChanges: true,
-        past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
-        future: [],
-      }
-    }),
+  addNodesToContainer: (containerId, childIds) =>
+    set((state) =>
+      nestNodesUnder(state, containerId, childIds, {
+        isValidTarget: (n) => n.data.container_mode === true,
+        clamp: true,
+      }),
+    ),
 
-  // Nest an existing top-level node inside a container node (proxmox /
-  // docker_host / … in container_mode). Mirrors addToGroup but the target is
-  // any node with data.container_mode === true rather than a group.
-  addToContainer: (containerId, childId) =>
-    set((state) => {
-      const container = state.nodes.find((n) => n.id === containerId)
-      const child = state.nodes.find((n) => n.id === childId)
-      if (!container || !child || container.data.container_mode !== true) return state
-      if (child.id === containerId || child.parentId === containerId) return state
+  // Nest existing nodes inside a groupRect zone. Mirrors addToGroup, with one
+  // deliberate difference: NO `extent: 'parent'`. A zone is a loose visual
+  // area, so a child must stay draggable out of it — the canvas detaches it on
+  // drop (see CanvasContainer). Parenting is what makes moving the zone move
+  // its contents.
+  addToZone: (zoneId, childId) => get().addNodesToZone(zoneId, [childId]),
 
-      const updatedNodes = state.nodes.map((n) => {
-        if (n.id !== childId) return n
-        return {
-          ...n,
-          parentId: containerId,
-          extent: 'parent' as const,
-          // Absolute → container-relative. Clamp so the node stays inside.
-          position: {
-            x: Math.max(8, n.position.x - container.position.x),
-            y: Math.max(8, n.position.y - container.position.y),
-          },
-          selected: false,
-          data: { ...n.data, parent_id: containerId },
-        }
-      })
-
-      // React Flow requires the parent to precede its children in the array.
-      const others = updatedNodes.filter((n) => n.id !== childId)
-      const movedChild = updatedNodes.find((n) => n.id === childId)!
-      const containerIdx = others.findIndex((n) => n.id === containerId)
-      const nodes = [
-        ...others.slice(0, containerIdx + 1),
-        movedChild,
-        ...others.slice(containerIdx + 1),
-      ]
-
-      return {
-        nodes,
-        hasUnsavedChanges: true,
-        past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
-        future: [],
-      }
-    }),
-
-  // Nest an existing top-level node inside a groupRect zone. Mirrors
-  // addToGroup, with one deliberate difference: NO `extent: 'parent'`. A zone
-  // is a loose visual area, so a child must stay draggable out of it — the
-  // canvas detaches it on drop (see CanvasContainer). Parenting is what makes
-  // moving the zone move its contents.
-  addToZone: (zoneId, childId) =>
-    set((state) => {
-      const zone = state.nodes.find((n) => n.id === zoneId)
-      const child = state.nodes.find((n) => n.id === childId)
-      if (!zone || !child || zone.data.type !== 'groupRect') return state
-      if (child.id === zoneId || child.parentId === zoneId) return state
-      // A zone cannot become a child of a node it already contains.
-      if (zone.parentId === childId) return state
-
-      const updatedNodes = state.nodes.map((n) => {
-        if (n.id !== childId) return n
-        return {
-          ...n,
-          parentId: zoneId,
-          // Absolute → zone-relative.
-          position: {
-            x: n.position.x - zone.position.x,
-            y: n.position.y - zone.position.y,
-          },
-          selected: false,
-          data: { ...n.data, parent_id: zoneId },
-        }
-      })
-
-      // React Flow requires the parent to precede its children in the array.
-      const others = updatedNodes.filter((n) => n.id !== childId)
-      const movedChild = updatedNodes.find((n) => n.id === childId)!
-      const zoneIdx = others.findIndex((n) => n.id === zoneId)
-      const nodes = [
-        ...others.slice(0, zoneIdx + 1),
-        movedChild,
-        ...others.slice(zoneIdx + 1),
-      ]
-
-      return {
-        nodes,
-        hasUnsavedChanges: true,
-        past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
-        future: [],
-      }
-    }),
+  addNodesToZone: (zoneId, childIds) =>
+    set((state) =>
+      nestNodesUnder(state, zoneId, childIds, {
+        isValidTarget: (n) => n.data.type === 'groupRect',
+        clamp: false,
+      }),
+    ),
 
   // Pull every free node whose IP falls inside `cidr` into a zone, laying them
   // out on a grid in the zone's free space. Deliberately additive and one-shot:

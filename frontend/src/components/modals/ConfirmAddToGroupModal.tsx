@@ -9,9 +9,14 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 
+/** Labels past this many are summarized as "+N more" instead of listed. */
+const MAX_LISTED_LABELS = 5
+
 interface ConfirmAddToGroupModalProps {
   open: boolean
-  nodeLabel: string
+  /** Labels of the nodes being added — one entry for a single drop, several for
+   *  a multi-selection. */
+  nodeLabels: string[]
   /** Label of the destination group/container. */
   targetLabel: string
   /** Destination kind — drives the wording. Defaults to 'group'. */
@@ -22,7 +27,7 @@ interface ConfirmAddToGroupModalProps {
 
 export function ConfirmAddToGroupModal({
   open,
-  nodeLabel,
+  nodeLabels,
   targetLabel,
   variant = 'group',
   onConfirm,
@@ -30,6 +35,14 @@ export function ConfirmAddToGroupModal({
 }: ConfirmAddToGroupModalProps) {
   const noun = variant === 'container' ? 'container' : variant === 'zone' ? 'zone' : 'group'
   const action = `Add to ${noun}`
+  const count = nodeLabels.length
+  const listed = nodeLabels.slice(0, MAX_LISTED_LABELS).join(', ')
+  const subject =
+    count === 1
+      ? nodeLabels[0]
+      : count <= MAX_LISTED_LABELS
+        ? `${count} nodes (${listed})`
+        : `${count} nodes (${listed}, +${count - MAX_LISTED_LABELS} more)`
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel() }}>
       <DialogContent className="max-w-sm">
@@ -39,7 +52,7 @@ export function ConfirmAddToGroupModal({
             {action}
           </DialogTitle>
           <DialogDescription>
-            Add <span className="font-medium text-foreground">{nodeLabel}</span> to the {noun}{' '}
+            Add <span className="font-medium text-foreground">{subject}</span> to the {noun}{' '}
             <span className="font-medium text-foreground">{targetLabel}</span>?
           </DialogDescription>
         </DialogHeader>
