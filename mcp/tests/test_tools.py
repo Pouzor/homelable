@@ -535,9 +535,11 @@ async def test_restore_device(mock_backend):
 # ── Zones (#365) ─────────────────────────────────────────────────────────────
 
 _ZONE_NODES = [
-    {"id": "z1", "type": "groupRect", "label": "DMZ", "pos_x": 100, "pos_y": 100, "width": 400, "height": 300},
-    {"id": "n1", "type": "router", "label": "Router", "pos_x": 160, "pos_y": 220},
-    {"id": "n2", "type": "server", "label": "NAS", "pos_x": 200, "pos_y": 260, "parent_id": "z1"},
+    {"id": "z1", "type": "groupRect", "label": "DMZ", "design_id": "d1", "pos_x": 100, "pos_y": 100, "width": 400, "height": 300},
+    {"id": "n1", "type": "router", "label": "Router", "design_id": "d1", "pos_x": 160, "pos_y": 220},
+    {"id": "n2", "type": "server", "label": "NAS", "design_id": "d1", "pos_x": 200, "pos_y": 260, "parent_id": "z1"},
+    {"id": "z2", "type": "groupRect", "label": "Lab", "design_id": "d2", "pos_x": 0, "pos_y": 0, "width": 200, "height": 200},
+    {"id": "other", "type": "server", "label": "Other canvas", "design_id": "d2", "pos_x": 10, "pos_y": 10},
 ]
 
 
@@ -574,10 +576,35 @@ def test_zone_type_is_not_offered_by_create_node():
 async def test_list_zones_returns_only_zones_with_their_children(mock_backend):
     mock_backend.get = AsyncMock(return_value=list(_ZONE_NODES))
     result = await _dispatch("list_zones", {})
-    assert result == [{
-        "id": "z1", "label": "DMZ", "pos_x": 100, "pos_y": 100,
-        "width": 400, "height": 300, "node_ids": ["n2"],
-    }]
+    assert result == [
+        {
+            "id": "z1", "label": "DMZ", "design_id": "d1", "pos_x": 100, "pos_y": 100,
+            "width": 400, "height": 300, "node_ids": ["n2"],
+        },
+        {
+            "id": "z2", "label": "Lab", "design_id": "d2", "pos_x": 0, "pos_y": 0,
+            "width": 200, "height": 200, "node_ids": [],
+        },
+    ]
+
+
+@pytest.mark.anyio
+async def test_list_zones_narrows_to_one_design(mock_backend):
+    """/api/v1/nodes has no design filter, so the tool applies it."""
+    mock_backend.get = AsyncMock(return_value=list(_ZONE_NODES))
+    result = await _dispatch("list_zones", {"design_id": "d2"})
+    assert [z["id"] for z in result] == ["z2"]
+
+
+@pytest.mark.anyio
+async def test_add_to_zone_skips_a_node_from_another_design(mock_backend):
+    """A zone groups its own canvas; parenting across designs would hide the
+    node on the design it belongs to."""
+    mock_backend.get = AsyncMock(return_value=list(_ZONE_NODES))
+    result = await _dispatch("add_to_zone", {"zone_id": "z1", "node_ids": ["other", "n1"]})
+    assert result["moved"] == ["n1"]
+    assert result["skipped"] == ["other"]
+    assert mock_backend.patch.call_count == 1
 
 
 @pytest.mark.anyio
