@@ -330,6 +330,8 @@ interface CanvasState {
    *  count moved; 0 for an invalid CIDR or no match. */
   importZoneSubnet: (zoneId: string, cidr: string) => number
   removeFromGroup: (groupId: string, childId: string) => void
+  /** Batch form of removeFromGroup — one history entry for the whole selection. */
+  removeNodesFromGroup: (groupId: string, childIds: string[]) => void
   markSaved: () => void
   markUnsaved: () => void
   loadCanvas: (nodes: Node<NodeData>[], edges: Edge<EdgeData>[]) => void
@@ -1115,14 +1117,22 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
   },
 
   // Release a single child from a group back to the canvas. Group stays.
-  removeFromGroup: (groupId, childId) =>
+  removeFromGroup: (groupId, childId) => get().removeNodesFromGroup(groupId, [childId]),
+
+  // Detach children from their parent, restoring absolute positions. Batched
+  // for the same reason as addNodesToGroup & co: a multi-selection dragged out
+  // of a zone must undo in one step, not one per node.
+  removeNodesFromGroup: (groupId, childIds) =>
     set((state) => {
       const group = state.nodes.find((n) => n.id === groupId)
-      const child = state.nodes.find((n) => n.id === childId)
-      if (!group || !child || child.parentId !== groupId) return state
+      if (!group) return state
+      const detaching = new Set(
+        childIds.filter((id) => state.nodes.some((n) => n.id === id && n.parentId === groupId)),
+      )
+      if (detaching.size === 0) return state
 
       const nodes = state.nodes.map((n) => {
-        if (n.id !== childId) return n
+        if (!detaching.has(n.id)) return n
         return {
           ...n,
           parentId: undefined,

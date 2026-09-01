@@ -238,6 +238,50 @@ describe('canvasStore — batch parenting (#365)', () => {
     expect(nodes.find((n) => n.id === 'n2')!.position).toEqual({ x: 8, y: 8 })
   })
 
+  it('removeNodesFromGroup detaches the whole selection in one undo step', () => {
+    const z = zone('z1')
+    useCanvasStore.setState({
+      nodes: [
+        z,
+        { ...makeNode('n1'), parentId: 'z1', position: { x: 20, y: 20 }, data: { ...makeNode('n1').data, parent_id: 'z1' } },
+        { ...makeNode('n2'), parentId: 'z1', position: { x: 40, y: 40 }, data: { ...makeNode('n2').data, parent_id: 'z1' } },
+      ],
+    })
+    useCanvasStore.getState().removeNodesFromGroup('z1', ['n1', 'n2'])
+
+    let nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'n1')!.parentId).toBeUndefined()
+    expect(nodes.find((n) => n.id === 'n1')!.position).toEqual({ x: 120, y: 120 })
+    expect(nodes.find((n) => n.id === 'n2')!.position).toEqual({ x: 140, y: 140 })
+
+    useCanvasStore.getState().undo()
+    nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'n1')!.parentId).toBe('z1')
+    expect(nodes.find((n) => n.id === 'n2')!.parentId).toBe('z1')
+  })
+
+  it('removeNodesFromGroup ignores nodes that are not in that group', () => {
+    useCanvasStore.setState({
+      nodes: [
+        zone('z1'),
+        { ...makeNode('n1'), parentId: 'z1', position: { x: 20, y: 20 }, data: { ...makeNode('n1').data, parent_id: 'z1' } },
+        makeNode('free'),
+      ],
+    })
+    useCanvasStore.getState().removeNodesFromGroup('z1', ['n1', 'free', 'ghost'])
+
+    const nodes = useCanvasStore.getState().nodes
+    expect(nodes.find((n) => n.id === 'n1')!.parentId).toBeUndefined()
+    expect(nodes.find((n) => n.id === 'free')!.position).toEqual(makeNode('free').position)
+  })
+
+  it('removeNodesFromGroup is a no-op when nothing in the batch is attached', () => {
+    useCanvasStore.setState({ nodes: [zone('z1'), makeNode('n1')] })
+    const before = useCanvasStore.getState().nodes
+    useCanvasStore.getState().removeNodesFromGroup('z1', ['n1'])
+    expect(useCanvasStore.getState().nodes).toBe(before)
+  })
+
   it('addNodesToContainer parents every child of a container-mode node', () => {
     useCanvasStore.setState({
       nodes: [
