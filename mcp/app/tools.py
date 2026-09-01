@@ -154,7 +154,9 @@ def _build_tools() -> list[Tool]:
         }),
         Tool(name="get_canvas", description="Get the full canvas: all nodes and edges in the homelab topology", inputSchema={
             "type": "object",
-            "properties": {**_DESIGN_ID_FIELD},
+            "properties": {
+                "design_id": {"type": "string", "description": "Only list zones on this design/canvas. Omit to list every design's zones; call list_designs to discover IDs."},
+            },
         }),
         Tool(name="list_nodes", description="List all nodes (devices) in the homelab", inputSchema={
             "type": "object",
@@ -203,11 +205,13 @@ def _build_tools() -> list[Tool]:
                 **_DESIGN_ID_FIELD,
             },
         }),
-        Tool(name="list_zones", description="List the zones (groupRect areas) on the canvas with their id, label, position, size and the nodes each one contains.", inputSchema={
+        Tool(name="list_zones", description="List the zones (groupRect areas) on the canvas with their id, label, position, size and the nodes each one contains. Lists every design's zones unless design_id narrows it.", inputSchema={
             "type": "object",
-            "properties": {},
+            "properties": {
+                "design_id": {"type": "string", "description": "Only list zones on this design/canvas. Omit to list every design's zones; call list_designs to discover IDs."},
+            },
         }),
-        Tool(name="add_to_zone", description="Move one or more nodes into a zone. Positions are rebased on the zone so the nodes keep their place on screen. A node already in the zone, the zone itself, and any node the zone is nested in are skipped.", inputSchema={
+        Tool(name="add_to_zone", description="Move one or more nodes into a zone. Positions are rebased on the zone so the nodes keep their place on screen. A node already in the zone, the zone itself, a node on another design, and any node the zone is nested in are skipped.", inputSchema={
             "type": "object",
             "required": ["zone_id", "node_ids"],
             "properties": {
@@ -307,6 +311,7 @@ def _slim_zone(z: dict, nodes: list[dict]) -> dict:
     return {
         "id": z.get("id"),
         "label": z.get("label"),
+        "design_id": z.get("design_id"),
         "pos_x": z.get("pos_x"),
         "pos_y": z.get("pos_y"),
         "width": z.get("width"),
@@ -417,8 +422,15 @@ async def _dispatch(name: str, args: dict) -> dict:
         return await backend.post("/api/v1/nodes", body)
 
     if name == "list_zones":
+        # /api/v1/nodes has no design filter — it returns every design's nodes,
+        # so narrow here when the caller named one.
+        design_id = args.get("design_id")
         nodes = await backend.get("/api/v1/nodes")
-        return [_slim_zone(n, nodes) for n in nodes if n.get("type") == ZONE_TYPE]
+        return [
+            _slim_zone(n, nodes)
+            for n in nodes
+            if n.get("type") == ZONE_TYPE and (design_id is None or n.get("design_id") == design_id)
+        ]
 
     if name == "add_to_zone":
         zone_id = args["zone_id"]
@@ -434,6 +446,9 @@ async def _dispatch(name: str, args: dict) -> dict:
                 node is None
                 or node_id == zone_id
                 or node.get("parent_id") == zone_id
+                # A zone only groups its own canvas: parenting across designs
+                # would hide the node on the design it belongs to.
+                or node.get("design_id") != zone.get("design_id")
                 or _is_ancestor(by_id, node_id, zone_id)
             ):
                 skipped.append(node_id)
