@@ -22,6 +22,9 @@
 #   ADMIN_PASSWORD  initial admin password (default: prompt, "admin" on empty)
 #   SCANNER_RANGES  JSON array of CIDRs to scan (default: prompt, guessed from
 #                   the primary interface)
+#
+# The two prompts are skipped when stdin is not a TTY (`curl … | sudo bash`);
+# set the matching variables to control them there, or take the defaults.
 #   SKIP_NGINX=1    do not install or touch nginx (bring your own reverse proxy)
 set -euo pipefail
 
@@ -54,9 +57,15 @@ if [[ "$SKIP_NGINX" != "1" ]]; then
 fi
 
 # Node 20+ — Debian 12 ships 18, too old for Vite 7 / React 19.
-node_major="$(node --version 2>/dev/null | sed 's/^v\([0-9]*\).*/\1/')"
-if [[ -z "$node_major" || "$node_major" -lt "$NODE_MAJOR" ]]; then
-  log "Installing Node.js $NODE_MAJOR (found: ${node_major:-none})"
+# `|| true`: with no node installed the substitution exits 127, and under
+# `set -euo pipefail` that aborts the script before we get to install it.
+node_major="$(node --version 2>/dev/null | sed 's/^v\([0-9]*\).*/\1/' || true)"
+node_major="${node_major//[^0-9]/}"   # `-lt` errors on anything non-numeric
+node_major="${node_major:-0}"
+if [[ "$node_major" -lt "$NODE_MAJOR" ]]; then
+  found="$node_major"
+  if [[ "$found" == "0" ]]; then found="none"; fi
+  log "Installing Node.js $NODE_MAJOR (found: $found)"
   curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nodejs >/dev/null
 fi
@@ -104,7 +113,11 @@ else
 
   admin_password="${ADMIN_PASSWORD:-}"
   if [[ -z "$admin_password" ]]; then
-    read -rsp "Initial admin password [default: admin]: " admin_password; echo
+    if [[ -t 0 ]]; then
+      read -rsp "Initial admin password [default: admin]: " admin_password; echo
+    else
+      warn "No TTY (piped install) and ADMIN_PASSWORD unset — defaulting to 'admin'."
+    fi
     admin_password="${admin_password:-admin}"
   fi
 
@@ -112,9 +125,13 @@ else
   if [[ -z "$scanner_ranges" ]]; then
     guess="$(ip -o -f inet addr show scope global 2>/dev/null \
       | awk '{print $4}' | head -n1 \
-      | awk -F/ '{split($1,o,"."); print o[1]"."o[2]"."o[3]".0/"$2}')"
+      | awk -F/ '{split($1,o,"."); print o[1]"."o[2]"."o[3]".0/"$2}' || true)"
     guess="${guess:-192.168.1.0/24}"
-    read -rp "CIDR range to scan [$guess]: " scanner_ranges
+    if [[ -t 0 ]]; then
+      read -rp "CIDR range to scan [$guess]: " scanner_ranges
+    else
+      warn "No TTY (piped install) and SCANNER_RANGES unset — defaulting to $guess."
+    fi
     scanner_ranges="[\"${scanner_ranges:-$guess}\"]"
   fi
 
@@ -123,9 +140,11 @@ else
   password_hash="$(HL_PW="$admin_password" "$VENV/bin/python" -c \
     'import os, bcrypt; print(bcrypt.hashpw(os.environ["HL_PW"].encode(), bcrypt.gensalt()).decode())')"
 
-  host_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  host_ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
   origins="[\"http://localhost:${HTTP_PORT}\""
-  [[ -n "$host_ip" ]] && origins="${origins},\"http://${host_ip}:${HTTP_PORT}\""
+  if [[ -n "$host_ip" ]]; then
+    origins="${origins},\"http://${host_ip}:${HTTP_PORT}\""
+  fi
   origins="${origins}]"
 
   umask 077
@@ -263,7 +282,7 @@ else
   log "Backend is up."
 fi
 
-HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
 
 cat <<EOF
 
