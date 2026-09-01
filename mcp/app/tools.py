@@ -64,6 +64,18 @@ _NODE_FIELDS = {
     },
 }
 
+# A zone is a groupRect node: canvas furniture that visually groups the nodes
+# parented to it (a VLAN, a site, a rack room). It is deliberately kept out of
+# NODE_TYPES — create_node makes devices, these tools make and fill zones.
+ZONE_TYPE = "groupRect"
+
+_ZONE_COLOR_FIELDS = {
+    "border":       {"type": "string", "description": "Border/label colour, e.g. '#00d4ff'."},
+    "border_style": {"type": "string", "enum": ["solid", "dashed", "dotted"]},
+    "border_width": {"type": "number"},
+    "text_color":   {"type": "string", "description": "Label colour, e.g. '#e6edf3'."},
+}
+
 # Optional design/canvas selector. The backend attaches nodes/edges to the first
 # design when design_id is omitted (see backend nodes.py / edges.py), so these
 # tools stay backward compatible; pass design_id to target a specific canvas.
@@ -178,6 +190,38 @@ def _build_tools() -> list[Tool]:
             "required": ["id"],
             "properties": {"id": {"type": "string"}},
         }),
+        Tool(name="create_zone", description="Create a zone (a groupRect area) on the canvas. A zone visually groups the nodes parented to it — a VLAN, a site, a room. Use add_to_zone to fill it.", inputSchema={
+            "type": "object",
+            "required": ["label"],
+            "properties": {
+                "label":  {"type": "string", "description": "Zone name, shown in its top-left corner."},
+                "pos_x":  {"type": "number", "description": "X position on the canvas. Omit to auto-place."},
+                "pos_y":  {"type": "number", "description": "Y position on the canvas. Omit to auto-place."},
+                "width":  {"type": "number", "description": "Zone width in pixels (default 360)."},
+                "height": {"type": "number", "description": "Zone height in pixels (default 240)."},
+                **_ZONE_COLOR_FIELDS,
+                **_DESIGN_ID_FIELD,
+            },
+        }),
+        Tool(name="list_zones", description="List the zones (groupRect areas) on the canvas with their id, label, position, size and the nodes each one contains.", inputSchema={
+            "type": "object",
+            "properties": {},
+        }),
+        Tool(name="add_to_zone", description="Move one or more nodes into a zone. Positions are rebased on the zone so the nodes keep their place on screen. A node already in the zone, the zone itself, and any node the zone is nested in are skipped.", inputSchema={
+            "type": "object",
+            "required": ["zone_id", "node_ids"],
+            "properties": {
+                "zone_id":  {"type": "string", "description": "Target zone id — call list_zones to discover it."},
+                "node_ids": {"type": "array", "items": {"type": "string"}, "description": "Ids of the nodes to move in."},
+            },
+        }),
+        Tool(name="remove_from_zone", description="Take nodes back out of the zone they are in, restoring their absolute canvas position. Nodes that are not in a zone are left alone.", inputSchema={
+            "type": "object",
+            "required": ["node_ids"],
+            "properties": {
+                "node_ids": {"type": "array", "items": {"type": "string"}, "description": "Ids of the nodes to detach."},
+            },
+        }),
         Tool(name="list_designs", description="List all designs (canvases) with their IDs and node/group/text counts", inputSchema={
             "type": "object",
             "properties": {},
@@ -258,6 +302,34 @@ def _slim_node_summary(n: dict) -> dict:
     return {"id": n.get("id"), "label": n.get("label"), "type": n.get("type"), "status": n.get("status")}
 
 
+def _slim_zone(z: dict, nodes: list[dict]) -> dict:
+    """A zone plus the ids of the nodes parented to it."""
+    return {
+        "id": z.get("id"),
+        "label": z.get("label"),
+        "pos_x": z.get("pos_x"),
+        "pos_y": z.get("pos_y"),
+        "width": z.get("width"),
+        "height": z.get("height"),
+        "node_ids": [n["id"] for n in nodes if n.get("parent_id") == z.get("id")],
+    }
+
+
+def _is_ancestor(nodes_by_id: dict[str, dict], maybe_ancestor_id: str, node_id: str) -> bool:
+    """True when `maybe_ancestor_id` sits on `node_id`'s parent chain. Cycle-safe."""
+    seen = {node_id}
+    current = nodes_by_id.get(node_id)
+    while current:
+        pid = current.get("parent_id")
+        if not pid or pid in seen:
+            return False
+        if pid == maybe_ancestor_id:
+            return True
+        seen.add(pid)
+        current = nodes_by_id.get(pid)
+    return False
+
+
 async def _dispatch(name: str, args: dict) -> dict:
     if name == "create_node":
         return await backend.post("/api/v1/nodes", args)
@@ -330,6 +402,70 @@ async def _dispatch(name: str, args: dict) -> dict:
 
     if name == "restore_device":
         return await backend.post(f"/api/v1/scan/pending/{args['id']}/restore", {})
+
+    if name == "create_zone":
+        colors = {k: args.pop(k) for k in list(_ZONE_COLOR_FIELDS) if k in args}
+        body = {
+            "type": ZONE_TYPE,
+            "status": "unknown",
+            "width": args.pop("width", 360),
+            "height": args.pop("height", 240),
+            **args,
+        }
+        if colors:
+            body["custom_colors"] = colors
+        return await backend.post("/api/v1/nodes", body)
+
+    if name == "list_zones":
+        nodes = await backend.get("/api/v1/nodes")
+        return [_slim_zone(n, nodes) for n in nodes if n.get("type") == ZONE_TYPE]
+
+    if name == "add_to_zone":
+        zone_id = args["zone_id"]
+        nodes = await backend.get("/api/v1/nodes")
+        by_id = {n["id"]: n for n in nodes}
+        zone = by_id.get(zone_id)
+        if zone is None or zone.get("type") != ZONE_TYPE:
+            raise ValueError(f"add_to_zone: {zone_id} is not a zone")
+        moved, skipped = [], []
+        for node_id in args["node_ids"]:
+            node = by_id.get(node_id)
+            if (
+                node is None
+                or node_id == zone_id
+                or node.get("parent_id") == zone_id
+                or _is_ancestor(by_id, node_id, zone_id)
+            ):
+                skipped.append(node_id)
+                continue
+            # The canvas stores a child's position relative to its parent, so
+            # rebase or the node jumps by the zone's offset on the next load.
+            await backend.patch(f"/api/v1/nodes/{node_id}", {
+                "parent_id": zone_id,
+                "pos_x": (node.get("pos_x") or 0) - (zone.get("pos_x") or 0),
+                "pos_y": (node.get("pos_y") or 0) - (zone.get("pos_y") or 0),
+            })
+            moved.append(node_id)
+        return {"zone_id": zone_id, "moved": moved, "skipped": skipped}
+
+    if name == "remove_from_zone":
+        nodes = await backend.get("/api/v1/nodes")
+        by_id = {n["id"]: n for n in nodes}
+        detached, skipped = [], []
+        for node_id in args["node_ids"]:
+            node = by_id.get(node_id)
+            zone = by_id.get(node.get("parent_id") or "") if node else None
+            if node is None or zone is None or zone.get("type") != ZONE_TYPE:
+                skipped.append(node_id)
+                continue
+            # Zone-relative → absolute, so the node stays where it looks.
+            await backend.patch(f"/api/v1/nodes/{node_id}", {
+                "parent_id": None,
+                "pos_x": (node.get("pos_x") or 0) + (zone.get("pos_x") or 0),
+                "pos_y": (node.get("pos_y") or 0) + (zone.get("pos_y") or 0),
+            })
+            detached.append(node_id)
+        return {"detached": detached, "skipped": skipped}
 
     if name == "list_designs":
         return await backend.get("/api/v1/designs")
