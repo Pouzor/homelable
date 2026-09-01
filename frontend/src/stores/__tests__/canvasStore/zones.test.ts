@@ -485,3 +485,87 @@ describe('canvasStore — importZoneSubnet', () => {
     expect(nodes.find((n) => n.id === 'n2')!.parentId).toBeUndefined()
   })
 })
+
+describe('canvasStore — nesting order with a container inside a zone', () => {
+  beforeEach(resetStore)
+
+  // A zone can hold a container, so the tree is two levels deep. React Flow
+  // needs every parent to precede its children in the array; when it doesn't,
+  // it drops the child's parent binding — the child loses its extent clamp and
+  // drags anywhere on the canvas (#366 follow-up).
+  const container = (id: string, parentId?: string) => ({
+    ...makeNode(id, { type: 'proxmox', container_mode: true, ...(parentId ? { parent_id: parentId } : {}) }),
+    position: { x: 50, y: 50 },
+    width: 300,
+    height: 200,
+    ...(parentId ? { parentId } : {}),
+  })
+  const nested = (id: string, parentId: string) => ({
+    ...makeNode(id, { type: 'vm', parent_id: parentId }),
+    position: { x: 20, y: 30 },
+    parentId,
+    extent: 'parent' as const,
+  })
+  const order = () => useCanvasStore.getState().nodes.map((n) => n.id)
+
+  it('addNodesToZone keeps the container ahead of its own children', () => {
+    useCanvasStore.setState({ nodes: [zone('z1'), container('px'), nested('vm1', 'px')] })
+    useCanvasStore.getState().addNodesToZone('z1', ['px'])
+
+    const ids = order()
+    expect(ids.indexOf('z1')).toBeLessThan(ids.indexOf('px'))
+    expect(ids.indexOf('px')).toBeLessThan(ids.indexOf('vm1'))
+    // The nested child rides along untouched: still clamped inside its container.
+    const vm = useCanvasStore.getState().nodes.find((n) => n.id === 'vm1')!
+    expect(vm.parentId).toBe('px')
+    expect(vm.extent).toBe('parent')
+  })
+
+  it('loadCanvas reorders a container ahead of its child, not just the parentless nodes', () => {
+    // Server order: the nested child was created before the container it now
+    // sits in, so both land in the "has a parent" bucket child-first.
+    useCanvasStore.getState().loadCanvas([nested('vm1', 'px'), container('px', 'z1'), zone('z1')], [])
+
+    const ids = order()
+    expect(ids.indexOf('z1')).toBeLessThan(ids.indexOf('px'))
+    expect(ids.indexOf('px')).toBeLessThan(ids.indexOf('vm1'))
+  })
+
+  it('applyLayout reorders a container ahead of its child', () => {
+    useCanvasStore.getState().applyLayout([nested('vm1', 'px'), container('px', 'z1'), zone('z1')], [])
+
+    const ids = order()
+    expect(ids.indexOf('px')).toBeLessThan(ids.indexOf('vm1'))
+  })
+
+  it('updateNode re-parenting keeps a nested container ahead of its child', () => {
+    useCanvasStore.setState({ nodes: [nested('vm1', 'px'), container('px'), zone('z1')] })
+    useCanvasStore.getState().updateNode('px', { parent_id: 'z1' })
+
+    const ids = order()
+    expect(ids.indexOf('z1')).toBeLessThan(ids.indexOf('px'))
+    expect(ids.indexOf('px')).toBeLessThan(ids.indexOf('vm1'))
+    const vm = useCanvasStore.getState().nodes.find((n) => n.id === 'vm1')!
+    expect(vm.extent).toBe('parent')
+  })
+
+  it('pasteNodes appends a copied container ahead of its copied child', () => {
+    useCanvasStore.setState({
+      nodes: [
+        zone('z1'),
+        { ...container('px', 'z1'), selected: true },
+        { ...nested('vm1', 'px'), selected: true },
+      ],
+      selectedNodeIds: ['px', 'vm1'],
+    })
+    useCanvasStore.getState().copySelectedNodes()
+    useCanvasStore.getState().pasteNodes({ x: 600, y: 600 })
+
+    const nodes = useCanvasStore.getState().nodes
+    const pasted = nodes.filter((n) => n.selected)
+    const parent = pasted.find((n) => n.data.type === 'proxmox')!
+    const child = pasted.find((n) => n.data.type === 'vm')!
+    expect(child.parentId).toBe(parent.id)
+    expect(nodes.indexOf(parent)).toBeLessThan(nodes.indexOf(child))
+  })
+})

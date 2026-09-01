@@ -35,6 +35,13 @@ const parentIdOf = (n: Node<NodeData>): string | undefined => n.parentId ?? n.da
  * resolve nesting — a child listed first renders detached and logs a
  * parent-not-found error. Order is otherwise preserved: a list that is already
  * valid comes back untouched. A parent cycle terminates instead of recursing.
+ *
+ * This is a topological sort, not a "parentless first, the rest after" split.
+ * The split held only while nesting was one level deep; a zone can hold a
+ * container, so a container and its own children now sit in the same bucket and
+ * the child can land ahead of its parent. React Flow then drops the child's
+ * parent binding entirely — no relative position, no `extent: 'parent'` clamp,
+ * so it renders detached and drags anywhere (#366 follow-up).
  */
 function orderParentsFirst(nodes: Node<NodeData>[]): Node<NodeData>[] {
   const byId = new Map(nodes.map((n) => [n.id, n]))
@@ -509,9 +516,7 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
       }))
 
       // React Flow requires parents before children within the appended block.
-      const parents = pasted.filter((n) => !n.parentId)
-      const children = pasted.filter((n) => !!n.parentId)
-      const pastedNodes = [...parents, ...children]
+      const pastedNodes = orderParentsFirst(pasted)
 
       // Deselect everything already on the canvas so only the paste is selected.
       const existing = state.nodes.map((n) => (n.selected ? { ...n, selected: false } : n))
@@ -675,9 +680,7 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
       })
       // React Flow requires parent nodes to precede their children in the array
       if ('parent_id' in data) {
-        const parents = nodes.filter((n) => !n.parentId)
-        const children = nodes.filter((n) => !!n.parentId)
-        nodes = [...parents, ...children]
+        nodes = orderParentsFirst(nodes)
       }
       // Remap edges when any side's handle count is reduced so no edge disappears.
       // Removed handles fall back to the side's slot-0 id, or 'bottom' if the
@@ -833,9 +836,7 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
         return n
       })
       if (enabled) {
-        const parents = nodes.filter((n) => !n.parentId)
-        const children = nodes.filter((n) => !!n.parentId)
-        nodes = [...parents, ...children]
+        nodes = orderParentsFirst(nodes)
       }
       return { nodes, hasUnsavedChanges: true }
     }),
@@ -1233,13 +1234,11 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
   requestFloorMapEdit: () => set((s) => ({ floorMapEditNonce: s.floorMapEditNonce + 1 })),
 
   loadCanvas: (nodes, edges) => {
-    // React Flow requires parents before children in the array
-    const parents = nodes.filter((n) => !n.parentId)
-    const children = nodes.filter((n) => !!n.parentId)
     // NOTE: clipboard is intentionally preserved here so nodes copied in one
     // design can be pasted after switching to another design.
     set({
-      nodes: [...parents, ...children],
+      // React Flow requires parents before children in the array.
+      nodes: orderParentsFirst(nodes),
       edges,
       hasUnsavedChanges: false,
       selectedNodeId: null,
@@ -1253,11 +1252,9 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
 
   applyLayout: (nodes, edges) =>
     set((state) => {
-      // React Flow requires parents before children in the array
-      const parents = nodes.filter((n) => !n.parentId)
-      const children = nodes.filter((n) => !!n.parentId)
       return {
-        nodes: [...parents, ...children],
+        // React Flow requires parents before children in the array.
+        nodes: orderParentsFirst(nodes),
         edges,
         past: [...state.past.slice(-49), { nodes: state.nodes, edges: state.edges }],
         future: [],
