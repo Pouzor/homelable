@@ -46,7 +46,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     setSelectedNode, snapshotHistory,
     fitViewPending, clearFitViewPending,
     copySelectedNodes, pasteNodes,
-    removeFromGroup,
+    removeNodesFromGroup,
   } = useCanvasStore()
   const { fitView, screenToFlowPosition, getIntersectingNodes } = useReactFlow<Node<NodeData>>()
 
@@ -166,9 +166,10 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         // how the user takes a node back out of it. The whole selection leaves
         // with it, not only the node under the cursor.
         if (!intersecting.some((n) => n.id === zoneParent.id)) {
-          for (const n of movable) {
-            if (n.parentId === zoneParent.id) removeFromGroup(zoneParent.id, n.id)
-          }
+          const leaving = movable.filter((n) => n.parentId === zoneParent.id).map((n) => n.id)
+          // One history entry, so a single undo puts the whole selection back —
+          // symmetric with the batched add.
+          removeNodesFromGroup(zoneParent.id, leaving)
         }
       } else if (!dragNode.parentId) {
         // Only free nodes join a new parent; one already nested elsewhere in the
@@ -198,7 +199,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
       }
     }
     onNodeDragStop(event, dragNode, dragNodes)
-  }, [onRequestAddToGroup, onRequestAddToContainer, onRequestAddToZone, removeFromGroup, nodes, getIntersectingNodes, onNodeDragStop])
+  }, [onRequestAddToGroup, onRequestAddToContainer, onRequestAddToZone, removeNodesFromGroup, nodes, getIntersectingNodes, onNodeDragStop])
 
   return (
     <div ref={wrapperRef} className="w-full h-full" style={{ background: theme.colors.canvasBackground }} onMouseMove={onMouseMove}>

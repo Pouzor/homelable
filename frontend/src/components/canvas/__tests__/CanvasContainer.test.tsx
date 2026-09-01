@@ -359,6 +359,11 @@ describe('CanvasContainer', () => {
     expect(after.find((n) => n.id === 'n1')!.parentId).toBeUndefined()
     expect(after.find((n) => n.id === 'n2')!.parentId).toBeUndefined()
     expect(after.find((n) => n.id === 'n2')!.position).toEqual({ x: 140, y: 140 })
+    // One history entry for the whole selection: a single undo puts both back.
+    useCanvasStore.getState().undo()
+    const restored = useCanvasStore.getState().nodes
+    expect(restored.find((n) => n.id === 'n1')!.parentId).toBe('z1')
+    expect(restored.find((n) => n.id === 'n2')!.parentId).toBe('z1')
   })
 
   // ── Canvas settings ───────────────────────────────────────────────────────
