@@ -104,6 +104,45 @@ describe('ProxmoxImportModal', () => {
     expect(toast.success).toHaveBeenCalledWith('Found 2 devices')
   })
 
+  it('hides the container-mode option until canvas mode is picked', () => {
+    render(<ProxmoxImportModal {...defaultProps} />)
+    expect(screen.queryByRole('checkbox', { name: /nest guests inside their host/i })).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: /inventory \+ canvas/i }))
+    expect(screen.getByRole('checkbox', { name: /nest guests inside their host/i })).toBeDefined()
+  })
+
+  it("adds to canvas in 'linked' mode by default", async () => {
+    vi.mocked(proxmoxApi.importNetwork).mockResolvedValue({
+      data: { nodes: sampleNodes, edges: [{ source: 'pve-node-pve1', target: 'pve-pve1-101' }], device_count: 2 },
+    } as never)
+    render(<ProxmoxImportModal {...defaultProps} />)
+    fireEvent.click(screen.getByRole('radio', { name: /inventory \+ canvas/i }))
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.x or pve.local'), { target: { value: 'pve' } })
+    fireEvent.click(screen.getByRole('button', { name: /fetch guests/i }))
+    await waitFor(() => expect(screen.getByText('pve1')).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: /add 2 to canvas/i }))
+    expect(defaultProps.onAddToCanvas).toHaveBeenCalledWith(
+      expect.any(Array), expect.any(Array), 'linked',
+    )
+  })
+
+  it("passes 'container' when the nest option is ticked", async () => {
+    vi.mocked(proxmoxApi.importNetwork).mockResolvedValue({
+      data: { nodes: sampleNodes, edges: [{ source: 'pve-node-pve1', target: 'pve-pve1-101' }], device_count: 2 },
+    } as never)
+    render(<ProxmoxImportModal {...defaultProps} />)
+    fireEvent.click(screen.getByRole('radio', { name: /inventory \+ canvas/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /nest guests inside their host/i }))
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.x or pve.local'), { target: { value: 'pve' } })
+    fireEvent.click(screen.getByRole('button', { name: /fetch guests/i }))
+    await waitFor(() => expect(screen.getByText('pve1')).toBeDefined())
+    fireEvent.click(screen.getByRole('button', { name: /add 2 to canvas/i }))
+    const [nodes, edges, mode] = vi.mocked(defaultProps.onAddToCanvas).mock.calls[0]
+    expect(mode).toBe('container')
+    expect(nodes).toHaveLength(2)
+    expect(edges).toHaveLength(1)
+  })
+
   it('sends the token from the form in the payload', async () => {
     vi.mocked(proxmoxApi.importNetwork).mockResolvedValue({
       data: { nodes: [], edges: [], device_count: 0 },

@@ -181,6 +181,12 @@ export const scanApi = {
   rescanDevice: (id: string, opts?: { full_ports?: boolean; ports?: string; http_probe_enabled?: boolean; verify_tls?: boolean }) =>
     api.post<ScanRunSummary>(`/scan/pending/${id}/rescan`, opts ?? {}),
   hidden: () => api.get('/scan/hidden'),
+  /**
+   * Inventory rows for the guests a Proxmox host runs, resolved from the
+   * host→guest links the Proxmox import records. Empty for a non-host device.
+   */
+  proxmoxChildren: (id: string) =>
+    api.get<InventoryEntry[]>(`/scan/pending/${id}/proxmox-children`),
   runs: () => api.get('/scan/runs'),
   run: (runId: string) => api.get<ScanRunSummary>(`/scan/runs/${runId}`),
   clearPending: () => api.delete('/scan/pending'),

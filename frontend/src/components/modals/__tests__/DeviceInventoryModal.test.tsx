@@ -15,6 +15,7 @@ const mockPending = vi.fn()
 const mockHidden = vi.fn()
 const mockAddNode = vi.fn()
 const mockSetSelectedNode = vi.fn()
+const mockProxmoxChildren = vi.fn()
 
 vi.mock('@/api/client', () => ({
   scanApi: {
@@ -28,6 +29,7 @@ vi.mock('@/api/client', () => ({
     bulkHide: (...a: unknown[]) => mockBulkHide(...a),
     restore: (...a: unknown[]) => mockRestore(...a),
     bulkRestore: (...a: unknown[]) => mockBulkRestore(...a),
+    proxmoxChildren: (...a: unknown[]) => mockProxmoxChildren(...a),
   },
 }))
 
@@ -148,6 +150,7 @@ beforeEach(() => {
   mockHidden.mockResolvedValue({ data: [] })
   mockApprove.mockResolvedValue({ data: { node_id: 'n1', edges: [], edges_created: 0 } })
   mockHide.mockResolvedValue({ data: {} })
+  mockProxmoxChildren.mockResolvedValue({ data: [] })
   mockBulkApprove.mockResolvedValue({
     data: { approved: 2, node_ids: ['n1', 'n2'], device_ids: ['dev-a', 'dev-b'], edges: [], edges_created: 0, skipped_devices: [] },
   })
@@ -758,5 +761,132 @@ describe('DeviceInventoryModal — the curated type wins over the discovery gues
     fireEvent.click(screen.getByTestId('do-approve'))
     await waitFor(() => expect(mockApprove).toHaveBeenCalled())
     expect(mockApprove.mock.calls[0][1]).toMatchObject({ type: 'printer', label: 'Office printer' })
+  })
+})
+
+// --- Proxmox host: ask about the guests before placing it ---
+
+const PVE_HOST = {
+  id: 'dev-pve',
+  ip: '10.0.0.1',
+  hostname: 'pve1',
+  mac: null,
+  os: null,
+  services: [],
+  suggested_type: 'proxmox',
+  status: 'pending',
+  discovery_source: 'proxmox',
+  ieee_address: 'pve-node-pve1',
+  friendly_name: 'pve1',
+  discovered_at: '2026-01-07T00:00:00Z',
+}
+
+const PVE_GUESTS = [
+  { ...DEVICE_PROXMOX, id: 'dev-g1', friendly_name: 'web' },
+  { ...DEVICE_PROXMOX, id: 'dev-g2', friendly_name: 'dns', suggested_type: 'lxc', ieee_address: 'pve-pve1-102' },
+]
+
+async function openProxmoxPrompt() {
+  mockPending.mockResolvedValue({ data: [PVE_HOST] })
+  mockProxmoxChildren.mockResolvedValue({ data: PVE_GUESTS })
+  render(<DeviceInventoryModal {...baseProps} />)
+  await waitFor(() => expect(screen.getByTestId('pending-card-dev-pve')).toBeInTheDocument())
+  fireEvent.click(screen.getByTestId('pending-card-dev-pve'))
+  fireEvent.click(screen.getByTestId('do-approve'))
+  await waitFor(() => expect(screen.getByRole('button', { name: /add 3 to canvas/i })).toBeInTheDocument())
+}
+
+describe('DeviceInventoryModal — Proxmox host approval', () => {
+  beforeEach(() => {
+    mockBulkApprove.mockResolvedValue({
+      data: {
+        approved: 3,
+        node_ids: ['n-host', 'n-g1', 'n-g2'],
+        device_ids: ['dev-pve', 'dev-g1', 'dev-g2'],
+        edges: [], edges_created: 0, skipped: 0, skipped_devices: [],
+      },
+    })
+  })
+
+  it('approves a host with no guests straight away, no prompt', async () => {
+    mockPending.mockResolvedValue({ data: [PVE_HOST] })
+    mockProxmoxChildren.mockResolvedValue({ data: [] })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-pve')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('pending-card-dev-pve'))
+    fireEvent.click(screen.getByTestId('do-approve'))
+    await waitFor(() => expect(mockApprove).toHaveBeenCalled())
+    expect(mockBulkApprove).not.toHaveBeenCalled()
+  })
+
+  it('asks about the guests when the host has some', async () => {
+    await openProxmoxPrompt()
+    expect(screen.getByText('web')).toBeInTheDocument()
+    expect(screen.getByText('dns')).toBeInTheDocument()
+    expect(mockApprove).not.toHaveBeenCalled()
+  })
+
+  it('nests the guests in the host in container mode', async () => {
+    await openProxmoxPrompt()
+    fireEvent.click(screen.getByRole('button', { name: /add 3 to canvas/i }))
+    await waitFor(() =>
+      expect(mockBulkApprove).toHaveBeenCalledWith(['dev-pve', 'dev-g1', 'dev-g2'], null),
+    )
+    const added = mockAddNode.mock.calls.map((c) => c[0])
+    const hostNode = added.find((n) => n.id === 'n-host')
+    expect(hostNode.data.container_mode).toBe(true)
+    expect(hostNode.width).toBeGreaterThan(0)
+    // The host must be added before its guests — addNode resolves parent_id
+    // against what is already in the store.
+    expect(added[0].id).toBe('n-host')
+    added.filter((n) => n.id !== 'n-host').forEach((n) => {
+      expect(n.data.parent_id).toBe('n-host')
+    })
+  })
+
+  it('leaves the guests unnested in linked mode', async () => {
+    await openProxmoxPrompt()
+    fireEvent.click(screen.getByRole('radio', { name: /separate nodes linked to the host/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add 3 to canvas/i }))
+    await waitFor(() => expect(mockBulkApprove).toHaveBeenCalled())
+    const added = mockAddNode.mock.calls.map((c) => c[0])
+    expect(added.find((n) => n.id === 'n-host').data.container_mode).toBeUndefined()
+    added.forEach((n) => expect(n.data.parent_id).toBeUndefined())
+  })
+
+  it('falls back to the single approve when the guests are unticked', async () => {
+    await openProxmoxPrompt()
+    fireEvent.click(screen.getByRole('checkbox', { name: /also add its 2 guests/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add 1 to canvas/i }))
+    await waitFor(() => expect(mockApprove).toHaveBeenCalled())
+    expect(mockBulkApprove).not.toHaveBeenCalled()
+  })
+
+  it('places the guests loose when the host itself was skipped as a duplicate', async () => {
+    mockBulkApprove.mockResolvedValue({
+      data: {
+        approved: 2,
+        node_ids: ['n-g1', 'n-g2'],
+        device_ids: ['dev-g1', 'dev-g2'],
+        edges: [], edges_created: 0, skipped: 1,
+        skipped_devices: [{ device_id: 'dev-pve', label: 'pve1', match: 'ip', value: '10.0.0.1' }],
+      },
+    })
+    await openProxmoxPrompt()
+    fireEvent.click(screen.getByRole('button', { name: /add 3 to canvas/i }))
+    await waitFor(() => expect(mockAddNode).toHaveBeenCalled())
+    const added = mockAddNode.mock.calls.map((c) => c[0])
+    expect(added.map((n) => n.id)).toEqual(['n-g1', 'n-g2'])
+    added.forEach((n) => expect(n.data.parent_id).toBeUndefined())
+  })
+
+  it('still places the host when the children lookup fails', async () => {
+    mockPending.mockResolvedValue({ data: [PVE_HOST] })
+    mockProxmoxChildren.mockRejectedValue(new Error('boom'))
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-pve')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('pending-card-dev-pve'))
+    fireEvent.click(screen.getByTestId('do-approve'))
+    await waitFor(() => expect(mockApprove).toHaveBeenCalled())
   })
 })

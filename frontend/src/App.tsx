@@ -59,8 +59,9 @@ import { useRackStore } from '@/rack/store'
 import type { NodeData, EdgeData, CustomStyleDef, DesignType, FloorMapConfig, NodeType } from '@/types'
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 import type { ZwaveNode, ZwaveEdge } from '@/components/zwave/types'
-import type { ProxmoxNode, ProxmoxEdge } from '@/components/proxmox/types'
+import type { ProxmoxNode, ProxmoxEdge, ProxmoxCanvasMode } from '@/components/proxmox/types'
 import { buildProxmoxClusterEdges } from '@/components/proxmox/clusterEdges'
+import { groupProxmoxGuests, layoutProxmoxContainers, measureProxmoxContainers } from '@/utils/proxmoxContainerLayout'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -898,28 +899,63 @@ export default function App() {
     markUnsaved()
   }, [addNode, onConnect, snapshotHistory, markUnsaved])
 
-  const handleProxmoxAddToCanvas = useCallback((pmNodes: ProxmoxNode[], pmEdges: ProxmoxEdge[]) => {
+  const handleProxmoxAddToCanvas = useCallback((
+    pmNodes: ProxmoxNode[],
+    pmEdges: ProxmoxEdge[],
+    mode: ProxmoxCanvasMode = 'linked',
+  ) => {
     snapshotHistory()
     const COLS = 4
     const SPACING_X = 190
     const SPACING_Y = 110
-    const cols = Math.min(COLS, pmNodes.length)
-    const rows = Math.ceil(pmNodes.length / COLS)
-    const origin = getCenteredPosition(cols * SPACING_X, rows * SPACING_Y)
     // Multiple hosts from one import = a cluster → chain them via left/right
     // 'cluster' edges. Those endpoints need one left + one right handle each
     // (both default to 0), so grant them to the host nodes up front.
     const clusterEdges = buildProxmoxClusterEdges(pmNodes)
     const cluster = clusterEdges.length > 0
-    pmNodes.forEach((pn, i) => {
-      const col = i % COLS
-      const row = Math.floor(i / COLS)
-      const position = { x: origin.x + col * SPACING_X, y: origin.y + row * SPACING_Y }
+
+    // Container mode: each host becomes a box and its guests are nested inside
+    // it. Anything the import gives no host for stays a loose node below.
+    const { hostIds, childrenByHost, hostOfChild, looseIds } = groupProxmoxGuests(pmNodes, pmEdges)
+    const hostIdSet = new Set(hostIds)
+
+    let placement: Record<string, { x: number; y: number }>
+    let hostSizes: Record<string, { width: number; height: number }> = {}
+    if (mode === 'container') {
+      const measured = measureProxmoxContainers(hostIds, childrenByHost, looseIds.length)
+      const origin = getCenteredPosition(measured.width, measured.height)
+      const laid = layoutProxmoxContainers(hostIds, childrenByHost, looseIds, origin)
+      placement = laid.positions
+      hostSizes = laid.hostSizes
+    } else {
+      const cols = Math.min(COLS, pmNodes.length)
+      const rows = Math.ceil(pmNodes.length / COLS)
+      const origin = getCenteredPosition(cols * SPACING_X, rows * SPACING_Y)
+      placement = {}
+      pmNodes.forEach((pn, i) => {
+        placement[pn.id] = {
+          x: origin.x + (i % COLS) * SPACING_X,
+          y: origin.y + Math.floor(i / COLS) * SPACING_Y,
+        }
+      })
+    }
+
+    // Hosts first: addNode resolves `data.parent_id` against the nodes already
+    // in the store, so a guest added before its container would not nest.
+    const ordered = mode === 'container'
+      ? [...pmNodes.filter((n) => hostIdSet.has(n.id)), ...pmNodes.filter((n) => !hostIdSet.has(n.id))]
+      : pmNodes
+    ordered.forEach((pn) => {
+      const position = placement[pn.id] ?? getCenteredPosition()
       const isClusterHost = cluster && pn.type === 'proxmox'
+      const isContainerHost = mode === 'container' && hostIdSet.has(pn.id)
+      const parentId = mode === 'container' ? hostOfChild[pn.id] : undefined
+      const size = hostSizes[pn.id]
       const newNode: import('@xyflow/react').Node<NodeData> = {
         id: pn.id,
         type: pn.type,
         position,
+        ...(isContainerHost && size ? { width: size.width, height: size.height } : {}),
         data: {
           label: pn.label,
           type: pn.type as NodeData['type'],
@@ -930,6 +966,8 @@ export default function App() {
           ...(pn.ip ? { ip: pn.ip } : {}),
           ...(pn.hostname ? { hostname: pn.hostname } : {}),
           ...(isClusterHost ? { left_handles: 1, right_handles: 1 } : {}),
+          ...(isContainerHost ? { container_mode: true } : {}),
+          ...(parentId ? { parent_id: parentId } : {}),
         },
       }
       addNode(newNode)
