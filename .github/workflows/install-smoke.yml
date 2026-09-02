@@ -1,0 +1,126 @@
+name: Install smoke test
+
+# Runs scripts/install-baremetal.sh for real, in a clean debian:12 container.
+# ShellCheck reads the script but never executes it, so it cannot catch an
+# unintended `set -euo pipefail` abort — the failure class this job exists for.
+# debian:12 reproduces the two conditions that broke the installer once already:
+# the image carries no Node at all (so the version probe and the nodesource
+# install both run) and the job has no TTY (so the prompt fallbacks run).
+#
+# What it does not cover: systemd. A container has no PID 1 systemd, so
+# `systemctl` is stubbed out and the unit is written but never started. The
+# backend is booted by hand afterwards to prove the generated .env parses.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/install-baremetal.sh'
+      - 'backend/requirements.txt'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - '.github/workflows/install-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/install-baremetal.sh'
+      - 'backend/requirements.txt'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - '.github/workflows/install-smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  baremetal:
+    runs-on: ubuntu-latest
+    container: debian:12
+    timeout-minutes: 25
+    steps:
+      - name: Install checkout prerequisites
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git ca-certificates >/dev/null
+
+      - uses: actions/checkout@v4
+
+      - name: Confirm the container reproduces a fresh host
+        run: |
+          set -euo pipefail
+          node --version || echo "no node — the nodesource path will run"
+          [ -t 0 ] && echo "TTY present (unexpected)" || echo "no TTY — prompt fallbacks will run"
+
+      - name: Stub systemctl
+        # No PID 1 systemd in a container. The stub logs the calls so the run
+        # shows which unit actions the script attempted.
+        run: |
+          printf '#!/bin/sh\necho "[systemctl stub] $*"\n' > /usr/local/bin/systemctl
+          chmod +x /usr/local/bin/systemctl
+
+      - name: Run the installer
+        # INSTALL_DIR is the checkout, so the clone is skipped and the script
+        # installs the tree under test rather than main. SKIP_NGINX because the
+        # front end is not what this job is asserting.
+        run: |
+          INSTALL_DIR="$GITHUB_WORKSPACE" \
+          SKIP_NGINX=1 \
+          ADMIN_PASSWORD=ci-smoke-password \
+          SCANNER_RANGES='["10.0.0.0/24"]' \
+          bash scripts/install-baremetal.sh
+
+      - name: The generated .env is well formed
+        run: |
+          set -euo pipefail
+          test -f backend/.env
+          grep -qE '^SECRET_KEY=[0-9a-f]{64}$' backend/.env
+          grep -qE '^AUTH_PASSWORD_HASH=.\$2b\$' backend/.env
+          # JSON values must stay single-quoted: systemd's EnvironmentFile
+          # parser strips bare double quotes, which would break the JSON.
+          grep -qE "^CORS_ORIGINS='\\[" backend/.env
+          grep -qE "^SCANNER_RANGES='\\[" backend/.env
+          grep -q "^SQLITE_PATH=$GITHUB_WORKSPACE/data/homelab.db$" backend/.env
+          test "$(stat -c '%a' backend/.env)" = "600"
+
+      - name: The build artefacts and service user exist
+        run: |
+          set -euo pipefail
+          test -x backend/.venv/bin/uvicorn
+          test -f frontend/dist/index.html
+          id homelable
+
+      - name: The systemd unit was written
+        run: |
+          set -euo pipefail
+          test -f /etc/systemd/system/homelable.service
+          grep -q 'ExecStart=.*/uvicorn app.main:app --host 127.0.0.1 --port 8000' \
+            /etc/systemd/system/homelable.service
+          grep -q "EnvironmentFile=$GITHUB_WORKSPACE/backend/.env" \
+            /etc/systemd/system/homelable.service
+
+      - name: The backend boots on the generated config
+        # The unit's own ExecStart, run by hand. Proves the .env pydantic reads
+        # is valid — the assertion that catches config drift.
+        run: |
+          set -euo pipefail
+          cd backend
+          .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/api/v1/health >/dev/null 2>&1; then
+              echo "backend healthy"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend did not answer /api/v1/health within 30s" >&2
+          exit 1
+
+      - name: Re-running is idempotent and keeps .env
+        run: |
+          set -euo pipefail
+          before="$(sha256sum backend/.env)"
+          INSTALL_DIR="$GITHUB_WORKSPACE" SKIP_NGINX=1 \
+            bash scripts/install-baremetal.sh | tee /tmp/run2.log
+          after="$(sha256sum backend/.env)"
+          test "$before" = "$after" || { echo "second run rewrote backend/.env" >&2; exit 1; }
+          grep -q 'keeping existing values' /tmp/run2.log
