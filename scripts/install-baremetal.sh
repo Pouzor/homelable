@@ -49,7 +49,7 @@ command -v apt-get >/dev/null || fail "This script targets Debian/Ubuntu (apt-ge
 log "Installing OS dependencies"
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-  git curl ca-certificates python3 python3-venv python3-pip \
+  git curl ca-certificates gnupg python3 python3-venv python3-pip \
   build-essential nmap iputils-ping iproute2 openssl >/dev/null
 
 if [[ "$SKIP_NGINX" != "1" ]]; then
