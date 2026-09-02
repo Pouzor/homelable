@@ -350,7 +350,7 @@ describe('DeviceInventoryModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     fireEvent.click(screen.getByTestId('pending-card-dev-b'))
-    fireEvent.click(screen.getByRole('button', { name: /Approve \(2\)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Put in current Canvas \(2\)/ }))
     await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-a', 'dev-b'], null))
   })
 
@@ -368,7 +368,7 @@ describe('DeviceInventoryModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     fireEvent.click(screen.getByTestId('pending-card-dev-b'))
-    fireEvent.click(screen.getByRole('button', { name: /Approve \(2\)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Put in current Canvas \(2\)/ }))
     await waitFor(() =>
       expect(toast.info).toHaveBeenCalledWith(
         expect.stringContaining('1 already on this canvas'),
@@ -390,7 +390,7 @@ describe('DeviceInventoryModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     fireEvent.click(screen.getByTestId('pending-card-dev-b'))
-    fireEvent.click(screen.getByRole('button', { name: /Approve \(2\)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Put in current Canvas \(2\)/ }))
     await waitFor(() => expect(mockBulkApprove).toHaveBeenCalled())
     // Reloaded, so rows remain visible instead of the list going empty.
     await waitFor(() => expect(mockPending).toHaveBeenCalledTimes(2))
@@ -404,7 +404,7 @@ describe('DeviceInventoryModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     fireEvent.click(screen.getByTestId('pending-card-dev-b'))
-    fireEvent.click(screen.getByRole('button', { name: /Approve \(2\)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Put in current Canvas \(2\)/ }))
     await waitFor(() => expect(mockAddNode).toHaveBeenCalledTimes(2))
 
     // dev-a is an IP device with a MAC → node carries mac + a MAC property row.
@@ -613,7 +613,7 @@ describe('DeviceInventoryModal', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
       fireEvent.click(screen.getByTestId('pending-card-dev-a'))
       fireEvent.click(screen.getByTestId('pending-card-dev-rack'))
-      fireEvent.click(screen.getByRole('button', { name: /Approve \(2\)/ }))
+      fireEvent.click(screen.getByRole('button', { name: /Put in current Canvas \(2\)/ }))
 
       await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-a'], null))
       expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('1 rack device'))
@@ -630,7 +630,7 @@ describe('DeviceInventoryModal', () => {
       await waitFor(() => expect(screen.getByTestId('pending-card-dev-rack')).toBeInTheDocument())
       fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
       fireEvent.click(screen.getByTestId('pending-card-dev-rack'))
-      fireEvent.click(screen.getByRole('button', { name: /Approve \(1\)/ }))
+      fireEvent.click(screen.getByRole('button', { name: /Put in current Canvas \(1\)/ }))
 
       await waitFor(() => expect(mockBulkApprove).not.toHaveBeenCalled())
     })
@@ -692,7 +692,7 @@ describe('DeviceInventoryModal', () => {
       expect(screen.queryByTitle(/Clear all pending/)).not.toBeInTheDocument()
       // …and the keyboard shortcut cannot bring select mode back either.
       fireEvent.keyDown(window, { key: 's' })
-      expect(screen.queryByRole('button', { name: /Approve \(/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Put in current Canvas \(/ })).not.toBeInTheDocument()
     })
   })
 })

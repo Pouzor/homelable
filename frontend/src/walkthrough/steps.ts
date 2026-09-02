@@ -57,7 +57,7 @@ export const STEPS: TourStep[] = [
   {
     id: 'nodes',
     title: 'Your devices on the canvas',
-    body: 'Approved devices become nodes on the canvas. Each shows live status, IP, hostname and running services. Drag to arrange them and draw links between them.',
+    body: 'Devices you put in the canvas become nodes. Each shows live status, IP, hostname and running services. Drag to arrange them and draw links between them.',
     anchor: '.react-flow__node',
     placement: 'auto',
     mode: 'all',

@@ -74,10 +74,10 @@ describe('InventoryDeviceModal — edit mode', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
     // Lifecycle buttons belong to the view; the form has Save / Cancel.
-    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Put in current Canvas' })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Put in current Canvas' })).toBeInTheDocument()
   })
 
   it('seeds the form from the row, falling back to the discovery type', async () => {

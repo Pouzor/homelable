@@ -870,15 +870,15 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
               >
                 Delete
               </Button>
-              {/* Rack gear is mounted from a rack canvas, never approved onto a
-                  logical one — so it gets no Approve button at all. */}
+              {/* Rack gear is mounted from a rack canvas, never placed on a
+                  logical one — so it gets no canvas button at all. */}
               {!rackOnly && (
                 <Button
                   size="sm"
                   className="bg-[#39d353]/15 text-[#39d353] hover:bg-[#39d353]/25 border border-[#39d353]/30"
                   onClick={handleApprove}
                 >
-                  Approve
+                  Put in current Canvas
                 </Button>
               )}
             </div>
