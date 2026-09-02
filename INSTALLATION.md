@@ -63,6 +63,48 @@ docker compose -f docker-compose.prebuilt.yml up -d
 
 Update the same way: `docker compose -f docker-compose.prebuilt.yml pull && … up -d`.
 
+## Scanning from Docker — MAC addresses
+
+Out of the box the backend runs on a Docker bridge network, and **the scan will
+never report a MAC address** from it. MACs come from ARP, which is layer 2: the
+container's ARP cache holds only the Docker gateway, and nmap can read a target's
+hardware address only when that target sits in the same broadcast domain. From a
+bridge every LAN host is one hop away behind the gateway, so the field stays
+empty. `cap_add: NET_RAW` does not change this — the capability grants raw
+sockets, not a place on the LAN.
+
+This also affects device identity. When a device is rescanned it is matched on
+MAC first and IP second, so without MACs a DHCP lease change makes the device
+come back as a new entry in the inventory instead of updating the old one.
+
+To collect MACs, put the backend on the LAN itself. In `docker-compose.yml` (or
+`docker-compose.prebuilt.yml`), comment out the backend's `networks:` key and
+uncomment:
+
+```yaml
+    network_mode: host
+```
+
+then `docker compose up -d`. Caveats:
+
+- **Linux only.** On Docker Desktop for macOS and Windows the containers run
+  inside a VM, so host networking still does not reach your physical LAN. There
+  is no MAC-capable Docker setup on those platforms — run the
+  [bare-metal install](#bare-metal--no-docker) instead.
+- The backend binds `8000` directly on the host, with no port mapping and no
+  network isolation from other host services.
+- `frontend` and `mcp` reach the backend at `http://backend:8000` over the
+  `homelable` bridge; once the backend leaves that network they need
+  `http://127.0.0.1:8000` instead. Set `BACKEND_URL` on `mcp`, and for the front
+  end either give it `network_mode: host` too or point its nginx proxy at the
+  host address.
+
+The alternative, if you would rather keep the backend isolated, is a **macvlan**
+network, which gives the container its own MAC and IP on your physical LAN.
+It needs a parent interface and a spare address range from your subnet, and on
+most setups the Docker host itself cannot talk to a macvlan container without an
+extra shim interface.
+
 ## Build from source
 
 `docker-compose.yml` at the repo root builds the images locally instead of pulling them — use it for development, or to run a patched tree.

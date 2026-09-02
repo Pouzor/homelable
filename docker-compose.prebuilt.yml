@@ -13,6 +13,12 @@ services:
       - homelable
     cap_add:
       - NET_RAW
+    # MAC addresses: on this bridge network the scanner can never see them —
+    # ARP is layer 2 and every LAN host is one hop away behind the Docker
+    # gateway. To collect MACs (and so keep DHCP devices matched across an IP
+    # change), put the backend on the LAN: comment out the `networks:` key
+    # above and uncomment the line below (Linux hosts only).
+    # network_mode: host
 
   frontend:
     image: ghcr.io/pouzor/homelable-frontend:latest
