@@ -37,6 +37,11 @@ jobs:
     runs-on: ubuntu-latest
     container: debian:12
     timeout-minutes: 25
+    # Without this the runner hands container steps `sh -e {0}` — dash, where
+    # `set -o pipefail` and `[[ … ]]` are syntax errors.
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Install checkout prerequisites
         run: |
