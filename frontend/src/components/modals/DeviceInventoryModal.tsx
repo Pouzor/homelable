@@ -459,7 +459,13 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
           data: { ...data, ...(nested && hostNodeId ? { parent_id: hostNodeId } : {}) },
         })
       })
-      injectAutoEdges(res.data.edges)
+      // A nested guest needs no edge back to its host — being inside the box
+      // already says it runs there, and the edge only loops out and back in.
+      const nestedIds = new Set(nested ? guestNodeIds : [])
+      injectAutoEdges(res.data.edges.filter((e) => !(
+        (e.source === hostNodeId && nestedIds.has(e.target))
+        || (e.target === hostNodeId && nestedIds.has(e.source))
+      )))
       setSelected(null)
       await load()
       toast.success(

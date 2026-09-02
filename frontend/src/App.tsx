@@ -972,8 +972,11 @@ export default function App() {
       }
       addNode(newNode)
     })
-    // Host → guest links render as 'virtual' edges (VM/LXC ↔ host).
+    // Host → guest links render as 'virtual' edges (VM/LXC ↔ host). A nested
+    // guest gets none: sitting inside the host already says it runs there, and
+    // the edge just loops out of the box and back (#399 follow-up).
     pmEdges.forEach((pe) => {
+      if (hostOfChild[pe.target] === pe.source && mode === 'container') return
       onConnect({
         source: pe.source,
         sourceHandle: 'bottom',
