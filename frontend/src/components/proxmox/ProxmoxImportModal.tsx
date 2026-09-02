@@ -6,12 +6,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { proxmoxApi, type ProxmoxConnection } from '@/api/client'
 import { toast } from 'sonner'
-import type { ProxmoxNode, ProxmoxEdge, ProxmoxNodeType } from './types'
+import type { ProxmoxNode, ProxmoxEdge, ProxmoxNodeType, ProxmoxCanvasMode } from './types'
 
 interface ProxmoxImportModalProps {
   open: boolean
   onClose: () => void
-  onAddToCanvas: (nodes: ProxmoxNode[], edges: ProxmoxEdge[]) => void
+  onAddToCanvas: (nodes: ProxmoxNode[], edges: ProxmoxEdge[], mode: ProxmoxCanvasMode) => void
   onInventoryImported?: () => void
 }
 
@@ -62,6 +62,9 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onInventoryIm
   const [edges, setEdges] = useState<ProxmoxEdge[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [importMode, setImportMode] = useState<ImportMode>('pending')
+  // Opt-in: draw each host as a box holding its guests instead of laying them
+  // out side by side and joining them with 'virtual' edges.
+  const [canvasMode, setCanvasMode] = useState<ProxmoxCanvasMode>('linked')
 
   const updateField = (field: keyof ConnectionForm, value: string) =>
     setForm((f) => ({ ...f, [field]: value }))
@@ -136,7 +139,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onInventoryIm
     const selectedDevices = devices.filter((d) => checked.has(d.id))
     const selectedIds = new Set(selectedDevices.map((d) => d.id))
     const selectedEdges = edges.filter((e) => selectedIds.has(e.source) && selectedIds.has(e.target))
-    onAddToCanvas(selectedDevices, selectedEdges)
+    onAddToCanvas(selectedDevices, selectedEdges, canvasMode)
     toast.success(`Added ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''} to canvas`)
     onClose()
   }
@@ -148,6 +151,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onInventoryIm
     setConnectionStatus('idle')
     setConnectionMsg('')
     setImportMode('pending')
+    setCanvasMode('linked')
     onClose()
   }
 
@@ -265,6 +269,24 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onInventoryIm
                 </label>
               </div>
             </div>
+            {importMode === 'canvas' && (
+              <label className="flex items-start gap-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={canvasMode === 'container'}
+                  onChange={(e) => setCanvasMode(e.target.checked ? 'container' : 'linked')}
+                  className="w-3 h-3 mt-0.5 cursor-pointer shrink-0"
+                  style={{ accentColor: ACCENT }}
+                />
+                <span>
+                  <span className="block text-foreground">Nest guests inside their host</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    Container mode: each Proxmox host is drawn as a box holding its VMs and LXCs.
+                    Off, they are separate nodes linked by virtual edges.
+                  </span>
+                </span>
+              </label>
+            )}
             <div className="flex flex-wrap gap-2 pt-1">
               <Button
                 size="sm"

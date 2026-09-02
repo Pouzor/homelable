@@ -574,6 +574,47 @@ async def list_hidden(db: AsyncSession = Depends(get_db), _: str = Depends(get_c
     return await _with_canvas_counts(db, list(result.scalars().all()))
 
 
+@router.get("/pending/{device_id}/proxmox-children", response_model=list[InventoryDeviceResponse])
+async def list_proxmox_children(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> list[InventoryDevice]:
+    """Inventory rows for the guests a Proxmox host runs.
+
+    The Proxmox import records host -> guest as a ``device_inventory_links`` row
+    with ``discovery_source == "proxmox"``, keyed by IEEE. This resolves those
+    targets back to inventory rows so the UI can offer "add the children too"
+    when a host is placed on a canvas. Empty for anything that is not a host.
+    """
+    device = await db.get(InventoryDevice, device_id)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if not device.ieee_address:
+        return []
+    ieees = list(
+        (
+            await db.execute(
+                select(InventoryDeviceLink.target_ieee).where(
+                    InventoryDeviceLink.source_ieee == device.ieee_address,
+                    InventoryDeviceLink.discovery_source == "proxmox",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not ieees:
+        return []
+    result = await db.execute(
+        select(InventoryDevice).where(
+            InventoryDevice.ieee_address.in_(ieees),
+            InventoryDevice.status != "hidden",
+        )
+    )
+    return await _with_canvas_counts(db, list(result.scalars().all()))
+
+
 @router.post("/pending/bulk-approve", response_model=dict)
 async def bulk_approve_devices(
     payload: BulkActionRequest,

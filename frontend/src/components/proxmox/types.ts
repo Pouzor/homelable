@@ -31,3 +31,10 @@ export interface ProxmoxImportResponse {
   edges: ProxmoxEdge[]
   device_count: number
 }
+
+/** How a Proxmox selection is laid out when it reaches the canvas. */
+export type ProxmoxCanvasMode =
+  /** Hosts and guests as sibling nodes, joined by 'virtual' edges. */
+  | 'linked'
+  /** Host drawn as a box with its guests nested inside (`container_mode`). */
+  | 'container'

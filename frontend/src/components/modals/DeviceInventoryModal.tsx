@@ -21,6 +21,8 @@ import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
 import { getCenteredPosition } from '@/utils/viewportCenter'
 import { sourceBuckets, orderedSources, isRackDevice, SOURCE_META, type SourceBucket } from '@/utils/deviceSources'
 import { isRackable } from '@/utils/rackable'
+import { ProxmoxApproveModal, type ProxmoxApproveChoice } from '@/components/modals/ProxmoxApproveModal'
+import { layoutProxmoxContainers, measureProxmoxContainers } from '@/utils/proxmoxContainerLayout'
 
 interface DeviceInventoryModalProps {
   open: boolean
@@ -113,6 +115,34 @@ function extractDuplicateConflict(err: unknown): DuplicateNodeConflict | null {
   return null
 }
 
+/**
+ * The canvas node an inventory row becomes. Shared by every path that places a
+ * device (single approve, bulk approve, the Proxmox host + guests flow) so they
+ * cannot drift on labels, properties or the wireless status shortcut.
+ */
+function inventoryNodeData(d: InventoryEntry) {
+  const type = deviceType(d) ?? 'generic'
+  const zwave = isZwaveType(type)
+  const wireless = isZigbeeType(type) || zwave
+  return {
+    type,
+    data: {
+      label: deviceLabel(d),
+      type,
+      ip: d.ip ?? undefined,
+      mac: d.mac ?? undefined,
+      hostname: d.hostname ?? undefined,
+      status: wireless ? ('online' as const) : ('unknown' as const),
+      services: (d.services ?? []) as ServiceInfo[],
+      properties: zwave
+        ? buildZwaveProperties(d)
+        : isZigbeeType(type)
+          ? buildZigbeeProperties(d)
+          : [...(d.properties ?? []), ...buildMacProperty(d.mac)],
+    },
+  }
+}
+
 function injectAutoEdges(edges: AutoEdge[] | undefined) {
   if (!edges || edges.length === 0) return
   useCanvasStore.setState((state) => ({
@@ -145,6 +175,9 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
   // Set when a single approve is refused because the same host is already on
   // this design — the user decides: link to the existing node or duplicate.
   const [dupPrompt, setDupPrompt] = useState<{ device: InventoryEntry; conflict: DuplicateNodeConflict } | null>(null)
+  // Set when a Proxmox host with guests is about to be placed — the user picks
+  // whether the guests come along, and nested or linked.
+  const [proxmoxPrompt, setProxmoxPrompt] = useState<{ host: InventoryEntry; children: InventoryEntry[] } | null>(null)
 
   const load = useCallback(async () => {
     // Tour/demo mode: show injected devices, never touch the backend.
@@ -351,7 +384,98 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
     }
   }
 
-  const handleApprove = (device: InventoryEntry) => approveDevice(device, false)
+  // A Proxmox host is rarely wanted on its own: ask about its guests first.
+  // Anything else — and a host with no guests in the inventory — goes straight
+  // through the normal single-device approve.
+  const handleApprove = (device: InventoryEntry) => {
+    if (deviceType(device) === 'proxmox') { void promptProxmoxChildren(device); return }
+    return approveDevice(device, false)
+  }
+
+  const promptProxmoxChildren = async (device: InventoryEntry) => {
+    let guests: InventoryEntry[] = []
+    try {
+      guests = (await scanApi.proxmoxChildren(device.id)).data
+    } catch {
+      // No link data (or the call failed): fall back to placing the host alone.
+      guests = []
+    }
+    if (guests.length === 0) { await approveDevice(device, false); return }
+    // Close the device-detail modal first: two Base UI dialogs open at once trap
+    // focus on the underlying one and the prompt never shows.
+    setSelected(null)
+    setProxmoxPrompt({ host: device, children: guests })
+  }
+
+  const handleProxmoxConfirm = async ({ childIds, mode }: ProxmoxApproveChoice) => {
+    const prompt = proxmoxPrompt
+    if (!prompt) return
+    setProxmoxPrompt(null)
+    if (childIds.length === 0) { await approveDevice(prompt.host, false); return }
+
+    const wanted = new Set(childIds)
+    const guests = prompt.children.filter((c) => wanted.has(c.id))
+    try {
+      const res = await scanApi.bulkApprove([prompt.host.id, ...guests.map((g) => g.id)], activeDesignId)
+      const deviceToNode: Record<string, string> = {}
+      res.data.device_ids.forEach((did, i) => { deviceToNode[did] = res.data.node_ids[i] })
+
+      const hostNodeId = deviceToNode[prompt.host.id]
+      const placedGuests = guests.filter((g) => deviceToNode[g.id])
+      const guestNodeIds = placedGuests.map((g) => deviceToNode[g.id])
+
+      // The host was skipped (already on this canvas): there is no container to
+      // nest into, so drop the guests in a plain grid instead.
+      const nested = mode === 'container' && !!hostNodeId
+      const hostIds = hostNodeId ? [hostNodeId] : []
+      const childrenByHost: Record<string, string[]> = hostNodeId
+        ? { [hostNodeId]: nested ? guestNodeIds : [] }
+        : {}
+      const loose = nested ? [] : guestNodeIds
+      const measured = measureProxmoxContainers(hostIds, childrenByHost, loose.length)
+      const origin = getCenteredPosition(measured.width, measured.height)
+      const { positions, hostSizes } = layoutProxmoxContainers(hostIds, childrenByHost, loose, origin)
+
+      if (hostNodeId) {
+        const { type, data } = inventoryNodeData(prompt.host)
+        const size = hostSizes[hostNodeId]
+        addNode({
+          id: hostNodeId,
+          type,
+          position: positions[hostNodeId],
+          ...(nested && size ? { width: size.width, height: size.height } : {}),
+          data: { ...data, ...(nested ? { container_mode: true } : {}) },
+        })
+      }
+      // Hosts are added first above — addNode resolves `parent_id` against what
+      // is already in the store.
+      placedGuests.forEach((g) => {
+        const nodeId = deviceToNode[g.id]
+        const { type, data } = inventoryNodeData(g)
+        addNode({
+          id: nodeId,
+          type,
+          position: positions[nodeId] ?? getCenteredPosition(),
+          data: { ...data, ...(nested && hostNodeId ? { parent_id: hostNodeId } : {}) },
+        })
+      })
+      injectAutoEdges(res.data.edges)
+      setSelected(null)
+      await load()
+      toast.success(
+        `Added ${res.data.approved} device${res.data.approved !== 1 ? 's' : ''}` +
+        (nested ? ' (nested in the host)' : ''),
+      )
+      const dupes = res.data.skipped_devices ?? []
+      if (dupes.length > 0) {
+        const names = dupes.slice(0, 3).map((d) => d.label).join(', ')
+        const more = dupes.length > 3 ? ` +${dupes.length - 3} more` : ''
+        toast.info(`${dupes.length} already on this canvas, skipped: ${names}${more}`)
+      }
+    } catch {
+      toast.error('Failed to add the Proxmox host to the canvas')
+    }
+  }
 
   const goToExistingNode = (nodeId: string) => {
     setSelectedNode(nodeId)
@@ -402,27 +526,12 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       approvedDevices.forEach((d, i) => {
         const nodeId = deviceToNode[d.id]
         if (!nodeId) return
-        const type = deviceType(d) ?? 'generic'
-        const zwave = isZwaveType(type)
-        const wireless = isZigbeeType(type) || zwave
+        const { type, data } = inventoryNodeData(d)
         addNode({
           id: nodeId,
           type,
           position: { x: origin.x + (i % 4) * 160, y: origin.y + Math.floor(i / 4) * 100 },
-          data: {
-            label: deviceLabel(d),
-            type,
-            ip: d.ip ?? undefined,
-            mac: d.mac ?? undefined,
-            hostname: d.hostname ?? undefined,
-            status: wireless ? ('online' as const) : ('unknown' as const),
-            services: (d.services ?? []) as ServiceInfo[],
-            properties: zwave
-              ? buildZwaveProperties(d)
-              : isZigbeeType(type)
-                ? buildZigbeeProperties(d)
-                : [...(d.properties ?? []), ...buildMacProperty(d.mac)],
-          },
+          data,
         })
       })
       injectAutoEdges(res.data.edges)
@@ -808,6 +917,14 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
           setDevices((prev) => prev.map((d) => (d.id === saved.id ? saved : d)))
           setSelected(saved)
         }}
+      />
+
+      <ProxmoxApproveModal
+        open={proxmoxPrompt !== null}
+        host={proxmoxPrompt?.host ?? null}
+        guests={proxmoxPrompt?.children ?? []}
+        onCancel={() => setProxmoxPrompt(null)}
+        onConfirm={handleProxmoxConfirm}
       />
     </>
   )
