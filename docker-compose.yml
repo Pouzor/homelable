@@ -16,6 +16,12 @@ services:
     # Required for ping-based status checks
     cap_add:
       - NET_RAW
+    # MAC addresses: on this bridge network the scanner can never see them —
+    # ARP is layer 2 and every LAN host is one hop away behind the Docker
+    # gateway. To collect MACs (and so keep DHCP devices matched across an IP
+    # change), put the backend on the LAN: comment out the `networks:` key
+    # above and uncomment the line below (Linux hosts only).
+    # network_mode: host
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 10s

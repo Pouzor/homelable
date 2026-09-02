@@ -110,6 +110,14 @@ SCANNER_HTTP_VERIFY_TLS=false     # verify TLS certs on the HTTP probe
 
 The listed ports are appended to nmap's `-p` spec. Invalid entries (out-of-range, malformed, or reversed ranges) are silently skipped.
 
+### MAC addresses (Docker)
+
+The scan reports no MAC address when the backend runs on a Docker bridge
+network — ARP is layer 2, and from a bridge every LAN host sits behind the
+Docker gateway. It also means a DHCP device that changes IP comes back as a new
+inventory entry, since matching prefers the MAC. Fix and caveats:
+[INSTALLATION.md](./INSTALLATION.md#scanning-from-docker--mac-addresses).
+
 ### macOS / root privileges
 
 Some nmap scan types (SYN scan, OS detection) require root. If the scan fails with a permissions error, run it manually with sudo using the included script:
