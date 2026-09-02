@@ -363,7 +363,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       })
       injectAutoEdges(res.data.edges)
       const extra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
-      toast.success(`Approved ${nodeData.label}${extra}`)
+      toast.success(`Put ${nodeData.label} in the canvas${extra}`)
       // Keep the row (now on-canvas, shown with an "In N canvas" badge); reload
       // for a fresh canvas_count rather than dropping it until reopen.
       setSelected(null)
@@ -547,7 +547,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       setSelectedIds(new Set())
       await load()
       const linkExtra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
-      toast.success(`Approved ${res.data.approved} device${res.data.approved !== 1 ? 's' : ''}${linkExtra}`)
+      toast.success(`Put ${res.data.approved} device${res.data.approved !== 1 ? 's' : ''} in the canvas${linkExtra}`)
       // Bulk can't prompt per-device, so report the ones already on this canvas
       // (skipped as duplicates) instead of silently dropping them.
       const dupes = res.data.skipped_devices ?? []
@@ -833,7 +833,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                     disabled={selectedIds.size === 0}
                     className="text-xs px-3 py-1.5 rounded bg-[#39d353]/20 text-[#39d353] hover:bg-[#39d353]/30 disabled:opacity-40 font-medium transition-colors"
                   >
-                    Approve ({selectedIds.size})
+                    Put in current Canvas ({selectedIds.size})
                   </button>
                   <button
                     onClick={handleBulkHide}

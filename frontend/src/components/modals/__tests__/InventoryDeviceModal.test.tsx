@@ -133,7 +133,7 @@ describe('InventoryDeviceModal', () => {
     render(
       <InventoryDeviceModal device={device} onClose={onClose} onApprove={onApprove} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Put in current Canvas' }))
     expect(onApprove).toHaveBeenCalledWith(device)
     expect(onClose).not.toHaveBeenCalled()
   })
@@ -176,7 +176,7 @@ describe('InventoryDeviceModal — rack gear', () => {
     render(
       <InventoryDeviceModal device={rackDevice} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
-    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Put in current Canvas' })).toBeNull()
     // Hide and Delete still apply: the entry is inventory like any other.
     expect(screen.getByRole('button', { name: 'Hide' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
@@ -186,6 +186,6 @@ describe('InventoryDeviceModal — rack gear', () => {
     render(
       <InventoryDeviceModal device={makeDevice()} onClose={vi.fn()} onApprove={vi.fn()} onHide={vi.fn()} onIgnore={vi.fn()} />
     )
-    expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Put in current Canvas' })).toBeInTheDocument()
   })
 })
