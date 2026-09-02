@@ -844,6 +844,55 @@ describe('DeviceInventoryModal — Proxmox host approval', () => {
     })
   })
 
+  it('drops the host→guest edges when the guests are nested', async () => {
+    mockBulkApprove.mockResolvedValue({
+      data: {
+        approved: 3,
+        node_ids: ['n-host', 'n-g1', 'n-g2'],
+        device_ids: ['dev-pve', 'dev-g1', 'dev-g2'],
+        edges: [
+          { id: 'e1', source: 'n-host', target: 'n-g1', type: 'virtual' },
+          { id: 'e2', source: 'n-g2', target: 'n-host', type: 'virtual' },
+          { id: 'e3', source: 'n-other', target: 'n-g1', type: 'ethernet' },
+        ],
+        edges_created: 3, skipped: 0, skipped_devices: [],
+      },
+    })
+    await openProxmoxPrompt()
+    fireEvent.click(screen.getByRole('button', { name: /add 3 to canvas/i }))
+    await waitFor(() => expect(mockBulkApprove).toHaveBeenCalled())
+    // injectAutoEdges runs through the store's setState; assert on what it got.
+    const setState = vi.mocked(
+      (useCanvasStore as unknown as { setState: (fn: unknown) => void }).setState,
+    )
+    expect(setState).toHaveBeenCalled()
+    const updater = setState.mock.calls.at(-1)![0] as (s: unknown) => { edges: { id: string }[] }
+    const next = updater({ nodes: [], edges: [] })
+    // Only the unrelated edge survives; both host↔guest links are dropped.
+    expect(next.edges.map((e) => e.id)).toEqual(['e3'])
+  })
+
+  it('keeps the host→guest edges in linked mode', async () => {
+    mockBulkApprove.mockResolvedValue({
+      data: {
+        approved: 3,
+        node_ids: ['n-host', 'n-g1', 'n-g2'],
+        device_ids: ['dev-pve', 'dev-g1', 'dev-g2'],
+        edges: [{ id: 'e1', source: 'n-host', target: 'n-g1', type: 'virtual' }],
+        edges_created: 1, skipped: 0, skipped_devices: [],
+      },
+    })
+    await openProxmoxPrompt()
+    fireEvent.click(screen.getByRole('radio', { name: /separate nodes linked to the host/i }))
+    fireEvent.click(screen.getByRole('button', { name: /add 3 to canvas/i }))
+    await waitFor(() => expect(mockBulkApprove).toHaveBeenCalled())
+    const setState = vi.mocked(
+      (useCanvasStore as unknown as { setState: (fn: unknown) => void }).setState,
+    )
+    const updater = setState.mock.calls.at(-1)![0] as (s: unknown) => { edges: { id: string }[] }
+    expect(updater({ nodes: [], edges: [] }).edges.map((e) => e.id)).toEqual(['e1'])
+  })
+
   it('leaves the guests unnested in linked mode', async () => {
     await openProxmoxPrompt()
     fireEvent.click(screen.getByRole('radio', { name: /separate nodes linked to the host/i }))
