@@ -3,6 +3,11 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
+from app.schemas.racks import RACK_COLUMNS
+
+# Tallest plate the rack canvas offers; `MAX_RACK_U` on the frontend.
+MAX_PLATE_U = 48
+
 
 class InventoryDeviceResponse(BaseModel):
     id: str
@@ -57,6 +62,20 @@ class InventoryDeviceResponse(BaseModel):
     node_last_scan: datetime | None = None
     node_last_modified: datetime | None = None
     node_last_seen: datetime | None = None
+    # Rack modelisation: the front panel this device wears in every rack it is
+    # mounted in. The row owns it — see `RackDevice` and `/api/v1/racks`. All
+    # None/empty for a device that has never been racked or modelled.
+    rack_faceplate_id: str | None = None
+    rack_u_height: int | None = None
+    rack_col_span: int | None = None
+    rack_color: str | None = None
+    rack_ports: list[Any] = []
+
+    @field_validator("rack_ports", mode="before")
+    @classmethod
+    def _coerce_rack_ports(cls, v: Any) -> list[Any]:
+        """NULL on every row written before the column existed."""
+        return v if isinstance(v, list) else []
 
     @field_validator("properties", "discovery_sources", "services", mode="before")
     @classmethod
@@ -159,6 +178,36 @@ class InventoryDeviceUpdate(BaseModel):
     show_hardware: bool | None = None
     check_method: str | None = None
     check_target: str | None = None
+    # Rack modelisation, edited from the Device Inventory as well as from a rack
+    # canvas. Sending `rack_faceplate_id` is what models a device; the rest
+    # describes the plate it wears.
+    rack_faceplate_id: str | None = None
+    rack_u_height: int | None = None
+    rack_col_span: int | None = None
+    rack_color: str | None = None
+    rack_ports: list[Any] | None = None
+
+    @field_validator("rack_u_height")
+    @classmethod
+    def _plate_height(cls, v: int | None) -> int | None:
+        if v is not None and not 1 <= v <= MAX_PLATE_U:
+            raise ValueError(f"rack_u_height must be between 1 and {MAX_PLATE_U}")
+        return v
+
+    @field_validator("rack_col_span")
+    @classmethod
+    def _plate_span(cls, v: int | None) -> int | None:
+        if v is not None and not 1 <= v <= RACK_COLUMNS:
+            raise ValueError(f"rack_col_span must be between 1 and {RACK_COLUMNS}")
+        return v
+
+    @field_validator("rack_ports")
+    @classmethod
+    def _plate_ports(cls, v: list[Any] | None) -> list[Any] | None:
+        """A port with no id is not a port: no cable could ever name it."""
+        if v is None:
+            return None
+        return [p for p in v if isinstance(p, dict) and p.get("id")]
 
 
 class ScanRunResponse(BaseModel):
