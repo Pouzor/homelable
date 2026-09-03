@@ -26,10 +26,9 @@ interface PortShapeSize {
  */
 const PORT_W = U_PX * 0.3
 
-function portShapeSize(type: PortType): PortShapeSize {
-  return type === 'rj45'
-    ? { w: PORT_W, h: PORT_W * 0.92 }
-    : { w: PORT_W * 1.15, h: PORT_W * 0.62 }
+function portShapeSize(type: PortType, scale: number = 1): PortShapeSize {
+  const w = PORT_W * scale
+  return type === 'rj45' ? { w, h: w * 0.92 } : { w: w * 1.15, h: w * 0.62 }
 }
 
 /** RJ45 silhouette: body with the latch slot cut into the top, centred on (0,0). */
@@ -165,6 +164,14 @@ interface Props {
   revealed?: boolean
   /** Ports take the pointer (patch mode). */
   interactivePorts?: boolean
+  /**
+   * Multiplies the socket artwork.
+   *
+   * Sockets are a fixed pixel size so plates of different heights stay
+   * comparable on the canvas (see `PORT_W`). A blown-up plate — the port
+   * positioning editor — is not on the canvas and wants them to grow with it.
+   */
+  portScale?: number
   /** Port id -> colour of the cable plugged into it. */
   patchedPorts?: Map<string, string>
   draftPortId?: string | null
@@ -184,6 +191,7 @@ export const Faceplate = memo(function Faceplate({
   selected,
   revealed,
   interactivePorts,
+  portScale,
   patchedPorts,
   draftPortId,
   onPortPointerDown,
@@ -262,7 +270,7 @@ export const Faceplate = memo(function Faceplate({
           const cy = port.y * height
           const patchColor = patchedPorts?.get(port.id)
           const isDraft = draftPortId === port.id
-          const { w, h } = portShapeSize(port.type)
+          const { w, h } = portShapeSize(port.type, portScale)
           const stroke = isDraft ? palette.accent : patchColor ?? palette.portBezel
 
           return (

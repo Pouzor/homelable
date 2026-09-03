@@ -258,8 +258,9 @@ describe('RackDeviceModal — adding', () => {
     render(<RackDeviceModal />)
 
     // Regression: a max-w-md dialog with one column pushed the port list — and
-    // the Add button — below the fold on a laptop screen.
-    expect(screen.getByRole('dialog')).toHaveClass('sm:max-w-3xl')
+    // the Add button — below the fold on a laptop screen. Widened again when the
+    // full-size faceplate moved under the form.
+    expect(screen.getByRole('dialog')).toHaveClass('sm:max-w-5xl')
     const columns = document.querySelector('.sm\\:grid-cols-2')!
     expect(columns).not.toBeNull()
     // Fields on the left, ports on the right, both inside the same grid.
@@ -507,6 +508,70 @@ describe('RackDeviceModal — editing', () => {
     await waitFor(() =>
       expect(store().devices.find((d) => d.id === 'dev-pve1')!.ports).toHaveLength(before + 1),
     )
+  })
+
+  it('shows the plate full size instead of the thumbnail that never fit', () => {
+    store().openDeviceEditor('dev-pve1')
+    render(<RackDeviceModal />)
+
+    // Regression: the plate used to be drawn at 160×18px inside the faceplate
+    // button, where it lost its label and stacked its ports on one another.
+    const stage = screen.getByTestId('faceplate-stage')
+    expect(stage).toBeInTheDocument()
+    expect(Number.parseFloat(stage.style.width)).toBeGreaterThan(200)
+    expect(screen.getByLabelText('Faceplate').querySelector('svg')).toBeNull()
+  })
+
+  it('reveals the drag handles only once positioning is switched on', () => {
+    store().openDeviceEditor('dev-pve1')
+    render(<RackDeviceModal />)
+
+    const ports = store().devices.find((d) => d.id === 'dev-pve1')!.ports
+    expect(document.querySelectorAll('[data-port-handle]')).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Position ports' }))
+    expect(document.querySelectorAll('[data-port-handle]')).toHaveLength(ports.length)
+  })
+
+  it('has nothing to position on a plate with no port', async () => {
+    store().openDeviceEditor('dev-pve1')
+    render(<RackDeviceModal />)
+
+    const ports = store().devices.find((d) => d.id === 'dev-pve1')!.ports
+    for (const port of ports) {
+      fireEvent.click(screen.getByLabelText(`Remove port ${port.label}`))
+    }
+    expect(screen.getByRole('button', { name: 'Position ports' })).toBeDisabled()
+  })
+
+  it('spreads added ports along the plate instead of stacking them', () => {
+    store().openDeviceEditor('dev-pve1')
+    render(<RackDeviceModal />)
+
+    // Regression: every new port landed on the middle of the plate, so three
+    // added ports drew as one socket. Each continues the row of the last.
+    const before = store().devices.find((d) => d.id === 'dev-pve1')!.ports
+    fireEvent.click(screen.getByRole('button', { name: 'Add port' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add port' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Position ports' }))
+
+    const added = [...document.querySelectorAll<HTMLElement>('[data-port-handle]')].slice(
+      before.length,
+    )
+    expect(added).toHaveLength(2)
+    expect(added[0].style.left).not.toBe(added[1].style.left)
+  })
+
+  it('gives an accessory no port section at all', () => {
+    const id = store().mountAccessory('shelf-1u', 'rack-main', { uStart: 6 })!
+    store().openDeviceEditor(id)
+    render(<RackDeviceModal />)
+
+    // A shelf stands for no inventory row, so it has nothing to cable.
+    expect(screen.queryByRole('button', { name: 'Add port' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Position ports' })).toBeNull()
+    // The plate is still drawn: it is the preview of the accessory itself.
+    expect(screen.getByTestId('faceplate-stage')).toBeInTheDocument()
   })
 
   it('keeps the port name field usable next to the type select', () => {

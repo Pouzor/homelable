@@ -63,6 +63,27 @@ export interface Port {
   y: number
 }
 
+/**
+ * The rack modelisation of a device — what it looks like in *any* rack.
+ *
+ * Owned by the Device Inventory row, not by the mount: a device wears the same
+ * front panel, at the same size, with the same ports wherever it is racked.
+ * Only its placement (`rackId`, `uStart`, `colStart`), its pinned status and its
+ * label stay per canvas. Editing a mount writes this back, silently, for every
+ * other rack.
+ *
+ * Full mode only. Standalone has no inventory to hang it on, so ports there stay
+ * per mount (see `standaloneStorage`).
+ */
+export interface RackModel {
+  faceplateId: string
+  /** Null when the device was modelled before a size was recorded. */
+  uHeight: number | null
+  colSpan: number | null
+  color: string | null
+  ports: Port[]
+}
+
 // ---------------------------------------------------------------------------
 // Faceplates
 // ---------------------------------------------------------------------------
@@ -267,4 +288,9 @@ export interface InventoryDevice {
   racked: boolean
   /** Faceplate proposed when the device is dropped into a rack. */
   suggestedFaceplateId: string
+  /**
+   * Front panel already modelled for this device, reused on every mount. Null
+   * for a device never racked — `suggestedFaceplateId` then seeds the plate.
+   */
+  rackModel?: RackModel | null
 }

@@ -9,6 +9,7 @@ from app.api.deps import get_current_user
 from app.db.database import get_db
 from app.db.models import CanvasState, Design, InventoryDevice, Node, Rack, RackCable, RackDevice
 from app.schemas.racks import (
+    RACK_COLUMNS,
     RackCableResponse,
     RackDeviceResponse,
     RackInventoryItem,
@@ -124,6 +125,51 @@ def _ip_tokens(ip: str | None) -> list[str]:
     return [t.strip() for t in ip.split(",") if t.strip()] if ip else []
 
 
+def _rack_model(device: InventoryDevice) -> dict[str, Any] | None:
+    """The rack modelisation the inventory row owns, or None when never modelled.
+
+    `rack_faceplate_id` is the flag: a device that has never been mounted (or was
+    mounted before this became inventory-owned) carries NULL, and the mount's own
+    denormalized copy then stands unchanged.
+    """
+    if not device.rack_faceplate_id:
+        return None
+    return {
+        "faceplate_id": device.rack_faceplate_id,
+        "u_height": device.rack_u_height,
+        "col_span": device.rack_col_span,
+        "color": device.rack_color,
+        "ports": [p for p in (device.rack_ports or []) if isinstance(p, dict) and p.get("id")],
+    }
+
+
+def _with_model(
+    device: RackDevice, model: dict[str, Any] | None, rack_u_height: int | None
+) -> RackDeviceResponse:
+    """Overlay the inventory's rack modelisation onto a mount for the response.
+
+    Geometry is global, but a rack is not: a device grown to 4U in one rack may no
+    longer fit where it sits in another. Height and width are therefore applied
+    only when they still fit at the mount's own `u_start` / `col_start`; the plate,
+    its colour and its ports always are, since none of them can overflow a rail.
+    """
+    row = RackDeviceResponse.model_validate(device)
+    if model is None:
+        return row
+    patch: dict[str, Any] = {
+        "faceplate_id": model["faceplate_id"],
+        "ports": model["ports"],
+        "color": model["color"],
+    }
+    u_height = model["u_height"]
+    if u_height and (rack_u_height is None or row.u_start + u_height - 1 <= rack_u_height):
+        patch["u_height"] = u_height
+    col_span = model["col_span"]
+    if col_span and row.col_start + col_span <= RACK_COLUMNS:
+        patch["col_span"] = col_span
+    return row.model_copy(update=patch)
+
+
 _Row = TypeVar("_Row", Rack, RackDevice, RackCable)
 
 
@@ -165,9 +211,27 @@ async def load_racks(
     cables = (await db.execute(select(RackCable).where(RackCable.design_id == design_id))).scalars().all()
     state = await db.get(CanvasState, design_id)
 
+    # The inventory row owns the front panel, so it wins over the mount's copy.
+    inventory_ids = {d.device_id for d in devices if d.device_id}
+    models: dict[str, dict[str, Any]] = {}
+    if inventory_ids:
+        rows = (
+            await db.execute(
+                select(InventoryDevice).where(InventoryDevice.id.in_(inventory_ids))
+            )
+        ).scalars().all()
+        for row in rows:
+            model = _rack_model(row)
+            if model is not None:
+                models[row.id] = model
+    heights = {r.id: r.u_height for r in racks}
+
     return RackStateResponse(
         racks=[RackResponse.model_validate(r) for r in racks],
-        devices=[RackDeviceResponse.model_validate(d) for d in devices],
+        devices=[
+            _with_model(d, models.get(d.device_id or ""), heights.get(d.rack_id))
+            for d in devices
+        ],
         cables=[RackCableResponse.model_validate(c) for c in cables],
         viewport=state.viewport if state else {"x": 0, "y": 0, "zoom": 1},
     )
@@ -233,6 +297,18 @@ async def save_racks(
                 setattr(db_device, field, value)
         else:
             db.add(RackDevice(**payload))
+
+        # Write-through: the device's front panel belongs to the inventory row,
+        # not to this mount, so every rack showing the same device picks the
+        # change up on its next load. Accessories have no row and keep theirs.
+        if device_data.device_id:
+            entry = await db.get(InventoryDevice, device_data.device_id)
+            if entry is not None:
+                entry.rack_faceplate_id = device_data.faceplate_id
+                entry.rack_u_height = device_data.u_height
+                entry.rack_col_span = device_data.col_span
+                entry.rack_color = device_data.color
+                entry.rack_ports = [p for p in device_data.ports if isinstance(p, dict)]
     await db.flush()  # devices must exist before cables point at them
 
     for cable_data in body.cables:
@@ -349,6 +425,11 @@ async def rack_inventory(
                 ),
                 node_last_seen=node_device.last_seen if node_device else None,
                 racked=device.id in mounted,
+                rack_faceplate_id=device.rack_faceplate_id,
+                rack_u_height=device.rack_u_height,
+                rack_col_span=device.rack_col_span,
+                rack_color=device.rack_color,
+                rack_ports=device.rack_ports or [],
             )
         )
     return RackInventoryResponse(items=items)

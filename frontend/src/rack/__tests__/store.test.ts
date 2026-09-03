@@ -165,6 +165,90 @@ describe('mounting', () => {
     expect(store().inventory.find((i) => i.id === 'inv-sw8')!.racked).toBe(true)
   })
 
+  it('reuses the front panel the device already wears in another rack', () => {
+    // The Device Inventory row owns the rack modelisation, so a device dropped
+    // into a second rack must come back with the plate, size, colour and ports
+    // it was given the first time — not the plate its type suggests.
+    useRackStore.setState({
+      inventory: store().inventory.map((item) =>
+        item.id === 'inv-sw8'
+          ? {
+              ...item,
+              rackModel: {
+                faceplateId: 'switch-24',
+                uHeight: 1,
+                colSpan: RACK_COLUMNS,
+                color: '#ff6e00',
+                ports: [{ id: 'saved-1', label: 'uplink', type: 'sfp' as const, x: 0.9, y: 0.4 }],
+              },
+            }
+          : item,
+      ),
+    })
+
+    const id = store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 5 })!
+    const device = store().devices.find((d) => d.id === id)!
+    expect(device.faceplateId).toBe('switch-24')
+    expect(device.colSpan).toBe(RACK_COLUMNS)
+    expect(device.color).toBe('#ff6e00')
+    expect(device.ports).toEqual([
+      { id: 'saved-1', label: 'uplink', type: 'sfp', x: 0.9, y: 0.4 },
+    ])
+  })
+
+  it('seeds the plate from the template when the drop asks for another one', () => {
+    useRackStore.setState({
+      inventory: store().inventory.map((item) =>
+        item.id === 'inv-sw8'
+          ? {
+              ...item,
+              rackModel: {
+                faceplateId: 'switch-24',
+                uHeight: 1,
+                colSpan: RACK_COLUMNS,
+                color: null,
+                ports: [{ id: 'saved-1', label: 'uplink', type: 'sfp' as const, x: 0.9, y: 0.4 }],
+              },
+            }
+          : item,
+      ),
+    })
+
+    // The saved ports belong to the saved plate; a different plate brings its own.
+    const id = store().mountFromInventory('inv-sw8', 'rack-main', {
+      uStart: 5,
+      faceplateId: 'switch-8',
+    })!
+    const device = store().devices.find((d) => d.id === id)!
+    expect(device.faceplateId).toBe('switch-8')
+    expect(device.ports).toHaveLength(getFaceplate('switch-8').ports.length)
+    expect(device.ports.map((p) => p.id)).not.toContain('saved-1')
+  })
+
+  it('writes an edited plate back onto the inventory entry it stands for', () => {
+    store().updateDevice('dev-pve1', { faceplateId: 'server-2u-bays', uHeight: 2 })
+
+    const device = store().devices.find((d) => d.id === 'dev-pve1')!
+    const entry = store().inventory.find((i) => i.id === device.deviceId)!
+    expect(entry.rackModel).toMatchObject({ faceplateId: 'server-2u-bays', uHeight: 2 })
+  })
+
+  it('writes edited ports back onto the inventory entry too', () => {
+    const ports = [{ id: 'p-x', label: 'wan', type: 'rj45' as const, x: 0.15, y: 0.6 }]
+    store().setPorts('dev-pve1', ports)
+
+    const device = store().devices.find((d) => d.id === 'dev-pve1')!
+    const entry = store().inventory.find((i) => i.id === device.deviceId)!
+    expect(entry.rackModel!.ports).toEqual(ports)
+  })
+
+  it('leaves the inventory alone for an accessory, which stands for no device', () => {
+    const id = store().mountAccessory('shelf-1u', 'rack-main', { uStart: 6 })!
+    const before = store().inventory
+    store().updateDevice(id, { color: '#ffffff' })
+    expect(store().inventory).toBe(before)
+  })
+
   it('clears the racked flag again when the device is unmounted', () => {
     expect(store().inventory.find((i) => i.id === 'inv-pve1')!.racked).toBe(true)
     store().unmountDevice('dev-pve1')

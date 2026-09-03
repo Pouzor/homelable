@@ -475,6 +475,27 @@ async def init_db() -> None:
             ("nodes.display_view", "ALTER TABLE nodes ADD COLUMN display_view JSON"),
         ):
             await _try_migrate(conn, sql, label=label)
+        # 3.3.x — the inventory row owns the device's rack modelisation: the
+        # faceplate it wears, its size and its ports (labels, types, positions).
+        # A mount reads them at load and writes them back on save, so a device
+        # keeps the same front panel in every rack it is mounted in.
+        for label, sql in (
+            (
+                "device_inventory.rack_faceplate_id",
+                "ALTER TABLE device_inventory ADD COLUMN rack_faceplate_id TEXT",
+            ),
+            (
+                "device_inventory.rack_u_height",
+                "ALTER TABLE device_inventory ADD COLUMN rack_u_height INTEGER",
+            ),
+            (
+                "device_inventory.rack_col_span",
+                "ALTER TABLE device_inventory ADD COLUMN rack_col_span INTEGER",
+            ),
+            ("device_inventory.rack_color", "ALTER TABLE device_inventory ADD COLUMN rack_color TEXT"),
+            ("device_inventory.rack_ports", "ALTER TABLE device_inventory ADD COLUMN rack_ports JSON"),
+        ):
+            await _try_migrate(conn, sql, label=label)
         for label, sql in (
             (
                 "device_inventory.status_live.backfill",
