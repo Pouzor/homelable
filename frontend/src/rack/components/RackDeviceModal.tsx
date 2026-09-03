@@ -406,7 +406,40 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               onLink={canRelink ? () => setDevicePickerOpen(true) : undefined}
             />
             <div className="flex flex-col gap-2">
-              <SectionHeader>Faceplate</SectionHeader>
+              {/* The catalog is visual, so the plate name doubles as the button
+                  that opens it — the drawing below is the real preview. */}
+              <SectionHeader
+                aside={
+                  <button
+                    type="button"
+                    aria-label="Faceplate"
+                    data-faceplate={faceplateId}
+                    onClick={() => setPickerOpen(true)}
+                    className="flex max-w-[65%] cursor-pointer items-center gap-1.5 rounded border border-[#30363d] px-2 py-0.5 text-[11px] hover:border-[#00d4ff]"
+                  >
+                    {/* The current plate names itself; `Change` is what says the
+                        name is a button and not a read-out. */}
+                    <span className="truncate text-muted-foreground">
+                      {getFaceplate(faceplateId).label}
+                    </span>
+                    <span className="shrink-0 text-[#00d4ff]">Change</span>
+                  </button>
+                }
+              >
+                Faceplate
+              </SectionHeader>
+              <FaceplatePicker
+                open={pickerOpen}
+                value={faceplateId}
+                kind={!isEdit && source === 'accessory' ? 'accessory' : undefined}
+                onPick={pickFaceplate}
+                onClose={() => setPickerOpen(false)}
+              />
+              {plateChanged && isEdit && (
+                <p className="text-[11px] text-[#e3b341]">
+                  Changing the plate replaces its ports and drops their patches.
+                </p>
+              )}
               <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded border border-[#30363d] bg-[#0d1117] p-3">
                 <PortPositionEditor
                   faceplateId={faceplateId}
@@ -528,38 +561,6 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder={source === 'accessory' ? getFaceplate(faceplateId).label : 'Device name'}
               />
-            </Field>
-
-            <Field label="Faceplate">
-              {/* The catalog is visual — the button previews the current plate and
-                  opens the picker rather than hiding drawings behind a name. */}
-              <button
-                type="button"
-                aria-label="Faceplate"
-                data-faceplate={faceplateId}
-                onClick={() => setPickerOpen(true)}
-                className="flex cursor-pointer items-center gap-3 rounded border border-[#30363d] bg-[#21262d] p-2 text-left hover:border-[#00d4ff]"
-              >
-                {/* No thumbnail here any more: a plate squeezed into 160×18px
-                    dropped its label and stacked its ports on top of each other.
-                    The full-size plate below the form is the preview. */}
-                <span className="flex flex-col">
-                  <span className="text-xs">{getFaceplate(faceplateId).label}</span>
-                  <span className="text-[11px] text-[#00d4ff]">Browse faceplates…</span>
-                </span>
-              </button>
-              <FaceplatePicker
-                open={pickerOpen}
-                value={faceplateId}
-                kind={!isEdit && source === 'accessory' ? 'accessory' : undefined}
-                onPick={pickFaceplate}
-                onClose={() => setPickerOpen(false)}
-              />
-              {plateChanged && isEdit && (
-                <p className="text-[11px] text-[#e3b341]">
-                  Changing the plate replaces its ports and drops their patches.
-                </p>
-              )}
             </Field>
 
             <SectionHeader>Placement</SectionHeader>
