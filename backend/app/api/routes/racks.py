@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import Any, TypeVar
 
@@ -143,15 +144,52 @@ def _rack_model(device: InventoryDevice) -> dict[str, Any] | None:
     }
 
 
+# A mount's footprint in the rack grid: (u_start, u_height, col_start, col_span).
+_Box = tuple[int, int, int, int]
+
+
+def _height_fits(u_start: int, u_height: int | None, rack_u_height: int | None) -> bool:
+    """Whether a mount of that height, starting there, stays under the top rail."""
+    if not u_height:
+        return False
+    return rack_u_height is None or u_start + u_height - 1 <= rack_u_height
+
+
+def _span_fits(col_start: int, col_span: int | None) -> bool:
+    """Whether a mount of that width, starting there, stays inside the grid."""
+    if not col_span:
+        return False
+    return col_start + col_span <= RACK_COLUMNS
+
+
+def _overlaps(box: _Box, others: Sequence[_Box]) -> bool:
+    """Whether a footprint (u_start, u_height, col_start, col_span) hits any other."""
+    u_start, u_height, col_start, col_span = box
+    return any(
+        u_start < o_u + o_uh
+        and o_u < u_start + u_height
+        and col_start < o_c + o_cs
+        and o_c < col_start + col_span
+        for o_u, o_uh, o_c, o_cs in others
+    )
+
+
 def _with_model(
-    device: RackDevice, model: dict[str, Any] | None, rack_u_height: int | None
+    device: RackDevice,
+    model: dict[str, Any] | None,
+    rack_u_height: int | None,
+    neighbours: Sequence[_Box] = (),
 ) -> RackDeviceResponse:
     """Overlay the inventory's rack modelisation onto a mount for the response.
 
     Geometry is global, but a rack is not: a device grown to 4U in one rack may no
     longer fit where it sits in another. Height and width are therefore applied
-    only when they still fit at the mount's own `u_start` / `col_start`; the plate,
-    its colour and its ports always are, since none of them can overflow a rail.
+    only when they still fit at the mount's own `u_start` / `col_start` *and* the
+    bigger footprint lands on no neighbour — the placement rule the canvas itself
+    enforces, and one a plain rail check misses: a 4U model overlaid on a mount
+    with a device one U above it would draw two plates on the same U, and save
+    back in that state. The plate, its colour and its ports always are, since
+    none of them can overflow anything.
     """
     row = RackDeviceResponse.model_validate(device)
     if model is None:
@@ -161,12 +199,16 @@ def _with_model(
         "ports": model["ports"],
         "color": model["color"],
     }
-    u_height = model["u_height"]
-    if u_height and (rack_u_height is None or row.u_start + u_height - 1 <= rack_u_height):
+    u_height = row.u_height
+    if _height_fits(row.u_start, model["u_height"], rack_u_height) and not _overlaps(
+        (row.u_start, model["u_height"], row.col_start, row.col_span), neighbours
+    ):
+        u_height = model["u_height"]
         patch["u_height"] = u_height
-    col_span = model["col_span"]
-    if col_span and row.col_start + col_span <= RACK_COLUMNS:
-        patch["col_span"] = col_span
+    if _span_fits(row.col_start, model["col_span"]) and not _overlaps(
+        (row.u_start, u_height, row.col_start, model["col_span"]), neighbours
+    ):
+        patch["col_span"] = model["col_span"]
     return row.model_copy(update=patch)
 
 
@@ -226,12 +268,27 @@ async def load_racks(
                 models[row.id] = model
     heights = {r.id: r.u_height for r in racks}
 
+    # An overlaid size must not land on the mount above. Footprints start as
+    # persisted and are replaced by what the overlay actually applied, so a rack
+    # of devices that all grew elsewhere resolves in one deterministic pass
+    # instead of each one being measured against stale neighbours.
+    boxes: dict[str, _Box] = {
+        d.id: (d.u_start, d.u_height, d.col_start, d.col_span) for d in devices
+    }
+    mounted: list[RackDeviceResponse] = []
+    for d in devices:
+        placed = _with_model(
+            d,
+            models.get(d.device_id or ""),
+            heights.get(d.rack_id),
+            [boxes[o.id] for o in devices if o.id != d.id and o.rack_id == d.rack_id],
+        )
+        boxes[d.id] = (placed.u_start, placed.u_height, placed.col_start, placed.col_span)
+        mounted.append(placed)
+
     return RackStateResponse(
         racks=[RackResponse.model_validate(r) for r in racks],
-        devices=[
-            _with_model(d, models.get(d.device_id or ""), heights.get(d.rack_id))
-            for d in devices
-        ],
+        devices=mounted,
         cables=[RackCableResponse.model_validate(c) for c in cables],
         viewport=state.viewport if state else {"x": 0, "y": 0, "zoom": 1},
     )
@@ -292,6 +349,9 @@ async def save_racks(
         payload = device_data.model_dump()
         payload["design_id"] = body.design_id
         db_device = await _owned(db, RackDevice, device_data.id, body.design_id)
+        # The size this mount held before the save, to tell a real resize from an
+        # echo of what the load handed out. See the write-through below.
+        was = (db_device.u_height, db_device.col_span) if db_device else None
         if db_device:
             for field, value in payload.items():
                 setattr(db_device, field, value)
@@ -305,10 +365,17 @@ async def save_racks(
             entry = await db.get(InventoryDevice, device_data.device_id)
             if entry is not None:
                 entry.rack_faceplate_id = device_data.faceplate_id
-                entry.rack_u_height = device_data.u_height
-                entry.rack_col_span = device_data.col_span
                 entry.rack_color = device_data.color
                 entry.rack_ports = [p for p in device_data.ports if isinstance(p, dict)]
+                # Size, unlike the plate, is not written back blind. The load
+                # overlays it only where it still fits this rack, so a mount can
+                # legitimately hold less than the row does — and saving that back
+                # would shrink the device in every other rack. Only a size this
+                # save actually changes travels; an unchanged one is an echo.
+                if was is None or device_data.u_height != was[0]:
+                    entry.rack_u_height = device_data.u_height
+                if was is None or device_data.col_span != was[1]:
+                    entry.rack_col_span = device_data.col_span
     await db.flush()  # devices must exist before cables point at them
 
     for cable_data in body.cables:
