@@ -15,7 +15,9 @@ export function SectionHeader({
   return (
     <div
       data-testid="section-header"
-      className="flex items-center justify-between gap-2 border-b border-[#30363d] pb-1"
+      // Fixed height, so a rule with a button in its `aside` still lines up
+      // with the plain one beside it.
+      className="flex h-7 items-center justify-between gap-2 border-b border-[#30363d]"
     >
       <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
         {children}
