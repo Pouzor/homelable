@@ -450,6 +450,37 @@ async def test_check_service_non_http_port_is_unknown():
     mock_http.assert_not_called()
 
 
+@pytest.mark.parametrize("port", [515, 9100, 9101, 9107])
+@pytest.mark.asyncio
+async def test_check_service_never_touches_a_raw_printing_port(port):
+    """Issue #404: a GET to JetDirect/LPD makes the printer print it.
+
+    The status checker runs every 60 s, so a printer approved as a node used to
+    print one page a minute, forever. These ports get no request at all.
+    """
+    svc = {"port": port, "protocol": "tcp", "service_name": "jetdirect"}
+    with patch("app.services.status_checker._tcp_connect", new_callable=AsyncMock) as mock_tcp, \
+         patch("app.services.status_checker._http_get", new_callable=AsyncMock) as mock_http:
+        result = await check_service(svc, "10.0.0.1")
+    assert result == "unknown"
+    mock_tcp.assert_not_called()
+    mock_http.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_check_service_printer_port_named_http_is_still_skipped():
+    """A service_name saying "http" must not talk the checker onto 9100.
+
+    Fingerprinting labels 9100 "Node Exporter", and an override can put any
+    name there — the port decides, not the label.
+    """
+    svc = {"port": 9100, "protocol": "tcp", "service_name": "http-node-exporter"}
+    with patch("app.services.status_checker._http_get", new_callable=AsyncMock) as mock_http:
+        result = await check_service(svc, "10.0.0.1")
+    assert result == "unknown"
+    mock_http.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_check_service_ssh_port_22_is_unknown():
     """SSH (port 22) is never checked — keep it grey, not red/green."""
