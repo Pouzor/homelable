@@ -12,6 +12,7 @@
  * prints everything discovery found; only the canvas-side rows go missing.
  */
 import { useRackPalette } from '../rackTheme'
+import { SectionHeader } from './SectionHeader'
 import type { DeviceStatus, InventoryDevice } from '@/types'
 
 interface Row {
@@ -78,27 +79,30 @@ export function LinkedDevicePanel({
 
   const services = entry.services ?? []
 
+  // The title sits on a section rule, level with the faceplate's own, and takes
+  // the status with it: the two halves of the strip must read as one row.
   const header = (
-    <header className="mb-2 flex items-center justify-between gap-2">
-      <span className="text-xs font-medium">Linked device</span>
-      <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        <span
-          aria-hidden
-          className="inline-block h-2 w-2 rounded-full"
-          style={{ backgroundColor: palette.status[status] }}
-        />
-        {status}
-      </span>
-    </header>
+    <SectionHeader
+      aside={
+        <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <span
+            aria-hidden
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ backgroundColor: palette.status[status] }}
+          />
+          {status}
+        </span>
+      }
+    >
+      Linked device
+    </SectionHeader>
   )
 
   return (
-    <section
-      aria-label="Linked device"
-      className="rounded border border-[#30363d] bg-[#0d1117] p-2.5"
-    >
+    <div aria-label="Linked device" className="flex flex-col gap-2">
       {header}
 
+      <section className="flex flex-1 flex-col rounded border border-[#30363d] bg-[#0d1117] p-2.5">
       {rows.length === 0 && (
         <p className="text-[11px] text-muted-foreground">
           Nothing known about this device yet.
@@ -151,6 +155,7 @@ export function LinkedDevicePanel({
           Link to another device…
         </button>
       )}
-    </section>
+      </section>
+    </div>
   )
 }

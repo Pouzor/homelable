@@ -22,6 +22,7 @@ import { FaceplatePicker } from './FaceplatePicker'
 import { PortListEditor } from './PortListEditor'
 import { PortPositionEditor } from './PortPositionEditor'
 import { LinkedDevicePanel } from './LinkedDevicePanel'
+import { SectionHeader } from './SectionHeader'
 import { DevicePickerModal } from './DevicePickerModal'
 import { deviceTypeForFaceplate, getFaceplate } from '../faceplates'
 import { findSlot } from '../layout'
@@ -392,23 +393,36 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
             </Field>
           )}
 
-          {/* The plate leads: it is what the user is editing, and it is where
-              ports are placed. Drawn at rack proportions — coordinates are unit
-              fractions, so the blow-up never reaches the saved data. */}
-          <div className="flex flex-col items-center gap-2 rounded border border-[#30363d] bg-[#0d1117] p-3">
-            <PortPositionEditor
-              faceplateId={faceplateId}
-              label={label || getFaceplate(faceplateId).label}
+          {/* The strip leads with the two things the user checks first: what
+              this mount actually stands for, and the plate it wears. The plate
+              is drawn at rack proportions — coordinates are unit fractions, so
+              the blow-up never reaches the saved data. The two halves are
+              spelled out rather than `sm:grid-cols-2` so the strip stays
+              distinguishable from the form grid below it. */}
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
+            <LinkedDevicePanel
+              entry={mountEntry}
               status={previewStatus}
-              ports={ports}
-              uHeight={uHeight}
-              colSpan={colSpan}
-              color={color}
-              interactive={positioning && !isAccessory}
-              selectedPortId={selectedPortId}
-              onSelect={setSelectedPortId}
-              onChange={setLocalPorts}
+              onLink={canRelink ? () => setDevicePickerOpen(true) : undefined}
             />
+            <div className="flex flex-col gap-2">
+              <SectionHeader>Faceplate</SectionHeader>
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded border border-[#30363d] bg-[#0d1117] p-3">
+                <PortPositionEditor
+                  faceplateId={faceplateId}
+                  label={label || getFaceplate(faceplateId).label}
+                  status={previewStatus}
+                  ports={ports}
+                  uHeight={uHeight}
+                  colSpan={colSpan}
+                  color={color}
+                  interactive={positioning && !isAccessory}
+                  selectedPortId={selectedPortId}
+                  onSelect={setSelectedPortId}
+                  onChange={setLocalPorts}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Left column: what the device is and where it sits. Right column:
@@ -416,6 +430,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               below the fold. */}
           <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
             <div className="flex flex-col gap-3">
+            <SectionHeader>Information</SectionHeader>
             {showInventoryPicker && STANDALONE && (
               /* No backend, so no Device Inventory modal to open (it reads
                  `pending_devices` over REST) — standalone keeps the flat list. */
@@ -547,6 +562,8 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               )}
             </Field>
 
+            <SectionHeader>Placement</SectionHeader>
+
             <div className="grid grid-cols-2 gap-3">
               <Field label="U position">
                 <input
@@ -638,8 +655,11 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
             </div>
 
             <div className="flex flex-col gap-3">
+            {/* An accessory has no ports, so it gets no heading either — a
+                rule over an empty column reads as a missing section. */}
             {!isAccessory && (
               <>
+                <SectionHeader>Ports</SectionHeader>
                 <PortListEditor
                   ports={ports}
                   onChange={setLocalPorts}
@@ -667,14 +687,6 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               </>
             )}
 
-            {/* The column below the port list used to be dead space. A mount
-                that stands for an inventory entry fills it with what the
-                logical canvas knows about the same box. */}
-            <LinkedDevicePanel
-              entry={mountEntry}
-              status={previewStatus}
-              onLink={canRelink ? () => setDevicePickerOpen(true) : undefined}
-            />
             {canRelink && devicePickerOpen && (
               /* Inside this DialogContent for the same reason as the inventory
                  picker: an open Base UI dialog makes outside content inert.

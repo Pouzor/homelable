@@ -268,6 +268,34 @@ describe('RackDeviceModal — adding', () => {
     expect(columns).toContainElement(screen.getByRole('button', { name: 'Add port' }))
   })
 
+  /** The titles of the rules the form is split by, in document order. */
+  function sectionTitles() {
+    return screen
+      .getAllByTestId('section-header')
+      .map((el) => el.firstElementChild?.textContent)
+  }
+
+  it('heads every block of the form with a section rule', () => {
+    store().openDeviceEditor('dev-pve1')
+    render(<RackDeviceModal />)
+
+    expect(sectionTitles()).toEqual([
+      'Linked device',
+      'Faceplate',
+      'Information',
+      'Placement',
+      'Ports',
+    ])
+  })
+
+  it('leaves the ports heading off an accessory, which has none', () => {
+    // No inventory row behind it either, so the strip is the plate alone.
+    store().openDeviceEditor('dev-shelf')
+    render(<RackDeviceModal />)
+
+    expect(sectionTitles()).toEqual(['Faceplate', 'Information', 'Placement'])
+  })
+
   it('offers a Width option for every plate width in the catalog', async () => {
     const { FACEPLATES } = await import('../faceplates')
     store().openDeviceEditor()

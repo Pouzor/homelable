@@ -14,14 +14,11 @@ import { clampPort, snapThreshold, snapToPeers } from '../portLayout'
 import { useRackPalette } from '../rackTheme'
 import { RACK_COLUMNS, type DeviceStatus, type Port } from '@/types'
 
-/** Width of a full-width (12-column) plate in the editor. */
+/** Default width of a full-width (12-column) plate in the editor. */
 const EDITOR_FULL_WIDTH = 660
 
-/** Editor pixels per canvas pixel, before the small-plate blow-up below. */
-const SCALE = EDITOR_FULL_WIDTH / INNER_WIDTH_PX['19']
-
 /**
- * A 1U plate is ~35px tall at `SCALE` — a thin strip to aim a port at. A narrow
+ * A 1U plate is ~35px tall at that scale — a thin strip to aim a port at. A narrow
  * plate (a third-width mini node, the worst case for port placement) is scaled
  * up further until it reaches this height, never past the width a full-width
  * plate already gets.
@@ -47,6 +44,13 @@ interface Props {
   colSpan: number
   color?: string
   /**
+   * Width a full-width (12-column) plate is drawn at; a narrower plate takes
+   * its fraction of it. Left out, the editor measures the space it was given
+   * and fills it — a plate that renders at a third of the panel is one nobody
+   * can aim a port at.
+   */
+  fullWidth?: number
+  /**
    * Drag mode. Off, the plate is a plain preview — no handles, no guides,
    * nothing to grab.
    */
@@ -65,6 +69,7 @@ export function PortPositionEditor({
   uHeight,
   colSpan,
   color,
+  fullWidth,
   interactive,
   selectedPortId,
   onSelect,
@@ -72,12 +77,19 @@ export function PortPositionEditor({
 }: Props) {
   const palette = useRackPalette()
   const plateRef = useRef<HTMLDivElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
+  const [measured, setMeasured] = useState<number | null>(null)
   const [dragging, setDragging] = useState<string | null>(null)
   const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null })
 
-  const width = (EDITOR_FULL_WIDTH * colSpan) / RACK_COLUMNS
-  const height = uHeight * U_PX * SCALE
-  const zoom = Math.min(EDITOR_FULL_WIDTH / width, Math.max(1, MIN_PLATE_PX / height))
+  // The width a full-width plate gets: whatever the caller pinned, else the
+  // room this editor was actually given, else the pre-measurement default.
+  const stageWidth = fullWidth ?? measured ?? EDITOR_FULL_WIDTH
+  // Editor pixels per canvas pixel, before the small-plate blow-up below.
+  const scale = stageWidth / INNER_WIDTH_PX['19']
+  const width = (stageWidth * colSpan) / RACK_COLUMNS
+  const height = uHeight * U_PX * scale
+  const zoom = Math.min(stageWidth / width, Math.max(1, MIN_PLATE_PX / height))
   const plateW = width * zoom
   const plateH = height * zoom
 
@@ -123,6 +135,27 @@ export function PortPositionEditor({
    * name field. Typing in a text field keeps its own arrow behaviour, so the
    * listener steps aside for one.
    */
+  /**
+   * Fill the space the parent gave us. jsdom reports 0 and has no
+   * `ResizeObserver`, so both paths fall back to the default width rather than
+   * collapsing the plate to nothing.
+   */
+  useEffect(() => {
+    if (fullWidth !== undefined) return
+    const measure = () => {
+      const w = stageRef.current?.clientWidth ?? 0
+      if (w > 0) setMeasured(w)
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+    const observer = new ResizeObserver(measure)
+    if (stageRef.current) observer.observe(stageRef.current)
+    return () => observer.disconnect()
+  }, [fullWidth])
+
   useEffect(() => {
     if (!interactive || !selectedPortId) return
     const onKeyDown = (e: KeyboardEvent) => {
@@ -141,7 +174,7 @@ export function PortPositionEditor({
   }, [interactive, selectedPortId, nudge])
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div ref={stageRef} className="flex w-full flex-col items-center gap-2">
       <div
         ref={plateRef}
         data-testid="faceplate-stage"
@@ -161,7 +194,7 @@ export function PortPositionEditor({
           width={plateW}
           height={plateH}
           colorOverride={color}
-          portScale={zoom * SCALE}
+          portScale={zoom * scale}
           revealed
         />
 
