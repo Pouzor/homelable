@@ -187,6 +187,53 @@ describe('API → domain', () => {
     expect(item.racked).toBe(true)
   })
 
+  it('reads back the rack modelisation the inventory row owns', () => {
+    const item = toInventoryDevice({
+      id: 'inv4',
+      label: 'sw-01',
+      suggested_type: 'switch',
+      ip: null,
+      status: 'approved',
+      discovery_source: 'manual',
+      node_id: null,
+      node_status: null,
+      racked: true,
+      rack_faceplate_id: 'switch-24',
+      rack_u_height: 1,
+      rack_col_span: 12,
+      rack_color: '#ff6e00',
+      rack_ports: [
+        { id: 'p1', label: 'uplink', type: 'sfp', x: 0.9, y: 0.4 },
+        // No id: not a port, and nothing can cable it.
+        { label: 'ghost', type: 'rj45', x: 0.1, y: 0.1 },
+      ],
+    })
+    expect(item.rackModel).toEqual({
+      faceplateId: 'switch-24',
+      uHeight: 1,
+      colSpan: 12,
+      color: '#ff6e00',
+      ports: [{ id: 'p1', label: 'uplink', type: 'sfp', x: 0.9, y: 0.4 }],
+    })
+  })
+
+  it('reports no modelisation for a device that has never been racked', () => {
+    const item = toInventoryDevice({
+      id: 'inv5',
+      label: 'nas',
+      suggested_type: 'nas',
+      ip: null,
+      status: 'pending',
+      discovery_source: 'arp',
+      node_id: null,
+      node_status: null,
+      racked: false,
+    })
+    // An older backend sends none of the rack_* fields at all.
+    expect(item.rackModel).toBeNull()
+    expect(item.suggestedFaceplateId).toBe('nas-2u')
+  })
+
   it('carries the linked node detail the rack prints beside a mount', () => {
     const item = toInventoryDevice({
       id: 'inv3',

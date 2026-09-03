@@ -20,6 +20,7 @@ import type {
   PortType,
   Rack,
   RackDevice,
+  RackModel,
   RackNumbering,
   RackStyle,
   RackWidthStandard,
@@ -105,6 +106,13 @@ export interface ApiInventoryItem {
   node_design_id?: string | null
   node_design_name?: string | null
   node_last_seen?: string | null
+  // Rack modelisation the inventory row owns. Absent on an older backend, and
+  // null on a device that has never been racked.
+  rack_faceplate_id?: string | null
+  rack_u_height?: number | null
+  rack_col_span?: number | null
+  rack_color?: string | null
+  rack_ports?: unknown[] | null
 }
 
 export interface RackSavePayload {
@@ -274,6 +282,24 @@ function asLinkedNode(api: ApiInventoryItem): LinkedNodeInfo | null {
   }
 }
 
+/**
+ * The device's saved front panel, or null when it has never been modelled.
+ *
+ * `rack_faceplate_id` is the flag the backend sets on the first save of a mount;
+ * without it there is nothing to reuse and the tray falls back to the plate
+ * suggested by the device type.
+ */
+function asRackModel(api: ApiInventoryItem): RackModel | null {
+  if (!api.rack_faceplate_id) return null
+  return {
+    faceplateId: api.rack_faceplate_id,
+    uHeight: typeof api.rack_u_height === 'number' ? api.rack_u_height : null,
+    colSpan: typeof api.rack_col_span === 'number' ? api.rack_col_span : null,
+    color: api.rack_color ?? null,
+    ports: asPorts(Array.isArray(api.rack_ports) ? api.rack_ports : []),
+  }
+}
+
 export function toInventoryDevice(api: ApiInventoryItem): InventoryDevice {
   return {
     id: api.id,
@@ -292,6 +318,7 @@ export function toInventoryDevice(api: ApiInventoryItem): InventoryDevice {
     node: asLinkedNode(api),
     racked: api.racked,
     suggestedFaceplateId: suggestFaceplate(api.suggested_type),
+    rackModel: asRackModel(api),
   }
 }
 

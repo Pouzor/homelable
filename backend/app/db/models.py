@@ -267,6 +267,19 @@ class InventoryDevice(Base):
         DateTime(timezone=True), default=_now, onupdate=_now
     )
 
+    # --- Rack modelisation (owned here, not by the mount) ------------------
+    # A device wears the same front panel in every rack it is mounted in, so the
+    # inventory row — not `rack_devices` — owns the faceplate, its size and its
+    # ports. The mount keeps a denormalized copy so a rack still renders after an
+    # inventory purge; `/api/v1/racks` overlays these on load and `save` writes
+    # them back. NULL means "never modelled" — the mount's own copy then stands.
+    rack_faceplate_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    rack_u_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rack_col_span: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rack_color: Mapped[str | None] = mapped_column(String, nullable=True)
+    # [{id, label, type, x, y}] — x/y are unit coordinates on the plate.
+    rack_ports: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
+
     # Transient (not persisted): populated per-request by the scan routes to report
     # how many canvases this device already appears on. Not a mapped column.
     canvas_count: int = 0

@@ -93,6 +93,128 @@ class TestDesignType:
         assert res.status_code == 422
 
 
+class TestDeviceRackModel:
+    """The inventory row owns the front panel; the mount only places it.
+
+    A device wears the same faceplate, size, colour and ports in every rack, so a
+    save writes them onto `device_inventory` and a load reads them back out.
+    """
+
+    async def _mounted(self, client: AsyncClient, headers: dict, db_session, **device) -> str:
+        design_id = await _design(client, headers)
+        db_session.add(InventoryDevice(id="inv-sw", ip="192.168.1.10", suggested_type="switch"))
+        await db_session.commit()
+        state = _state(design_id, cables=[])
+        state["devices"] = [{**state["devices"][0], "device_id": "inv-sw", **device}]
+        res = await client.post("/api/v1/racks/save", json=state, headers=headers)
+        assert res.status_code == 200, res.text
+        return design_id
+
+    async def test_writes_the_mount_panel_onto_the_inventory_row(
+        self, client: AsyncClient, headers, db_session
+    ):
+        await self._mounted(client, headers, db_session, color="#ff6e00")
+
+        entry = await db_session.get(InventoryDevice, "inv-sw")
+        await db_session.refresh(entry)
+        assert entry.rack_faceplate_id == "switch-24"
+        assert entry.rack_u_height == 1
+        assert entry.rack_col_span == 12
+        assert entry.rack_color == "#ff6e00"
+        assert entry.rack_ports == [{"id": "p1", "label": "1", "type": "rj45", "x": 0.4, "y": 0.5}]
+
+    async def test_leaves_the_inventory_alone_for_an_accessory(
+        self, client: AsyncClient, headers, db_session
+    ):
+        design_id = await _design(client, headers)
+        db_session.add(InventoryDevice(id="inv-untouched", ip="192.168.1.11"))
+        await db_session.commit()
+        state = _state(design_id, cables=[])
+        state["devices"] = [{**state["devices"][0], "faceplate_id": "shelf-1u", "ports": []}]
+        await client.post("/api/v1/racks/save", json=state, headers=headers)
+
+        entry = await db_session.get(InventoryDevice, "inv-untouched")
+        await db_session.refresh(entry)
+        assert entry.rack_faceplate_id is None
+
+    async def test_load_serves_the_inventory_panel_over_the_mount_copy(
+        self, client: AsyncClient, headers, db_session
+    ):
+        design_id = await self._mounted(client, headers, db_session)
+        # Another rack modelled the same device differently since this mount was
+        # written: the row wins, ports included.
+        entry = await db_session.get(InventoryDevice, "inv-sw")
+        entry.rack_faceplate_id = "switch-48"
+        entry.rack_color = "#a855f7"
+        entry.rack_ports = [{"id": "px", "label": "uplink", "type": "sfp+", "x": 0.9, "y": 0.4}]
+        await db_session.commit()
+
+        device = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["devices"][0]
+        assert device["faceplate_id"] == "switch-48"
+        assert device["color"] == "#a855f7"
+        assert [p["id"] for p in device["ports"]] == ["px"]
+
+    async def test_load_keeps_a_size_that_no_longer_fits_this_rack(
+        self, client: AsyncClient, headers, db_session
+    ):
+        # The mount sits at U 10 of a 12U rack. Grown to 4U elsewhere, it would
+        # now run past the top rail — geometry is global, a rack is not.
+        design_id = await self._mounted(client, headers, db_session)
+        entry = await db_session.get(InventoryDevice, "inv-sw")
+        entry.rack_u_height = 4
+        entry.rack_col_span = 12
+        await db_session.commit()
+
+        device = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["devices"][0]
+        assert device["u_height"] == 1
+        # The plate itself cannot overflow a rail, so it still comes from the row.
+        assert device["faceplate_id"] == "switch-24"
+
+    async def test_load_keeps_a_width_that_overruns_the_column_grid(
+        self, client: AsyncClient, headers, db_session
+    ):
+        design_id = await self._mounted(client, headers, db_session, col_start=6, col_span=6)
+        entry = await db_session.get(InventoryDevice, "inv-sw")
+        entry.rack_col_span = 12
+        await db_session.commit()
+
+        device = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["devices"][0]
+        assert device["col_span"] == 6
+
+    async def test_the_tray_offers_the_saved_panel(
+        self, client: AsyncClient, headers, db_session
+    ):
+        design_id = await self._mounted(client, headers, db_session, color="#ff6e00")
+
+        items = (
+            await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)
+        ).json()["items"]
+        item = next(i for i in items if i["id"] == "inv-sw")
+        assert item["rack_faceplate_id"] == "switch-24"
+        assert item["rack_color"] == "#ff6e00"
+        assert [p["id"] for p in item["rack_ports"]] == ["p1"]
+
+    async def test_a_never_racked_device_reports_no_panel(
+        self, client: AsyncClient, headers, db_session
+    ):
+        design_id = await _design(client, headers)
+        db_session.add(InventoryDevice(id="inv-fresh", ip="192.168.1.12", suggested_type="nas"))
+        await db_session.commit()
+
+        items = (
+            await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)
+        ).json()["items"]
+        item = next(i for i in items if i["id"] == "inv-fresh")
+        assert item["rack_faceplate_id"] is None
+        assert item["rack_ports"] == []
+
+
 class TestSaveAndLoad:
     async def test_round_trips_the_full_state(self, client: AsyncClient, headers):
         design_id = await _design(client, headers)

@@ -282,6 +282,22 @@ class RackInventoryItem(BaseModel):
     node_last_seen: datetime | None = None
     # True when this device is already mounted somewhere in this design.
     racked: bool = False
+    # Rack modelisation the inventory row owns — the same front panel wherever
+    # the device is mounted. All None/empty for a device never modelled; the
+    # tray then falls back to the type-suggested faceplate.
+    rack_faceplate_id: str | None = None
+    rack_u_height: int | None = None
+    rack_col_span: int | None = None
+    rack_color: str | None = None
+    rack_ports: list[dict[str, Any]] = []
+
+    @field_validator("rack_ports", mode="before")
+    @classmethod
+    def _clean_ports(cls, v: Any) -> list[dict[str, Any]]:
+        """NULL for a row written before the column existed; junk stays out."""
+        if not isinstance(v, list):
+            return []
+        return [p for p in v if isinstance(p, dict) and p.get("id")]
 
     @field_validator("node_last_seen")
     @classmethod

@@ -289,6 +289,38 @@ function withRackedFlags(inventory: InventoryDevice[], devices: RackDevice[]): I
   return inventory.map((item) => ({ ...item, racked: mounted.has(item.id) }))
 }
 
+/**
+ * Mirror a mount's front panel onto the inventory entry it stands for.
+ *
+ * The inventory row owns the rack modelisation (plate, size, colour, ports), so
+ * a mount edit has to reach it — otherwise a second rack showing the same device
+ * would keep the old panel until the next reload, and the tray would seed a new
+ * mount from stale data. The backend does the same write-through on save; this
+ * keeps the open session consistent in the meantime.
+ *
+ * Standalone has no inventory row to own anything, so ports stay per mount there.
+ */
+function withDeviceModel(
+  inventory: InventoryDevice[],
+  device: RackDevice | undefined,
+): InventoryDevice[] {
+  if (STANDALONE || !device?.deviceId) return inventory
+  return inventory.map((item) =>
+    item.id === device.deviceId
+      ? {
+          ...item,
+          rackModel: {
+            faceplateId: device.faceplateId,
+            uHeight: device.uHeight,
+            colSpan: device.colSpan,
+            color: device.color ?? null,
+            ports: device.ports,
+          },
+        }
+      : item,
+  )
+}
+
 export const useRackStore = create<RackState>((set, get) => {
   /** Apply a state patch and mark the canvas dirty. */
   const edit = (patch: Partial<RackState> | ((s: RackState) => Partial<RackState>)) =>
@@ -509,12 +541,17 @@ export const useRackStore = create<RackState>((set, get) => {
       const item = inventory.find((i) => i.id === inventoryId)
       if (!rack || !item) return null
 
-      const plate = getFaceplate(desired.faceplateId ?? item.suggestedFaceplateId)
+      // A device already modelled in another rack keeps that front panel — the
+      // inventory row owns it. Only a never-racked device falls back to the
+      // plate its type suggests.
+      const model = STANDALONE ? null : item.rackModel ?? null
+      const plate = getFaceplate(desired.faceplateId ?? model?.faceplateId ?? item.suggestedFaceplateId)
+      const modelled = model?.faceplateId === plate.id ? model : null
       const slot = findSlot(rack, devices, {
         uStart: desired.uStart ?? 1,
-        uHeight: desired.uHeight ?? plate.uHeight,
+        uHeight: desired.uHeight ?? modelled?.uHeight ?? plate.uHeight,
         colStart: desired.colStart ?? 0,
-        colSpan: desired.colSpan ?? plate.colSpan,
+        colSpan: desired.colSpan ?? modelled?.colSpan ?? plate.colSpan,
       })
       if (!slot) return null
 
@@ -526,7 +563,10 @@ export const useRackStore = create<RackState>((set, get) => {
         label: item.label,
         status: item.status,
         faceplateId: plate.id,
-        ports: withIds(plate.ports),
+        color: modelled?.color ?? undefined,
+        // Port ids are reused as-is: they are the device's, not the mount's, and
+        // nothing outside this design's cables refers to them.
+        ports: modelled ? modelled.ports.map((port) => ({ ...port })) : withIds(plate.ports),
         ...slot,
       }
       edit((s) => {
@@ -600,7 +640,10 @@ export const useRackStore = create<RackState>((set, get) => {
         if (!slot) return false
         Object.assign(next, slot)
       }
-      edit((s) => ({ devices: s.devices.map((d) => (d.id === id ? next : d)) }))
+      edit((s) => {
+        const devicesNext = s.devices.map((d) => (d.id === id ? next : d))
+        return { devices: devicesNext, inventory: withDeviceModel(s.inventory, next) }
+      })
       return true
     },
 
@@ -743,8 +786,10 @@ export const useRackStore = create<RackState>((set, get) => {
       edit((s) => {
         const next: Port[] = ports.map((p) => ('id' in p ? p : { ...p, id: generateUUID() }))
         const kept = new Set(next.map((p) => p.id))
+        const devicesNext = s.devices.map((d) => (d.id === deviceId ? { ...d, ports: next } : d))
         return {
-          devices: s.devices.map((d) => (d.id === deviceId ? { ...d, ports: next } : d)),
+          devices: devicesNext,
+          inventory: withDeviceModel(s.inventory, devicesNext.find((d) => d.id === deviceId)),
           cables: s.cables.filter(
             (c) =>
               !(c.from.deviceId === deviceId && !kept.has(c.from.portId)) &&
