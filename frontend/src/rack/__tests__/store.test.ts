@@ -242,6 +242,60 @@ describe('mounting', () => {
     expect(entry.rackModel!.ports).toEqual(ports)
   })
 
+  it('keeps the model size when an edit did not touch it', () => {
+    // The mount may be drawn smaller than the row says: the backend applies a
+    // size only where it still fits this rack. Editing anything else must not
+    // mirror that clamped size back and shrink the device everywhere.
+    const device = store().devices.find((d) => d.id === 'dev-pve1')!
+    useRackStore.setState({
+      inventory: store().inventory.map((item) =>
+        item.id === device.deviceId
+          ? {
+              ...item,
+              rackModel: {
+                faceplateId: device.faceplateId,
+                uHeight: 4,
+                colSpan: RACK_COLUMNS,
+                color: null,
+                ports: device.ports,
+              },
+            }
+          : item,
+      ),
+    })
+
+    store().updateDevice('dev-pve1', { color: '#ff6e00' })
+
+    const entry = store().inventory.find((i) => i.id === device.deviceId)!
+    expect(entry.rackModel).toMatchObject({ uHeight: 4, color: '#ff6e00' })
+  })
+
+  it('keeps the model size when only the ports change', () => {
+    const device = store().devices.find((d) => d.id === 'dev-pve1')!
+    useRackStore.setState({
+      inventory: store().inventory.map((item) =>
+        item.id === device.deviceId
+          ? {
+              ...item,
+              rackModel: {
+                faceplateId: device.faceplateId,
+                uHeight: 4,
+                colSpan: RACK_COLUMNS,
+                color: null,
+                ports: device.ports,
+              },
+            }
+          : item,
+      ),
+    })
+
+    store().setPorts('dev-pve1', [{ id: 'p-x', label: 'wan', type: 'rj45' as const, x: 0.1, y: 0.6 }])
+
+    const entry = store().inventory.find((i) => i.id === device.deviceId)!
+    expect(entry.rackModel!.uHeight).toBe(4)
+    expect(entry.rackModel!.ports.map((p) => p.id)).toEqual(['p-x'])
+  })
+
   it('leaves the inventory alone for an accessory, which stands for no device', () => {
     const id = store().mountAccessory('shelf-1u', 'rack-main', { uStart: 6 })!
     const before = store().inventory

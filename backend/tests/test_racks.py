@@ -214,6 +214,88 @@ class TestDeviceRackModel:
         assert item["rack_faceplate_id"] is None
         assert item["rack_ports"] == []
 
+    async def test_a_clamped_size_is_not_written_back_over_the_model(
+        self, client: AsyncClient, headers, db_session
+    ):
+        # The mount is served 1U because 4U no longer fits above U 10. Saving the
+        # canvas then echoes that 1U back — and must not shrink the device in the
+        # rack where it really is 4U.
+        design_id = await self._mounted(client, headers, db_session)
+        entry = await db_session.get(InventoryDevice, "inv-sw")
+        entry.rack_u_height = 4
+        entry.rack_col_span = 12
+        await db_session.commit()
+
+        served = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["devices"][0]
+        assert served["u_height"] == 1
+        state = _state(design_id, cables=[])
+        state["devices"] = [{**state["devices"][0], "device_id": "inv-sw", "u_height": 1}]
+        res = await client.post("/api/v1/racks/save", json=state, headers=headers)
+        assert res.status_code == 200, res.text
+
+        await db_session.refresh(entry)
+        assert entry.rack_u_height == 4
+
+    async def test_a_real_resize_still_reaches_the_model(
+        self, client: AsyncClient, headers, db_session
+    ):
+        design_id = await self._mounted(client, headers, db_session)
+        entry = await db_session.get(InventoryDevice, "inv-sw")
+        entry.rack_u_height = 1
+        await db_session.commit()
+
+        state = _state(design_id, cables=[])
+        state["devices"] = [
+            {**state["devices"][0], "device_id": "inv-sw", "u_start": 8, "u_height": 3}
+        ]
+        res = await client.post("/api/v1/racks/save", json=state, headers=headers)
+        assert res.status_code == 200, res.text
+
+        await db_session.refresh(entry)
+        assert entry.rack_u_height == 3
+
+    async def test_load_does_not_inflate_a_mount_onto_its_neighbour(
+        self, client: AsyncClient, headers, db_session
+    ):
+        # A 4U model fits the rails at U 1 of a 12U rack, but another device sits
+        # at U 2. Two plates drawn on the same U is not a state the canvas can
+        # produce, so the load must not invent it.
+        design_id = await _design(client, headers)
+        db_session.add(InventoryDevice(id="inv-sw", ip="192.168.1.10", suggested_type="switch"))
+        await db_session.commit()
+        state = _state(design_id, cables=[])
+        state["devices"] = [
+            {**state["devices"][0], "device_id": "inv-sw", "u_start": 1, "u_height": 1},
+            {**state["devices"][1], "u_start": 2, "u_height": 1},
+        ]
+        assert (
+            await client.post("/api/v1/racks/save", json=state, headers=headers)
+        ).status_code == 200
+        entry = await db_session.get(InventoryDevice, "inv-sw")
+        entry.rack_u_height = 4
+        await db_session.commit()
+
+        devices = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["devices"]
+        assert next(d for d in devices if d["id"] == "dev-sw")["u_height"] == 1
+
+    async def test_load_inflates_a_mount_that_has_the_room(
+        self, client: AsyncClient, headers, db_session
+    ):
+        design_id = await self._mounted(client, headers, db_session, u_start=1, u_height=1)
+        entry = await db_session.get(InventoryDevice, "inv-sw")
+        entry.rack_u_height = 4
+        await db_session.commit()
+
+        device = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["devices"][0]
+        assert device["u_height"] == 4
+
+
 
 class TestSaveAndLoad:
     async def test_round_trips_the_full_state(self, client: AsyncClient, headers):
@@ -924,3 +1006,35 @@ class TestDesignLifecycle:
         copied_ids = {d["id"] for d in loaded["devices"]}
         assert loaded["cables"][0]["from_device_id"] in copied_ids
         assert loaded["cables"][0]["to_device_id"] in copied_ids
+
+
+class TestOverlappingMounts:
+    async def test_rejects_two_mounts_claiming_the_same_u(self, client: AsyncClient, headers):
+        design_id = await _design(client, headers)
+        state = _state(design_id, cables=[])
+        state["devices"][1]["u_start"] = 10  # straight onto dev-sw
+
+        res = await client.post("/api/v1/racks/save", json=state, headers=headers)
+        assert res.status_code == 422
+        assert "overlap" in res.text
+
+    async def test_accepts_two_mounts_sharing_a_u_side_by_side(
+        self, client: AsyncClient, headers
+    ):
+        # Half-width plates on the same U are the whole point of the column grid.
+        design_id = await _design(client, headers)
+        state = _state(design_id, cables=[])
+        state["devices"][0].update(col_start=0, col_span=6)
+        state["devices"][1].update(u_start=10, u_height=1, col_start=6, col_span=6)
+
+        res = await client.post("/api/v1/racks/save", json=state, headers=headers)
+        assert res.status_code == 200, res.text
+
+    async def test_lets_two_racks_use_the_same_u(self, client: AsyncClient, headers):
+        design_id = await _design(client, headers)
+        state = _state(design_id, cables=[])
+        state["racks"].append({**state["racks"][0], "id": "rack-2", "name": "Second"})
+        state["devices"][1].update(rack_id="rack-2", u_start=10, u_height=1)
+
+        res = await client.post("/api/v1/racks/save", json=state, headers=headers)
+        assert res.status_code == 200, res.text

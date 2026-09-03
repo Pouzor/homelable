@@ -161,6 +161,33 @@ class RackSaveRequest(BaseModel):
                 )
         return self
 
+    @model_validator(mode="after")
+    def _devices_do_not_overlap(self) -> "RackSaveRequest":
+        """Two mounts may not claim the same square of a rack.
+
+        The canvas already refuses such a drop (`canPlace`), so this is the same
+        rule stated where the state is persisted rather than where it is dragged
+        — a stale tab, a hand-built payload or a bug upstream would otherwise
+        store two plates drawn on top of each other, with no way to grab the one
+        underneath.
+        """
+        by_rack: dict[str, list[RackDeviceSave]] = {}
+        for device in self.devices:
+            by_rack.setdefault(device.rack_id, []).append(device)
+        for mounts in by_rack.values():
+            for i, a in enumerate(mounts):
+                for b in mounts[i + 1 :]:
+                    if (
+                        a.u_start < b.u_start + b.u_height
+                        and b.u_start < a.u_start + a.u_height
+                        and a.col_start < b.col_start + b.col_span
+                        and b.col_start < a.col_start + a.col_span
+                    ):
+                        raise ValueError(
+                            f"Devices {a.id} and {b.id} overlap in rack {a.rack_id}"
+                        )
+        return self
+
 
 class RackResponse(BaseModel):
     id: str

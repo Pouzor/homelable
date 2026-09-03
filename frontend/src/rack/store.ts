@@ -298,27 +298,35 @@ function withRackedFlags(inventory: InventoryDevice[], devices: RackDevice[]): I
  * mount from stale data. The backend does the same write-through on save; this
  * keeps the open session consistent in the meantime.
  *
+ * Size is the exception: the backend applies the row's height and width to a
+ * mount only where they still fit that rack, so a mount can legitimately show
+ * less than the row holds. Mirroring an unchanged size back would shrink the
+ * device everywhere else, so only a size this edit actually changed travels —
+ * `before` is the mount as it stood, and equal means untouched.
+ *
  * Standalone has no inventory row to own anything, so ports stay per mount there.
  */
 function withDeviceModel(
   inventory: InventoryDevice[],
   device: RackDevice | undefined,
+  before?: RackDevice,
 ): InventoryDevice[] {
   if (STANDALONE || !device?.deviceId) return inventory
-  return inventory.map((item) =>
-    item.id === device.deviceId
-      ? {
-          ...item,
-          rackModel: {
-            faceplateId: device.faceplateId,
-            uHeight: device.uHeight,
-            colSpan: device.colSpan,
-            color: device.color ?? null,
-            ports: device.ports,
-          },
-        }
-      : item,
-  )
+  return inventory.map((item) => {
+    if (item.id !== device.deviceId) return item
+    const resized = !before || before.uHeight !== device.uHeight
+    const rewidened = !before || before.colSpan !== device.colSpan
+    return {
+      ...item,
+      rackModel: {
+        faceplateId: device.faceplateId,
+        uHeight: resized ? device.uHeight : item.rackModel?.uHeight ?? device.uHeight,
+        colSpan: rewidened ? device.colSpan : item.rackModel?.colSpan ?? device.colSpan,
+        color: device.color ?? null,
+        ports: device.ports,
+      },
+    }
+  })
 }
 
 export const useRackStore = create<RackState>((set, get) => {
@@ -642,7 +650,7 @@ export const useRackStore = create<RackState>((set, get) => {
       }
       edit((s) => {
         const devicesNext = s.devices.map((d) => (d.id === id ? next : d))
-        return { devices: devicesNext, inventory: withDeviceModel(s.inventory, next) }
+        return { devices: devicesNext, inventory: withDeviceModel(s.inventory, next, device) }
       })
       return true
     },
@@ -789,7 +797,11 @@ export const useRackStore = create<RackState>((set, get) => {
         const devicesNext = s.devices.map((d) => (d.id === deviceId ? { ...d, ports: next } : d))
         return {
           devices: devicesNext,
-          inventory: withDeviceModel(s.inventory, devicesNext.find((d) => d.id === deviceId)),
+          inventory: withDeviceModel(
+            s.inventory,
+            devicesNext.find((d) => d.id === deviceId),
+            s.devices.find((d) => d.id === deviceId),
+          ),
           cables: s.cables.filter(
             (c) =>
               !(c.from.deviceId === deviceId && !kept.has(c.from.portId)) &&
