@@ -99,17 +99,34 @@ describe('PortPositionEditor', () => {
     expect(onSelect).toHaveBeenCalledWith('b')
   })
 
-  it('nudges the port with the arrow keys, for a placement no pointer can hit', () => {
-    const { onChange } = draw()
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Move port eth0' }), { key: 'ArrowRight' })
+  it('nudges the selected port with the arrow keys, wherever focus sits', () => {
+    // Regression: the arrows only worked while the handle itself held focus, so
+    // selecting a port in the list and reaching for them did nothing.
+    const { onChange } = draw({ selectedPortId: 'a' })
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' })
 
     const moved = onChange.mock.calls.at(-1)![0] as Port[]
     expect(moved.find((p) => p.id === 'a')!.x).toBeCloseTo(0.21)
   })
 
+  it('leaves the arrows to a text field being typed in', () => {
+    const { onChange } = draw({ selectedPortId: 'a' })
+    const field = document.createElement('input')
+    document.body.appendChild(field)
+    fireEvent.keyDown(field, { key: 'ArrowLeft' })
+    expect(onChange).not.toHaveBeenCalled()
+    field.remove()
+  })
+
+  it('does not move anything outside placement mode', () => {
+    const { onChange } = draw({ interactive: false, selectedPortId: 'a' })
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' })
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it('ignores a key that means nothing here', () => {
-    const { onChange } = draw()
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Move port eth0' }), { key: 'Enter' })
+    const { onChange } = draw({ selectedPortId: 'a' })
+    fireEvent.keyDown(document.body, { key: 'Enter' })
     expect(onChange).not.toHaveBeenCalled()
   })
 

@@ -584,7 +584,9 @@ describe('RackDeviceModal — editing', () => {
     const name = screen.getByLabelText(`Port ${port.label} label`)
     expect(name).toHaveClass('flex-1', 'min-w-0')
     expect(name).not.toHaveClass('w-full')
-    expect(name).toHaveAttribute('placeholder', 'Port name')
+    // The chip layout shortened the placeholder; the field must still be the
+    // part of the row that stretches.
+    expect(name).toHaveAttribute('placeholder', 'Name')
   })
 
   it('unmounts without dropping the inventory entry', async () => {

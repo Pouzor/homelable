@@ -50,6 +50,28 @@ export function DeviceFaceplateEditor({ value, label, status, editable, onChange
 
   return (
     <div className="flex flex-col gap-3">
+      {/* The plate leads, as it does in the rack's own device modal. */}
+      <div className="flex flex-col items-center gap-2 rounded border border-[#30363d] bg-[#0d1117] p-3">
+        <PortPositionEditor
+          faceplateId={value.faceplateId}
+          label={label}
+          status={status}
+          ports={value.ports}
+          uHeight={value.uHeight}
+          colSpan={value.colSpan}
+          color={value.color ?? undefined}
+          interactive={editable && positioning}
+          selectedPortId={selectedPortId}
+          onSelect={setSelectedPortId}
+          onChange={(ports) => onChange({ ...value, ports })}
+        />
+        {!editable && (
+          <p className="text-[11px] text-muted-foreground">
+            {plate.label} · {value.uHeight}U · {value.ports.length} port
+            {value.ports.length === 1 ? '' : 's'}
+          </p>
+        )}
+      </div>
       {editable && (
         <>
           <div className="flex flex-col gap-1.5">
@@ -139,27 +161,6 @@ export function DeviceFaceplateEditor({ value, label, status, editable, onChange
         </>
       )}
 
-      <div className="flex flex-col items-center gap-2 rounded border border-[#30363d] bg-[#0d1117] p-3">
-        <PortPositionEditor
-          faceplateId={value.faceplateId}
-          label={label}
-          status={status}
-          ports={value.ports}
-          uHeight={value.uHeight}
-          colSpan={value.colSpan}
-          color={value.color ?? undefined}
-          interactive={editable && positioning}
-          selectedPortId={selectedPortId}
-          onSelect={setSelectedPortId}
-          onChange={(ports) => onChange({ ...value, ports })}
-        />
-        {!editable && (
-          <p className="text-[11px] text-muted-foreground">
-            {plate.label} · {value.uHeight}U · {value.ports.length} port
-            {value.ports.length === 1 ? '' : 's'}
-          </p>
-        )}
-      </div>
     </div>
   )
 }

@@ -388,6 +388,25 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
             </Field>
           )}
 
+          {/* The plate leads: it is what the user is editing, and it is where
+              ports are placed. Drawn at rack proportions — coordinates are unit
+              fractions, so the blow-up never reaches the saved data. */}
+          <div className="flex flex-col items-center gap-2 rounded border border-[#30363d] bg-[#0d1117] p-3">
+            <PortPositionEditor
+              faceplateId={faceplateId}
+              label={label || getFaceplate(faceplateId).label}
+              status={previewStatus}
+              ports={ports}
+              uHeight={uHeight}
+              colSpan={colSpan}
+              color={color}
+              interactive={positioning && !isAccessory}
+              selectedPortId={selectedPortId}
+              onSelect={setSelectedPortId}
+              onChange={setLocalPorts}
+            />
+          </div>
+
           {/* Left column: what the device is and where it sits. Right column:
               its ports, which is the list that used to push everything else
               below the fold. */}
@@ -646,25 +665,6 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               />
             )}
             </div>
-          </div>
-
-          {/* The plate at rack proportions: the preview the thumbnail could
-              never be, and the surface ports are placed on. Coordinates are unit
-              fractions, so the blow-up never reaches the saved data. */}
-          <div className="flex flex-col items-center gap-2 rounded border border-[#30363d] bg-[#0d1117] p-3">
-            <PortPositionEditor
-              faceplateId={faceplateId}
-              label={label || getFaceplate(faceplateId).label}
-              status={previewStatus}
-              ports={ports}
-              uHeight={uHeight}
-              colSpan={colSpan}
-              color={color}
-              interactive={positioning && !isAccessory}
-              selectedPortId={selectedPortId}
-              onSelect={setSelectedPortId}
-              onChange={setLocalPorts}
-            />
           </div>
 
           <div className="mt-1 flex items-center gap-2">
