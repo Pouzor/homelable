@@ -442,8 +442,11 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
           strokeDasharray="5"
           style={{
             pointerEvents: 'none',
+            // Direction comes from the keyframes alone (see index.css), never
+            // from the endpoints' screen positions: an edge drawn bottom-to-top
+            // marches the same way as one drawn top-to-bottom, like the snake
+            // and flow modes.
             animation: 'homelable-basic-dash 0.5s linear infinite',
-            animationDirection: sourceY <= targetY ? 'normal' : 'reverse',
           }}
         />
       )}
