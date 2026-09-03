@@ -134,10 +134,17 @@ async def _tcp_connect(host: str, port: int) -> bool:
 # grey (unknown) rather than going red. An open TCP socket doesn't prove the
 # service is healthy, and a closed one flaps red misleadingly (e.g. SSH on a
 # box that simply firewalls 22). Only HTTP(S)-reachable services are checked.
+#
+# 515 and 9100-9107 are raw printing (LPD / JetDirect), and they are here for a
+# stronger reason than the rest: a printer treats any bytes on 9100 as a print
+# job, so a GET line makes it print a page — every 60 s, for as long as the node
+# exists. Node Exporter also lives on 9100 and loses its status check because of
+# this; a grey dot is the cheaper mistake.
+_PRINTER_PORTS = frozenset({515, *range(9100, 9108)})
 _NON_HTTP_PORTS = frozenset({
     22, 21, 23, 25, 465, 587, 53, 110, 143, 993, 995, 389, 636, 445, 514,
     1433, 3306, 5432, 5672, 6379, 9092, 11211, 27017, 27018,
-})
+}) | _PRINTER_PORTS
 _HTTPS_PORTS = frozenset({443, 8443})
 
 

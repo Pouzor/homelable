@@ -25,7 +25,16 @@ _MAX_BODY_BYTES = 64 * 1024
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 _PROBE_TIMEOUT = 3.0
 # Ports we never bother probing over HTTP (not web services).
-_NON_HTTP_PORTS = frozenset({22, 21, 23, 25, 53, 110, 143, 161, 162, 179, 445, 3306, 5432, 6379})
+#
+# 515 and 9100-9107 are raw printing (LPD / JetDirect). Those are not merely
+# uninteresting: a printer takes whatever bytes land on 9100 as a print job, so
+# a GET line makes it spit out a page of plaintext. Never send them anything.
+# nmap already ships `Exclude T:9100-9107` for the same reason, which is why
+# the -sV pass never triggered this — only our own probe did.
+_PRINTER_PORTS = frozenset({515, *range(9100, 9108)})
+_NON_HTTP_PORTS = frozenset({
+    22, 21, 23, 25, 53, 110, 143, 161, 162, 179, 445, 3306, 5432, 6379,
+}) | _PRINTER_PORTS
 
 
 async def _read_capped(resp: httpx.Response) -> str:

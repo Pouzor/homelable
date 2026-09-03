@@ -131,6 +131,31 @@ async def test_probe_port_skips_non_http_ports():
     assert factory.requests == []
 
 
+@pytest.mark.parametrize("port", [515, 9100, 9101, 9107])
+@pytest.mark.asyncio
+async def test_probe_port_never_touches_a_raw_printing_port(port):
+    """Issue #404: a printer prints whatever bytes reach 9100, GET line included."""
+    ctx, factory = _patch_client(lambda req: _response("<title>nope</title>"))
+    with ctx:
+        result = await probe_port("10.0.0.5", port)
+    assert result is None
+    assert factory.requests == []
+
+
+@pytest.mark.asyncio
+async def test_probe_open_ports_leaves_a_printer_port_alone():
+    """The batch path must skip it too, without dropping the port from the result."""
+    ports = [{"port": 8096, "protocol": "tcp"}, {"port": 9100, "protocol": "tcp"}]
+    ctx, factory = _patch_client(lambda req: _response("<title>Jellyfin</title>"))
+    with ctx:
+        result = await probe_open_ports("10.0.0.5", ports)
+
+    by_port = {p["port"]: p for p in result}
+    assert by_port[9100]["http_signals"] is None
+    assert by_port[8096]["http_signals"]["title"] == "Jellyfin"
+    assert all(":9100" not in str(r.url) for r in factory.requests)
+
+
 @pytest.mark.asyncio
 async def test_probe_port_verify_tls_flag_passed():
     ctx, factory = _patch_client(lambda req: _response("<title>X</title>"))
