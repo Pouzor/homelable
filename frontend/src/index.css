@@ -6,9 +6,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* The dashes must march the same way as homelable-snake and homelable-flow
+   below, which both increase the offset. This one used to decrease it and so
+   ran against the other two; HomelableEdge papered over that with an
+   `animation-direction: reverse` keyed on the endpoints' Y coordinates, which
+   made the basic dash follow screen geometry instead of the edge itself. */
 @keyframes homelable-basic-dash {
-  from { stroke-dashoffset: 10; }
-  to   { stroke-dashoffset: 0; }
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: 10; }
 }
 
 /* Edge flow animations — CSS (not SVG SMIL) so the browser pauses them when the
