@@ -312,6 +312,35 @@ class TestSaveAndLoad:
         assert loaded["cables"][0]["from_port_id"] == "p1"
         assert loaded["viewport"] == {"x": 10, "y": 20, "zoom": 1.5}
 
+    async def test_round_trips_the_port_visibility_override(
+        self, client: AsyncClient, headers
+    ):
+        # When a plate draws its sockets is a per-mount display choice, so it
+        # rides on the mount and not on the inventory row behind it.
+        design_id = await _design(client, headers)
+        state = _state(design_id, cables=[])
+        state["devices"][0]["port_visibility"] = "hover"
+        state["devices"][1]["port_visibility"] = "always"
+        res = await client.post("/api/v1/racks/save", json=state, headers=headers)
+        assert res.status_code == 200, res.text
+
+        loaded = (await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)).json()
+        by_id = {d["id"]: d for d in loaded["devices"]}
+        assert by_id["dev-sw"]["port_visibility"] == "hover"
+        assert by_id["dev-nas"]["port_visibility"] == "always"
+
+    async def test_defaults_port_visibility_to_auto(self, client: AsyncClient, headers):
+        # A payload from before the field existed — and any unknown value —
+        # keeps the old behaviour: the faceplate decides.
+        design_id = await _design(client, headers)
+        state = _state(design_id, cables=[])
+        state["devices"][1]["port_visibility"] = "sometimes"
+        res = await client.post("/api/v1/racks/save", json=state, headers=headers)
+        assert res.status_code == 200, res.text
+
+        loaded = (await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)).json()
+        assert {d["port_visibility"] for d in loaded["devices"]} == {"auto"}
+
     async def test_keeps_a_mount_that_follows_its_node_check(
         self, client: AsyncClient, headers
     ):

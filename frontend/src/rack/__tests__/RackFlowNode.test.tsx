@@ -155,3 +155,69 @@ describe('RackFlowNode patching', () => {
     expect(store().cables).toHaveLength(before + 1)
   })
 })
+
+describe('RackFlowNode port visibility', () => {
+  /** How many sockets the plate of `label` is currently drawing. */
+  function drawnPorts(label: string) {
+    const plate = screen.getByTitle(new RegExp(`^${label} ·`))
+    return Array.from(plate.querySelectorAll('title')).length
+  }
+
+  /** A cable between a switch and a non-patch plate, and both its ends. */
+  function crossCable() {
+    const sw = store().devices.find((d) => d.faceplateId === 'switch-24')!
+    const cable = store().cables.find(
+      (c) => c.from.deviceId === sw.id || c.to.deviceId === sw.id,
+    )!
+    const farId = cable.from.deviceId === sw.id ? cable.to.deviceId : cable.from.deviceId
+    return { sw, cable, far: store().devices.find((d) => d.id === farId)! }
+  }
+
+  it('hides the ports of non-patch gear until it is hovered', () => {
+    const { far } = crossCable()
+    renderRack()
+    expect(drawnPorts(far.label)).toBe(0)
+
+    fireEvent.mouseEnter(screen.getByTitle(new RegExp(`^${far.label} ·`)))
+    expect(drawnPorts(far.label)).toBe(far.ports.length)
+  })
+
+  it('draws the far socket of a cable revealed by hovering the switch', () => {
+    // The reported bug: hovering the switch drew its runs, but the ends landed
+    // on plates that draw nothing — a cable stopping on blank metal.
+    const { sw, far } = crossCable()
+    renderRack()
+
+    fireEvent.mouseEnter(screen.getByTitle(new RegExp(`^${sw.label} ·`)))
+    expect(drawnPorts(far.label)).toBeGreaterThan(0)
+    // Only the patched one: hovering a neighbour does not reveal the whole plate.
+    expect(drawnPorts(far.label)).toBeLessThan(far.ports.length)
+  })
+
+  it('draws no socket at all while the cabling overlay is hidden', () => {
+    const { sw, far } = crossCable()
+    store().setCableVisibility('hidden')
+    renderRack()
+
+    fireEvent.mouseEnter(screen.getByTitle(new RegExp(`^${sw.label} ·`)))
+    expect(drawnPorts(far.label)).toBe(0)
+  })
+
+  it('obeys a mount that overrides when its ports show', () => {
+    const { sw, far } = crossCable()
+    useRackStore.setState({
+      devices: store().devices.map((d) =>
+        d.id === far.id
+          ? { ...d, portVisibility: 'always' as const }
+          : d.id === sw.id
+            ? { ...d, portVisibility: 'hover' as const }
+            : d,
+      ),
+    })
+    renderRack()
+
+    expect(drawnPorts(far.label)).toBe(far.ports.length)
+    // A switch set to `hover` keeps only what a drawn cable ends on.
+    expect(drawnPorts(sw.label)).toBeLessThan(sw.ports.length)
+  })
+})

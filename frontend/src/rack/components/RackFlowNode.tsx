@@ -1,6 +1,7 @@
 /** One rack = one React Flow node. The U grid inside is rendered by hand. */
 import { useCallback, useState } from 'react'
 import { useReactFlow, type NodeProps } from '@xyflow/react'
+import { patchedPortIds } from '../cableVisibility'
 import { getFaceplate } from '../faceplates'
 import {
   HEADER_PX,
@@ -46,6 +47,7 @@ export function RackFlowNode({ id }: NodeProps) {
   const cableMode = useRackStore((s) => s.cableMode)
   const cableDraft = useRackStore((s) => s.cableDraft)
   const cableVisibility = useRackStore((s) => s.cableVisibility)
+  const selectedCableId = useRackStore((s) => s.selectedCableId)
 
   const selectDevice = useRackStore((s) => s.selectDevice)
   const selectRack = useRackStore((s) => s.selectRack)
@@ -150,8 +152,17 @@ export function RackFlowNode({ id }: NodeProps) {
   }
   const cablesOn = cableVisibility === 'always' || cableMode
   // Ports of non-patch gear stay hidden until the plate is focused, or until
-  // cables are on globally — a cable must never end on an invisible port.
+  // cables are on globally.
   const revealAll = cablesOn
+  // A cable must never end on an invisible port, and in `hover` mode the far
+  // end of a focused device's run lands on a plate that is *not* focused — so
+  // reveal the sockets of every cable actually being drawn, on both plates.
+  const revealedPortIds = patchedPortIds(cables, {
+    visibility: cableVisibility,
+    cableMode,
+    focusDeviceId: hoveredDeviceId ?? selectedDeviceId,
+    selectedCableId,
+  })
 
   return (
     <div
@@ -299,6 +310,8 @@ export function RackFlowNode({ id }: NodeProps) {
               colorOverride={device.color}
               selected={selectedDeviceId === device.id}
               revealed={revealAll || focused}
+              portVisibility={device.portVisibility}
+              revealedPortIds={revealedPortIds}
               interactivePorts={cableMode}
               patchedPorts={patchedPorts}
               draftPortId={isDraftDevice ? cableDraft.portId : null}

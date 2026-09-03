@@ -86,3 +86,60 @@ describe('Faceplate — name band', () => {
     expect(text).toHaveAttribute('y', String(band * HEIGHT))
   })
 })
+
+/** Ids of the ports the plate actually drew. */
+function drawnPortIds(props: Partial<Parameters<typeof Faceplate>[0]>) {
+  const ports = [
+    { id: 'a', label: 'p1', type: 'rj45' as const, x: 0.3, y: 0.5 },
+    { id: 'b', label: 'p2', type: 'rj45' as const, x: 0.5, y: 0.5 },
+  ]
+  const { container } = render(
+    <Faceplate
+      faceplateId="server-1u"
+      label="box"
+      status="online"
+      ports={ports}
+      width={200}
+      height={24}
+      {...props}
+    />,
+  )
+  return Array.from(container.querySelectorAll('title'))
+    .map((t) => t.textContent?.split(' ·')[0])
+    .filter(Boolean)
+}
+
+describe('Faceplate — when ports are drawn', () => {
+  it('hides the ports of non-patch gear until it is focused', () => {
+    expect(drawnPortIds({})).toEqual([])
+    expect(drawnPortIds({ revealed: true })).toEqual(['p1', 'p2'])
+  })
+
+  it('always draws a port a visible cable ends on, focused or not', () => {
+    // The far end of a hovered device's run lands on a plate that is not
+    // hovered — a cable must never end on an invisible socket.
+    expect(drawnPortIds({ revealedPortIds: new Set(['b']) })).toEqual(['p2'])
+  })
+
+  it('honours an `always` override on gear the plate would hide', () => {
+    expect(drawnPortIds({ portVisibility: 'always' })).toEqual(['p1', 'p2'])
+  })
+
+  it('honours a `hover` override on a switch the plate would always show', () => {
+    const asSwitch = { faceplateId: 'switch-24' as const }
+    expect(drawnPortIds({ ...asSwitch })).toEqual(['p1', 'p2'])
+    expect(drawnPortIds({ ...asSwitch, portVisibility: 'hover' })).toEqual([])
+    expect(drawnPortIds({ ...asSwitch, portVisibility: 'hover', revealed: true })).toEqual([
+      'p1',
+      'p2',
+    ])
+  })
+
+  it('leaves `auto` on the faceplate to decide', () => {
+    expect(drawnPortIds({ portVisibility: 'auto' })).toEqual([])
+    expect(drawnPortIds({ portVisibility: 'auto', faceplateId: 'switch-24' })).toEqual([
+      'p1',
+      'p2',
+    ])
+  })
+})

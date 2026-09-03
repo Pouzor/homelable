@@ -172,6 +172,9 @@ class RackDevice(Base):
     faceplate_id: Mapped[str] = mapped_column(String, nullable=False, default="blank-1u")
     color: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="unknown")
+    # When the plate draws its sockets: "auto" (the faceplate decides), "always"
+    # or "hover". A canvas display choice about the mount, not about the device.
+    port_visibility: Mapped[str] = mapped_column(String, default="auto")
     # [{id, label, type, x, y}] — positions are unit coordinates on the plate.
     ports: Mapped[list[Any]] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

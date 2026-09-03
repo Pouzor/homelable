@@ -32,6 +32,7 @@ import {
   type InventoryDevice,
   type MountStatus,
   type Port,
+  type PortVisibility,
 } from '@/types'
 
 const DEFAULT_COLOR = '#2b323c'
@@ -106,6 +107,9 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
   const [colSpan, setColSpan] = useState(device?.colSpan ?? getFaceplate(faceplateId).colSpan)
   const [status, setStatus] = useState<MountStatus>(device?.status ?? 'unknown')
   const [color, setColor] = useState<string | undefined>(device?.color)
+  const [portVisibility, setPortVisibility] = useState<PortVisibility>(
+    device?.portVisibility ?? 'auto',
+  )
   const [ports, setLocalPorts] = useState<Port[]>(
     device?.ports ?? getFaceplate(faceplateId).ports.map((p) => ({ ...p, id: generateUUID() })),
   )
@@ -266,7 +270,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
       }
     }
     const name = label.trim() || device.label
-    if (!updateDevice(device.id, { ...geometry, label: name, status, color })) {
+    if (!updateDevice(device.id, { ...geometry, label: name, status, color, portVisibility })) {
       toast.error('No room in the rack for that size')
       return null
     }
@@ -285,7 +289,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
       // fits, and patching it afterwards would drag the plate back off it.
       const id = mountAccessory(faceplateId, rackId, geometry)
       if (!id) return noRoom()
-      updateDevice(id, { label: name || getFaceplate(faceplateId).label, color })
+      updateDevice(id, { label: name || getFaceplate(faceplateId).label, color, portVisibility })
       return id
     }
 
@@ -321,7 +325,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     if (!id) return noRoom()
     // The mount takes its label and status from the inventory entry, and its
     // slot from `findSlot` — only patch what the form actually overrides.
-    updateDevice(id, { status, color, ...(name ? { label: name } : {}) })
+    updateDevice(id, { status, color, portVisibility, ...(name ? { label: name } : {}) })
     return id
   }
 
@@ -635,14 +639,32 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
 
             <div className="flex flex-col gap-3">
             {!isAccessory && (
-              <PortListEditor
-                ports={ports}
-                onChange={setLocalPorts}
-                positioning={positioning}
-                onPositioningChange={setPositioning}
-                selectedPortId={selectedPortId}
-                onSelect={setSelectedPortId}
-              />
+              <>
+                <PortListEditor
+                  ports={ports}
+                  onChange={setLocalPorts}
+                  positioning={positioning}
+                  onPositioningChange={setPositioning}
+                  selectedPortId={selectedPortId}
+                  onSelect={setSelectedPortId}
+                />
+
+                {/* How the canvas draws these sockets — a display choice about
+                    this mount, not a fact about the hardware, so it stays on
+                    the mount and never reaches the inventory entry. */}
+                <Field label="Show ports on the canvas">
+                  <select
+                    className="h-8 w-full rounded border border-[#30363d] bg-[#21262d] px-2 text-xs cursor-pointer"
+                    aria-label="Show ports on the canvas"
+                    value={portVisibility}
+                    onChange={(e) => setPortVisibility(e.target.value as PortVisibility)}
+                  >
+                    <option value="auto">Automatic (switches and patch panels)</option>
+                    <option value="always">Always</option>
+                    <option value="hover">On hover or selection</option>
+                  </select>
+                </Field>
+              </>
             )}
 
             {/* The column below the port list used to be dead space. A mount
