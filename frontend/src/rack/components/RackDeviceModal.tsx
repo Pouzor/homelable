@@ -614,6 +614,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               </Field>
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
             <Field label="Status">
               <select
                 className={inputClass}
@@ -653,6 +654,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                 </button>
               </div>
             </Field>
+            </div>
             </div>
 
             <div className="flex flex-col gap-3">
@@ -702,7 +704,9 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
             </div>
           </div>
 
-          <div className="mt-1 flex items-center gap-2">
+          {/* Rule between the form and its actions, so Save never reads as part
+              of the last section. */}
+          <div className="mt-1 flex items-center gap-2 border-t border-[#30363d] pt-3">
             {isEdit && (
               <Button
                 type="button"

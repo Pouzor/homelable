@@ -268,6 +268,18 @@ describe('RackDeviceModal — adding', () => {
     expect(columns).toContainElement(screen.getByRole('button', { name: 'Add port' }))
   })
 
+  it('pairs Status with the colour override on one row, and rules off the actions', () => {
+    store().openDeviceEditor()
+    render(<RackDeviceModal />)
+
+    const row = screen.getByLabelText('Status').closest('.grid')!
+    expect(row).toContainElement(screen.getByLabelText('Colour override'))
+
+    // The footer is not part of the last section — Save must read as an action
+    // on the whole form.
+    expect(screen.getByRole('button', { name: /^(Save|Add)$/ }).closest('.border-t')).not.toBeNull()
+  })
+
   /** The titles of the rules the form is split by, in document order. */
   function sectionTitles() {
     return screen
