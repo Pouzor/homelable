@@ -362,6 +362,18 @@ async def init_db() -> None:
                 "UPDATE rack_cables SET properties = '[]' WHERE properties IS NULL"
             )
 
+        # A mount can override when its plate draws its sockets. Existing rows
+        # keep the old behaviour, which is exactly what "auto" means.
+        await _try_migrate(
+            conn,
+            "ALTER TABLE rack_devices ADD COLUMN port_visibility TEXT NOT NULL DEFAULT 'auto'",
+            label="rack_devices.port_visibility",
+        )
+        with suppress(OperationalError):
+            await conn.exec_driver_sql(
+                "UPDATE rack_devices SET port_visibility = 'auto' WHERE port_visibility IS NULL"
+            )
+
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE edges ADD COLUMN waypoints JSON")
         with suppress(OperationalError):

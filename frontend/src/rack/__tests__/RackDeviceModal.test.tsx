@@ -415,6 +415,26 @@ describe('RackDeviceModal — editing', () => {
     expect(screen.getByText(`Ports (${device.ports.length})`)).toBeInTheDocument()
   })
 
+  it('saves a port visibility override on the mount', async () => {
+    store().openDeviceEditor('dev-pve1')
+    render(<RackDeviceModal />)
+
+    const select = screen.getByLabelText('Show ports on the canvas')
+    expect(select).toHaveValue('auto')
+    fireEvent.change(select, { target: { value: 'always' } })
+    submit()
+
+    await waitFor(() => expect(store().deviceEditor).toBeNull())
+    expect(store().devices.find((d) => d.id === 'dev-pve1')!.portVisibility).toBe('always')
+  })
+
+  it('leaves the port visibility selector off an accessory', () => {
+    // A shelf has no ports, so there is nothing to decide about.
+    store().openDeviceEditor('dev-shelf')
+    render(<RackDeviceModal />)
+    expect(screen.queryByLabelText('Show ports on the canvas')).toBeNull()
+  })
+
   it('saves label, status and geometry in one go', async () => {
     store().openDeviceEditor('dev-shelf')
     render(<RackDeviceModal />)

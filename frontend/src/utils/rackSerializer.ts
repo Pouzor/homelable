@@ -18,6 +18,7 @@ import type {
   MountStatus,
   Port,
   PortType,
+  PortVisibility,
   Rack,
   RackDevice,
   RackModel,
@@ -55,6 +56,8 @@ export interface ApiRackDevice {
   faceplate_id: string
   color: string | null
   status: string
+  /** 'auto' | 'always' | 'hover'. Rows written before the column read NULL. */
+  port_visibility?: string | null
   ports: unknown[]
 }
 
@@ -147,6 +150,11 @@ function asMountStatus(v: string | null): MountStatus {
   return v === 'auto' ? 'auto' : asStatus(v)
 }
 
+/** Absent, NULL or unknown all mean `auto`: let the faceplate decide. */
+function asPortVisibility(v: string | null | undefined): PortVisibility | undefined {
+  return v === 'always' || v === 'hover' ? v : undefined
+}
+
 /** Style is free-form JSON on the wire; fill any key the server never wrote. */
 function asStyle(raw: Record<string, unknown>): RackStyle {
   const pick = (key: keyof RackStyle) => raw[key]
@@ -235,6 +243,7 @@ export function toRackDevice(api: ApiRackDevice): RackDevice {
     faceplateId: api.faceplate_id,
     color: api.color ?? undefined,
     status: asMountStatus(api.status),
+    portVisibility: asPortVisibility(api.port_visibility),
     ports: asPorts(api.ports ?? []),
   }
 }
@@ -356,6 +365,7 @@ export function fromRackDevice(device: RackDevice): Omit<ApiRackDevice, 'design_
     faceplate_id: device.faceplateId,
     color: device.color ?? null,
     status: device.status,
+    port_visibility: device.portVisibility ?? 'auto',
     ports: device.ports,
   }
 }

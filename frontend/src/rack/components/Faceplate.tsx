@@ -9,7 +9,7 @@ import { memo, useId } from 'react'
 import { getFaceplate } from '../faceplates'
 import { U_PX } from '../layout'
 import { useRackPalette } from '../rackTheme'
-import type { DeviceStatus, FaceplateElement, Port, PortType } from '@/types'
+import type { DeviceStatus, FaceplateElement, Port, PortType, PortVisibility } from '@/types'
 
 const LED_X = 9
 const LED_R = 3
@@ -162,6 +162,16 @@ interface Props {
   selected?: boolean
   /** Hover or selection: reveals the ports of non-patch gear. */
   revealed?: boolean
+  /**
+   * Per-mount override of the plate's own rule. Absent (or `auto`) leaves the
+   * faceplate template in charge.
+   */
+  portVisibility?: PortVisibility
+  /**
+   * Ports a drawn cable ends on. Always rendered, whatever the plate and the
+   * mode: a cable must never end on an invisible socket.
+   */
+  revealedPortIds?: Set<string>
   /** Ports take the pointer (patch mode). */
   interactivePorts?: boolean
   /**
@@ -190,6 +200,8 @@ export const Faceplate = memo(function Faceplate({
   colorOverride,
   selected,
   revealed,
+  portVisibility,
+  revealedPortIds,
   interactivePorts,
   portScale,
   patchedPorts,
@@ -203,7 +215,11 @@ export const Faceplate = memo(function Faceplate({
   const panel = template.elements.find((e) => e.kind === 'panel')
   const fill = colorOverride ?? (panel?.kind === 'panel' ? panel.fill : palette.plate)
 
-  const showPorts = template.alwaysShowPorts || revealed || interactivePorts
+  // `always` and `hover` override the plate; `auto` (the default) keeps the
+  // template's own rule — patch-facing gear on, everything else on focus.
+  const plateAlwaysShows =
+    portVisibility === 'always' || (portVisibility !== 'hover' && !!template.alwaysShowPorts)
+  const showPorts = plateAlwaysShows || revealed || interactivePorts
 
   const labelX = template.labelBox.x * width
   const labelW = template.labelBox.w * width
@@ -264,8 +280,8 @@ export const Faceplate = memo(function Faceplate({
         </text>
       )}
 
-      {showPorts &&
-        ports.map((port) => {
+      {ports.map((port) => {
+          if (!showPorts && !revealedPortIds?.has(port.id)) return null
           const cx = port.x * width
           const cy = port.y * height
           const patchColor = patchedPorts?.get(port.id)

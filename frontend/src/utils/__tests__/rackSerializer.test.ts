@@ -120,6 +120,23 @@ describe('API → domain', () => {
     expect(fromRackDevice(toRackDevice({ ...apiDevice, status: 'auto' })).status).toBe('auto')
   })
 
+  it('carries a port visibility override, and treats anything else as auto', () => {
+    // The column is newer than the table: a legacy row reads back NULL, and
+    // `auto` is the absence of an override rather than a stored value.
+    expect(toRackDevice({ ...apiDevice, port_visibility: 'hover' }).portVisibility).toBe('hover')
+    expect(toRackDevice({ ...apiDevice, port_visibility: 'always' }).portVisibility).toBe('always')
+    expect(toRackDevice({ ...apiDevice, port_visibility: null }).portVisibility).toBeUndefined()
+    expect(toRackDevice({ ...apiDevice, port_visibility: 'sometimes' }).portVisibility).toBeUndefined()
+    expect(toRackDevice(apiDevice).portVisibility).toBeUndefined()
+  })
+
+  it('sends auto for a mount with no port visibility override', () => {
+    expect(fromRackDevice(toRackDevice(apiDevice)).port_visibility).toBe('auto')
+    expect(
+      fromRackDevice(toRackDevice({ ...apiDevice, port_visibility: 'always' })).port_visibility,
+    ).toBe('always')
+  })
+
   it('maps a cable into nested endpoints', () => {
     expect(toCable(apiCable)).toMatchObject({
       type: 'fiber',

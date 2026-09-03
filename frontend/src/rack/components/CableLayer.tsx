@@ -6,6 +6,7 @@
  * one, and they attach to ports rather than to node handles.
  */
 import { ViewportPortal } from '@xyflow/react'
+import { visibleCables } from '../cableVisibility'
 import { portPosition } from '../layout'
 import { useRackPalette, type RackPalette } from '../rackTheme'
 import { useRackStore } from '../store'
@@ -75,8 +76,8 @@ export function CableLayer() {
   const rackById = new Map<string, Rack>(racks.map((r) => [r.id, r]))
   const deviceById = new Map<string, RackDevice>(devices.map((d) => [d.id, d]))
 
+  // Also what dims the runs that are on screen but not the focused device's.
   const focus = hoveredDeviceId ?? selectedDeviceId
-  const showAll = cableMode || visibility === 'always'
 
   const resolve = (deviceId: string, portId: string) => {
     const device = deviceById.get(deviceId)
@@ -87,16 +88,13 @@ export function CableLayer() {
   }
 
   const visible: Resolved[] = []
-  for (const cable of cables) {
-    // A selected cable stays on screen whatever the visibility mode — its panel
-    // is open on the right, so hiding the run it describes reads as a bug.
-    if (!showAll && cable.id !== selectedCableId) {
-      // `hidden` means hidden: hovering a plate reveals nothing extra, or the
-      // selection would drag its neighbours back on screen with it.
-      if (visibility === 'hidden') continue
-      if (!focus) continue
-      if (cable.from.deviceId !== focus && cable.to.deviceId !== focus) continue
-    }
+  // The same rule decides which sockets the plates draw — see `cableVisibility`.
+  for (const cable of visibleCables(cables, {
+    visibility,
+    cableMode,
+    focusDeviceId: focus,
+    selectedCableId,
+  })) {
     const from = resolve(cable.from.deviceId, cable.from.portId)
     const to = resolve(cable.to.deviceId, cable.to.portId)
     if (!from || !to) continue

@@ -7,6 +7,8 @@ from pydantic import BaseModel, field_validator, model_validator
 WIDTH_STANDARDS = {"19", "10"}
 NUMBERINGS = {"bottom-up", "top-down"}
 CABLE_TYPES = {"ethernet", "fiber"}
+# When a mount draws its ports; "auto" leaves the faceplate in charge.
+PORT_VISIBILITIES = {"auto", "always", "hover"}
 # 12-column horizontal grid: full = 12, half = 6, third = 4, quarter = 3.
 RACK_COLUMNS = 12
 
@@ -57,7 +59,14 @@ class RackDeviceSave(BaseModel):
     faceplate_id: str = "blank-1u"
     color: str | None = None
     status: str = "unknown"
+    port_visibility: str = "auto"
     ports: list[Any] = []
+
+    @field_validator("port_visibility", mode="before")
+    @classmethod
+    def _known_port_visibility(cls, v: Any) -> str:
+        """Anything unknown — including the NULL of a pre-column row — is `auto`."""
+        return str(v) if v in PORT_VISIBILITIES else "auto"
 
     @field_validator("u_start", "u_height")
     @classmethod
@@ -223,7 +232,14 @@ class RackDeviceResponse(BaseModel):
     faceplate_id: str
     color: str | None = None
     status: str
+    port_visibility: str = "auto"
     ports: list[Any] = []
+
+    @field_validator("port_visibility", mode="before")
+    @classmethod
+    def _port_visibility_or_auto(cls, v: Any) -> str:
+        """Rows written before the column existed read back as NULL."""
+        return str(v) if v in PORT_VISIBILITIES else "auto"
 
     @field_validator("ports", mode="before")
     @classmethod

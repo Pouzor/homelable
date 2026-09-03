@@ -184,8 +184,27 @@ export interface RackDevice {
   color?: string
   /** Pinned state, or `auto` to follow the linked node's check. */
   status: MountStatus
+  /**
+   * Per-mount override of when the plate draws its sockets. Absent means
+   * `auto` — see `PortVisibility`.
+   */
+  portVisibility?: PortVisibility
   ports: Port[]
 }
+
+/**
+ * When a mount draws its ports.
+ *
+ * * `auto` — the faceplate decides: patch-facing gear (switches, patch panels,
+ *   `FaceplateTemplate.alwaysShowPorts`) always shows them, everything else
+ *   only on hover, selection or in patch mode. The default.
+ * * `always` — always drawn, whatever the plate.
+ * * `hover` — only on hover, selection or in patch mode, even for a switch.
+ *
+ * A display choice about this mount on this canvas, not a fact about the
+ * hardware: it lives on the rack mount, never on the inventory entry.
+ */
+export type PortVisibility = 'auto' | 'always' | 'hover'
 
 // ---------------------------------------------------------------------------
 // Cabling
