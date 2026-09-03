@@ -28,6 +28,7 @@ import {
   Pencil,
   Plus,
   Radar,
+  Server,
   StickyNote,
   Tags,
   X,
@@ -41,6 +42,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PropertyList } from '@/components/common/PropertyList'
+import { DeviceFaceplateEditor } from '@/rack/components/DeviceFaceplateEditor'
+import { emptyRackModel, type DeviceRackModel } from '@/rack/deviceRackModel'
 import { ServiceModal } from './ServiceModal'
 import { DeepScanModal } from './DeepScanModal'
 import { scanApi } from '@/api/client'
@@ -54,7 +57,7 @@ import { DEVICE_TYPE_GROUPS } from '@/utils/nodeTypeGroups'
 import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
 import { countPorts } from '@/utils/portSpec'
 import { serviceToForm, type ServiceFormData, type ServiceSubmitData } from '@/utils/serviceForm'
-import { NODE_TYPE_LABELS, type CheckMethod, type InventoryEntry, type NodeProperty, type NodeType, type ServiceInfo } from '@/types'
+import { NODE_TYPE_LABELS, type CheckMethod, type DeviceStatus, type InventoryEntry, type NodeProperty, type NodeType, type ServiceInfo } from '@/types'
 import modalStyles from './modal-interactive.module.css'
 
 // Home is `@/types` now — re-exported because most call sites import it here.
@@ -257,6 +260,26 @@ function toForm(d: InventoryEntry): EditForm {
   }
 }
 
+/**
+ * The device's rack modelisation as the editor wants it, or null when the device
+ * has never been racked.
+ *
+ * `rack_faceplate_id` is the flag; the size columns beside it may still be NULL
+ * on a row written before they were recorded, and the plate's own defaults fill
+ * those in.
+ */
+function toRackModel(d: InventoryEntry): DeviceRackModel | null {
+  if (!d.rack_faceplate_id) return null
+  const base = emptyRackModel(d.rack_faceplate_id)
+  return {
+    ...base,
+    uHeight: d.rack_u_height ?? base.uHeight,
+    colSpan: d.rack_col_span ?? base.colSpan,
+    color: d.rack_color ?? null,
+    ports: d.rack_ports ?? [],
+  }
+}
+
 const nullable = (v: string) => (v.trim() === '' ? null : v.trim())
 const numeric = (v: string) => (v.trim() === '' ? null : Number(v))
 
@@ -265,6 +288,11 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
   const [form, setForm] = useState<EditForm>(() => (device ? toForm(device) : toForm({} as InventoryEntry)))
   const [properties, setProperties] = useState<NodeProperty[]>(device?.properties ?? [])
   const [services, setServices] = useState<ServiceInfo[]>(device?.services ?? [])
+  // The device's front panel. Null for a device no rack has ever modelled —
+  // there is then nothing to draw and nothing to save.
+  const [rackModel, setRackModel] = useState<DeviceRackModel | null>(
+    device ? toRackModel(device) : null,
+  )
   const [svcModal, setSvcModal] = useState<{ index: number | null; form?: ServiceFormData } | null>(null)
   const [saving, setSaving] = useState(false)
   // The id of the deep rescan this modal started, while it is still running.
@@ -299,6 +327,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
     setForm(toForm(d))
     setProperties(d.properties ?? [])
     setServices(d.services ?? [])
+    setRackModel(toRackModel(d))
     setEditing(false)
     setSvcModal(null)
     setRescanRunId(null)
@@ -361,6 +390,12 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
   const rackOnly = isRackDevice(device)
   const sources = orderedSources(device)
   const live = LIVE_META[device.status_live ?? 'unknown'] ?? LIVE_META.unknown
+  // The faceplate's LED speaks the rack's three states, not the checker's four:
+  // "checking" is a moment, not a colour a plate carries.
+  const plateStatus: DeviceStatus =
+    device.status_live === 'online' || device.status_live === 'offline'
+      ? device.status_live
+      : 'unknown'
   const titleLabel = device.label ?? device.friendly_name ?? device.hostname ?? device.ip ?? device.ieee_address ?? 'Pending device'
 
   const set = <K extends keyof EditForm>(key: K, value: EditForm[K]) => setForm((f) => ({ ...f, [key]: value }))
@@ -374,6 +409,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
     setForm(toForm(device))
     setProperties(device.properties ?? [])
     setServices(device.services ?? [])
+    setRackModel(toRackModel(device))
   }
 
   const handleRescan = async (ports: string) => {
@@ -442,6 +478,17 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
         check_target: nullable(form.check_target),
         properties,
         services,
+        // Only for a device that has a front panel: sending these for one that
+        // has none would model every device the user ever edits.
+        ...(rackModel
+          ? {
+              rack_faceplate_id: rackModel.faceplateId,
+              rack_u_height: rackModel.uHeight,
+              rack_col_span: rackModel.colSpan,
+              rack_color: rackModel.color,
+              rack_ports: rackModel.ports,
+            }
+          : {}),
       })
       // Push the row straight into the canvas on screen. Its nodes carry a copy
       // of these facts, loaded before this edit — left stale, the next canvas
@@ -827,6 +874,24 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
               </div>
             </div>
           )}
+          {/* Full width, under the columns: the plate is drawn at rack
+              proportions and needs the room. Only a device some rack has
+              modelled has one — the row owns it, so it is edited here as well as
+              from a mount. */}
+          {rackModel && (
+            <div className="mt-4">
+              <Section title="Rack faceplate" icon={Server}>
+                <DeviceFaceplateEditor
+                  value={rackModel}
+                  label={device.label || device.hostname || device.ip || 'device'}
+                  status={plateStatus}
+                  editable={editing}
+                  onChange={setRackModel}
+                />
+              </Section>
+            </div>
+          )}
+
         </div>
 
         {/* ── Footer: lifecycle in view, form controls in edit ── */}

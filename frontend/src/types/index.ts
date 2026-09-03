@@ -1,4 +1,7 @@
 export * from './rack'
+// The rack's `Port` describes a socket on a faceplate; an inventory row carries
+// the plate's ports, so the type is needed here as well as re-exported.
+import type { Port } from './rack'
 
 /**
  * `network` and `electrical` render the same React Flow canvas and differ only
@@ -175,6 +178,16 @@ export interface InventoryEntry {
   node_last_scan?: string | null
   node_last_modified?: string | null
   node_last_seen?: string | null
+  /**
+   * Rack modelisation — the front panel this device wears in every rack it is
+   * mounted in. The inventory row owns it; a mount only places it. Null/absent
+   * until the device has been racked or modelled once.
+   */
+  rack_faceplate_id?: string | null
+  rack_u_height?: number | null
+  rack_col_span?: number | null
+  rack_color?: string | null
+  rack_ports?: Port[]
 }
 
 export interface NodeData extends Record<string, unknown> {

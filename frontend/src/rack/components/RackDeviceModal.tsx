@@ -11,7 +11,6 @@
  * cable managers — are rack-only and never touch the inventory.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Move, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -20,12 +19,12 @@ import { DeviceInventoryModal } from '@/components/modals/DeviceInventoryModal'
 import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 import { useRackStore } from '../store'
 import { FaceplatePicker } from './FaceplatePicker'
+import { PortListEditor } from './PortListEditor'
 import { PortPositionEditor } from './PortPositionEditor'
 import { LinkedDevicePanel } from './LinkedDevicePanel'
 import { DevicePickerModal } from './DevicePickerModal'
 import { deviceTypeForFaceplate, getFaceplate } from '../faceplates'
 import { findSlot } from '../layout'
-import { nextPortSpot } from '../portLayout'
 import { canFollowNode, resolveDeviceStatus } from '../deviceStatus'
 import { generateUUID } from '@/utils/uuid'
 import {
@@ -33,7 +32,6 @@ import {
   type InventoryDevice,
   type MountStatus,
   type Port,
-  type PortType,
 } from '@/types'
 
 const DEFAULT_COLOR = '#2b323c'
@@ -618,108 +616,14 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
 
             <div className="flex flex-col gap-3">
             {!isAccessory && (
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className={fieldLabel}>Ports ({ports.length})</Label>
-                  <div className="flex items-center gap-1">
-                    {/* Placing a port is a mode, not a field: the plate below
-                        takes the pointer while it is on. */}
-                    <button
-                      type="button"
-                      aria-label="Position ports"
-                      aria-pressed={positioning}
-                      disabled={ports.length === 0}
-                      className={`cursor-pointer rounded border px-2 py-0.5 text-xs disabled:cursor-not-allowed disabled:opacity-40 ${
-                        positioning
-                          ? 'border-[#00d4ff] text-[#00d4ff]'
-                          : 'border-[#30363d] hover:border-[#00d4ff]'
-                      }`}
-                      onClick={() => setPositioning((on) => !on)}
-                    >
-                      <Move size={12} className="inline" /> Position
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Add port"
-                      className="cursor-pointer rounded border border-[#30363d] px-2 py-0.5 text-xs hover:border-[#00d4ff]"
-                      onClick={() =>
-                        setLocalPorts((p) => {
-                          // A new port continues the last row instead of landing
-                          // on the middle of the plate under the previous one.
-                          const port: Port = {
-                            id: generateUUID(),
-                            label: `p${p.length + 1}`,
-                            type: 'rj45',
-                            ...nextPortSpot(p),
-                          }
-                          setSelectedPortId(port.id)
-                          return [...p, port]
-                        })
-                      }
-                    >
-                      <Plus size={12} className="inline" /> Add
-                    </button>
-                  </div>
-                </div>
-                <ul className="max-h-[26rem] space-y-1 overflow-y-auto">
-                  {ports.map((port) => (
-                    <li
-                      key={port.id}
-                      // Editing a port's name highlights it on the plate, so the
-                      // list and the drawing never disagree about which is which.
-                      onFocusCapture={() => setSelectedPortId(port.id)}
-                      className={`flex items-center gap-1 rounded border px-1 py-1 ${
-                        selectedPortId === port.id
-                          ? 'border-[#00d4ff] bg-[#00d4ff0f]'
-                          : 'border-transparent'
-                      }`}
-                    >
-                      <input
-                        // `inputClass` is w-full: without min-w-0 the flex row lets the
-                        // type select win the space and the name field collapses to a box.
-                        className={`${inputBase} min-w-0 flex-1`}
-                        aria-label={`Port ${port.label} label`}
-                        placeholder="Port name"
-                        value={port.label}
-                        onChange={(e) =>
-                          setLocalPorts((list) =>
-                            list.map((p) => (p.id === port.id ? { ...p, label: e.target.value } : p)),
-                          )
-                        }
-                      />
-                      <select
-                        className={`${inputBase} w-24 shrink-0`}
-                        aria-label={`Port ${port.label} type`}
-                        value={port.type}
-                        onChange={(e) =>
-                          setLocalPorts((list) =>
-                            list.map((p) =>
-                              p.id === port.id ? { ...p, type: e.target.value as PortType } : p,
-                            ),
-                          )
-                        }
-                      >
-                        {(['rj45', 'sfp', 'sfp+'] as PortType[]).map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        aria-label={`Remove port ${port.label}`}
-                        className="cursor-pointer px-1 text-xs text-muted-foreground hover:text-[#f85149]"
-                        onClick={() => setLocalPorts((list) => list.filter((p) => p.id !== port.id))}
-                      >
-                        <X size={12} />
-                      </button>
-                    </li>
-                  ))}
-                  {ports.length === 0 && (
-                    <li className="text-[11px] text-muted-foreground">No port on this plate.</li>
-                  )}
-                </ul>
-              </div>
+              <PortListEditor
+                ports={ports}
+                onChange={setLocalPorts}
+                positioning={positioning}
+                onPositioningChange={setPositioning}
+                selectedPortId={selectedPortId}
+                onSelect={setSelectedPortId}
+              />
             )}
 
             {/* The column below the port list used to be dead space. A mount

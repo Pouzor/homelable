@@ -163,3 +163,78 @@ async def test_legacy_row_defaults_are_coerced(client: AsyncClient, headers, db_
     assert row["status_live"] == "unknown"
     assert row["show_hardware"] is False
     assert row["label"] is None
+
+
+@pytest.mark.asyncio
+async def test_update_pending_edits_the_rack_faceplate(
+    client: AsyncClient, headers, db_session
+):
+    """The front panel is a device fact, so the inventory can edit it too.
+
+    Same row the rack canvas writes on save — a plate edited here is the plate
+    every rack mounting this device draws on its next load.
+    """
+    device = await _seed(db_session, rack_faceplate_id="server-1u", rack_u_height=1)
+    res = await client.patch(
+        f"/api/v1/scan/pending/{device.id}",
+        headers=headers,
+        json={
+            "rack_faceplate_id": "server-2u-bays",
+            "rack_u_height": 2,
+            "rack_col_span": 12,
+            "rack_color": "#ff6e00",
+            "rack_ports": [
+                {"id": "p1", "label": "eth0", "type": "rj45", "x": 0.2, "y": 0.6},
+                # No id: nothing could ever cable it, so it never lands.
+                {"label": "ghost", "type": "rj45", "x": 0.5, "y": 0.5},
+            ],
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["rack_faceplate_id"] == "server-2u-bays"
+    assert body["rack_u_height"] == 2
+    assert body["rack_color"] == "#ff6e00"
+    assert [p["id"] for p in body["rack_ports"]] == ["p1"]
+
+
+@pytest.mark.asyncio
+async def test_update_pending_leaves_an_unsent_faceplate_alone(
+    client: AsyncClient, headers, db_session
+):
+    device = await _seed(db_session, rack_faceplate_id="switch-24", rack_u_height=1)
+    res = await client.patch(
+        f"/api/v1/scan/pending/{device.id}", headers=headers, json={"notes": "x"}
+    )
+    assert res.status_code == 200
+    assert res.json()["rack_faceplate_id"] == "switch-24"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"rack_u_height": 0},
+        {"rack_u_height": 49},
+        {"rack_col_span": 0},
+        {"rack_col_span": 13},
+    ],
+)
+async def test_update_pending_rejects_an_impossible_plate(
+    client: AsyncClient, headers, db_session, patch
+):
+    device = await _seed(db_session)
+    res = await client.patch(
+        f"/api/v1/scan/pending/{device.id}", headers=headers, json=patch
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_inventory_row_reports_no_plate_before_it_is_modelled(
+    client: AsyncClient, headers, db_session
+):
+    await _seed(db_session)
+    rows = (await client.get("/api/v1/scan/pending", headers=headers)).json()
+    assert rows[0]["rack_faceplate_id"] is None
+    assert rows[0]["rack_ports"] == []
