@@ -84,7 +84,7 @@ export function PortListEditor({
           rows of full-height inputs, so the list ran a metre down the modal and
           buried everything under it. Name, type and remove all fit on one 28px
           line, and two columns halve the scroll again. */}
-      <ul className="grid max-h-[19rem] grid-cols-2 gap-1 overflow-y-auto pr-0.5">
+      <ul className="grid max-h-[19rem] grid-cols-3 gap-1 overflow-y-auto pr-0.5">
         {ports.map((port) => (
           <li
             key={port.id}

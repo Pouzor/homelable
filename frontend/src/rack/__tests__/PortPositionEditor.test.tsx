@@ -139,3 +139,29 @@ describe('PortPositionEditor', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 })
+
+describe('PortPositionEditor stage width', () => {
+  /** The stage is sized in inline styles, in editor pixels. */
+  const stageWidth = () =>
+    Number.parseFloat(screen.getByTestId('faceplate-stage').style.width)
+
+  it('draws a full-width plate at the width it was given', () => {
+    draw({ fullWidth: 900 })
+    expect(stageWidth()).toBeCloseTo(900, 0)
+  })
+
+  it('scales a narrower plate to its share of that width', () => {
+    // Half-width gear takes half the stage — the blow-up for short plates is
+    // capped at the width a full-width plate already gets.
+    draw({ fullWidth: 900, colSpan: 6 })
+    expect(stageWidth()).toBeGreaterThan(450)
+    expect(stageWidth()).toBeLessThanOrEqual(900)
+  })
+
+  it('falls back to its own default width when nothing measures', () => {
+    // jsdom reports a zero client width and has no ResizeObserver; the plate
+    // must keep a usable size rather than collapse to nothing.
+    draw()
+    expect(stageWidth()).toBeGreaterThan(0)
+  })
+})
