@@ -91,8 +91,9 @@ describe('InventoryDeviceModal — rack faceplate', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Position ports' }))
 
     const handle = screen.getByRole('button', { name: 'Move port eth0' })
-    expect(handle).toBeInTheDocument()
-    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    fireEvent.pointerDown(handle)
+    // Selected, so the arrows move it wherever focus happens to be.
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' })
     // The handle follows the port it moved, so the plate and the data agree.
     expect(Number.parseFloat(handle.style.left)).toBeCloseTo(21)
   })

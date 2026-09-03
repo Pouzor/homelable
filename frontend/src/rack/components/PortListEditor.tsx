@@ -12,9 +12,6 @@ import { nextPortSpot } from '../portLayout'
 import { generateUUID } from '@/utils/uuid'
 import type { Port, PortType } from '@/types'
 
-const inputBase =
-  'rounded border border-[#30363d] bg-[#21262d] px-2 py-1 text-sm text-foreground outline-none focus:border-[#00d4ff]'
-
 const PORT_TYPES: PortType[] = ['rj45', 'sfp', 'sfp+']
 
 interface Props {
@@ -83,28 +80,33 @@ export function PortListEditor({
           </button>
         </div>
       </div>
-      <ul className="max-h-[26rem] space-y-1 overflow-y-auto">
+      {/* Two columns of one-line chips: a 24-port switch used to draw 24 full
+          rows of full-height inputs, so the list ran a metre down the modal and
+          buried everything under it. Name, type and remove all fit on one 28px
+          line, and two columns halve the scroll again. */}
+      <ul className="grid max-h-[19rem] grid-cols-2 gap-1 overflow-y-auto pr-0.5">
         {ports.map((port) => (
           <li
             key={port.id}
-            // Editing a port's name highlights it on the plate, so the list and
-            // the drawing never disagree about which port is which.
+            // Editing or clicking a port highlights it on the plate — and, in
+            // placement mode, the arrow keys then move that one.
             onFocusCapture={() => onSelect(port.id)}
-            className={`flex items-center gap-1 rounded border px-1 py-1 ${
-              selectedPortId === port.id ? 'border-[#00d4ff] bg-[#00d4ff0f]' : 'border-transparent'
+            onClick={() => onSelect(port.id)}
+            className={`flex h-7 items-center gap-0.5 rounded border bg-[#1c2128] pr-0.5 ${
+              selectedPortId === port.id ? 'border-[#00d4ff]' : 'border-[#30363d]'
             }`}
           >
             <input
-              // Without min-w-0 the flex row lets the type select win the space
-              // and the name field collapses into an unlabelled box.
-              className={`${inputBase} min-w-0 flex-1`}
+              // Borderless inside the chip: a box drawn inside a box is what
+              // made the old rows twice as tall as they needed to be.
+              className="h-6 min-w-0 flex-1 bg-transparent px-1.5 text-xs text-foreground outline-none"
               aria-label={`Port ${port.label} label`}
-              placeholder="Port name"
+              placeholder="Name"
               value={port.label}
               onChange={(e) => patch(port.id, { label: e.target.value })}
             />
             <select
-              className={`${inputBase} w-24 shrink-0`}
+              className="h-6 shrink-0 cursor-pointer rounded bg-transparent text-[11px] text-muted-foreground outline-none hover:text-foreground"
               aria-label={`Port ${port.label} type`}
               value={port.type}
               onChange={(e) => patch(port.id, { type: e.target.value as PortType })}
@@ -118,15 +120,15 @@ export function PortListEditor({
             <button
               type="button"
               aria-label={`Remove port ${port.label}`}
-              className="cursor-pointer px-1 text-xs text-muted-foreground hover:text-[#f85149]"
+              className="cursor-pointer px-0.5 text-muted-foreground hover:text-[#f85149]"
               onClick={() => onChange(ports.filter((p) => p.id !== port.id))}
             >
-              <X size={12} />
+              <X size={11} />
             </button>
           </li>
         ))}
         {ports.length === 0 && (
-          <li className="text-[11px] text-muted-foreground">No port on this plate.</li>
+          <li className="col-span-2 text-[11px] text-muted-foreground">No port on this plate.</li>
         )}
       </ul>
     </div>

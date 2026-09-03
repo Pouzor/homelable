@@ -7,7 +7,7 @@
  * axes scale together for the same reason: stretching one would move the ports
  * relative to the artwork they sit on.
  */
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Faceplate } from './Faceplate'
 import { INNER_WIDTH_PX, U_PX } from '../layout'
 import { clampPort, snapThreshold, snapToPeers } from '../portLayout'
@@ -30,6 +30,13 @@ const MIN_PLATE_PX = 90
 
 /** Nudge per arrow-key press, in unit coordinates. */
 const NUDGE_STEP = 0.01
+
+const ARROW_STEPS: Record<string, [number, number]> = {
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+}
 
 interface Props {
   faceplateId: string
@@ -95,14 +102,43 @@ export function PortPositionEditor({
   }, [])
 
   /** A pointer cannot land a port on an exact fraction; the arrow keys can. */
-  const nudge = (port: Port, dx: number, dy: number) =>
-    onChange(
-      ports.map((p) =>
-        p.id === port.id
-          ? { ...p, ...clampPort({ x: p.x + dx * NUDGE_STEP, y: p.y + dy * NUDGE_STEP }) }
-          : p,
+  const nudge = useCallback(
+    (portId: string, dx: number, dy: number) =>
+      onChange(
+        ports.map((p) =>
+          p.id === portId
+            ? { ...p, ...clampPort({ x: p.x + dx * NUDGE_STEP, y: p.y + dy * NUDGE_STEP }) }
+            : p,
+        ),
       ),
-    )
+    [onChange, ports],
+  )
+
+  /**
+   * Arrow keys move the selected port for as long as placement mode is on —
+   * the handle does not have to hold focus.
+   *
+   * Selecting a port by clicking its row in the list, then reaching for the
+   * arrows, was the obvious gesture and did nothing: focus was still in the
+   * name field. Typing in a text field keeps its own arrow behaviour, so the
+   * listener steps aside for one.
+   */
+  useEffect(() => {
+    if (!interactive || !selectedPortId) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      const step = ARROW_STEPS[e.key]
+      if (!step) return
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+        return
+      }
+      e.preventDefault()
+      nudge(selectedPortId, step[0], step[1])
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [interactive, selectedPortId, nudge])
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -168,18 +204,6 @@ export function PortPositionEditor({
                   onSelect(port.id)
                   setDragging(port.id)
                 }}
-                onKeyDown={(e) => {
-                  const steps: Record<string, [number, number]> = {
-                    ArrowLeft: [-1, 0],
-                    ArrowRight: [1, 0],
-                    ArrowUp: [0, -1],
-                    ArrowDown: [0, 1],
-                  }
-                  const step = steps[e.key]
-                  if (!step) return
-                  e.preventDefault()
-                  nudge(port, step[0], step[1])
-                }}
               >
                 <span className="pointer-events-none max-w-[22px] truncate text-white/80">
                   {port.label}
@@ -191,8 +215,8 @@ export function PortPositionEditor({
 
       {interactive && (
         <p className="text-[11px] text-muted-foreground">
-          Drag a port to place it. Arrow keys nudge the selected one, and ports snap to the row or
-          column of their neighbours.
+          Drag a port to place it, or nudge the selected one with the arrow keys. Ports snap to the
+          row or column of their neighbours.
         </p>
       )}
     </div>
