@@ -5,6 +5,8 @@ import {
   brandIconSlug,
   brandIconUrl,
   resolveCustomIcon,
+  isLocalBrandIcon,
+  LOCAL_BRAND_ICONS,
   ICON_MAP,
 } from '../nodeIcons'
 
@@ -27,6 +29,16 @@ describe('brand icon helpers', () => {
       'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/plex.svg',
     )
   })
+
+  it('brandIconUrl serves local brand icons from public/brand', () => {
+    expect(brandIconUrl('homelable')).toBe('/brand/homelable.svg')
+  })
+
+  it('isLocalBrandIcon only matches the locally-served slugs', () => {
+    expect(LOCAL_BRAND_ICONS).toContain('homelable')
+    expect(isLocalBrandIcon('homelable')).toBe(true)
+    expect(isLocalBrandIcon('plex')).toBe(false)
+  })
 })
 
 describe('resolveCustomIcon', () => {
@@ -48,6 +60,15 @@ describe('resolveCustomIcon', () => {
       expect(r.slug).toBe('plex')
       expect(r.url).toContain('cdn.jsdelivr.net')
       expect(r.url).toContain('/plex.svg')
+    }
+  })
+
+  it('resolves the homelable key to the local asset', () => {
+    const r = resolveCustomIcon('brand:homelable')
+    expect(r?.kind).toBe('brand')
+    if (r?.kind === 'brand') {
+      expect(r.slug).toBe('homelable')
+      expect(r.url).toBe('/brand/homelable.svg')
     }
   })
 
