@@ -7,6 +7,12 @@ FROM --platform=$BUILDPLATFORM node:20-slim AS builder
 ARG VITE_STANDALONE=false
 ENV VITE_STANDALONE=$VITE_STANDALONE
 
+# Subpath support: build with VITE_BASE_PATH=/homelab/ to serve Homelable under a
+# prefix instead of the root of an origin. The default '/' produces the same build
+# as before the option existed.
+ARG VITE_BASE_PATH=/
+ENV VITE_BASE_PATH=$VITE_BASE_PATH
+
 WORKDIR /app
 COPY frontend/package*.json ./
 RUN npm ci
@@ -18,15 +24,31 @@ RUN npm run build
 # Stage 2: serve
 FROM nginx:alpine
 
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/dist /tmp/dist
 
-# Nginx config: use standalone config (no backend proxy) or full config
+# Nginx config: standalone (no backend proxy) or full, served at the root or under the
+# VITE_BASE_PATH prefix. At the root the build lands in /usr/share/nginx/html and the
+# shipped .conf is copied verbatim, so an existing deployment gets exactly what it had
+# before this option existed. Under a prefix the build lands in the matching
+# subdirectory, which keeps the generated config on plain `root` semantics.
 ARG VITE_STANDALONE=false
-COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
-COPY docker/nginx.standalone.conf /etc/nginx/conf.d/nginx.standalone.conf
-RUN if [ "$VITE_STANDALONE" = "true" ]; then \
-      cp /etc/nginx/conf.d/nginx.standalone.conf /etc/nginx/conf.d/default.conf; \
-    fi && \
-    rm /etc/nginx/conf.d/nginx.standalone.conf
+ARG VITE_BASE_PATH=/
+COPY docker/nginx.conf docker/nginx.standalone.conf /tmp/nginx-conf/
+COPY docker/nginx.subpath.conf.template docker/nginx.standalone.subpath.conf.template /tmp/nginx-conf/
+# ash with pipefail: the base-path normalization below pipes printf into sed.
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+RUN set -eu; \
+    if [ "$VITE_STANDALONE" = "true" ]; then variant=nginx.standalone; else variant=nginx; fi; \
+    base=$(printf '%s' "${VITE_BASE_PATH:-/}" | sed -e 's#^/*#/#' -e 's#/*$#/#' -e 's#//*#/#g'); \
+    [ -n "$base" ] || base=/; \
+    mkdir -p "/usr/share/nginx/html${base}"; \
+    cp -a /tmp/dist/. "/usr/share/nginx/html${base}"; \
+    if [ "$base" = "/" ]; then \
+      cp "/tmp/nginx-conf/${variant}.conf" /etc/nginx/conf.d/default.conf; \
+    else \
+      sed -e "s#__BASE_NO_SLASH__#${base%/}#g" -e "s#__BASE__#${base}#g" \
+        "/tmp/nginx-conf/${variant}.subpath.conf.template" > /etc/nginx/conf.d/default.conf; \
+    fi; \
+    rm -rf /tmp/dist /tmp/nginx-conf
 
 EXPOSE 80

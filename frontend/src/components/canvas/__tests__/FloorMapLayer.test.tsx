@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { FloorMapLayer } from '../FloorMapLayer'
 import { useCanvasStore } from '@/stores/canvasStore'
 import type { FloorMapConfig } from '@/types'
@@ -41,6 +41,16 @@ describe('FloorMapLayer', () => {
     setFloorMap({ enabled: false })
     rerender(<FloorMapLayer />)
     expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('renders the stored image URL as-is at the root, base64 plans included', () => {
+    setFloorMap()
+    const { rerender } = render(<FloorMapLayer />)
+    expect(screen.getByAltText('Floor plan').getAttribute('src')).toBe('/api/v1/media/abc.png')
+
+    act(() => setFloorMap({ imageData: 'data:image/png;base64,abc' }))
+    rerender(<FloorMapLayer />)
+    expect(screen.getByAltText('Floor plan').getAttribute('src')).toBe('data:image/png;base64,abc')
   })
 
   it('hides resize handles until the plan is selected, then shows them (unlocked)', () => {

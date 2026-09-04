@@ -17,6 +17,26 @@ def origin_of(url: str) -> str:
         return ""
     return f"{parts.scheme}://{parts.netloc}"
 
+
+OIDC_CALLBACK_PATH = "/api/v1/auth/oidc/callback"
+
+
+def app_base_path_of(redirect_uri: str) -> str:
+    """
+    Path the SPA is served under, read back from OIDC_REDIRECT_URI.
+
+    The frontend can be mounted under a prefix (`VITE_BASE_PATH=/homelab/`), and the
+    backend only ever learns about it through the callback URL the operator
+    configured — `https://home.example/homelab/api/v1/auth/oidc/callback` means the
+    app lives at `/homelab/`. Always returns a path with a trailing slash; `/` when
+    the URI is unset, relative, or not a callback URL.
+    """
+    path = urlsplit(redirect_uri).path
+    if not path.endswith(OIDC_CALLBACK_PATH):
+        return "/"
+    base = path[: -len(OIDC_CALLBACK_PATH)]
+    return f"{base}/" if base else "/"
+
 def _read_version() -> str:
     for candidate in [
         Path(__file__).parent.parent.parent.parent / "VERSION",  # repo root (dev)

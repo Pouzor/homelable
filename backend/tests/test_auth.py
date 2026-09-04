@@ -272,6 +272,40 @@ async def test_oidc_callback_creates_session_for_api(client: AsyncClient, oidc_s
     assert protected.status_code == 200
 
 
+async def test_oidc_callback_returns_to_the_app_base_path(client: AsyncClient, oidc_settings):
+    """The SPA can be mounted under a prefix — the post-login redirect follows it."""
+    oidc_settings.oidc_redirect_uri = "http://test/homelab/api/v1/auth/oidc/callback"
+    fake_client = FakeOIDCClient(token={
+        "userinfo": {
+            "iss": "https://idp.example/application/o/homelable/",
+            "sub": "user-123",
+            "preferred_username": "alice",
+        },
+    })
+    with patch("app.api.routes.auth.get_oidc_client", return_value=fake_client):
+        callback = await client.get("/api/v1/auth/oidc/callback")
+
+    assert callback.status_code == 303
+    assert callback.headers["location"] == "/homelab/"
+
+
+@pytest.mark.parametrize(
+    ("redirect_uri", "expected"),
+    [
+        ("", "/"),
+        ("https://home.example/api/v1/auth/oidc/callback", "/"),
+        ("https://home.example/homelab/api/v1/auth/oidc/callback", "/homelab/"),
+        ("https://home.example/apps/lab/api/v1/auth/oidc/callback", "/apps/lab/"),
+        ("/api/v1/auth/oidc/callback", "/"),
+        ("https://home.example/somewhere/else", "/"),
+    ],
+)
+def test_app_base_path_of(redirect_uri: str, expected: str):
+    from app.core.config import app_base_path_of
+
+    assert app_base_path_of(redirect_uri) == expected
+
+
 @pytest.mark.parametrize("userinfo", [None, {}, {"sub": "user-123"}, {"iss": "https://idp.example/"}])
 async def test_oidc_callback_rejects_missing_identity_claims(client: AsyncClient, oidc_settings, userinfo):
     token = {} if userinfo is None else {"userinfo": userinfo}

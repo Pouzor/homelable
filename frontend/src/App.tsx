@@ -9,6 +9,7 @@ import { resolveVirtualEdgeParent } from '@/utils/virtualEdgeParent'
 import { generateMarkdownTable } from '@/utils/exportMarkdown'
 import { copyToClipboard } from '@/utils/clipboard'
 import { getDesignIdFromUrl, setDesignIdInUrl } from '@/utils/designUrl'
+import { withBase } from '@/utils/basePath'
 import { ExportModal } from '@/components/modals/ExportModal'
 import { exportCanvasToYaml, downloadYaml } from '@/utils/exportYaml'
 import { parseYamlToCanvas } from '@/utils/importYaml'
@@ -772,7 +773,9 @@ export default function App() {
     if (STANDALONE) {
       // Standalone reads canvas from localStorage; pass the active design id so
       // the read-only tab renders the same canvas the user is viewing.
-      const url = activeDesignId ? `/view?design=${encodeURIComponent(activeDesignId)}` : '/view'
+      const url = activeDesignId
+        ? withBase(`view?design=${encodeURIComponent(activeDesignId)}`)
+        : withBase('view')
       window.open(url, '_blank', 'noopener,noreferrer')
       return
     }
@@ -784,7 +787,7 @@ export default function App() {
       }
       const params = new URLSearchParams({ key: res.data.key })
       if (activeDesignId) params.set('design', activeDesignId)
-      window.open(`/view?${params.toString()}`, '_blank', 'noopener,noreferrer')
+      window.open(withBase(`view?${params.toString()}`), '_blank', 'noopener,noreferrer')
     } catch {
       toast.error('Failed to open live view')
     }

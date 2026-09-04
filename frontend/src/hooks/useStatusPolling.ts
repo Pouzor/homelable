@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
 import type { ServiceStatus } from '@/types'
+import { API_BASE_URL } from '@/utils/basePath'
 
 interface ServiceStatusEntry {
   port?: number
@@ -58,7 +59,7 @@ export function useStatusPolling() {
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const host = window.location.host  // includes port when non-standard
-    const url = `${protocol}://${host}/api/v1/status/ws/status`
+    const url = `${protocol}://${host}${API_BASE_URL}/status/ws/status`
 
     const ws = new WebSocket(url)
     wsRef.current = ws

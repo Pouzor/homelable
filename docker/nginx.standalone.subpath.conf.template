@@ -1,0 +1,26 @@
+# Standalone (no backend) Homelable served under a subpath (__BASE__).
+# Generated at image build time — see docker/nginx.subpath.conf.template.
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    # Relative Location headers — the port and scheme belong to whatever proxy is
+    # in front, not to this server block.
+    absolute_redirect off;
+
+    location = __BASE_NO_SLASH__ {
+        return 301 __BASE__;
+    }
+
+    # SPA fallback under the prefix — no backend proxy
+    location __BASE__ {
+        try_files $uri $uri/ __BASE__index.html;
+    }
+
+    # Same, for a front proxy that strips the prefix before forwarding
+    location / {
+        root /usr/share/nginx/html__BASE_NO_SLASH__;
+        try_files $uri $uri/ /index.html;
+    }
+}

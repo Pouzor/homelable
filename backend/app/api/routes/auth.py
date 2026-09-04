@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from starlette.responses import RedirectResponse
 
 from app.api.deps import AuthContext, get_auth_context
-from app.core.config import settings
+from app.core.config import app_base_path_of, settings
 from app.core.security import (
     clear_oidc_session_cookie,
     create_access_token,
@@ -103,7 +103,10 @@ async def oidc_callback(request: Request) -> Response:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="OIDC authentication failed") from None
 
     request.session.clear()
-    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    # Back to the SPA — which is not necessarily at the root of the origin.
+    response = RedirectResponse(
+        url=app_base_path_of(settings.oidc_redirect_uri), status_code=status.HTTP_303_SEE_OTHER
+    )
     set_oidc_session_cookie(response, session_token)
     return response
 

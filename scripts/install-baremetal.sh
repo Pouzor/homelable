@@ -19,6 +19,9 @@
 #   BACKEND_PORT    uvicorn listen port, loopback only (default: 8000)
 #   HTTP_PORT       nginx listen port (default: 3000)
 #   SERVER_NAME     nginx server_name (default: _)
+#   BASE_PATH       serve under a subpath instead of the root of the origin,
+#                   e.g. BASE_PATH=/homelab/ (default: /). Baked into the
+#                   frontend build and into the generated nginx site.
 #   ADMIN_PASSWORD  initial admin password (default: prompt, "admin" on empty)
 #   SCANNER_RANGES  JSON array of CIDRs to scan (default: prompt, guessed from
 #                   the primary interface)
@@ -37,6 +40,11 @@ BACKEND_PORT="${BACKEND_PORT:-8000}"
 HTTP_PORT="${HTTP_PORT:-3000}"
 SERVER_NAME="${SERVER_NAME:-_}"
 SKIP_NGINX="${SKIP_NGINX:-0}"
+# Normalized to a leading + trailing slash ('/' when unset), mirroring
+# normalizeBasePath() in frontend/src/utils/basePath.ts.
+BASE_PATH="$(printf '%s' "${BASE_PATH:-/}" | sed -e 's#^/*#/#' -e 's#/*$#/#' -e 's#//*#/#g')"
+[[ -n "$BASE_PATH" ]] || BASE_PATH="/"
+BASE_PATH_NO_SLASH="${BASE_PATH%/}"
 NODE_MAJOR=20
 
 log()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -180,7 +188,7 @@ if [[ -f "$FRONTEND_DIR/package-lock.json" ]]; then
 else
   ( cd "$FRONTEND_DIR" && npm install --silent )
 fi
-( cd "$FRONTEND_DIR" && npm run build )
+( cd "$FRONTEND_DIR" && VITE_BASE_PATH="$BASE_PATH" npm run build )
 [[ -d "$FRONTEND_DIR/dist" ]] || fail "Frontend build produced no $FRONTEND_DIR/dist."
 
 chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"
@@ -222,7 +230,8 @@ systemctl restart "$SERVICE_NAME"
 if [[ "$SKIP_NGINX" != "1" ]]; then
   SITE="/etc/nginx/sites-available/homelable"
   log "Writing $SITE"
-  cat >"$SITE" <<EOF
+  if [[ "$BASE_PATH" == "/" ]]; then
+    cat >"$SITE" <<EOF
 server {
     listen $HTTP_PORT;
     server_name $SERVER_NAME;
@@ -262,6 +271,94 @@ server {
     }
 }
 EOF
+  else
+    # Under a prefix the SPA is served from a webroot where the build hangs off
+    # $BASE_PATH, so nginx keeps plain `root` semantics — `alias` plus `try_files`
+    # mis-resolves \$uri. The symlink is refreshed on every run.
+    WEBROOT="/var/www/homelable"
+    mkdir -p "$(dirname "${WEBROOT}${BASE_PATH_NO_SLASH}")"
+    ln -sfn "$FRONTEND_DIR/dist" "${WEBROOT}${BASE_PATH_NO_SLASH}"
+    chmod -R o+rX "$WEBROOT"
+    cat >"$SITE" <<EOF
+server {
+    listen $HTTP_PORT;
+    server_name $SERVER_NAME;
+    root $WEBROOT;
+    index index.html;
+
+    # Relative Location headers — the port and scheme belong to whatever proxy is
+    # in front, not to this server block.
+    absolute_redirect off;
+
+    client_max_body_size 20M;
+
+    # --- served under $BASE_PATH ---------------------------------------------
+    location = $BASE_PATH_NO_SLASH {
+        return 301 $BASE_PATH;
+    }
+
+    # WebSocket (must come before the API block to take priority)
+    location ${BASE_PATH}api/v1/status/ws/ {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/api/v1/status/ws/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    location ${BASE_PATH}api/ {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/api/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    # Legacy /ws/ path
+    location ${BASE_PATH}ws/ {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/ws/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+    }
+
+    # SPA fallback under the prefix
+    location $BASE_PATH {
+        try_files \$uri \$uri/ ${BASE_PATH}index.html;
+    }
+
+    # --- prefix already stripped by a front proxy ----------------------------
+    # No redirect to $BASE_PATH here: the front proxy would strip it again and loop.
+    location /api/v1/status/ws/ {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    location /ws/ {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+    }
+
+    location / {
+        root $FRONTEND_DIR/dist;
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+  fi
   ln -sf "$SITE" /etc/nginx/sites-enabled/homelable
   if [[ "$HTTP_PORT" == "80" ]]; then rm -f /etc/nginx/sites-enabled/default; fi
   nginx -t
@@ -297,9 +394,14 @@ Homelable installed.
 EOF
 if [[ "$SKIP_NGINX" != "1" ]]; then
   cat <<EOF
-  Web UI:      http://${HOST_IP:-<host-ip>}:${HTTP_PORT}
+  Web UI:      http://${HOST_IP:-<host-ip>}:${HTTP_PORT}${BASE_PATH}
   nginx site:  /etc/nginx/sites-available/homelable
 EOF
+  if [[ "$BASE_PATH" != "/" ]]; then
+    cat <<EOF
+  Base path:   $BASE_PATH  (webroot /var/www/homelable, symlinked to the build)
+EOF
+  fi
 else
   cat <<EOF
   nginx:       skipped — proxy your own front end to 127.0.0.1:$BACKEND_PORT

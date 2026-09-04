@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ViewportPortal, useReactFlow, useStore } from '@xyflow/react'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { resolveServerPath } from '@/utils/basePath'
 
 interface ResizeState {
   startMouseX: number
@@ -152,7 +153,7 @@ export function FloorMapLayer() {
         onDoubleClick={locked ? undefined : (e) => { e.stopPropagation(); requestFloorMapEdit() }}
       >
         <img
-          src={imageData}
+          src={resolveServerPath(imageData)}
           alt="Floor plan"
           draggable={false}
           style={{
