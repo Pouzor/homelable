@@ -1614,3 +1614,70 @@ def test_group_by_shared_ip_is_transitive():
     groups = {frozenset(r.id for r in group) for group in _group_by_shared_ip(rows)}
 
     assert groups == {frozenset({"a", "b", "bridge"}), frozenset({"other"})}
+
+
+@pytest.mark.asyncio
+async def test_dedupe_never_deletes_a_second_approved_row(mem_db):
+    """Two approved rows sharing an address both keep their canvas links.
+
+    An approved row is what nodes and rack mounts point at, so collapsing one
+    into the other would silently unlink whatever drew it. The scan collapses
+    the pending row and leaves the pair for the user to resolve.
+    """
+    from app.services.scanner import _dedupe_pending_by_ip
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="a", ip="10.0.0.1", status="approved",
+            discovered_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ))
+        session.add(InventoryDevice(
+            id="b", ip="10.0.0.1, 10.0.0.2", status="approved",
+            discovered_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        ))
+        session.add(InventoryDevice(
+            id="pending", ip="10.0.0.2", status="pending",
+            discovered_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        deleted = await _dedupe_pending_by_ip(session)
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert deleted == 1
+    assert sorted(d.id for d in devices) == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_process_host_never_deletes_a_second_approved_row(mem_db):
+    """The same guard on the scan path: the merge target refreshes, no row goes."""
+    from app.services.scanner import DeepScanOptions, process_host
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="a", ip="10.0.0.1", status="approved",
+            discovered_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ))
+        session.add(InventoryDevice(
+            id="b", ip="10.0.0.1, 10.0.0.2", status="approved",
+            discovered_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        outcome = await process_host(
+            session, _host("10.0.0.1", hostname="claimed.lan"),
+            hidden_ips=set(), deep_scan=DeepScanOptions(),
+        )
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+        oldest = await session.get(InventoryDevice, "a")
+
+    assert outcome == "updated"
+    assert sorted(d.id for d in devices) == ["a", "b"]
+    # The oldest approved row is the merge target.
+    assert oldest is not None and oldest.hostname == "claimed.lan"

@@ -604,6 +604,27 @@ def _group_by_shared_ip(rows: list[InventoryDevice]) -> list[list[InventoryDevic
     return list(groups.values())
 
 
+def _collapse_targets(
+    group: list[InventoryDevice],
+) -> tuple[InventoryDevice, list[InventoryDevice]]:
+    """The row a duplicate group folds into, and the rows safe to delete for it.
+
+    An ``approved`` row owns the canvas-link semantics — nodes and rack mounts
+    point at it under ``ON DELETE SET NULL`` — so deleting one silently unlinks
+    whatever drew it. With one approved row that row is the merge target and the
+    rest collapse into it. With *two*, the group is two canvas-linked devices
+    laying claim to one address, and a background scan is not the place to
+    decide which of them loses its links: every approved row stands, and only
+    the pending ones are collapsed. The pair then stays visible in the inventory
+    for the user to sort out.
+    """
+    approved = [row for row in group if row.status == "approved"]
+    keep = approved[0] if approved else group[0]
+    if len(approved) > 1:
+        return keep, [row for row in group if row.status != "approved"]
+    return keep, [row for row in group if row is not keep]
+
+
 async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
     """Collapse duplicate non-hidden inventory rows that share an IP into one.
 
@@ -622,11 +643,10 @@ async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
     for group in _group_by_shared_ip(list(rows)):
         if len(group) < 2:
             continue
-        keep = next((r for r in group if r.status == "approved"), group[0])
-        for dup in group:
-            if dup is not keep:
-                await db.delete(dup)
-                deleted += 1
+        _, dups = _collapse_targets(group)
+        for dup in dups:
+            await db.delete(dup)
+            deleted += 1
     if deleted:
         await db.commit()
     return deleted
@@ -697,11 +717,11 @@ async def process_host(
     if existing_rows:
         # Prefer an approved row (it owns the canvas link semantics),
         # otherwise the oldest. Collapse any leftover duplicates created
-        # by earlier scans.
-        keep = next((r for r in existing_rows if r.status == "approved"), existing_rows[0])
-        for dup in existing_rows:
-            if dup is not keep:
-                await db.delete(dup)
+        # by earlier scans — except a second approved row, which keeps its
+        # own canvas links (see `_collapse_targets`).
+        keep, dups = _collapse_targets(existing_rows)
+        for dup in dups:
+            await db.delete(dup)
         keep.ip = keep.ip or ip  # fill an IP a Proxmox import lacked
         keep.mac = norm_mac or keep.mac
         keep.hostname = host.get("hostname") or keep.hostname
