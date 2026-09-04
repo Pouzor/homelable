@@ -5,9 +5,11 @@
  * buttons look enabled but do nothing.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { RackCanvas } from '../components/RackCanvas'
 import { useRackStore } from '../store'
+
+const applyViewport = vi.hoisted(() => vi.fn())
 
 vi.mock('@xyflow/react', async () => {
   const { mockReactFlow } = await import('@/test/mocks')
@@ -15,18 +17,21 @@ vi.mock('@xyflow/react', async () => {
   return mockReactFlow({
     ReactFlow: ({ children }: { children?: React.ReactNode }) =>
       React.createElement('div', { 'data-testid': 'flow' }, children),
+    ReactFlowProvider: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement('div', { 'data-testid': 'rack-flow-provider' }, children),
     Background: () => null,
     BackgroundVariant: { Dots: 'dots' },
     Controls: () => null,
     ViewportPortal: () => null,
     useReactFlow: () => ({
-      setViewport: vi.fn(),
+      setViewport: applyViewport,
       screenToFlowPosition: (p: { x: number; y: number }) => p,
     }),
   })
 })
 
 beforeEach(() => {
+  applyViewport.mockClear()
   useRackStore.getState().reset()
 })
 
@@ -162,5 +167,74 @@ describe('RackCanvas cable dragging', () => {
     fireEvent.pointerUp(window)
     expect(useRackStore.getState().cableDraft).toEqual(armed)
     expect(useRackStore.getState().cableDrag).toBeNull()
+  })
+})
+
+/**
+ * Switching to another canvas and back remounts `RackCanvas` before `App` calls
+ * `loadDesign`, so the restore must not be spent on the pre-load state — that is
+ * issue #408, where the racks came back at the wrong pan/zoom until a hard
+ * reload.
+ */
+describe('RackCanvas viewport restore', () => {
+  const view = { x: -120, y: -340, zoom: 0.75 }
+
+  it('carries its own React Flow provider, so the logical canvas cannot leak its pan/zoom in', () => {
+    render(<RackCanvas />)
+    expect(screen.getByTestId('rack-flow-provider')).toContainElement(screen.getByTestId('flow'))
+  })
+
+  it('applies the stored viewport once a design is loaded', async () => {
+    useRackStore.setState({ designId: 'd1', loading: false, viewport: view })
+    render(<RackCanvas />)
+    await waitFor(() => expect(applyViewport).toHaveBeenCalledWith(view))
+  })
+
+  it('waits for the load to finish rather than restoring the previous state', async () => {
+    useRackStore.setState({ designId: 'd1', loading: true, viewport: view })
+    render(<RackCanvas />)
+    // A frame passes with the fetch still in flight.
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(r))
+    })
+    expect(applyViewport).not.toHaveBeenCalled()
+  })
+
+  it('restores the viewport the load brings back, not the one left over from the last mount', async () => {
+    // Mount as a switch-back does: same design id, stale viewport, no load yet.
+    useRackStore.setState({ designId: 'd1', loading: false, viewport: view })
+    render(<RackCanvas />)
+    await waitFor(() => expect(applyViewport).toHaveBeenCalledWith(view))
+
+    const loaded = { x: 40, y: 80, zoom: 1.4 }
+    act(() => {
+      useRackStore.setState({ loading: true })
+    })
+    act(() => {
+      useRackStore.setState({ loading: false, viewport: loaded })
+    })
+    await waitFor(() => expect(applyViewport).toHaveBeenLastCalledWith(loaded))
+  })
+
+  it('ignores a viewport with no zoom', async () => {
+    useRackStore.setState({ designId: 'd1', loading: false, viewport: { x: 0, y: 0, zoom: 0 } })
+    render(<RackCanvas />)
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(r))
+    })
+    expect(applyViewport).not.toHaveBeenCalled()
+  })
+
+  it('does not re-apply the viewport when the user pans', async () => {
+    useRackStore.setState({ designId: 'd1', loading: false, viewport: view })
+    render(<RackCanvas />)
+    await waitFor(() => expect(applyViewport).toHaveBeenCalledTimes(1))
+    act(() => {
+      useRackStore.getState().setViewport({ x: 5, y: 5, zoom: 1 })
+    })
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(r))
+    })
+    expect(applyViewport).toHaveBeenCalledTimes(1)
   })
 })
