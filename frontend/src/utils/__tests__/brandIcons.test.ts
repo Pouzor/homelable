@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   BRAND_ICON_PREFIX,
   isBrandIconKey,
@@ -32,6 +32,16 @@ describe('brand icon helpers', () => {
 
   it('brandIconUrl serves local brand icons from public/brand', () => {
     expect(brandIconUrl('homelable')).toBe('/brand/homelable.svg')
+  })
+
+  it('serves the local icon from under a configured base path', async () => {
+    vi.stubEnv('BASE_URL', '/homelab/')
+    vi.resetModules()
+    const { brandIconUrl: scoped } = await import('@/utils/nodeIcons')
+    expect(scoped('homelable')).toBe('/homelab/brand/homelable.svg')
+    expect(scoped('plex')).toBe('https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/plex.svg')
+    vi.unstubAllEnvs()
+    vi.resetModules()
   })
 
   it('isLocalBrandIcon only matches the locally-served slugs', () => {

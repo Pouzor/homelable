@@ -70,6 +70,19 @@ describe('api/client', () => {
     expect(publicApi.defaults.baseURL).toBe('/api/v1')
   })
 
+  it('mounts both instances under a configured base path', async () => {
+    const before = instances.length
+    vi.stubEnv('BASE_URL', '/homelab/')
+    vi.resetModules()
+    await import('../client')
+    const [subApi, subPublicApi] = instances.slice(before)
+    expect(subApi.defaults.baseURL).toBe('/homelab/api/v1')
+    expect(subApi.defaults.withCredentials).toBe(true)
+    expect(subPublicApi.defaults.baseURL).toBe('/homelab/api/v1')
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
   it('exports `api` matching the first created instance', () => {
     expect(mod.api).toBe(api)
   })

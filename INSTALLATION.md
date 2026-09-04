@@ -189,6 +189,7 @@ sudo HTTP_PORT=8080 ADMIN_PASSWORD=hunter2 SCANNER_RANGES='["10.0.0.0/24"]' \
 | `ADMIN_PASSWORD` | prompt, else `admin` | Initial password for user `admin` |
 | `SCANNER_RANGES` | prompt, else guessed | JSON array of CIDRs |
 | `SKIP_NGINX=1` | off | Do not install or touch nginx |
+| `BASE_PATH` | `/` | Serve under a subpath — see [Serving under a subpath](#serving-under-a-subpath) |
 
 ### Afterwards
 
@@ -280,6 +281,83 @@ server {
 Terminating TLS in front of it means adding your own hostname to
 `CORS_ORIGINS` in `backend/.env` (`https://homelable.example`) and restarting
 the service.
+
+---
+
+## Serving under a subpath
+
+By default Homelable owns the root of its origin (`https://homelable.example/`).
+To put it behind an existing reverse proxy on a shared hostname — one cert, one
+dynamic-DNS name, one open port, every service on its own prefix — build it with
+a base path.
+
+The base path is **baked into the build**: the browser has no way to guess it, so
+it cannot be a runtime setting. Changing it means rebuilding the frontend.
+
+### Docker
+
+```bash
+# in .env, next to the backend settings
+VITE_BASE_PATH=/homelab/
+
+docker compose build frontend && docker compose up -d
+```
+
+Homelable then answers on `http://<host>:3000/homelab/`. The generated nginx
+config accepts both reverse-proxy styles, so either of these works in front of
+it:
+
+```nginx
+# prefix forwarded intact — no trailing slash on proxy_pass
+location /homelab/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+}
+
+# or: prefix stripped — trailing slash on proxy_pass
+location /homelab/ {
+    proxy_pass http://127.0.0.1:3000/;
+    ...
+}
+```
+
+The pre-built images (`docker-compose.prebuilt.yml`) are built for the root, so a
+subpath needs a local build.
+
+### Bare metal / LXC
+
+```bash
+sudo BASE_PATH=/homelab/ bash scripts/install-baremetal.sh
+```
+
+The script bakes the prefix into the build and writes the matching nginx site.
+The build stays in `/opt/homelable/frontend/dist`; the site serves it through
+`/var/www/homelable/homelab`, a symlink refreshed on every run. Re-running the
+script with a different `BASE_PATH` (or none) rewrites both.
+
+### Development
+
+```bash
+cd frontend && VITE_BASE_PATH=/homelab/ npm run dev   # http://localhost:5173/homelab/
+```
+
+The Vite dev proxy follows the same prefix and strips it before forwarding to
+uvicorn on `:8000`.
+
+### What to expect
+
+- WebSocket status updates, uploaded floor plans and the read-only live view
+  (`/homelab/view`) all follow the prefix.
+- TLS in front still means adding your hostname to `CORS_ORIGINS` in
+  `backend/.env`, exactly as at the root.
+- OIDC: `OIDC_REDIRECT_URI` must carry the prefix
+  (`https://home.example/homelab/api/v1/auth/oidc/callback`), and so must the
+  redirect URI registered with your provider.
+- Floor plans uploaded before the move keep working — stored URLs are resolved
+  against the base path at render time.
 
 ---
 

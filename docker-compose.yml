@@ -49,6 +49,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        # Serve Homelable under a subpath, e.g. VITE_BASE_PATH=/homelab/ in .env.
+        # Defaults to the root — see docs/INSTALLATION.md.
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/}
     restart: unless-stopped
     ports:
       - "3000:80"

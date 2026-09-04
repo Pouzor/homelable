@@ -1,15 +1,16 @@
 import axios from 'axios'
+import { API_BASE_URL } from '@/utils/basePath'
 import { useAuthStore } from '@/stores/authStore'
 import type { AuthMode, AuthUser } from '@/stores/authStore'
 import type { InventoryEntry } from '@/types'
 
 export const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE_URL,
   withCredentials: true,
 })
 
 // Unauthenticated axios instance — no JWT, no 401 redirect (used for public endpoints)
-const publicApi = axios.create({ baseURL: '/api/v1' })
+const publicApi = axios.create({ baseURL: API_BASE_URL })
 
 api.interceptors.request.use((config) => {
   const { token, csrfToken } = useAuthStore.getState()

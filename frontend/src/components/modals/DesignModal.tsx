@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { DESIGN_ICONS, DEFAULT_DESIGN_ICON, resolveDesignIcon } from '@/utils/designIcons'
 import type { Design, DesignType, FloorMapConfig } from '@/types'
+import { resolveServerPath } from '@/utils/basePath'
 
 /** Canvas kinds offered on create. `electrical` shares the network renderer. */
 const CANVAS_KINDS: { value: DesignType; label: string; hint: string }[] = [
@@ -294,7 +295,7 @@ export function DesignModal({
               ) : (
                 <>
                   <div className="relative rounded-lg overflow-hidden border border-[#30363d]" style={{ maxHeight: 160 }}>
-                    <img src={imageData} alt="Floor plan preview" className="w-full h-full object-contain" style={{ opacity }} />
+                    <img src={resolveServerPath(imageData)} alt="Floor plan preview" className="w-full h-full object-contain" style={{ opacity }} />
                   </div>
 
                   <div className="flex items-center gap-2">

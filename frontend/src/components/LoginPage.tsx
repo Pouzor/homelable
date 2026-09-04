@@ -7,6 +7,7 @@ import { Logo } from '@/components/ui/Logo'
 import { authApi } from '@/api/client'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/lib/utils'
+import { API_BASE_URL, resolveServerPath } from '@/utils/basePath'
 
 export function LoginPage() {
   const [username, setUsername] = useState('')
@@ -111,7 +112,7 @@ export function LoginPage() {
               Continue through the configured OpenID Connect provider.
             </p>
             <a
-              href={oidcLoginUrl ?? '/api/v1/auth/oidc/login'}
+              href={resolveServerPath(oidcLoginUrl ?? `${API_BASE_URL}/auth/oidc/login`)}
               className={cn(
                 buttonVariants(),
                 'bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 font-medium',

@@ -1,4 +1,5 @@
 import type { NodeType } from '@/types'
+import { withBase } from '@/utils/basePath'
 import {
   // Infrastructure (node types)
   Globe, Router, Network, Server, Layers, Box, Container, HardDrive, Cpu, Wifi, Circle,
@@ -236,7 +237,7 @@ export function isLocalBrandIcon(slug: string): boolean {
 }
 
 export function brandIconUrl(slug: string): string {
-  if (isLocalBrandIcon(slug)) return `/brand/${slug}.svg`
+  if (isLocalBrandIcon(slug)) return withBase(`brand/${slug}.svg`)
   return `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/${slug}.svg`
 }
 
