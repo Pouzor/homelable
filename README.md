@@ -336,8 +336,8 @@ Homelable can exposes a [Model Context Protocol](https://modelcontextprotocol.io
 
 | | Action |
 |---|---|
-| **Read** | List all nodes, edges, full canvas, pending devices, scan history |
-| **Write** | Add / update / delete nodes and edges, trigger a network scan, approve or hide discovered devices |
+| **Read** | List all nodes, edges, full canvas, zones, designs, the device inventory and scan history — and the rack canvases: racks, mounted gear, patched cables |
+| **Write** | Add / update / delete nodes, edges and zones, trigger a network scan, approve / hide / restore discovered devices, create and edit inventory entries, build racks and mount, move and patch the gear in them |
 
 ### Setup
 
@@ -413,6 +413,8 @@ Or add it manually to `~/.claude.json`:
 - *"Add a new LXC container named `pihole` at 192.168.1.5, connected to my switch."*
 - *"Trigger a network scan on 192.168.1.0/24 and show me the pending devices."*
 - *"Show me the full canvas topology."*
+- *"How much free U is left in the garage rack?"*
+- *"Mount the NAS in rack 1 and patch its first port to port 12 of the patch panel."*
 
 ### Security
 

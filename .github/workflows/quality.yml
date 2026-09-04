@@ -61,10 +61,13 @@ jobs:
       - run: mypy app/
       - run: pytest
 
-  # Also guards the NODE_TYPES / EDGE_TYPES enums in mcp/app/tools.py against
-  # drift from frontend/src/types/index.ts (test_node_types_sync.py,
-  # test_edge_types_sync.py) — those tests need the frontend sources, so this
-  # job runs from a full checkout rather than the mcp Docker context.
+  # Also guards the copies the MCP server keeps of frontend data against drift:
+  # NODE_TYPES / EDGE_TYPES in mcp/app/tools.py against frontend/src/types/index.ts,
+  # and the faceplate catalog in mcp/app/faceplates.py against
+  # frontend/src/rack/faceplates.ts (test_node_types_sync.py,
+  # test_edge_types_sync.py, test_faceplates_sync.py) — those tests need the
+  # frontend sources, so this job runs from a full checkout rather than the mcp
+  # Docker context.
   mcp:
     runs-on: ubuntu-latest
     defaults:
