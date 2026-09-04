@@ -2,7 +2,9 @@
  * Rack canvas: one React Flow node per rack, plus the cabling overlay.
  *
  * Rendered by `App` in place of `CanvasContainer` when the active design is of
- * type `rack`. React Flow context comes from the App-level provider.
+ * type `rack`. It carries its OWN `ReactFlowProvider`: sharing the App-level one
+ * with the logical canvas leaks that canvas' pan/zoom and pane size into the
+ * rack flow when the user switches back and forth.
  */
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
@@ -10,6 +12,7 @@ import {
   BackgroundVariant,
   Controls,
   ReactFlow,
+  ReactFlowProvider,
   useReactFlow,
   type Node,
   type NodeChange,
@@ -27,7 +30,7 @@ import { RackSettingsModal } from './RackSettingsModal'
 
 const nodeTypes = { rack: RackFlowNode }
 
-export function RackCanvas() {
+function RackCanvasInner() {
   const racks = useRackStore((s) => s.racks)
   const moveRack = useRackStore((s) => s.moveRack)
   const selectDevice = useRackStore((s) => s.selectDevice)
@@ -55,12 +58,24 @@ export function RackCanvas() {
   // `node_status`, which only a refetch moves.
   useAutoStatusRefresh()
 
-  // Restore the saved pan/zoom once per design, not on every viewport nudge.
+  // Restore the saved pan/zoom once per load, not on every viewport nudge.
+  //
+  // Coming back from another canvas remounts this component BEFORE `App`'s
+  // design effect calls `loadDesign`, so the first pass here sees the previous
+  // state. Clearing the marker whenever a load starts means the viewport the
+  // fetch brings back is the one that gets applied, not the pre-load leftover.
   const restoredFor = useRef<string | null>(null)
   useEffect(() => {
-    if (!designId || loading || restoredFor.current === designId) return
+    if (loading) {
+      restoredFor.current = null
+      return
+    }
+    if (!designId || restoredFor.current === designId || storedViewport.zoom <= 0) return
     restoredFor.current = designId
-    if (storedViewport.zoom > 0) void applyViewport(storedViewport)
+    // A frame later: on a fresh mount React Flow has not measured its pane yet,
+    // and a viewport set against a stale size lands in the wrong place.
+    const frame = requestAnimationFrame(() => void applyViewport(storedViewport))
+    return () => cancelAnimationFrame(frame)
   }, [designId, loading, storedViewport, applyViewport])
 
   // A patch dragged out of a port follows the pointer until it is released.
@@ -183,5 +198,13 @@ export function RackCanvas() {
     <RackDeviceModal />
     <RackSettingsModal />
     </>
+  )
+}
+
+export function RackCanvas() {
+  return (
+    <ReactFlowProvider>
+      <RackCanvasInner />
+    </ReactFlowProvider>
   )
 }
