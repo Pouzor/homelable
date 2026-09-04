@@ -40,7 +40,28 @@ jobs:
         # --omit=dev: only ship-time deps gate the build. Dev-only tooling
         # (shadcn CLI and its transitive tree: hono, fast-uri, …) is never
         # bundled or served, so its advisories must not fail release CI.
-        run: cd frontend && npm audit --omit=dev --audit-level=high
+        #
+        # `npm audit` exits 1 both for a real advisory and for a registry that
+        # would not answer (the audit endpoint 503s often enough to redden PRs
+        # that changed no dependency). Only the second case is retried; an
+        # advisory still fails on the first attempt.
+        run: |
+          cd frontend
+          for attempt in 1 2 3; do
+            if out=$(npm audit --omit=dev --audit-level=high 2>&1); then
+              echo "$out"
+              exit 0
+            fi
+            echo "$out"
+            if ! grep -qiE 'audit endpoint returned an error|service unavailable|ETIMEDOUT|ECONNRESET|ENOTFOUND|socket hang up' <<<"$out"; then
+              echo "::error::npm audit reported advisories at or above high severity"
+              exit 1
+            fi
+            echo "::warning::npm audit endpoint unreachable (attempt $attempt/3)"
+            if [ "$attempt" -lt 3 ]; then sleep 30; fi
+          done
+          echo "::error::npm audit endpoint unreachable after 3 attempts"
+          exit 1
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
