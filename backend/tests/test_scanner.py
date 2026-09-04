@@ -1,5 +1,6 @@
 """Tests for scanner: two-phase nmap, mDNS discovery, run_scan integration."""
 import uuid
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1436,3 +1437,180 @@ async def test_run_device_scan_keeps_what_it_found_when_the_budget_runs_out(mem_
     # Partial coverage is reported, never passed off as a full sweep.
     assert run.error is not None
     assert "1/8" in run.error
+
+
+# ---------------------------------------------------------------------------
+# Multi-IP devices — one row per device, not one per address (issue #373)
+# ---------------------------------------------------------------------------
+
+def _host(ip: str, *, mac: str | None = None, hostname: str | None = None):
+    return {"ip": ip, "hostname": hostname, "mac": mac, "os": None, "open_ports": []}
+
+
+@pytest.mark.asyncio
+async def test_process_host_folds_into_declared_secondary_ip(mem_db):
+    """A scan of a device's second address refreshes its row, never mints one.
+
+    The user declares the extra addresses by hand — a router's LAN and VLAN
+    legs, a host behind a VIP — precisely so the scanner stops reporting them
+    as separate discoveries.
+    """
+    from app.services.scanner import DeepScanOptions, process_host
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="d1", ip="192.168.1.1, 192.168.10.1", status="approved", label="router",
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        outcome = await process_host(
+            session, _host("192.168.10.1", hostname="router-vlan.lan"),
+            hidden_ips=set(), deep_scan=DeepScanOptions(),
+        )
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert outcome == "updated"
+    assert len(devices) == 1
+    # The declared list is the user's, not the scanner's — it survives the merge.
+    assert devices[0].ip == "192.168.1.1, 192.168.10.1"
+    assert devices[0].hostname == "router-vlan.lan"
+
+
+@pytest.mark.asyncio
+async def test_process_host_does_not_match_an_address_prefix(mem_db):
+    """`192.168.1.4` is a substring of `192.168.1.40` — and a different host.
+
+    The query narrows with a substring match, so the per-token confirmation is
+    what stops a false match. It matters more than usual here: the losing rows
+    of a match are deleted, not skipped.
+    """
+    from app.services.scanner import DeepScanOptions, process_host
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(id="d1", ip="192.168.1.40", status="approved"))
+        await session.commit()
+
+    async with mem_db() as session:
+        outcome = await process_host(
+            session, _host("192.168.1.4"), hidden_ips=set(), deep_scan=DeepScanOptions(),
+        )
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert outcome == "created"
+    assert {d.ip for d in devices} == {"192.168.1.40", "192.168.1.4"}
+
+
+@pytest.mark.asyncio
+async def test_process_host_matches_a_single_token_row_exactly_as_before(mem_db):
+    """The ordinary one-address case is untouched by the token matching."""
+    from app.services.scanner import DeepScanOptions, process_host
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(id="d1", ip="192.168.1.5", status="pending"))
+        await session.commit()
+
+    async with mem_db() as session:
+        outcome = await process_host(
+            session, _host("192.168.1.5", hostname="nas.lan"),
+            hidden_ips=set(), deep_scan=DeepScanOptions(),
+        )
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert outcome == "updated"
+    assert len(devices) == 1 and devices[0].hostname == "nas.lan"
+
+
+@pytest.mark.asyncio
+async def test_run_scan_skips_the_secondary_ip_of_a_hidden_device(mem_db):
+    """Hiding a multi-address device hides it at every one of its addresses."""
+    from app.services.scanner import run_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(_make_scan_run(run_id))
+        session.add(InventoryDevice(id="d1", ip="192.168.1.1, 192.168.10.1", status="hidden"))
+        await session.commit()
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan", return_value=[_host("192.168.10.1")]), \
+             patch("app.services.scanner._mdns_discover", new_callable=AsyncMock, return_value=[]), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_scan(["192.168.1.0/24"], session, run_id)
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert len(devices) == 1
+    assert devices[0].status == "hidden"
+
+
+@pytest.mark.asyncio
+async def test_dedupe_collapses_a_single_ip_row_into_a_multi_ip_one(mem_db):
+    """Declaring an extra address folds in the duplicate row it already spawned.
+
+    The approved row wins even though it is the younger of the two: it carries
+    the canvas links.
+    """
+    from app.services.scanner import _dedupe_pending_by_ip
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="stale", ip="192.168.10.1", status="pending",
+            discovered_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ))
+        session.add(InventoryDevice(
+            id="keep", ip="192.168.1.1, 192.168.10.1", status="approved",
+            discovered_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        deleted = await _dedupe_pending_by_ip(session)
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert deleted == 1
+    assert [d.id for d in devices] == ["keep"]
+
+
+@pytest.mark.asyncio
+async def test_dedupe_leaves_rows_that_share_no_address(mem_db):
+    from app.services.scanner import _dedupe_pending_by_ip
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(id="a", ip="192.168.1.1, 192.168.10.1", status="pending"))
+        session.add(InventoryDevice(id="b", ip="192.168.1.2, 192.168.10.2", status="pending"))
+        await session.commit()
+
+    async with mem_db() as session:
+        deleted = await _dedupe_pending_by_ip(session)
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert deleted == 0
+    assert len(devices) == 2
+
+
+def test_group_by_shared_ip_is_transitive():
+    """`A,B` next to `A` and `B` is one device, not two pairs."""
+    from app.services.scanner import _group_by_shared_ip
+
+    rows = [
+        InventoryDevice(id="a", ip="10.0.0.1"),
+        InventoryDevice(id="b", ip="10.0.1.1"),
+        InventoryDevice(id="bridge", ip="10.0.0.1, 10.0.1.1"),
+        InventoryDevice(id="other", ip="10.0.2.1"),
+    ]
+
+    groups = {frozenset(r.id for r in group) for group in _group_by_shared_ip(rows)}
+
+    assert groups == {frozenset({"a", "b", "bridge"}), frozenset({"other"})}

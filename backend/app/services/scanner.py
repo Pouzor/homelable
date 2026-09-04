@@ -20,7 +20,7 @@ from app.db.models import InventoryDevice, ScanRun
 from app.services.discovery_sources import add_source
 from app.services.fingerprint import fingerprint_ports, suggest_node_type
 from app.services.http_probe import probe_open_ports
-from app.services.inventory_sync import merge_services
+from app.services.inventory_sync import ip_tokens, merge_services
 from app.services.mac_utils import normalize_mac
 
 logger = logging.getLogger(__name__)
@@ -572,11 +572,45 @@ def _mock_scan(target: str) -> list[dict[str, Any]]:
     ]
 
 
+def _group_by_shared_ip(rows: list[InventoryDevice]) -> list[list[InventoryDevice]]:
+    """Group rows that share at least one address, transitively.
+
+    A row may hold several comma-separated addresses, so grouping is per token:
+    ``10.0.0.1`` and ``10.0.0.1, 10.0.1.1`` are the same device, and a row
+    bridging two others (``A,B`` next to ``A`` and ``B``) puts all three in one
+    group. Input order is preserved inside each group, so a caller ordering by
+    ``discovered_at`` still gets the oldest row first.
+    """
+    # Union-find over row indices, keyed by the addresses they carry.
+    parent = list(range(len(rows)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    owner: dict[str, int] = {}
+    for i, row in enumerate(rows):
+        for tok in ip_tokens(row.ip):
+            first = owner.setdefault(tok, i)
+            root_a, root_b = find(first), find(i)
+            if root_a != root_b:
+                parent[max(root_a, root_b)] = min(root_a, root_b)
+
+    groups: dict[int, list[InventoryDevice]] = {}
+    for i, row in enumerate(rows):
+        groups.setdefault(find(i), []).append(row)
+    return list(groups.values())
+
+
 async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
     """Collapse duplicate non-hidden inventory rows that share an IP into one.
 
     Keeps an ``approved`` row when present (it carries canvas-link semantics),
     otherwise the oldest row, and deletes the rest. Returns the number deleted.
+    Rows carrying several addresses count as duplicates of any row holding one
+    of them — that is what declaring the extra address is for.
     """
     rows = (await db.execute(
         select(InventoryDevice)
@@ -584,14 +618,8 @@ async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
         .order_by(InventoryDevice.discovered_at)
     )).scalars().all()
 
-    by_ip: dict[str, list[InventoryDevice]] = {}
-    for row in rows:
-        if row.ip is None:  # guarded by the query, but keeps the type checker happy
-            continue
-        by_ip.setdefault(row.ip, []).append(row)
-
     deleted = 0
-    for group in by_ip.values():
+    for group in _group_by_shared_ip(list(rows)):
         if len(group) < 2:
             continue
         keep = next((r for r in group if r.status == "approved"), group[0])
@@ -646,14 +674,25 @@ async def process_host(
     # a duplicate — and so a device previously imported from Proxmox (which
     # may have no IP but a known NIC MAC) reconciles with this scan instead
     # of doubling up. Hidden rows are already skipped above.
-    match_cond = [InventoryDevice.ip == ip]
+    #
+    # The IP side matches per token: a row may hold several comma-separated
+    # addresses (a router's LAN and VLAN legs, a host and its VIP), declared by
+    # the user precisely so this scan folds into it rather than minting a second
+    # row every run. `contains` only narrows the query — the tokens are confirmed
+    # below, because "10.0.0.4" is a substring of "10.0.0.40" and these rows are
+    # deleted, not merely skipped.
+    match_cond = [InventoryDevice.ip.contains(ip)]
     if norm_mac:
         match_cond.append(InventoryDevice.mac == norm_mac)
-    existing_rows = (await db.execute(
+    candidates = (await db.execute(
         select(InventoryDevice)
         .where(or_(*match_cond), InventoryDevice.status != "hidden")
         .order_by(InventoryDevice.discovered_at)
     )).scalars().all()
+    existing_rows = [
+        row for row in candidates
+        if ip in ip_tokens(row.ip) or (norm_mac is not None and row.mac == norm_mac)
+    ]
 
     if existing_rows:
         # Prefer an approved row (it owns the canvas link semantics),
@@ -736,7 +775,11 @@ async def run_scan(
         hidden_ips_result = await db.execute(
             select(InventoryDevice.ip).where(InventoryDevice.status == "hidden")
         )
-        hidden_ips: set[str] = {row[0] for row in hidden_ips_result.fetchall()}
+        # Per address, not per row: a hidden device holding several addresses is
+        # hidden at every one of them.
+        hidden_ips: set[str] = {
+            tok for row in hidden_ips_result.fetchall() for tok in ip_tokens(row[0])
+        }
 
         # Collapse any pre-existing duplicate inventory rows (same IP, non-hidden)
         # left over from older scans, so the device shows up exactly once even if
