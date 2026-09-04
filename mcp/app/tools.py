@@ -3,6 +3,8 @@ from urllib.parse import quote
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 from .backend_client import backend
+from .devices import DEVICE_TOOL_NAMES, DEVICE_TOOLS, dispatch_device
+from .racks import RACK_TOOL_NAMES, RACK_TOOLS, dispatch_rack
 
 
 # Kept in sync manually with frontend/src/types/index.ts NodeType (device types only —
@@ -137,7 +139,7 @@ def _build_tools() -> list[Tool]:
                 "ranges": {"type": "array", "items": {"type": "string"}, "description": "CIDR ranges to scan (uses configured defaults if omitted)"},
             },
         }),
-        Tool(name="approve_device", description="Approve a pending discovered device and create a node", inputSchema={
+        Tool(name="approve_device", description="Approve a pending discovered device and create a node. A device created from a rack canvas (discovery_source 'rack') is refused with a 409 — passive rack gear never goes on a logical canvas.", inputSchema={
             "type": "object",
             "required": ["id"],
             "properties": {
@@ -177,7 +179,7 @@ def _build_tools() -> list[Tool]:
             "type": "object",
             "properties": {},
         }),
-        Tool(name="list_inventory", description="List the full device inventory (everything scanned except user-hidden devices): both pending devices awaiting triage and already-approved devices. Each row carries a 'status' field. Use the optional 'status' filter to narrow the result.", inputSchema={
+        Tool(name="list_inventory", description="List the full device inventory (everything scanned except user-hidden devices): both pending devices awaiting triage and already-approved devices. Each row carries a 'status' field. Use the optional 'status' filter to narrow the result. Gear created from a rack canvas is listed here too, tagged discovery_source 'rack'.", inputSchema={
             "type": "object",
             "properties": {
                 "status": {"type": "string", "enum": ["all", "pending", "approved"], "default": "all", "description": "Filter inventory by status. 'all' returns pending + approved."},
@@ -249,7 +251,9 @@ def _build_tools() -> list[Tool]:
     ]
 
 
-TOOLS = _build_tools()
+# The rack canvas and the inventory write routes live in their own modules —
+# both are big enough to bury the logical-canvas tools this file is about.
+TOOLS = _build_tools() + RACK_TOOLS + DEVICE_TOOLS
 
 
 def register_tools(server: Server):
@@ -336,6 +340,12 @@ def _is_ancestor(nodes_by_id: dict[str, dict], maybe_ancestor_id: str, node_id: 
 
 
 async def _dispatch(name: str, args: dict) -> dict:
+    if name in RACK_TOOL_NAMES:
+        return await dispatch_rack(name, args)
+
+    if name in DEVICE_TOOL_NAMES:
+        return await dispatch_device(name, args)
+
     if name == "create_node":
         return await backend.post("/api/v1/nodes", args)
 

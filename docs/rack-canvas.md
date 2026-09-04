@@ -236,7 +236,8 @@ diagram's online/offline tally. **PNG export** works here too.
 - No power draw or outlet budgeting.
 - No undo/redo on a rack canvas (the diagram canvas keeps its own).
 - Rack canvases are not shown by the read-only [Live View](../README.md#live-view-read-only-public-canvas).
-- The MCP server exposes diagram nodes and links only, not racks.
+- The MCP server can read and edit a rack canvas, but its save is last-writer-wins:
+  an AI write while you have the canvas open with unsaved changes loses one side.
 
 ---
 
