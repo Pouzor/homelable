@@ -54,11 +54,13 @@ def is_furniture(node_type: str | None) -> bool:
     return (node_type or "") in FURNITURE_TYPES
 
 
-def _ip_tokens(ip: str | None) -> list[str]:
+def ip_tokens(ip: str | None) -> list[str]:
     """Split an ``ip`` field into individual addresses.
 
-    A node or device may carry several comma-separated addresses, so identity
-    matching compares per token — same rule as ``node_dedupe._ip_tokens``.
+    A node or device may carry several comma-separated addresses — a router with
+    a management VLAN, a host behind a VIP — so identity matching compares per
+    token rather than on the whole string. Every matcher that resolves a device
+    from addresses shares this rule, the scanner included.
     """
     return [t.strip() for t in ip.split(",") if t.strip()] if ip else []
 
@@ -125,7 +127,7 @@ async def find_device_for(
     Hidden rows are eligible: a hidden device is still that device, and silently
     minting a second row for it would resurrect the duplicate the user hid.
     """
-    ip_toks = _ip_tokens(ip)
+    ip_toks = ip_tokens(ip)
     conds = []
     if ieee:
         # Case-insensitive: `0x00124B00…` and `0x00124b00…` are the same radio,
@@ -151,7 +153,7 @@ async def find_device_for(
     for device in candidates:
         # "1.2.3.4" must not match "1.2.3.40" — confirm the token, don't trust
         # the SQL `contains`.
-        if ip_toks and set(_ip_tokens(device.ip)) & set(ip_toks):
+        if ip_toks and set(ip_tokens(device.ip)) & set(ip_toks):
             return device
     for device in candidates:
         if mac and device.mac == mac:
