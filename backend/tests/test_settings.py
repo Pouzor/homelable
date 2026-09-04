@@ -255,3 +255,57 @@ def test_valid_oidc_configuration_is_accepted():
     configured = _valid_oidc_settings()
     assert configured.auth_mode == "oidc"
     assert configured.oidc_cookie_secure is True
+
+
+# --- Env values arriving still quoted (podman-compose, issue #410) ---
+
+
+def test_quoted_password_hash_is_unwrapped():
+    """podman-compose passes .env quotes through verbatim; Docker Compose strips them."""
+    configured = Settings(
+        _env_file=None,
+        secret_key="test-secret",
+        auth_password_hash="'$2b$12$RtMbyw17l4N5UGzeXMNAWuzCaVV.XFBY7ZetWheQhxcBDcxahapkG'",
+    )
+    assert configured.auth_password_hash == "$2b$12$RtMbyw17l4N5UGzeXMNAWuzCaVV.XFBY7ZetWheQhxcBDcxahapkG"
+
+
+def test_double_quoted_password_hash_is_unwrapped():
+    configured = Settings(
+        _env_file=None,
+        secret_key="test-secret",
+        auth_password_hash='"$2b$12$RtMbyw17l4N5UGzeXMNAWuzCaVV.XFBY7ZetWheQhxcBDcxahapkG"',
+    )
+    assert configured.auth_password_hash.startswith("$2b$12$")
+
+
+def test_unquoted_password_hash_is_left_alone():
+    raw = "$2b$12$RtMbyw17l4N5UGzeXMNAWuzCaVV.XFBY7ZetWheQhxcBDcxahapkG"
+    configured = Settings(_env_file=None, secret_key="test-secret", auth_password_hash=raw)
+    assert configured.auth_password_hash == raw
+
+
+def test_unmatched_quote_is_not_stripped():
+    """Only a matched pair is unwrapped, so a truly broken value still fails validation."""
+    configured = Settings(
+        _env_file=None,
+        secret_key="test-secret",
+        auth_password_hash="'$2b$12$RtMbyw17l4N5UGzeXMNAWu",
+    )
+    assert configured.auth_password_hash.startswith("'")
+
+
+def test_quoted_secret_key_is_unwrapped():
+    configured = _valid_oidc_settings(secret_key="'test-secret-key-that-is-at-least-32-bytes'")
+    assert configured.secret_key == "test-secret-key-that-is-at-least-32-bytes"
+
+
+def test_secret_key_length_is_checked_after_unwrapping():
+    """The quotes must not pad a too-short key past the 32-byte OIDC floor."""
+    with pytest.raises(ValueError, match="SECRET_KEY must be at least 32 bytes"):
+        _valid_oidc_settings(secret_key="'" + "a" * 31 + "'")
+
+
+def test_quoted_oidc_client_secret_is_unwrapped():
+    configured = _valid_oidc_settings(oidc_client_secret="'sup3r$ecret'")
+    assert configured.oidc_client_secret == "sup3r$ecret"
