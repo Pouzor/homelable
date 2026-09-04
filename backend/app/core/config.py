@@ -37,6 +37,26 @@ def app_base_path_of(redirect_uri: str) -> str:
     base = path[: -len(OIDC_CALLBACK_PATH)]
     return f"{base}/" if base else "/"
 
+def unquote_env(value: str) -> str:
+    """
+    Drop one matched pair of surrounding quotes from an env value.
+
+    Secrets that contain `$` (bcrypt hashes, most OIDC client secrets) have to be
+    single-quoted in `.env`, or Docker Compose eats the `$`. Compose then strips
+    those quotes itself when it reads `env_file`, and so does python-dotenv on the
+    `env_file=` path — but `podman-compose` (1.0.6) passes them through verbatim,
+    so the container receives `'$2b$12$…'`, quotes included, and every bcrypt
+    verify fails. Unwrap here rather than asking operators to quote differently
+    per container runtime.
+
+    Only a *matched* pair is removed, so a genuinely malformed value still reaches
+    the validation below instead of being silently patched up.
+    """
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
 def _read_version() -> str:
     for candidate in [
         Path(__file__).parent.parent.parent.parent / "VERSION",  # repo root (dev)
@@ -81,6 +101,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_auth_settings(self) -> "Settings":
+        # Runtime-dependent quoting: see unquote_env. Applied to the three values
+        # that routinely contain a `$` and so get quoted in .env.
+        self.secret_key = unquote_env(self.secret_key)
+        self.auth_password_hash = unquote_env(self.auth_password_hash)
+        self.oidc_client_secret = unquote_env(self.oidc_client_secret)
+
         h = self.auth_password_hash
         if h and not h.startswith("$2"):
             logger.error(
