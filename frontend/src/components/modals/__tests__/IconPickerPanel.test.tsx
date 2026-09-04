@@ -43,6 +43,17 @@ describe('IconPickerPanel', () => {
     expect(onSelect).toHaveBeenCalledWith('brand:plex')
   })
 
+  it('offers the Homelable logo first in the Brand tab, served locally', () => {
+    const onSelect = vi.fn()
+    render(<IconPickerPanel onSelect={onSelect} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Brand' }))
+    const first = screen.getAllByRole('button')[0]
+    expect(first.getAttribute('aria-label')).toBe('homelable')
+    expect(first.querySelector('img')?.getAttribute('src')).toBe('/brand/homelable.svg')
+    fireEvent.click(first)
+    expect(onSelect).toHaveBeenCalledWith('brand:homelable')
+  })
+
   it('keeps the generic search box out of the Brand tab', () => {
     render(<IconPickerPanel onSelect={vi.fn()} />)
     fireEvent.click(screen.getByRole('tab', { name: 'Brand' }))

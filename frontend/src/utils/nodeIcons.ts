@@ -225,7 +225,18 @@ export function brandIconSlug(key: string): string {
   return key.slice(BRAND_ICON_PREFIX.length)
 }
 
+/** Brand slugs served from `public/brand/` instead of the dashboard-icons CDN —
+ *  logos the upstream catalog does not carry. Kept sorted; the picker prepends
+ *  them to the generated manifest, which `scripts/fetch-dashboard-icons.mjs`
+ *  overwrites and must never be hand-edited. */
+export const LOCAL_BRAND_ICONS = ['homelable'] as const
+
+export function isLocalBrandIcon(slug: string): boolean {
+  return (LOCAL_BRAND_ICONS as readonly string[]).includes(slug)
+}
+
 export function brandIconUrl(slug: string): string {
+  if (isLocalBrandIcon(slug)) return `/brand/${slug}.svg`
   return `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/${slug}.svg`
 }
 

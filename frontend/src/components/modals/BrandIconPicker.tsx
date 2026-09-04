@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Input } from '@/components/ui/input'
-import { brandIconUrl, BRAND_ICON_PREFIX } from '@/utils/nodeIcons'
+import { brandIconUrl, BRAND_ICON_PREFIX, LOCAL_BRAND_ICONS } from '@/utils/nodeIcons'
 import dashboardIcons from '@/data/dashboardIcons.json'
 
-const SLUGS: string[] = dashboardIcons as string[]
+// Locally-served logos first, then the generated dashboard-icons manifest.
+const SLUGS: string[] = [
+  ...LOCAL_BRAND_ICONS,
+  ...(dashboardIcons as string[]).filter((s) => !(LOCAL_BRAND_ICONS as readonly string[]).includes(s)),
+]
 const PAGE = 120
 
 interface BrandIconPickerProps {
