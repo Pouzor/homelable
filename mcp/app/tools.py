@@ -35,7 +35,12 @@ _NODE_FIELDS = {
     "hostname":      {"type": "string"},
     "mac":           {"type": "string", "description": "MAC address."},
     "os":            {"type": "string", "description": "Operating system / distribution."},
-    "status":        {"type": "string", "enum": ["online", "offline", "unknown", "pending"]},
+    # Live observation, not a user setting: the inventory row keeps the freshest
+    # one rather than the last writer, so an update only lands while the device's
+    # status is still unknown (see link_facts in inventory_sync.py). Set it on
+    # create; to change it later, point check_method/check_target at the device
+    # and let the status checker observe it.
+    "status":        {"type": "string", "enum": ["online", "offline", "unknown", "pending"], "description": "Live status. Honoured on create; on update it is ignored unless the device's status is still unknown — the status checker owns it."},
     "check_method":  {"type": "string", "description": "Status check method (ping, http, https, ssh, prometheus, tcp)."},
     "check_target":  {"type": "string", "description": "Target host/URL used by the status check."},
     "services":      {"type": "array", "items": {"type": "object"}, "description": "Running services detected or documented on the node."},
@@ -52,15 +57,22 @@ _NODE_FIELDS = {
     "ram_gb":        {"type": "number", "description": "RAM in gigabytes."},
     "disk_gb":       {"type": "number", "description": "Disk capacity in gigabytes."},
     "show_hardware": {"type": "boolean", "description": "Display hardware specs on the node card."},
+    # The field is `key`, not `name`: the backend keys properties on it, both to
+    # merge them into the inventory row and to order them in the node's view
+    # (`merge_properties` / `apply_view` in backend/app/services/inventory_sync.py).
+    # A property with no `key` collapses with every other keyless one — send two
+    # and the node draws one.
     "properties":    {
         "type": "array",
-        "description": "Arbitrary key/value metadata shown on the node.",
+        "description": "Key/value metadata shown on the node. `key` is the identity: two properties sharing one are the same property.",
         "items": {
             "type": "object",
-            "required": ["name", "value"],
+            "required": ["key", "value"],
             "properties": {
-                "name":  {"type": "string"},
-                "value": {"type": "string"},
+                "key":     {"type": "string"},
+                "value":   {"type": "string"},
+                "icon":    {"type": "string", "description": "Lucide icon name shown beside the value."},
+                "visible": {"type": "boolean", "description": "Draw it on the node card. Default true."},
             },
         },
     },

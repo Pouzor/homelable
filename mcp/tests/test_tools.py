@@ -659,3 +659,32 @@ async def test_remove_from_zone_restores_absolute_positions(mock_backend):
 def test_zone_tools_are_registered():
     names = {t.name for t in TOOLS}
     assert {"create_zone", "list_zones", "add_to_zone", "remove_from_zone"} <= names
+
+
+def _property_item_schema(tool_name: str) -> dict:
+    tool = next(t for t in TOOLS if t.name == tool_name)
+    return tool.inputSchema["properties"]["properties"]["items"]
+
+
+def test_node_properties_are_keyed_on_key_not_name():
+    """The backend keys a property on `key` (merge_properties / apply_view in
+    backend/app/services/inventory_sync.py). The schema advertised `name`, so an
+    AI client sent keyless properties: they all collapsed onto the empty key and
+    a node given three of them drew one.
+    """
+    for tool_name in ("create_node", "update_node"):
+        item = _property_item_schema(tool_name)
+        assert item["required"] == ["key", "value"], (
+            f"{tool_name} must require key/value — `name` is not a property field"
+        )
+        assert "name" not in item["properties"], f"{tool_name} still advertises `name`"
+        assert {"key", "value", "icon", "visible"} == set(item["properties"])
+
+
+def test_update_node_documents_that_status_is_observed_not_set():
+    """`status` on an update is dropped unless the device's status is unknown —
+    the inventory row keeps the freshest observation, not the last writer. Left
+    undocumented, the tool silently no-ops."""
+    tool = next(t for t in TOOLS if t.name == "update_node")
+    description = tool.inputSchema["properties"]["status"]["description"]
+    assert "status checker" in description and "unknown" in description
