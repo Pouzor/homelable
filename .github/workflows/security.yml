@@ -41,29 +41,16 @@ jobs:
         # (shadcn CLI and its transitive tree: hono, fast-uri, …) is never
         # bundled or served, so its advisories must not fail release CI.
         #
-        # `npm audit` exits 1 both for a real advisory and for a registry that
-        # would not answer (the audit endpoint 503s often enough to redden PRs
-        # that changed no dependency). Only the second case is retried; an
-        # advisory still fails on the first attempt.
-        run: |
-          cd frontend
-          for attempt in 1 2 3; do
-            if out=$(npm audit --omit=dev --audit-level=high 2>&1); then
-              echo "$out"
-              exit 0
-            fi
-            echo "$out"
-            if ! grep -qiE 'audit endpoint returned an error|service unavailable|ETIMEDOUT|ECONNRESET|ENOTFOUND|socket hang up' <<<"$out"; then
-              echo "::error::npm audit reported advisories at or above high severity"
-              exit 1
-            fi
-            echo "::warning::npm audit endpoint unreachable (attempt $attempt/3)"
-            if [ "$attempt" -lt 3 ]; then sleep 30; fi
-          done
-          echo "::error::npm audit endpoint unreachable after 3 attempts"
-          exit 1
+        # Wrapped so a registry outage retries instead of failing the PR; an
+        # advisory still fails on the first attempt. See the script's header.
+        working-directory: frontend
+        run: "$GITHUB_WORKSPACE/.github/scripts/audit-with-retry.sh npm audit --omit=dev --audit-level=high"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Pip audit
-        run: pip install pip-audit && pip-audit -r backend/requirements.txt
+        # pip-audit queries PyPI's advisory API and fails the same way npm does
+        # when it cannot reach it, so it gets the same wrapper.
+        run: |
+          pip install pip-audit
+          "$GITHUB_WORKSPACE/.github/scripts/audit-with-retry.sh" pip-audit -r backend/requirements.txt
