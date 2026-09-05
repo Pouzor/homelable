@@ -20,3 +20,32 @@ export function setDesignIdInUrl(id: string | null): void {
   else url.searchParams.delete(DESIGN_PARAM)
   window.history.replaceState(window.history.state, '', url)
 }
+
+// The Documentation section is not a design, so it needs its own params:
+// `?view=docs` for the section and `?doc=<id>` for the open document. Same
+// replaceState discipline — switching sections is not a navigation.
+const VIEW_PARAM = 'view'
+const DOC_PARAM = 'doc'
+
+/** True when the URL asks for the Documentation section. */
+export function isDocsViewInUrl(): boolean {
+  if (typeof window === 'undefined') return false
+  return new URLSearchParams(window.location.search).get(VIEW_PARAM) === 'docs'
+}
+
+/** The document id the URL points at, or null. */
+export function getDocIdFromUrl(): string | null {
+  if (typeof window === 'undefined') return null
+  return new URLSearchParams(window.location.search).get(DOC_PARAM)
+}
+
+/** Reflect the section and the open document into the URL. */
+export function setDocsViewInUrl(active: boolean, docId: string | null = null): void {
+  if (typeof window === 'undefined') return
+  const url = new URL(window.location.href)
+  if (active) url.searchParams.set(VIEW_PARAM, 'docs')
+  else url.searchParams.delete(VIEW_PARAM)
+  if (active && docId) url.searchParams.set(DOC_PARAM, docId)
+  else url.searchParams.delete(DOC_PARAM)
+  window.history.replaceState(window.history.state, '', url)
+}

@@ -8,6 +8,7 @@ from app.api.deps import get_current_user
 from app.db.database import get_db
 from app.db.models import CanvasState, Design, Edge, Node, Rack, RackCable, RackDevice
 from app.schemas.designs import DesignCopy, DesignCreate, DesignResponse, DesignUpdate
+from app.services.doc_links import unlink_documents
 
 router = APIRouter()
 
@@ -233,6 +234,8 @@ async def delete_design(
     for e in edges:
         await db.delete(e)
     nodes = (await db.execute(select(Node).where(Node.design_id == design_id))).scalars().all()
+    # Foreign keys are off, so orphan the documents by hand before the rows go.
+    await unlink_documents(db, node_ids=[n.id for n in nodes], design_ids=[design_id])
     for n in nodes:
         await db.delete(n)
     await db.delete(design)

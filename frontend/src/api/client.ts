@@ -301,6 +301,58 @@ export const designsApi = {
   delete: (id: string) => api.delete(`/designs/${id}`),
 }
 
+export const documentsApi = {
+  list: (params?: { kind?: string; parent_id?: string; device_id?: string; tag?: string }) =>
+    api.get<import('@/documentation/types').DocumentSummary[]>('/documents', { params }),
+  get: (id: string) => api.get<import('@/documentation/types').Doc>(`/documents/${id}`),
+  create: (data: {
+    title: string
+    kind?: string
+    parent_id?: string | null
+    device_id?: string | null
+    node_id?: string | null
+    design_id?: string | null
+    template_id?: string | null
+    body?: string
+  }) => api.post<import('@/documentation/types').Doc>('/documents', data),
+  update: (
+    id: string,
+    data: {
+      title?: string
+      icon?: string | null
+      body?: string
+      parent_id?: string | null
+      sort_order?: number
+      starred?: boolean
+      reviewed?: boolean
+      resync_facts?: boolean
+    },
+  ) => api.patch<import('@/documentation/types').Doc>(`/documents/${id}`, data),
+  delete: (id: string) => api.delete(`/documents/${id}`),
+  revisions: (id: string) =>
+    api.get<import('@/documentation/types').DocRevision[]>(`/documents/${id}/revisions`),
+  revision: (revisionId: string) =>
+    api.get<import('@/documentation/types').DocRevision & { body: string }>(
+      `/documents/revisions/${revisionId}`,
+    ),
+  restore: (id: string, revisionId: string) =>
+    api.post<import('@/documentation/types').Doc>(`/documents/${id}/revisions/${revisionId}/restore`),
+  search: (q: string, limit = 25) =>
+    api.get<import('@/documentation/types').DocSearchResult>('/documents/search', {
+      params: { q, limit },
+    }),
+  block: (block: string, deviceId: string) =>
+    api.get<{ block: string; markdown: string }>('/documents/blocks', {
+      params: { block, device_id: deviceId },
+    }),
+  coverage: () => api.get<import('@/documentation/types').DocCoverage>('/documents/coverage'),
+  scaffold: (data: { device_ids?: string[]; only_with_notes?: boolean }) =>
+    api.post<{ created: import('@/documentation/types').DocumentSummary[]; skipped: number }>(
+      '/documents/scaffold',
+      data,
+    ),
+}
+
 export const racksApi = {
   load: (designId: string) =>
     api.get<import('@/utils/rackSerializer').ApiRackState>('/racks', { params: { design_id: designId } }),

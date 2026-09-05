@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import { ReactFlowProvider, type Connection, type Edge } from '@xyflow/react'
 import { type Node } from '@xyflow/react'
 import { applyDagreLayout } from '@/utils/layout'
@@ -8,7 +8,7 @@ import { getCenteredPosition } from '@/utils/viewportCenter'
 import { resolveVirtualEdgeParent } from '@/utils/virtualEdgeParent'
 import { generateMarkdownTable } from '@/utils/exportMarkdown'
 import { copyToClipboard } from '@/utils/clipboard'
-import { getDesignIdFromUrl, setDesignIdInUrl } from '@/utils/designUrl'
+import { getDesignIdFromUrl, setDesignIdInUrl, getDocIdFromUrl, isDocsViewInUrl, setDocsViewInUrl } from '@/utils/designUrl'
 import { withBase } from '@/utils/basePath'
 import { ExportModal } from '@/components/modals/ExportModal'
 import { exportCanvasToYaml, downloadYaml } from '@/utils/exportYaml'
@@ -54,6 +54,13 @@ import { WalkthroughOverlay } from '@/walkthrough/WalkthroughOverlay'
 import { DEMO_SCAN_RUNS, DEMO_INVENTORY_DEVICES } from '@/walkthrough/demoTourData'
 import { useStatusPolling } from '@/hooks/useStatusPolling'
 import { bootstrapAuth } from '@/auth/bootstrap'
+// Code-split: the Documentation section pulls in the markdown renderer, which a
+// user who never leaves the canvas should not pay for on first load.
+const DocumentationView = lazy(async () => ({
+  default: (await import('@/documentation/components/DocumentationView')).DocumentationView,
+}))
+import { useDocsStore } from '@/documentation/store'
+import { useUiStore } from '@/stores/uiStore'
 import { RackCanvas } from '@/rack/components/RackCanvas'
 import { RackCablePanel } from '@/rack/components/RackCablePanel'
 import { useRackStore } from '@/rack/store'
@@ -73,6 +80,9 @@ export default function App() {
   const authBootstrapStarted = useRef(false)
   const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
   const { activeDesignId, activeDesignType, setDesigns, setActiveDesign } = useDesignStore()
+  const appView = useUiStore((s) => s.view)
+  const setAppView = useUiStore((s) => s.setView)
+  const openDocId = useDocsStore((s) => s.openDoc?.id ?? null)
   const isRackDesign = activeDesignType === 'rack'
   const rackDirty = useRackStore((s) => s.hasUnsavedChanges)
   const rackEditSeq = useRackStore((s) => s.editSeq)
@@ -477,6 +487,21 @@ export default function App() {
   useEffect(() => {
     if (activeDesignId) setDesignIdInUrl(activeDesignId)
   }, [activeDesignId])
+
+  // A document is linkable in the same way: `?view=docs&doc=<id>`.
+  useEffect(() => {
+    setDocsViewInUrl(appView === 'documentation', openDocId)
+  }, [appView, openDocId])
+
+  // Reopen the section, and the document, the URL asks for. Once, on boot.
+  const docsUrlApplied = useRef(false)
+  useEffect(() => {
+    if (docsUrlApplied.current || STANDALONE || !isDocsViewInUrl()) return
+    docsUrlApplied.current = true
+    setAppView('documentation')
+    const docId = getDocIdFromUrl()
+    if (docId) void useDocsStore.getState().open(docId)
+  }, [setAppView])
 
   // Keep refs for store actions so keydown handler is always up-to-date without re-registering
   const undoRef = useRef(undo)
@@ -1114,6 +1139,14 @@ export default function App() {
                 </button>
               </div>
             )}
+            {appView === 'documentation' ? (
+              <Suspense
+                fallback={<div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">Loading documentation…</div>}
+              >
+                <DocumentationView />
+              </Suspense>
+            ) : (
+            <>
             <Toolbar
               onSave={handleSave}
               onAutoLayout={handleAutoLayout}
@@ -1158,6 +1191,8 @@ export default function App() {
                     />
                   )}
             </div>
+            </>
+            )}
           </div>
         </div>
 

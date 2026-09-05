@@ -324,3 +324,88 @@ class ScanRun(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class Document(Base):
+    """One markdown document.
+
+    A document either stands alone in the Library tree (`kind` page/folder,
+    placed by `parent_id`) or describes exactly one thing on the other side of
+    an optional link: a Device Inventory row (`device_id`), a piece of canvas
+    furniture such as a zone or a group (`node_id`), or a whole canvas
+    (`design_id`). Only one of the three is ever set, and each is enforced
+    unique by a partial index created in `database.init_db`.
+
+    Every link is `SET NULL` and `title` is denormalized, so deleting a device
+    or a canvas never destroys what the user wrote — the document survives as
+    an orphan and can be re-linked or filed away.
+
+    `body` is the whole markdown file, YAML frontmatter included, so a document
+    exports to disk as-is. `frontmatter` and `tags` are a parsed cache of that
+    block, kept only so listings can filter without reading every body.
+    """
+
+    __tablename__ = "documents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    kind: Mapped[str] = mapped_column(String, nullable=False, default="page")
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    slug: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    icon: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Library tree. Folders are documents too, so an empty folder is possible
+    # and a folder can carry an index body. Only page/folder set this.
+    parent_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    device_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("device_inventory.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    node_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("nodes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    design_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("designs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    frontmatter: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    starred: Mapped[bool] = mapped_column(Boolean, default=False)
+    template_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # The device facts as they read when this document was scaffolded or last
+    # reconciled. The header is generated once and then owned by the user, so
+    # this is what tells the UI the document has drifted from the device.
+    facts_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    facts_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set the first time the body is edited by hand. NULL means the document is
+    # still only what the template generated — which is what the coverage view
+    # counts as "not really documented yet". A timestamp comparison cannot say
+    # this: created_at and updated_at are two separate clock reads on insert.
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class DocumentRevision(Base):
+    """A prior version of a document's body.
+
+    Written on every explicit save that actually changed the body, and pruned
+    to the most recent `REVISION_LIMIT` per document in the same transaction.
+    """
+
+    __tablename__ = "document_revisions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    document_id: Mapped[str] = mapped_column(
+        String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    reason: Mapped[str] = mapped_column(String, nullable=False, default="edit")
+    saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

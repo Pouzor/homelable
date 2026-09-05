@@ -29,6 +29,7 @@ from app.schemas.scan import (
     ScanRunResponse,
 )
 from app.services.discovery_sources import add_source
+from app.services.doc_links import unlink_documents
 from app.services.inventory_sync import find_device_for, merge_properties, merge_services
 from app.services.mac_utils import normalize_mac
 from app.services.node_dedupe import dedupe_nodes_by_device, find_duplicate_node
@@ -532,6 +533,10 @@ async def clear_pending(
     _: str = Depends(get_current_user),
 ) -> dict[str, int]:
     from sqlalchemy import delete as sa_delete
+    pending_ids = (
+        await db.execute(select(InventoryDevice.id).where(InventoryDevice.status == "pending"))
+    ).scalars().all()
+    await unlink_documents(db, device_ids=list(pending_ids))
     result = await db.execute(sa_delete(InventoryDevice).where(InventoryDevice.status == "pending"))
     await db.commit()
     return {"deleted": result.rowcount}
@@ -563,6 +568,7 @@ async def delete_pending(
     if mounted:
         raise HTTPException(status_code=409, detail="Device is mounted in a rack")
 
+    await unlink_documents(db, device_ids=[device.id])
     await db.delete(device)
     await db.commit()
     return {"deleted": True}
@@ -1074,6 +1080,7 @@ async def ignore_device(
     device = await db.get(InventoryDevice, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
+    await unlink_documents(db, device_ids=[device.id])
     await db.delete(device)
     await db.commit()
     return {"ignored": True}
