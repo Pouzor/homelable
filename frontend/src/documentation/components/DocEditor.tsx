@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bold, Italic, Link2, List, ListChecks, Save, Table, X } from 'lucide-react'
 
 import { documentsApi } from '@/api/client'
+import { caretPoint, placeMenu, type CaretPoint, type Placement } from '@/documentation/caret'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Markdown } from '../markdown/Markdown'
@@ -66,9 +67,19 @@ export function DocEditor({
   devices = [],
 }: Props) {
   const textarea = useRef<HTMLTextAreaElement>(null)
+  const pane = useRef<HTMLDivElement>(null)
+  const caretRef = useRef<CaretPoint | null>(null)
+  // Where the `/` that opened the menu sits in the body. Recorded on the way in
+  // because the menu takes focus, which leaves the textarea's own selection
+  // pointing wherever it happened to be when it lost focus.
+  const slashIndex = useRef<number | null>(null)
+  const menu = useRef<HTMLDivElement>(null)
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashQuery, setSlashQuery] = useState('')
   const [inserting, setInserting] = useState(false)
+  // Null until measured: the menu is rendered to be measured, and placing it
+  // needs its height, so the first paint would otherwise flash at 0,0.
+  const [slashAt, setSlashAt] = useState<Placement | null>(null)
 
   const commands = useMemo<SlashCommand[]>(() => {
     const generated: SlashCommand[] = deviceId
@@ -90,13 +101,21 @@ export function DocEditor({
     return needle ? commands.filter((c) => c.label.toLowerCase().includes(needle)) : commands
   }, [commands, slashQuery])
 
+  /**
+   * Insert `text`, either at the live caret or over the `/` at `replacing`.
+   *
+   * The `/` is the only thing the menu ever put in the document — the query was
+   * typed into the menu's own field — so replacing it consumes exactly that one
+   * character. The index is passed in rather than read from the textarea:
+   * opening the menu moves focus, which freezes the textarea's selection
+   * wherever it happened to be, and every later keystroke widens the gap.
+   */
   const insertAtCursor = useCallback(
-    (text: string, replaceSlash: boolean) => {
+    (text: string, replacing: number | null) => {
       const el = textarea.current
       if (!el) return
-      const end = el.selectionEnd
-      // The `/query` the user typed to open the menu is consumed by the insert.
-      const start = replaceSlash ? Math.max(0, end - slashQuery.length - 1) : el.selectionStart
+      const start = replacing ?? el.selectionStart
+      const end = replacing === null ? el.selectionEnd : Math.min(replacing + 1, body.length)
       const next = `${body.slice(0, start)}${text}${body.slice(end)}`
       onChange(next)
       requestAnimationFrame(() => {
@@ -105,15 +124,17 @@ export function DocEditor({
         el.setSelectionRange(caret, caret)
       })
     },
-    [body, onChange, slashQuery.length],
+    [body, onChange],
   )
 
   const runCommand = useCallback(
     async (command: SlashCommand) => {
+      // Read before the await: closing the menu lets the reset effect run.
+      const slash = slashIndex.current
       setSlashOpen(false)
       setInserting(true)
       try {
-        insertAtCursor(await command.insert(), true)
+        insertAtCursor(await command.insert(), slash)
       } finally {
         setInserting(false)
         setSlashQuery('')
@@ -159,6 +180,10 @@ export function DocEditor({
       const before = body.slice(0, el.selectionStart)
       // Only at the start of a line — mid-sentence a slash is just a slash.
       if (before === '' || before.endsWith('\n')) {
+        // Measure before React re-renders: the caret is where the `/` is about
+        // to land, which is where it is now.
+        caretRef.current = caretPoint(el, el.selectionStart)
+        slashIndex.current = el.selectionStart
         setSlashOpen(true)
         setSlashQuery('')
       }
@@ -166,8 +191,29 @@ export function DocEditor({
   }
 
   useEffect(() => {
-    if (!slashOpen) setSlashQuery('')
+    if (!slashOpen) {
+      setSlashQuery('')
+      setSlashAt(null)
+      slashIndex.current = null
+    }
   }, [slashOpen])
+
+  // Place the menu once it (and the filtered list) have a height. Re-runs as the
+  // query narrows the list, so a menu that shrank stops hanging off the bottom.
+  useEffect(() => {
+    if (!slashOpen) return
+    const caret = caretRef.current
+    const paneEl = pane.current
+    const menuEl = menu.current
+    if (!caret || !paneEl || !menuEl) return
+    setSlashAt(
+      placeMenu({
+        caret,
+        pane: { width: paneEl.clientWidth, height: paneEl.clientHeight },
+        menu: { width: menuEl.offsetWidth, height: menuEl.offsetHeight },
+      }),
+    )
+  }, [slashOpen, visible.length])
 
   return (
     <div className="flex h-full flex-col">
@@ -178,16 +224,16 @@ export function DocEditor({
         <Button size="icon-xs" variant="ghost" title="Italic" onClick={() => wrapSelection('_')}>
           <Italic />
         </Button>
-        <Button size="icon-xs" variant="ghost" title="Bullet list" onClick={() => insertAtCursor('\n- ', false)}>
+        <Button size="icon-xs" variant="ghost" title="Bullet list" onClick={() => insertAtCursor('\n- ', null)}>
           <List />
         </Button>
-        <Button size="icon-xs" variant="ghost" title="Checklist" onClick={() => insertAtCursor('\n- [ ] ', false)}>
+        <Button size="icon-xs" variant="ghost" title="Checklist" onClick={() => insertAtCursor('\n- [ ] ', null)}>
           <ListChecks />
         </Button>
-        <Button size="icon-xs" variant="ghost" title="Table" onClick={() => insertAtCursor('\n| | |\n|---|---|\n| | |\n', false)}>
+        <Button size="icon-xs" variant="ghost" title="Table" onClick={() => insertAtCursor('\n| | |\n|---|---|\n| | |\n', null)}>
           <Table />
         </Button>
-        <Button size="icon-xs" variant="ghost" title="Link to a document" onClick={() => insertAtCursor('[[doc:]]', false)}>
+        <Button size="icon-xs" variant="ghost" title="Link to a document" onClick={() => insertAtCursor('[[doc:]]', null)}>
           <Link2 />
         </Button>
         <span className="ml-2 text-[10px] text-muted-foreground/70">
@@ -205,7 +251,7 @@ export function DocEditor({
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-2">
-        <div className="relative min-h-0 border-r border-border">
+        <div ref={pane} className="relative min-h-0 overflow-hidden border-r border-border">
           <textarea
             ref={textarea}
             value={body}
@@ -216,7 +262,16 @@ export function DocEditor({
             className="h-full w-full resize-none bg-transparent p-4 font-mono text-xs leading-relaxed outline-none"
           />
           {slashOpen && (
-            <div className="absolute bottom-4 left-4 z-20 w-72 overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
+            <div
+              ref={menu}
+              style={slashAt ? { top: slashAt.top, left: slashAt.left } : undefined}
+              className={cn(
+                'absolute z-20 w-72 overflow-hidden rounded-lg border border-border bg-popover shadow-lg',
+                // Hidden, not unmounted, for the frame it takes to measure it —
+                // placing it needs the height it only has once rendered.
+                !slashAt && 'invisible',
+              )}
+            >
               <input
                 autoFocus
                 value={slashQuery}
