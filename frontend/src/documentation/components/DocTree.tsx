@@ -74,7 +74,14 @@ export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect
           <span className="w-3 shrink-0" />
         )}
         <Icon size={13} className="shrink-0 opacity-70" />
-        <span className="truncate">{leaf.label}</span>
+        {/* `truncate` hides overflow at the content edge, and this box shrink-wraps
+            to the text — so its edge is the advance width, which italic glyphs
+            lean past. An undocumented device is italic, and lost the tail of its
+            last letter. The padding gives that overhang somewhere to live;
+            `title` makes a name that really is too long readable on hover. */}
+        <span title={leaf.label} className="truncate pr-0.5">
+          {leaf.label}
+        </span>
         {leaf.docId && starred.has(leaf.docId) && (
           <Star size={11} className="shrink-0 fill-current text-[var(--accent-orange,#ff6e00)]" />
         )}
@@ -128,7 +135,9 @@ export function DocTreeGroups({ groups, activeId, expanded, starred, onSelect, o
               className="sticky top-0 z-10 flex w-full cursor-pointer items-center gap-1 bg-background/95 px-2 py-1 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70 backdrop-blur"
             >
               {collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
-              <span className="truncate">{group.label}</span>
+              <span title={group.label} className="truncate pr-0.5">
+                {group.label}
+              </span>
               <span className="ml-auto tabular-nums opacity-60">{group.items.length}</span>
             </button>
             {!collapsed &&
