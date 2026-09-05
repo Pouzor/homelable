@@ -8,6 +8,7 @@ from app.api.deps import get_current_user
 from app.db.database import get_db
 from app.db.models import Design, InventoryDevice, Node
 from app.schemas.nodes import NodeCreate, NodeResponse, NodeUpdate
+from app.services.doc_links import unlink_documents
 from app.services.inventory_sync import (
     facts_from_payload,
     facts_from_update,
@@ -178,5 +179,7 @@ async def delete_node(node_id: str, db: AsyncSession = Depends(get_db), _: str =
     node = await db.get(Node, node_id)
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
+    # Foreign keys are off, so the schema's ON DELETE SET NULL does not fire.
+    await unlink_documents(db, node_ids=[node_id])
     await db.delete(node)
     await db.commit()

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2, Rows3 } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2, Rows3, BookOpen } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -9,6 +9,7 @@ import { authApi, designsApi, mediaApi } from '@/api/client'
 import * as standaloneStorage from '@/utils/standaloneStorage'
 import { resolveDesignIcon, DEFAULT_DESIGN_ICON } from '@/utils/designIcons'
 import { DesignModal, type DesignFormData } from '@/components/modals/DesignModal'
+import { useUiStore } from '@/stores/uiStore'
 import { AccessoryTray } from '@/rack/components/AccessoryTray'
 import { useRackStore } from '@/rack/store'
 import { freeUnits } from '@/rack/layout'
@@ -41,6 +42,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
   const [collapsed, setCollapsed] = useState(false)
   const logout = useAuthStore((s) => s.logout)
   const { designs, activeDesignId, activeDesignType, setActiveDesign, addDesign, updateDesign, removeDesign } = useDesignStore()
+  const view = useUiStore((s) => s.view)
+  const setView = useUiStore((s) => s.setView)
   const isRack = activeDesignType === 'rack'
   const [designSwitcherOpen, setDesignSwitcherOpen] = useState(false)
   const [designModal, setDesignModal] = useState<{ mode: 'create' | 'edit'; design?: Design } | null>(null)
@@ -243,8 +246,18 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
           icon={isRack ? Rows3 : LayoutDashboard}
           label={isRack ? 'Rack view' : 'Canvas'}
           collapsed={collapsed}
-          active
+          active={view === 'canvas'}
+          onClick={() => setView('canvas')}
         />
+        {!STANDALONE && (
+          <SidebarItem
+            icon={BookOpen}
+            label="Documentation"
+            collapsed={collapsed}
+            active={view === 'documentation'}
+            onClick={() => setView('documentation')}
+          />
+        )}
         {!STANDALONE && PENDING_TRIGGERS.map((t) => (
           <SidebarItem
             key={t.kind}

@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.security import hash_password
-from app.db.database import Base, get_db
+from app.db.database import DOCUMENT_DDL, Base, get_db
 from app.main import app
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
@@ -28,6 +28,10 @@ async def db_session():
     engine = create_async_engine(TEST_DB_URL)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # create_all cannot express the documents FTS5 table or its partial
+        # uniques; apply the same DDL init_db does so the suite matches boot.
+        for _label, sql in DOCUMENT_DDL:
+            await conn.exec_driver_sql(sql)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     # Background tasks open their own session through `AsyncSessionLocal` — the
     # request-scoped `get_db` override does not reach them. Left alone they would
@@ -72,3 +76,13 @@ async def headers(client: AsyncClient):
     """Authenticated Bearer headers for the default admin test user."""
     res = await client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
     return {"Authorization": f"Bearer {res.json()['access_token']}"}
+
+
+@pytest.fixture(autouse=True)
+def _reset_doc_search_probe():
+    """Forget whether FTS5 was available — each test gets a fresh database."""
+    from app.services import doc_search
+
+    doc_search.reset_availability_cache()
+    yield
+    doc_search.reset_availability_cache()

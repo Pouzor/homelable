@@ -17,6 +17,34 @@ from app.core.config import APP_VERSION, settings
 logger = logging.getLogger(__name__)
 
 
+# DDL for the documents feature that `Base.metadata.create_all` cannot express:
+# a virtual table, and partial indexes. Shared with the test fixtures so the
+# suite runs against the same schema production boots with.
+DOCUMENT_DDL: tuple[tuple[str, str], ...] = (
+    (
+        "documents_fts.table",
+        "CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5("
+        "doc_id UNINDEXED, title, tags, body, "
+        "tokenize = 'unicode61 remove_diacritics 2')",
+    ),
+    (
+        "documents.device_id.unique",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_documents_device "
+        "ON documents(device_id) WHERE device_id IS NOT NULL",
+    ),
+    (
+        "documents.node_id.unique",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_documents_node "
+        "ON documents(node_id) WHERE node_id IS NOT NULL",
+    ),
+    (
+        "documents.design_id.unique",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_documents_design "
+        "ON documents(design_id) WHERE design_id IS NOT NULL",
+    ),
+)
+
+
 async def _try_migrate(conn: AsyncConnection, sql: str, *, label: str) -> None:
     """Run an idempotent migration statement, logging any error.
 
@@ -524,11 +552,18 @@ async def init_db() -> None:
         ):
             await _try_migrate(conn, sql, label=label)
 
+        # Documents. The two tables come from create_all; only what create_all
+        # cannot express lives here — the FTS5 index and the partial uniques
+        # that keep one document per device / node / design.
+        for label, sql in DOCUMENT_DDL:
+            await _try_migrate(conn, sql, label=label)
+
     await _backfill_node_devices()
     await _drop_legacy_node_columns()
     await _seed_node_views()
     await _backfill_zone_size()
     await _repair_self_parent_nodes()
+    await _reindex_documents_fts()
 
 
 
@@ -886,6 +921,47 @@ async def _repair_self_parent_nodes() -> None:
             logger.info("Repaired %d node(s) recorded as their own parent", len(rows))
     except Exception as exc:  # pragma: no cover - defensive, boot must not die
         logger.warning("Repairing self-parented nodes failed: %s", exc)
+
+
+async def _reindex_documents_fts() -> None:
+    """Rebuild the document search index from the documents table.
+
+    The index is maintained on every write, so this only has to catch up the
+    rows a write path could not have seen: the first boot after the feature
+    lands, a restored backup, or a hand-edited database. Cheap enough to run on
+    every boot — it does nothing once the counts already match.
+
+    Never fatal: SQLite may be built without FTS5, in which case the search
+    endpoint falls back to LIKE and this is a no-op.
+    """
+    try:
+        async with engine.begin() as conn:
+            indexed = (await conn.exec_driver_sql("SELECT COUNT(*) FROM documents_fts")).scalar_one()
+            total = (await conn.exec_driver_sql("SELECT COUNT(*) FROM documents")).scalar_one()
+            if indexed == total:
+                return
+            await conn.exec_driver_sql("DELETE FROM documents_fts")
+            rows = (
+                await conn.exec_driver_sql("SELECT id, title, tags, body FROM documents")
+            ).fetchall()
+            for doc_id, title, tags, body in rows:
+                await conn.exec_driver_sql(
+                    "INSERT INTO documents_fts (doc_id, title, tags, body) VALUES (?, ?, ?, ?)",
+                    (doc_id, title or "", _tags_text(tags), body or ""),
+                )
+            logger.info("Reindexed %d document(s) for search", len(rows))
+    except Exception as exc:  # pragma: no cover - defensive, boot must not die
+        logger.debug("Document search index not rebuilt: %s", exc)
+
+
+def _tags_text(raw: Any) -> str:
+    """Flatten a document's JSON tag list into a single indexable string."""
+    if isinstance(raw, str):
+        with suppress(ValueError):
+            raw = _json.loads(raw)
+    if isinstance(raw, list):
+        return " ".join(str(tag) for tag in raw)
+    return ""
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
