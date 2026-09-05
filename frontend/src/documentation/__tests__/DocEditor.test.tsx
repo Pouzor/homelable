@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,6 +11,34 @@ vi.mock('@/api/client', () => ({
 }))
 
 const api = vi.mocked(documentsApi)
+
+/**
+ * A stateful host, so the textarea really holds what was typed.
+ *
+ * The plain `setup` below keeps `body` fixed and spies on `onChange`, which is
+ * right for asserting what the editor asked for — but it means the `/` never
+ * lands in the value, and the slash-replacement arithmetic is measured against
+ * a value that does contain it.
+ */
+function setupLive(initial = '') {
+  const onChange = vi.fn()
+  function Host() {
+    const [body, setBody] = useState(initial)
+    return (
+      <DocEditor
+        body={body}
+        onChange={(next) => { onChange(next); setBody(next) }}
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+        dirty
+        saving={false}
+        deviceId="dev-1"
+      />
+    )
+  }
+  render(<Host />)
+  return { onChange }
+}
 
 function setup(overrides: Partial<React.ComponentProps<typeof DocEditor>> = {}) {
   const props = {
@@ -147,5 +176,32 @@ describe('DocEditor', () => {
     await user.keyboard('{Escape}')
     expect(screen.queryByLabelText('Insert a block')).not.toBeInTheDocument()
     expect(props.onCancel).not.toHaveBeenCalled()
+  })
+  // ── the slash and its query are consumed by the insert ──────────────────
+
+  it('replaces only the slash when nothing was typed after it', async () => {
+    const user = userEvent.setup()
+    const { onChange } = setupLive()
+
+    // Typed rather than seeded, so the caret is unambiguously at the end.
+    await user.click(screen.getByLabelText('Document source'))
+    await user.keyboard('Intro{Enter}/')
+    await user.click(await screen.findByText('/task'))
+
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith('Intro\n- [ ] \n- [ ] \n'))
+  })
+
+  it('does not eat the text before the slash when a query was typed', async () => {
+    const user = userEvent.setup()
+    const { onChange } = setupLive()
+
+    await user.click(screen.getByLabelText('Document source'))
+    await user.keyboard('Intro{Enter}/')
+    // The query goes into the menu's own field, never into the document — so it
+    // is not part of what the insert has to remove.
+    await user.type(await screen.findByLabelText('Insert a block'), 'task')
+    await user.click(await screen.findByText('/task'))
+
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith('Intro\n- [ ] \n- [ ] \n'))
   })
 })
