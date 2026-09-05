@@ -214,6 +214,14 @@ export interface NodeData extends Record<string, unknown> {
   updated_at?: string
   response_time_ms?: number
   notes?: string
+  /**
+   * Canvas furniture only (`group` / `groupRect` / `text`): what the zone or
+   * group is for, in the user's words. Furniture draws no device, so it has
+   * no inventory row to keep a `notes` field on — this is that text's only
+   * home, and it saves with the canvas. Always null on a node that does draw
+   * a device; its notes belong to the inventory row.
+   */
+  description?: string | null
   cpu_count?: number
   cpu_model?: string
   ram_gb?: number

@@ -231,3 +231,43 @@ describe('a canvas stored in the pre-split shape', () => {
     expect(stored(design.id).devices).toHaveLength(1)
   })
 })
+
+describe('furniture descriptions', () => {
+  it('keeps a zone description whole through a save and load', () => {
+    saveCanvas('d1', {
+      nodes: [node('z1', { type: 'groupRect', description: 'Behind the garage door.' })],
+      edges: [],
+    })
+
+    const loaded = loadCanvas('d1')
+    expect(loaded?.nodes[0].data.description).toBe('Behind the garage door.')
+    // Furniture draws no device, so it still mints no inventory row.
+    expect(stored('d1').devices ?? []).toHaveLength(0)
+  })
+
+  it('hoists a description saved under the legacy notes field', () => {
+    // Standalone kept furniture whole, so a canvas saved before the description
+    // had a field of its own still carries the text as `notes`.
+    saveCanvas('d1', { nodes: [node('z1', { type: 'groupRect', notes: 'Written before the fix.' })], edges: [] })
+
+    const loaded = loadCanvas('d1')
+    expect(loaded?.nodes[0].data.description).toBe('Written before the fix.')
+  })
+
+  it('leaves a real description alone when notes is also set', () => {
+    saveCanvas('d1', {
+      nodes: [node('z1', { type: 'groupRect', description: 'The real one', notes: 'The old one' })],
+      edges: [],
+    })
+
+    expect(loadCanvas('d1')?.nodes[0].data.description).toBe('The real one')
+  })
+
+  it('never hoists notes on a node that draws a device', () => {
+    saveCanvas('d1', { nodes: [node('n1', { ip: '10.0.0.5', notes: 'Backs up nightly.' })], edges: [] })
+
+    const loaded = loadCanvas('d1')
+    expect(loaded?.nodes[0].data.description).toBeUndefined()
+    expect(loaded?.nodes[0].data.notes).toBe('Backs up nightly.')
+  })
+})

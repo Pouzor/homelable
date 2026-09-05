@@ -451,4 +451,33 @@ describe('GroupRectModal — subnet import', () => {
       expect(onSubmit).toHaveBeenCalledOnce()
     })
   })
+  describe('description', () => {
+    it('renders an empty description field by default', () => {
+      render(<GroupRectModal open onClose={vi.fn()} onSubmit={vi.fn()} />)
+      expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe('')
+    })
+
+    it('seeds the field from initial', () => {
+      render(
+        <GroupRectModal
+          open
+          onClose={vi.fn()}
+          onSubmit={vi.fn()}
+          initial={{ label: 'Garage', description: 'Behind the door.' }}
+        />
+      )
+      expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe('Behind the door.')
+    })
+
+    it('submits what was typed', () => {
+      const onSubmit = vi.fn()
+      render(<GroupRectModal open onClose={vi.fn()} onSubmit={onSubmit} />)
+      fireEvent.change(screen.getByPlaceholderText('Zone name…'), { target: { value: 'Garage' } })
+      fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Behind the door.' } })
+      fireEvent.click(screen.getByText('Add'))
+
+      const submitted = onSubmit.mock.calls[0][0] as GroupRectFormData
+      expect(submitted.description).toBe('Behind the door.')
+    })
+  })
 })

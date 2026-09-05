@@ -14,7 +14,7 @@ import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, 
 import { IconPickerPanel } from './IconPickerPanel'
 import { MAX_HANDLES, MIN_HANDLES, clampHandles, sideDefault, handleCountField, type Side } from '@/utils/handleUtils'
 import { isValidParentNode } from '@/utils/virtualEdgeParent'
-import { NODE_TYPE_GROUPS } from '@/utils/nodeTypeGroups'
+import { NODE_TYPE_GROUPS, isFurnitureType } from '@/utils/nodeTypeGroups'
 
 // Maps a side to its per-type default field on NodeTypeStyle.
 const SIDE_STYLE_KEY: Record<Side, keyof NodeTypeStyle> = {
@@ -134,6 +134,9 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
   const [form, setForm] = useState<Partial<NodeData>>(merged)
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [labelError, setLabelError] = useState(false)
+  // Canvas furniture: an annotation, not a device. It has no inventory row, so
+  // its text is a `description` on the node rather than the device's `notes`.
+  const isFurniture = isFurnitureType(form.type)
   const resolvedNodeColors = resolveNodeColors({ type: form.type ?? 'generic', custom_colors: form.custom_colors })
   const showServicesEnabled = form.custom_colors?.show_services === true
   const hasAppearanceOverrides = Boolean(
@@ -424,13 +427,15 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 </button>
               </div>
             )}
-            {/* Notes */}
+            {/* Notes — or, for canvas furniture, its description.
+                Furniture draws no device, so it has no inventory row to keep
+                `notes` on; its text lives on the node's own `description`. */}
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Notes</Label>
+              <Label className="text-xs text-muted-foreground">{isFurniture ? 'Description' : 'Notes'}</Label>
               <Textarea
-                value={form.notes ?? ''}
-                onChange={(e) => set('notes', e.target.value)}
-                placeholder="Optional notes"
+                value={(isFurniture ? form.description : form.notes) ?? ''}
+                onChange={(e) => set(isFurniture ? 'description' : 'notes', e.target.value)}
+                placeholder={isFurniture ? 'What this is for' : 'Optional notes'}
                 rows={3}
                 className={`bg-[#21262d] border-[#30363d] text-sm resize-y min-h-16 ${modalStyles['modal-radius']}`}
               />

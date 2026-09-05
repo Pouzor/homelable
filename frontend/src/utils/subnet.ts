@@ -6,6 +6,8 @@
  * the modal can say why instead of silently matching nothing.
  */
 
+import { FURNITURE_TYPES } from '@/utils/nodeTypeGroups'
+
 /** A parsed CIDR: the network address as a 32-bit int, plus the prefix length. */
 export interface ParsedCidr {
   base: number
@@ -91,7 +93,6 @@ export function ipInSubnet(ip: string | null | undefined, cidr: string): boolean
  * be canvas furniture (which describes nothing physical and so has no IP worth
  * matching), and must have an IP inside the range.
  */
-const FURNITURE_TYPES = new Set(['groupRect', 'group', 'text'])
 
 export function isZoneSubnetCandidate(
   node: { id: string; parentId?: string; data: { type: string; ip?: string } },

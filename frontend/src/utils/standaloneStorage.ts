@@ -26,6 +26,7 @@ import type {
 } from '@/types'
 import type { ThemeId } from '@/utils/themes'
 import { generateUUID } from '@/utils/uuid'
+import { FURNITURE_TYPES } from '@/utils/nodeTypeGroups'
 
 const DESIGNS_KEY = 'homelable_designs'
 const LEGACY_CANVAS_KEY = 'homelable_canvas'
@@ -62,8 +63,6 @@ export interface StandaloneCanvas {
   // image, so they are disabled in standalone mode (see homelable/CLAUDE.md ADR).
 }
 
-/** Node types that draw nothing physical, so they never get an inventory row. */
-const FURNITURE_TYPES = new Set(['group', 'groupRect', 'text'])
 
 /**
  * Device fields the inventory row owns — everything a node no longer keeps.
@@ -156,6 +155,24 @@ function hydrateDevices(data: StandaloneCanvas): StandaloneCanvas {
           status: normalized.status_live ?? n.data.status,
         },
       } as Node<NodeData>
+    }),
+  }
+}
+
+/**
+ * Move a furniture description off the field it used to ride on.
+ *
+ * A zone's or group's description was written to `data.notes` before it had a
+ * column of its own. Standalone kept furniture whole, so that text is still in
+ * localStorage under the old name — hoist it once on load rather than lose it.
+ */
+function hoistFurnitureDescriptions(data: StandaloneCanvas): StandaloneCanvas {
+  return {
+    ...data,
+    nodes: data.nodes.map((n) => {
+      if (!FURNITURE_TYPES.has(n.data.type)) return n
+      if (n.data.description != null || n.data.notes == null) return n
+      return { ...n, data: { ...n.data, description: n.data.notes } } as Node<NodeData>
     }),
   }
 }
@@ -290,7 +307,7 @@ export function saveRackCanvas(designId: string, data: StandaloneRackCanvas): vo
 /** Load a design's canvas. Returns null when the design has never been saved. */
 export function loadCanvas(designId: string): StandaloneCanvas | null {
   const stored = readJSON<StandaloneCanvas>(canvasKey(designId))
-  return stored ? hydrateDevices(stored) : null
+  return stored ? hoistFurnitureDescriptions(hydrateDevices(stored)) : null
 }
 
 export function saveCanvas(designId: string, data: StandaloneCanvas): void {

@@ -64,6 +64,11 @@ class Node(Base):
     container_mode: Mapped[bool] = mapped_column(Boolean, default=False)
     custom_colors: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     custom_icon: Mapped[str | None] = mapped_column(String, nullable=True)
+    # What this piece of canvas furniture is for, in the user's words. Furniture
+    # (group / groupRect / text) draws no device, so it has no inventory row to
+    # carry a `notes` field — this column is that text's only home. NULL on every
+    # node that does draw a device: its notes belong to the inventory row.
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     show_port_numbers: Mapped[bool] = mapped_column(Boolean, default=False)
     width: Mapped[float | None] = mapped_column(Float, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)

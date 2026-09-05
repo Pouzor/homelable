@@ -421,3 +421,71 @@ async def test_the_newest_backup_that_still_has_the_columns_is_the_one_read(db_3
         {"port": 443, "protocol": "tcp", "service_name": "https"}
     ]
     await engine.dispose()
+
+
+async def test_a_furniture_description_survives_the_column_drop(db_320, monkeypatch):
+    """The rebuild copies a fixed column list — `description` has to be on it.
+
+    `_drop_legacy_node_columns` recreates `nodes` from `_NODE_COLUMNS_SQL` /
+    `_NODE_KEPT`. A column missing from those two strings is silently lost on the
+    boot that finally drops the legacy ones, which is exactly the boot a user who
+    wrote a zone description in the meantime would not expect to lose it.
+    """
+    db_path, engine = db_320
+    await _build_320(engine)
+
+    real_link_facts = inventory_sync.link_facts
+
+    async def link_facts(db, node, facts, **kwargs):
+        if node.id == "n2":
+            raise IntegrityError("boom", None, Exception("UNIQUE constraint failed"))
+        return await real_link_facts(db, node, facts, **kwargs)
+
+    monkeypatch.setattr(inventory_sync, "link_facts", link_facts)
+
+    # First boot: the backfill cannot finish, so the legacy columns stay.
+    await database.init_db()
+
+    check = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    try:
+        async with check.begin() as conn:
+            cols = {c[1] for c in (await conn.exec_driver_sql("PRAGMA table_info(nodes)")).fetchall()}
+            assert "description" in cols
+            assert "status" in cols  # legacy still there
+            # The user describes a piece of furniture.
+            await conn.exec_driver_sql(
+                "UPDATE nodes SET description = 'Behind the garage door.' WHERE id = 'n3'"
+            )
+
+        # Second boot: the backfill succeeds and the legacy columns finally go.
+        monkeypatch.setattr(inventory_sync, "link_facts", real_link_facts)
+        await database.init_db()
+
+        async with check.begin() as conn:
+            cols = {c[1] for c in (await conn.exec_driver_sql("PRAGMA table_info(nodes)")).fetchall()}
+            assert "status" not in cols
+            assert "description" in cols
+            kept = (await conn.exec_driver_sql(
+                "SELECT description FROM nodes WHERE id = 'n3'"
+            )).scalar()
+            assert kept == "Behind the garage door."
+    finally:
+        await check.dispose()
+        await engine.dispose()
+
+
+async def test_the_description_column_is_added_once_and_is_idempotent(db_320):
+    db_path, engine = db_320
+    await _build_320(engine)
+
+    await database.init_db()
+    await database.init_db()
+
+    check = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    try:
+        async with check.begin() as conn:
+            info = (await conn.exec_driver_sql("PRAGMA table_info(nodes)")).fetchall()
+            assert [c[1] for c in info].count("description") == 1
+    finally:
+        await check.dispose()
+        await engine.dispose()

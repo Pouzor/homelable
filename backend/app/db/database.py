@@ -513,6 +513,9 @@ async def init_db() -> None:
             # in what order. Seeded from the row further down, once the backfill
             # has had its say — see `_seed_node_views`.
             ("nodes.display_view", "ALTER TABLE nodes ADD COLUMN display_view JSON"),
+            # A zone or a group describes no device, so it has no inventory row to
+            # keep its text on. Furniture keeps it here instead — see `Node.description`.
+            ("nodes.description", "ALTER TABLE nodes ADD COLUMN description TEXT"),
         ):
             await _try_migrate(conn, sql, label=label)
         # 3.3.x — the inventory row owns the device's rack modelisation: the
@@ -591,6 +594,7 @@ _NODE_COLUMNS_SQL = (
     "container_mode BOOLEAN,"
     "custom_colors JSON,"
     "custom_icon VARCHAR,"
+    "description TEXT,"
     "show_port_numbers BOOLEAN,"
     "width FLOAT,"
     "height FLOAT,"
@@ -604,7 +608,7 @@ _NODE_COLUMNS_SQL = (
 
 _NODE_KEPT = (
     "id, type, label, design_id, device_id, display_view, pos_x, pos_y, parent_id, container_mode, "
-    "custom_colors, custom_icon, show_port_numbers, width, height, bottom_handles, "
+    "custom_colors, custom_icon, description, show_port_numbers, width, height, bottom_handles, "
     "top_handles, left_handles, right_handles, created_at, updated_at"
 )
 

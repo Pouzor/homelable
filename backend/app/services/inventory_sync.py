@@ -581,6 +581,11 @@ async def link_facts(
         node.device_id = None
         return None
 
+    # A node that draws a device has no description of its own — what it is for
+    # is written on the inventory row, as `notes`. Clearing here keeps the two
+    # from becoming rival fields for the same text.
+    node.description = None
+
     device = None
     if node.device_id:
         device = await db.get(InventoryDevice, node.device_id)

@@ -23,6 +23,7 @@ export interface ApiNode extends Record<string, unknown> {
   check_method?: string | null
   check_target?: string | null
   notes?: string | null
+  description?: string | null
   parent_id?: string | null
   container_mode?: boolean
   custom_colors?: Record<string, unknown> | null
@@ -96,6 +97,8 @@ export function serializeNode(
       check_target: null,
       services: [],
       notes: null,
+      // Furniture has no inventory row, so its own text lives on the node.
+      description: n.data.description ?? null,
       parent_id: n.data.parent_id ?? null,
       container_mode: false,
       custom_icon: null,
@@ -135,6 +138,8 @@ export function serializeNode(
     check_target: n.data.check_target ?? null,
     services: n.data.services ?? [],
     notes: n.data.notes ?? null,
+    // Only furniture keeps one; the backend clears it on a node drawing a device.
+    description: n.data.description ?? null,
     parent_id: n.data.parent_id ?? null,
     container_mode: n.data.container_mode ?? false,
     // Stash collapse state inside the custom_colors blob so the backend's
