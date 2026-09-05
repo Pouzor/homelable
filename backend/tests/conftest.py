@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.security import hash_password
-from app.db.database import DOCUMENT_DDL, Base, get_db
+from app.db.database import DOCUMENT_DDL, Base, _try_migrate, get_db
 from app.main import app
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
@@ -28,10 +28,12 @@ async def db_session():
     engine = create_async_engine(TEST_DB_URL)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # create_all cannot express the documents FTS5 table or its partial
-        # uniques; apply the same DDL init_db does so the suite matches boot.
-        for _label, sql in DOCUMENT_DDL:
-            await conn.exec_driver_sql(sql)
+        # Apply the same documents DDL init_db does, through the same helper, so
+        # the suite matches boot. `_try_migrate` matters here: on a database
+        # create_all has just built, every ALTER in that list is a no-op that
+        # raises "duplicate column" — swallowing it is the point, not a leniency.
+        for label, sql in DOCUMENT_DDL:
+            await _try_migrate(conn, sql, label=label)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     # Background tasks open their own session through `AsyncSessionLocal` — the
     # request-scoped `get_db` override does not reach them. Left alone they would

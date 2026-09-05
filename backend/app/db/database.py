@@ -17,10 +17,35 @@ from app.core.config import APP_VERSION, settings
 logger = logging.getLogger(__name__)
 
 
-# DDL for the documents feature that `Base.metadata.create_all` cannot express:
-# a virtual table, and partial indexes. Shared with the test fixtures so the
-# suite runs against the same schema production boots with.
+# DDL for the documents feature that `Base.metadata.create_all` does not apply:
+# the column additions it never makes to an existing table, plus a virtual table
+# and partial indexes it cannot express at all. Shared with the test fixtures so
+# the suite runs against the same schema production boots with.
 DOCUMENT_DDL: tuple[tuple[str, str], ...] = (
+    # `create_all` creates a missing table; it never adds a column to one that
+    # already exists. A database that met an earlier shape of `documents` — an
+    # intermediate build, a branch checked out and run before a column landed —
+    # keeps that shape forever, and every query naming the new column fails with
+    # `no such column`. So every nullable / defaulted column is (re)stated here
+    # as an idempotent ALTER, the way the `device_inventory` migrations are.
+    ("documents.icon", "ALTER TABLE documents ADD COLUMN icon TEXT"),
+    ("documents.parent_id", "ALTER TABLE documents ADD COLUMN parent_id TEXT"),
+    ("documents.sort_order", "ALTER TABLE documents ADD COLUMN sort_order INTEGER DEFAULT 0"),
+    ("documents.device_id", "ALTER TABLE documents ADD COLUMN device_id TEXT"),
+    ("documents.node_id", "ALTER TABLE documents ADD COLUMN node_id TEXT"),
+    ("documents.design_id", "ALTER TABLE documents ADD COLUMN design_id TEXT"),
+    ("documents.frontmatter", "ALTER TABLE documents ADD COLUMN frontmatter JSON"),
+    ("documents.tags", "ALTER TABLE documents ADD COLUMN tags JSON"),
+    ("documents.starred", "ALTER TABLE documents ADD COLUMN starred BOOLEAN DEFAULT 0"),
+    ("documents.template_id", "ALTER TABLE documents ADD COLUMN template_id TEXT"),
+    ("documents.facts_snapshot", "ALTER TABLE documents ADD COLUMN facts_snapshot JSON"),
+    ("documents.facts_synced_at", "ALTER TABLE documents ADD COLUMN facts_synced_at DATETIME"),
+    ("documents.reviewed_at", "ALTER TABLE documents ADD COLUMN reviewed_at DATETIME"),
+    # Set only when a body is edited, so "never touched since it was generated"
+    # is distinguishable from "edited" — `created_at` and `updated_at` are two
+    # separate clock reads on insert and are never equal.
+    ("documents.edited_at", "ALTER TABLE documents ADD COLUMN edited_at DATETIME"),
+    ("document_revisions.reason", "ALTER TABLE document_revisions ADD COLUMN reason TEXT"),
     (
         "documents_fts.table",
         "CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5("
@@ -555,9 +580,10 @@ async def init_db() -> None:
         ):
             await _try_migrate(conn, sql, label=label)
 
-        # Documents. The two tables come from create_all; only what create_all
-        # cannot express lives here — the FTS5 index and the partial uniques
-        # that keep one document per device / node / design.
+        # Documents. create_all makes the two tables on a fresh database; this
+        # brings an existing one up to the current shape — the columns create_all
+        # would never add, the FTS5 index and the partial uniques that keep one
+        # document per device / node / design.
         for label, sql in DOCUMENT_DDL:
             await _try_migrate(conn, sql, label=label)
 
