@@ -597,3 +597,41 @@ describe('migrateClusterHandles', () => {
     expect(out.edges[0].sourceHandle).toBe('bottom')
   })
 })
+
+// ── Furniture descriptions ───────────────────────────────────────────────────
+
+describe('furniture descriptions', () => {
+  it('serializes a zone description', () => {
+    const zone = makeRfNode({
+      data: { label: 'Garage', type: 'groupRect', status: 'unknown', services: [], description: 'Behind the door.' },
+    })
+    const out = serializeNode(zone)
+    expect(out.description).toBe('Behind the door.')
+    // A zone still carries no device notes — it draws nothing physical.
+    expect(out.notes).toBeNull()
+  })
+
+  it('serializes a group description', () => {
+    const group = makeRfNode({
+      data: { label: 'Cluster', type: 'group', status: 'unknown', services: [], description: 'Three Proxmox boxes.' },
+    })
+    expect(serializeNode(group).description).toBe('Three Proxmox boxes.')
+  })
+
+  it('sends null when a zone has no description', () => {
+    const zone = makeRfNode({ data: { label: 'Garage', type: 'groupRect', status: 'unknown', services: [] } })
+    expect(serializeNode(zone).description).toBeNull()
+  })
+
+  it('round-trips a zone description through the API shape', () => {
+    const api = makeApiNode({ type: 'groupRect', label: 'Garage', description: 'Behind the door.' })
+    const node = deserializeApiNode(api, new Map())
+    expect(node.data.description).toBe('Behind the door.')
+  })
+
+  it('round-trips a group description through the API shape', () => {
+    const api = makeApiNode({ type: 'group', label: 'Cluster', description: 'Three Proxmox boxes.' })
+    const node = deserializeApiNode(api, new Map())
+    expect(node.data.description).toBe('Three Proxmox boxes.')
+  })
+})

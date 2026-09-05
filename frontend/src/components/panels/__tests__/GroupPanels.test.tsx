@@ -244,7 +244,7 @@ describe('GroupDetailPanel', () => {
     expect(snapshotHistory).toHaveBeenCalled()
   })
 
-  it('renders the existing group description from notes', () => {
+  it('still renders a description left on the legacy notes field', () => {
     const group = makeGroupNode()
     group.data = { ...group.data, notes: 'Critical DMZ hosts' } as typeof group.data
     setupStore({ nodes: [group], selectedNodeId: 'g1', selectedNodeIds: ['g1'] })
@@ -258,7 +258,23 @@ describe('GroupDetailPanel', () => {
     setupStore({ nodes: [group], selectedNodeId: 'g1', selectedNodeIds: ['g1'], updateNode })
     renderPanel()
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'New notes' } })
-    expect(updateNode).toHaveBeenCalledWith('g1', { notes: 'New notes' })
+    expect(updateNode).toHaveBeenCalledWith('g1', { description: 'New notes' })
+  })
+
+  it('renders the description from its own field', () => {
+    const group = makeGroupNode()
+    group.data = { ...group.data, description: 'Critical DMZ hosts' } as typeof group.data
+    setupStore({ nodes: [group], selectedNodeId: 'g1', selectedNodeIds: ['g1'] })
+    renderPanel()
+    expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe('Critical DMZ hosts')
+  })
+
+  it('prefers description over the legacy notes field', () => {
+    const group = makeGroupNode()
+    group.data = { ...group.data, description: 'The real one', notes: 'The old one' } as typeof group.data
+    setupStore({ nodes: [group], selectedNodeId: 'g1', selectedNodeIds: ['g1'] })
+    renderPanel()
+    expect((screen.getByLabelText('Description') as HTMLTextAreaElement).value).toBe('The real one')
   })
 
   it('snapshots history once at the start of an edit, not on every keystroke', () => {

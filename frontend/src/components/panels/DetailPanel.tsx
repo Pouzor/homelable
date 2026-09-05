@@ -64,7 +64,7 @@ export function DetailPanel({ onEdit, onOpenInventory }: DetailPanelProps) {
         nodes={nodes}
         onUngroup={() => { ungroup(node.id) }}
         onRemoveChild={(id) => { snapshotHistory(); removeFromGroup(node.id, id) }}
-        onChangeDescription={(value) => updateNode(node.id, { notes: value })}
+        onChangeDescription={(value) => updateNode(node.id, { description: value })}
         onSnapshotBeforeEdit={snapshotHistory}
         onToggleBorder={() => {
           snapshotHistory()
@@ -483,10 +483,12 @@ function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescr
   const offlineCount = children.filter((n) => n.data.status === 'offline').length
   const showBorder = node.data.custom_colors?.show_border !== false
 
-  // Description reuses data.notes, which already round-trips to the backend.
-  // Controlled + committed on every keystroke so ANY save path (incl. Ctrl+S,
-  // which never blurs the field) captures it. History is snapshotted once at the
-  // start of an edit session so the whole edit is a single undo step.
+  // The description lives on `data.description`, the node's own column — a group
+  // draws no device, so it has no inventory row to keep `notes` on, and the text
+  // used to be dropped on save. Controlled + committed on every keystroke so ANY
+  // save path (incl. Ctrl+S, which never blurs the field) captures it. History is
+  // snapshotted once at the start of an edit session so the whole edit is a
+  // single undo step.
   const snappedRef = useRef(false)
   const handleDescriptionChange = (value: string) => {
     if (!snappedRef.current) {
@@ -528,7 +530,7 @@ function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescr
         </label>
         <textarea
           id="group-description"
-          value={node.data.notes ?? ''}
+          value={node.data.description ?? node.data.notes ?? ''}
           onFocus={() => { snappedRef.current = false }}
           onChange={(e) => handleDescriptionChange(e.target.value)}
           placeholder="Add a description for this group…"

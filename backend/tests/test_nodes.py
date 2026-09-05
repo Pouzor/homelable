@@ -441,3 +441,49 @@ async def test_update_node_self_parent_leaves_a_real_parent_alone(client: AsyncC
 
     assert res.status_code == 200
     assert res.json()["parent_id"] == host_id
+
+
+# ── furniture descriptions ───────────────────────────────────────────────────
+
+async def test_create_and_update_a_group_description(client: AsyncClient, headers: dict):
+    create = await client.post(
+        "/api/v1/nodes",
+        json={"type": "group", "label": "Cluster", "description": "The three Proxmox boxes."},
+        headers=headers,
+    )
+    assert create.status_code == 201
+    assert create.json()["description"] == "The three Proxmox boxes."
+    node_id = create.json()["id"]
+
+    res = await client.patch(f"/api/v1/nodes/{node_id}", json={"description": "Now four."}, headers=headers)
+    assert res.status_code == 200
+    assert res.json()["description"] == "Now four."
+    assert (await client.get(f"/api/v1/nodes/{node_id}", headers=headers)).json()["description"] == "Now four."
+
+
+async def test_update_a_zone_description_leaves_the_label_alone(client: AsyncClient, headers: dict):
+    create = await client.post("/api/v1/nodes", json={"type": "groupRect", "label": "Garage"}, headers=headers)
+    node_id = create.json()["id"]
+
+    res = await client.patch(f"/api/v1/nodes/{node_id}", json={"description": "Behind the door."}, headers=headers)
+    assert res.json()["label"] == "Garage"
+    assert res.json()["description"] == "Behind the door."
+
+
+async def test_a_device_node_never_keeps_a_description(client: AsyncClient, headers: dict):
+    # `description` is furniture-only: a node that draws a device writes what it
+    # is for to the inventory row, as `notes`.
+    create = await client.post(
+        "/api/v1/nodes",
+        json={"type": "nas", "label": "nas-01", "ip": "192.168.1.20", "description": "Not here."},
+        headers=headers,
+    )
+    assert create.json()["description"] is None
+
+    res = await client.patch(
+        f"/api/v1/nodes/{create.json()['id']}",
+        json={"description": "Still not here.", "notes": "Backs up nightly."},
+        headers=headers,
+    )
+    assert res.json()["description"] is None
+    assert res.json()["notes"] == "Backs up nightly."

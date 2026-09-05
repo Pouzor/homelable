@@ -16,6 +16,8 @@ export type LabelPosition = 'inside' | 'outside'
 
 export interface GroupRectFormData {
   label: string
+  /** What the zone is for. Saved on the node, not on any inventory row. */
+  description: string
   font: string
   text_color: string
   text_position: TextPosition
@@ -60,6 +62,7 @@ const BORDER_WIDTHS: { value: number; label: string }[] = [
 
 const DEFAULT_FORM: GroupRectFormData = {
   label: '',
+  description: '',
   font: 'inter',
   text_color: '#e6edf3',
   text_position: 'top-left',
@@ -175,6 +178,19 @@ export function GroupRectModal({
               onChange={(e) => set('label', e.target.value)}
               placeholder="Zone name…"
               className={`bg-[#21262d] border-[#30363d] text-sm h-8 ${modalStyles['modal-radius']}`}
+            />
+          </div>
+
+          {/* Description */}
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground" htmlFor="zone-description">Description</Label>
+            <textarea
+              id="zone-description"
+              value={form.description}
+              onChange={(e) => set('description', e.target.value)}
+              placeholder="What is in this zone, and what it is for…"
+              rows={3}
+              className={`bg-[#21262d] border border-[#30363d] text-sm resize-y px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#00d4ff]/50 ${modalStyles['modal-radius']}`}
             />
           </div>
 

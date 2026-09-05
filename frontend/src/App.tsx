@@ -588,6 +588,7 @@ export default function App() {
       position: getCenteredPosition(360, 240),
       data: {
         label: data.label,
+        description: data.description,
         type: 'groupRect',
         status: 'unknown',
         services: [],
@@ -622,6 +623,7 @@ export default function App() {
     const existing = nodes.find((n) => n.id === editingGroupRectId)
     updateNode(editingGroupRectId, {
       label: data.label,
+      description: data.description,
       custom_colors: {
         ...existing?.data.custom_colors,
         border: data.border_color,
@@ -1330,6 +1332,9 @@ export default function App() {
             const rc = n.data.custom_colors ?? {}
             return {
               label: n.data.label,
+              // `notes` is where a zone description used to try to live; read it
+              // as a fallback so a canvas loaded before the fix still shows it.
+              description: n.data.description ?? n.data.notes ?? '',
               font: rc.font ?? 'inter',
               text_color: rc.text_color ?? '#e6edf3',
               text_position: rc.text_position ?? 'top-left',

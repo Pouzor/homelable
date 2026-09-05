@@ -613,4 +613,27 @@ describe('NodeModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).check_method).toBe('none')
   })
+  // ── Furniture: Description, not Notes ─────────────────────────────────
+
+  it('labels the free-text field Notes for a device node', () => {
+    renderModal({ initial: BASE })
+    expect(screen.getByText('Notes')).toBeDefined()
+    expect(screen.queryByText('Description')).toBeNull()
+  })
+
+  it('labels it Description for a zone, and submits it as description', () => {
+    const { onSubmit } = renderModal({ initial: { type: 'groupRect', label: 'Garage', services: [] } })
+    expect(screen.getByText('Description')).toBeDefined()
+    fireEvent.change(screen.getByPlaceholderText('What this is for'), { target: { value: 'Behind the door.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    const data = onSubmit.mock.calls[0][0] as Partial<NodeData>
+    expect(data.description).toBe('Behind the door.')
+    expect(data.notes).toBeUndefined()
+  })
+
+  it('seeds the field from an existing group description', () => {
+    renderModal({ initial: { type: 'group', label: 'Cluster', description: 'Three boxes.', services: [] } })
+    expect((screen.getByPlaceholderText('What this is for') as HTMLTextAreaElement).value).toBe('Three boxes.')
+  })
 })

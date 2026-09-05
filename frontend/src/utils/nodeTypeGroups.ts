@@ -23,3 +23,17 @@ export const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
 export const DEVICE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = NODE_TYPE_GROUPS.map((g) =>
   g.types.includes('groupRect') ? { ...g, types: g.types.filter((t) => t !== 'groupRect') } : g
 )
+
+/**
+ * Canvas furniture: an annotation, not a device.
+ *
+ * These draw nothing physical, so they never get a Device Inventory row — which
+ * is why their own text lives on the node (`NodeData.description`) rather than
+ * in the row's `notes`. Mirrors `FURNITURE_TYPES` in
+ * `backend/app/services/inventory_sync.py`.
+ */
+export const FURNITURE_TYPES: ReadonlySet<string> = new Set(['group', 'groupRect', 'text'])
+
+export function isFurnitureType(type: string | null | undefined): boolean {
+  return FURNITURE_TYPES.has(type ?? '')
+}

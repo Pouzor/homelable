@@ -740,3 +740,56 @@ async def test_save_canvas_keeps_a_real_parent(client: AsyncClient, headers: dic
 
     saved = {n["label"]: n for n in (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"]}
     assert saved["pihole"]["parent_id"] == host["id"]
+
+
+# ── furniture descriptions ───────────────────────────────────────────────────
+
+async def test_save_canvas_keeps_zone_and_group_descriptions(client: AsyncClient, headers: dict):
+    # Regression: a zone's and a group's description used to ride on `notes`,
+    # which the save routes to the inventory row. Furniture has no such row, so
+    # the text was dropped without an error. It lives on `nodes.description` now.
+    zone = node_payload(type="groupRect", label="Garage", description="Everything behind the garage door.")
+    group = node_payload(type="group", label="Cluster", description="The three Proxmox boxes.")
+
+    res = await client.post(
+        "/api/v1/canvas/save", json={"nodes": [zone, group], "edges": [], "viewport": {}}, headers=headers
+    )
+    assert res.status_code == 200
+
+    saved = {n["label"]: n for n in (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"]}
+    assert saved["Garage"]["description"] == "Everything behind the garage door."
+    assert saved["Cluster"]["description"] == "The three Proxmox boxes."
+
+
+async def test_save_canvas_edits_a_furniture_description(client: AsyncClient, headers: dict):
+    zone = node_payload(type="groupRect", label="Garage", description="First take.")
+    await client.post("/api/v1/canvas/save", json={"nodes": [zone], "edges": [], "viewport": {}}, headers=headers)
+
+    zone["description"] = "Second take."
+    await client.post("/api/v1/canvas/save", json={"nodes": [zone], "edges": [], "viewport": {}}, headers=headers)
+
+    saved = (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"]
+    assert saved[0]["description"] == "Second take."
+
+
+async def test_save_canvas_clears_a_furniture_description(client: AsyncClient, headers: dict):
+    zone = node_payload(type="groupRect", label="Garage", description="Written once.")
+    await client.post("/api/v1/canvas/save", json={"nodes": [zone], "edges": [], "viewport": {}}, headers=headers)
+
+    zone["description"] = ""
+    await client.post("/api/v1/canvas/save", json={"nodes": [zone], "edges": [], "viewport": {}}, headers=headers)
+
+    saved = (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"]
+    assert saved[0]["description"] == ""
+
+
+async def test_save_canvas_drops_a_description_on_a_device_node(client: AsyncClient, headers: dict):
+    # A node that draws a device keeps its text on the inventory row, as `notes`.
+    # `description` is furniture-only, so it is cleared rather than shadowing it.
+    n = node_payload(type="nas", label="nas-01", ip="192.168.1.20", notes="Backs up nightly.", description="Not here.")
+
+    await client.post("/api/v1/canvas/save", json={"nodes": [n], "edges": [], "viewport": {}}, headers=headers)
+
+    saved = (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"][0]
+    assert saved["description"] is None
+    assert saved["notes"] == "Backs up nightly."

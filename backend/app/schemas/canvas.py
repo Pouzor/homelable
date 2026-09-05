@@ -31,6 +31,9 @@ class NodeSave(BaseModel):
     check_target: str | None = None
     services: list[Any] = []
     notes: str | None = None
+    # Canvas furniture only: the zone or group's own description. Furniture has no
+    # inventory row, so this is the one place the text can live.
+    description: str | None = None
     parent_id: str | None = None
     container_mode: bool = False
     custom_colors: dict[str, Any] | None = None
