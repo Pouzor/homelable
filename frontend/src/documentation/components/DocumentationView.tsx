@@ -10,7 +10,7 @@ import { useDesignStore } from '@/stores/designStore'
 import type { InventoryEntry } from '@/types'
 import { cn } from '@/lib/utils'
 import { isOverdue } from '../frontmatter'
-import { useDocsStore } from '../store'
+import { driftedIds, useDocsStore } from '../store'
 import { buildDeviceTree, buildLibraryTree, deviceLabel, filterGroups, filterTree } from '../tree'
 import { GROUP_BY_LABELS, type GroupBy, type TreeLeaf } from '../types'
 import { DocEditor } from './DocEditor'
@@ -18,6 +18,7 @@ import { DocTreeGroups, DocTreeItem } from './DocTree'
 import { DocViewer } from './DocViewer'
 import { MigrateNotesBanner } from './MigrateNotesBanner'
 import { NewDocMenu } from './NewDocMenu'
+import { RegenerateDocModal } from './RegenerateDocModal'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -51,6 +52,7 @@ export function DocumentationView() {
     remove,
     toggleStar,
     markReviewed,
+    regenerate,
     coverage,
     loadCoverage,
     scaffold,
@@ -70,6 +72,8 @@ export function DocumentationView() {
 
   const [devices, setDevices] = useState<InventoryEntry[]>([])
   const [libraryOpen, setLibraryOpen] = useState(true)
+  const [regenerateOpen, setRegenerateOpen] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
 
   useEffect(() => {
     void loadDocs()
@@ -93,6 +97,8 @@ export function DocumentationView() {
     [docs],
   )
 
+  const drifted = useMemo(() => driftedIds(docs), [docs])
+
   const deviceGroups = useMemo(
     () =>
       filterGroups(
@@ -101,11 +107,12 @@ export function DocumentationView() {
           devices,
           docs,
           context: { nodes, designs, activeDesignId, ranges: [] },
+          drifted,
           overdue,
         }),
         filter,
       ),
-    [activeDesignId, designs, devices, docs, filter, groupBy, nodes, overdue],
+    [activeDesignId, designs, devices, docs, drifted, filter, groupBy, nodes, overdue],
   )
 
   const libraryItems = useMemo(() => filterTree(buildLibraryTree(docs), filter), [docs, filter])
@@ -114,18 +121,6 @@ export function DocumentationView() {
     () => devices.map((d) => ({ id: d.id, label: deviceLabel(d) })),
     [devices],
   )
-
-  const drifted = useMemo(() => {
-    if (!openDoc?.device_id || !openDoc.facts_snapshot) return false
-    const device = devices.find((d) => d.id === openDoc.device_id)
-    if (!device) return false
-    // The snapshot is the server's shape; compare only what it recorded.
-    return Object.entries(openDoc.facts_snapshot).some(([key, value]) => {
-      if (key === 'services') return false
-      const current = (device as unknown as Record<string, unknown>)[key]
-      return (current ?? null) !== (value ?? null)
-    })
-  }, [devices, openDoc])
 
   const handleSelect = useCallback(
     async (leaf: TreeLeaf) => {
@@ -159,6 +154,19 @@ export function DocumentationView() {
     await remove(openDoc.id)
     toast.success('Document deleted')
   }, [openDoc, remove])
+
+  const handleRegenerate = useCallback(async () => {
+    if (!openDoc) return
+    setRegenerating(true)
+    const ok = await regenerate(openDoc.id)
+    setRegenerating(false)
+    if (!ok) {
+      toast.error('Could not regenerate that document')
+      return
+    }
+    setRegenerateOpen(false)
+    toast.success('Document regenerated — the old body is in its history')
+  }, [openDoc, regenerate])
 
   const handleMigrate = useCallback(async () => {
     const created = await scaffold({ onlyWithNotes: true })
@@ -363,10 +371,11 @@ export function DocumentationView() {
             doc={openDoc}
             docs={docs}
             devices={linkableDevices}
-            drifted={drifted}
+            drifted={openDoc.drifted ?? false}
             onEdit={startEdit}
             onToggleStar={() => void toggleStar(openDoc.id)}
             onMarkReviewed={() => void markReviewed(openDoc.id)}
+            onRegenerate={() => setRegenerateOpen(true)}
             onDelete={() => void handleDelete()}
             onOpenDoc={(id) => void open(id)}
             onCreateFromLink={async (label) => {
@@ -395,6 +404,15 @@ export function DocumentationView() {
             devices={linkableDevices}
           />
         )}
+
+        <RegenerateDocModal
+          open={regenerateOpen && openDoc !== null}
+          title={openDoc?.title ?? ''}
+          fromDevice={Boolean(openDoc?.device_id)}
+          busy={regenerating}
+          onCancel={() => setRegenerateOpen(false)}
+          onConfirm={() => void handleRegenerate()}
+        />
       </div>
     </div>
   )

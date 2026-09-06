@@ -333,6 +333,90 @@ async def test_resyncing_facts_clears_the_drift_without_touching_the_body(client
     assert "192.168.1.20" in res.json()["body"]
 
 
+# ── drift ───────────────────────────────────────────────────────────────────
+
+
+async def test_a_fresh_device_document_has_not_drifted(client: AsyncClient, headers: dict):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    assert doc["drifted"] is False
+    read = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()
+    assert read["drifted"] is False
+
+
+async def test_changing_the_device_marks_the_document_drifted(client: AsyncClient, headers: dict):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    await client.patch(
+        f"/api/v1/scan/pending/{device['id']}", json={"ip": "192.168.1.99"}, headers=headers
+    )
+    read = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()
+    assert read["drifted"] is True
+
+
+async def test_a_property_edit_alone_marks_the_document_drifted(client: AsyncClient, headers: dict):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    await client.patch(
+        f"/api/v1/scan/pending/{device['id']}",
+        json={"properties": [{"key": "Rack", "value": "A1"}]},
+        headers=headers,
+    )
+    read = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()
+    assert read["drifted"] is True
+
+
+async def test_editing_the_body_does_not_make_a_document_drift(client: AsyncClient, headers: dict):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "my words"}, headers=headers)
+    assert res.json()["drifted"] is False
+
+
+async def test_accepting_the_facts_clears_the_drift(client: AsyncClient, headers: dict):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    await client.patch(
+        f"/api/v1/scan/pending/{device['id']}", json={"ip": "192.168.1.99"}, headers=headers
+    )
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"resync_facts": True}, headers=headers
+    )
+    assert res.json()["drifted"] is False
+
+
+async def test_regenerating_clears_the_drift(client: AsyncClient, headers: dict):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    await client.patch(
+        f"/api/v1/scan/pending/{device['id']}", json={"ip": "192.168.1.99"}, headers=headers
+    )
+    res = await client.post(f"/api/v1/documents/{doc['id']}/regenerate", headers=headers)
+    assert res.json()["drifted"] is False
+
+
+async def test_the_listing_carries_the_drift_flag_for_the_tree_badge(
+    client: AsyncClient, headers: dict
+):
+    fresh = await _device(client, headers, label="switch-01", ip="192.168.1.2")
+    stale = await _device(client, headers, label="nas-01", ip="192.168.1.20")
+    in_sync = await _create(client, headers, title="switch-01", kind="device", device_id=fresh["id"])
+    moved = await _create(client, headers, title="nas-01", kind="device", device_id=stale["id"])
+    await client.patch(
+        f"/api/v1/scan/pending/{stale['id']}", json={"ip": "192.168.1.99"}, headers=headers
+    )
+
+    listing = (await client.get("/api/v1/documents", headers=headers)).json()
+    by_id = {d["id"]: d for d in listing}
+    assert by_id[moved["id"]]["drifted"] is True
+    assert by_id[in_sync["id"]]["drifted"] is False
+
+
+async def test_a_library_page_never_drifts(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="VLAN plan")
+    assert doc["drifted"] is False
+
+
 # ── revisions ───────────────────────────────────────────────────────────────
 
 
@@ -384,6 +468,75 @@ async def test_history_is_pruned_to_the_limit(client: AsyncClient, headers: dict
         await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": f"v{i}"}, headers=headers)
     revisions = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
     assert len(revisions) == REVISION_LIMIT
+
+
+# ── regenerate ──────────────────────────────────────────────────────────────
+
+
+async def test_regenerate_requires_auth(client: AsyncClient):
+    assert (await client.post("/api/v1/documents/x/regenerate")).status_code == 401
+
+
+async def test_regenerating_a_device_document_rebuilds_it_from_the_facts(
+    client: AsyncClient, headers: dict
+):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "everything I wrote"}, headers=headers)
+
+    res = await client.post(f"/api/v1/documents/{doc['id']}/regenerate", headers=headers)
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert "everything I wrote" not in body["body"]
+    assert "192.168.1.20" in body["body"]
+    # A regenerated document is only the template again, as it was on day one.
+    assert body["edited_at"] is None
+    assert body["template_id"] == "device"
+
+
+async def test_regenerating_reads_the_devices_current_facts(client: AsyncClient, headers: dict):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    await client.patch(
+        f"/api/v1/scan/pending/{device['id']}", json={"ip": "192.168.1.99"}, headers=headers
+    )
+
+    res = await client.post(f"/api/v1/documents/{doc['id']}/regenerate", headers=headers)
+    assert "192.168.1.99" in res.json()["body"]
+    # Regenerating documents the device as it is now, so the drift is gone.
+    assert res.json()["facts_snapshot"]["ip"] == "192.168.1.99"
+
+
+async def test_regenerating_keeps_the_replaced_body_in_the_history(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="VLAN plan", body="my own words")
+    await client.post(f"/api/v1/documents/{doc['id']}/regenerate", headers=headers)
+
+    revisions = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
+    assert revisions[0]["reason"] == "regenerate"
+    stored = (await client.get(f"/api/v1/documents/revisions/{revisions[0]['id']}", headers=headers)).json()
+    assert stored["body"] == "my own words"
+
+
+async def test_regenerating_a_library_page_uses_its_template(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Restart the NAS", template_id="runbook")
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "gone"}, headers=headers)
+
+    res = await client.post(f"/api/v1/documents/{doc['id']}/regenerate", headers=headers)
+    assert res.status_code == 200, res.text
+    assert "gone" not in res.json()["body"]
+    assert "# Restart the NAS" in res.json()["body"]
+    assert res.json()["template_id"] == "runbook"
+
+
+async def test_regenerating_a_folder_is_rejected(client: AsyncClient, headers: dict):
+    folder = await _create(client, headers, title="Runbooks", kind="folder")
+    res = await client.post(f"/api/v1/documents/{folder['id']}/regenerate", headers=headers)
+    assert res.status_code == 400
+
+
+async def test_regenerating_an_unknown_document_is_404(client: AsyncClient, headers: dict):
+    res = await client.post(f"/api/v1/documents/{uuid.uuid4()}/regenerate", headers=headers)
+    assert res.status_code == 404
 
 
 # ── delete ──────────────────────────────────────────────────────────────────

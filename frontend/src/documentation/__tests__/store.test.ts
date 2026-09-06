@@ -4,6 +4,7 @@ import { documentsApi } from '@/api/client'
 import {
   clearDraft,
   draftKey,
+  driftedIds,
   isDescendant,
   overdueIds,
   readDraft,
@@ -22,6 +23,7 @@ vi.mock('@/api/client', () => ({
     revisions: vi.fn(),
     revision: vi.fn(),
     restore: vi.fn(),
+    regenerate: vi.fn(),
     search: vi.fn(),
     block: vi.fn(),
     coverage: vi.fn(),
@@ -276,6 +278,76 @@ describe('mutations', () => {
     await useDocsStore.getState().restore('doc-1', 'rev-1')
     expect(useDocsStore.getState().openDoc?.body).toBe('old')
     expect(api.revisions).toHaveBeenCalledWith('doc-1')
+  })
+
+  it('regenerates the open document and drops the draft with it', async () => {
+    api.regenerate.mockResolvedValue({ data: doc({ body: 'generated' }) } as never)
+    useDocsStore.setState({ docs: [summary()], openDoc: doc(), draft: 'half written', dirty: true })
+    writeDraft('doc-1', { body: 'half written', savedAt: 1, base: '2026-01-01T00:00:00Z' })
+
+    expect(await useDocsStore.getState().regenerate('doc-1')).toBe(true)
+
+    const state = useDocsStore.getState()
+    expect(api.regenerate).toHaveBeenCalledWith('doc-1')
+    expect(state.openDoc?.body).toBe('generated')
+    expect(state.draft).toBeNull()
+    expect(state.dirty).toBe(false)
+    expect(readDraft('doc-1')).toBeNull()
+  })
+
+  it('refreshes the history when it is already on screen', async () => {
+    api.regenerate.mockResolvedValue({ data: doc({ body: 'generated' }) } as never)
+    api.revisions.mockResolvedValue({ data: [] } as never)
+    useDocsStore.setState({
+      docs: [summary()],
+      openDoc: doc(),
+      revisions: [
+        { id: 'rev-1', document_id: 'doc-1', title: 'Page', reason: 'edit', saved_at: '2026-01-01T00:00:00Z', size: 8 },
+      ],
+    })
+    await useDocsStore.getState().regenerate('doc-1')
+    expect(api.revisions).toHaveBeenCalledWith('doc-1')
+  })
+
+  it('reports a failed regenerate and leaves the body alone', async () => {
+    api.regenerate.mockRejectedValue({ response: { data: { detail: 'Device not found' } } } as never)
+    useDocsStore.setState({ docs: [summary()], openDoc: doc() })
+
+    expect(await useDocsStore.getState().regenerate('doc-1')).toBe(false)
+    expect(useDocsStore.getState().openDoc?.body).toBe('original')
+    expect(useDocsStore.getState().loadError).toBe('Device not found')
+  })
+
+  it('leaves the editor alone when another document is regenerated', async () => {
+    api.regenerate.mockResolvedValue({ data: doc({ id: 'doc-2', body: 'generated' }) } as never)
+    useDocsStore.setState({
+      docs: [summary(), summary({ id: 'doc-2' })],
+      openDoc: doc(),
+      draft: 'mine',
+      dirty: true,
+    })
+    await useDocsStore.getState().regenerate('doc-2')
+    const state = useDocsStore.getState()
+    expect(state.openDoc?.id).toBe('doc-1')
+    expect(state.draft).toBe('mine')
+    expect((state.docs.find((d) => d.id === 'doc-2') as Doc).body).toBe('generated')
+  })
+})
+
+// ── badges ──────────────────────────────────────────────────────────────────
+
+describe('driftedIds', () => {
+  it('collects the documents the server flagged', () => {
+    const ids = driftedIds([
+      summary({ id: 'doc-1', drifted: true }),
+      summary({ id: 'doc-2', drifted: false }),
+      summary({ id: 'doc-3' }),
+    ])
+    expect([...ids]).toEqual(['doc-1'])
+  })
+
+  it('is empty when nothing has drifted', () => {
+    expect(driftedIds([summary()]).size).toBe(0)
   })
 })
 

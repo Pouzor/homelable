@@ -174,6 +174,43 @@ async def _scaffold_body(db: AsyncSession, doc: Document, template_id: str | Non
     doc.template_id = template_id or "blank"
 
 
+def _has_drifted(doc: Document, device: InventoryDevice | None) -> bool:
+    """Whether the device has moved on since this document was snapshotted.
+
+    The comparison lives on the server rather than in the UI because
+    `facts_snapshot` is the server's own shape — `label` and `type` are stored
+    through their fallbacks and `properties` as a flat map — so nothing else
+    can compare it to a device row correctly. Same rule as the coverage count.
+    """
+    if not doc.device_id or not doc.facts_snapshot or device is None:
+        return False
+    return doc.facts_snapshot != facts_snapshot(device)
+
+
+async def _devices_for(db: AsyncSession, docs: list[Document]) -> dict[str, InventoryDevice]:
+    """The devices a batch of documents describes, in one query."""
+    wanted = {d.device_id for d in docs if d.device_id and d.facts_snapshot}
+    if not wanted:
+        return {}
+    rows = (
+        await db.execute(select(InventoryDevice).where(InventoryDevice.id.in_(wanted)))
+    ).scalars().all()
+    return {device.id: device for device in rows}
+
+
+def _summary(doc: Document, device: InventoryDevice | None) -> DocumentSummary:
+    payload = DocumentSummary.model_validate(doc)
+    payload.drifted = _has_drifted(doc, device)
+    return payload
+
+
+async def _response(db: AsyncSession, doc: Document) -> DocumentResponse:
+    """One document, with the drift flag resolved against the live device."""
+    payload = DocumentResponse.model_validate(doc)
+    payload.drifted = _has_drifted(doc, await db.get(InventoryDevice, doc.device_id) if doc.device_id else None)
+    return payload
+
+
 # ── list / read ─────────────────────────────────────────────────────────────
 
 
@@ -197,7 +234,8 @@ async def list_documents(
     if tag:
         wanted = tag.lower()
         docs = [d for d in docs if any(str(t).lower() == wanted for t in (d.tags or []))]
-    return [DocumentSummary.model_validate(d) for d in docs]
+    devices = await _devices_for(db, list(docs))
+    return [_summary(d, devices.get(d.device_id or "")) for d in docs]
 
 
 @router.get("/coverage", response_model=CoverageResponse)
@@ -303,7 +341,7 @@ async def get_document(
     doc = await db.get(Document, document_id)
     if not doc:
         raise HTTPException(404, "Document not found")
-    return DocumentResponse.model_validate(doc)
+    return await _response(db, doc)
 
 
 @router.get("/{document_id}/revisions", response_model=list[RevisionSummary])
@@ -412,7 +450,7 @@ async def create_document(
     await doc_search.index_document(db, doc)
     await db.commit()
     await db.refresh(doc)
-    return DocumentResponse.model_validate(doc)
+    return await _response(db, doc)
 
 
 @router.patch("/{document_id}", response_model=DocumentResponse)
@@ -468,7 +506,7 @@ async def update_document(
     await doc_search.index_document(db, doc)
     await db.commit()
     await db.refresh(doc)
-    return DocumentResponse.model_validate(doc)
+    return await _response(db, doc)
 
 
 @router.post("/{document_id}/revisions/{revision_id}/restore", response_model=DocumentResponse)
@@ -491,7 +529,38 @@ async def restore_revision(
     await doc_search.index_document(db, doc)
     await db.commit()
     await db.refresh(doc)
-    return DocumentResponse.model_validate(doc)
+    return await _response(db, doc)
+
+
+@router.post("/{document_id}/regenerate", response_model=DocumentResponse)
+async def regenerate_document(
+    document_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> DocumentResponse:
+    """Throw the body away and scaffold it again from what the database holds.
+
+    The one place that overwrites a body the user owns, so it is only ever
+    reached from an explicit confirmation. The replaced body is snapshotted
+    first, which makes the whole thing undoable from the history list.
+    """
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if doc.kind == "folder":
+        raise HTTPException(400, "A folder has no body to regenerate")
+    if doc.device_id and not await db.get(InventoryDevice, doc.device_id):
+        raise HTTPException(404, "Device not found")
+
+    await _record_revision(db, doc, "regenerate")
+    await _scaffold_body(db, doc, doc.template_id)
+    # Back to a freshly generated document: nothing of the user's is left in it.
+    doc.edited_at = None
+    await db.flush()
+    await doc_search.index_document(db, doc)
+    await db.commit()
+    await db.refresh(doc)
+    return await _response(db, doc)
 
 
 @router.post("/scaffold", response_model=ScaffoldResponse)
