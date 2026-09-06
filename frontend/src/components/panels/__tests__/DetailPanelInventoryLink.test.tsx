@@ -1,6 +1,7 @@
 /**
- * The panel offers a way through to the Device Inventory row behind the node —
- * the place the same facts live for every other canvas showing this device.
+ * The panel offers a way through to the two places the device also lives: its
+ * Device Inventory row — the same facts, for every other canvas showing it —
+ * and its document.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
@@ -45,7 +46,7 @@ function setupStore(nodeData: Partial<NodeData> = {}) {
 
 beforeEach(() => vi.clearAllMocks())
 
-describe('DetailPanel — inventory link', () => {
+describe('DetailPanel — links out to the device', () => {
   it('opens the inventory on the linked device', () => {
     setupStore({ device_id: 'dev-1' })
     const onOpenInventory = vi.fn()
@@ -65,5 +66,33 @@ describe('DetailPanel — inventory link', () => {
     setupStore({ device_id: 'dev-1' })
     render(<DetailPanel onEdit={vi.fn()} />)
     expect(screen.queryByRole('button', { name: /Open in inventory/i })).toBeNull()
+  })
+
+  it('opens the documentation on the linked device, naming it after the node', () => {
+    setupStore({ device_id: 'dev-1', label: 'bazarr' })
+    const onOpenDocumentation = vi.fn()
+    render(<DetailPanel onEdit={vi.fn()} onOpenDocumentation={onOpenDocumentation} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /Open in documentation/i }))
+    expect(onOpenDocumentation).toHaveBeenCalledWith('dev-1', 'bazarr')
+  })
+
+  it('offers the documentation link for a device row, and nothing without one', () => {
+    setupStore({})
+    render(<DetailPanel onEdit={vi.fn()} onOpenDocumentation={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /Open in documentation/i })).toBeNull()
+  })
+
+  it('offers nothing where there is no backend to document against (standalone)', () => {
+    setupStore({ device_id: 'dev-1' })
+    render(<DetailPanel onEdit={vi.fn()} onOpenInventory={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /Open in documentation/i })).toBeNull()
+  })
+
+  it('shows both ways out side by side', () => {
+    setupStore({ device_id: 'dev-1' })
+    render(<DetailPanel onEdit={vi.fn()} onOpenInventory={vi.fn()} onOpenDocumentation={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /Open in inventory/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open in documentation/i })).toBeInTheDocument()
   })
 })

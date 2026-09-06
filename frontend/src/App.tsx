@@ -493,6 +493,18 @@ export default function App() {
     setDocsViewInUrl(appView === 'documentation', openDocId)
   }, [appView, openDocId])
 
+  // The canvas' way into Documentation: it knows a device id, and the section
+  // resolves that to a document — writing one from the device's facts when
+  // there is none, exactly as picking the device in its tree would.
+  const openDocumentationFor = useCallback(
+    async (deviceId: string, label: string) => {
+      setAppView('documentation')
+      const ok = await useDocsStore.getState().openForDevice(deviceId, label)
+      if (!ok) toast.error('Could not open the documentation for that device')
+    },
+    [setAppView],
+  )
+
   // Reopen the section, and the document, the URL asks for. Once, on boot.
   const docsUrlApplied = useRef(false)
   useEffect(() => {
@@ -1190,6 +1202,11 @@ export default function App() {
                       // Standalone has no Device Inventory to open (ADR-001 style
                       // gate: the whole scan surface is backend-only).
                       onOpenInventory={STANDALONE ? undefined : (deviceId) => openInventoryModal(deviceId)}
+                      onOpenDocumentation={
+                        STANDALONE
+                          ? undefined
+                          : (deviceId, label) => void openDocumentationFor(deviceId, label)
+                      }
                     />
                   )}
             </div>

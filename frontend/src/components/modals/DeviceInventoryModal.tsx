@@ -236,10 +236,29 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
     })
   }, [devices, search, sourceFilter, typeFilter, statusFilter, showOnCanvas, withServicesOnly, rackableOnly])
 
+  // The device a caller asked for, opened once. Scrolling the card into view
+  // was never the whole request — "open in inventory" means show me that
+  // device, so its detail modal comes up with it. Remembering which id was
+  // already honoured keeps a later filter change from reopening a modal the
+  // user closed, and picker mode is left alone: it wants a device back, not a
+  // second dialog on top.
+  const openedHighlight = useRef<string | undefined>(undefined)
   useEffect(() => {
-    if (!highlightId || loading || !open) return
-    highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [highlightId, loading, open, filtered])
+    if (!open) {
+      openedHighlight.current = undefined
+      return
+    }
+    if (!highlightId || loading) return
+    if (!onPick && openedHighlight.current !== highlightId) {
+      const device = devices.find((d) => d.id === highlightId)
+      if (device) {
+        openedHighlight.current = highlightId
+        setSelected(device)
+      }
+    }
+    // Last, so a browser without it cannot cost the caller the detail modal.
+    highlightRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+  }, [devices, highlightId, loading, onPick, open, filtered])
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
