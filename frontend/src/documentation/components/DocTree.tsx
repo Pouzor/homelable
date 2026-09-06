@@ -37,6 +37,24 @@ export function DocStateDot({ state }: { state: DocState }) {
   )
 }
 
+/**
+ * Filing by drag, wired by the view that owns the documents.
+ *
+ * Only the Library passes this — the Devices tree is a pivot, so its rows have
+ * no parentage to change. `null` as a target means the Library root.
+ */
+export interface TreeDnd {
+  /** The document being dragged, or null when nothing is. */
+  draggingId: string | null
+  /** The folder currently under the pointer, highlighted as the landing spot. */
+  overId: string | null
+  canDrop: (targetId: string | null) => boolean
+  onDragStart: (leaf: TreeLeaf) => void
+  onDragEnd: () => void
+  onDragOver: (targetId: string | null) => void
+  onDrop: (targetId: string | null) => void
+}
+
 interface ItemProps {
   leaf: TreeLeaf
   depth: number
@@ -45,13 +63,20 @@ interface ItemProps {
   starred: Set<string>
   onSelect: (leaf: TreeLeaf) => void
   onToggle: (key: string) => void
+  dnd?: TreeDnd
 }
 
-export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect, onToggle }: ItemProps) {
+export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect, onToggle, dnd }: ItemProps) {
   const isFolder = leaf.kind === 'folder'
   const isOpen = expanded.includes(leaf.id)
   const active = activeId !== null && leaf.docId === activeId
   const Icon = isFolder ? (isOpen ? FolderOpen : Folder) : leaf.docId ? FileText : File
+  // The icon is the handle, not the row: a row-wide drag would fight the click
+  // that opens a document and the double-click that opens a folder.
+  const dragHandle = Boolean(dnd && leaf.docId)
+  const dragging = dnd?.draggingId !== null && dnd?.draggingId === leaf.docId
+  const dropTarget = Boolean(dnd && isFolder && dnd.canDrop(leaf.id))
+  const over = dropTarget && dnd?.overId === leaf.id
 
   return (
     <>
@@ -59,6 +84,25 @@ export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect
         type="button"
         onClick={() => (isFolder ? onToggle(leaf.id) : onSelect(leaf))}
         onDoubleClick={() => isFolder && onSelect(leaf)}
+        onDragOver={
+          dropTarget
+            ? (event) => {
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+                dnd?.onDragOver(leaf.id)
+              }
+            : undefined
+        }
+        onDragLeave={dropTarget ? () => dnd?.onDragOver(null) : undefined}
+        onDrop={
+          dropTarget
+            ? (event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                dnd?.onDrop(leaf.id)
+              }
+            : undefined
+        }
         aria-current={active ? 'page' : undefined}
         aria-expanded={isFolder ? isOpen : undefined}
         style={{ paddingLeft: 8 + depth * 12 }}
@@ -66,6 +110,8 @@ export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect
           'flex w-full cursor-pointer items-center gap-1.5 rounded py-1 pr-2 text-left text-xs',
           active ? 'bg-primary/15 text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
           !leaf.docId && !isFolder && 'italic',
+          dragging && 'opacity-50',
+          over && 'bg-primary/20 text-foreground ring-1 ring-inset ring-primary/60',
         )}
       >
         {isFolder ? (
@@ -73,7 +119,25 @@ export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect
         ) : (
           <span className="w-3 shrink-0" />
         )}
-        <Icon size={13} className="shrink-0 opacity-70" />
+        <span
+          draggable={dragHandle || undefined}
+          data-testid={dragHandle ? `drag-${leaf.id}` : undefined}
+          aria-label={dragHandle ? `Drag ${leaf.label}` : undefined}
+          title={dragHandle ? 'Drag to file this elsewhere' : undefined}
+          onDragStart={
+            dragHandle
+              ? (event) => {
+                  event.dataTransfer.effectAllowed = 'move'
+                  event.dataTransfer.setData('text/plain', leaf.docId ?? '')
+                  dnd?.onDragStart(leaf)
+                }
+              : undefined
+          }
+          onDragEnd={dragHandle ? () => dnd?.onDragEnd() : undefined}
+          className={cn('shrink-0', dragHandle && 'cursor-grab active:cursor-grabbing')}
+        >
+          <Icon size={13} className="opacity-70" />
+        </span>
         {/* `truncate` hides overflow at the content edge, and this box shrink-wraps
             to the text — so its edge is the advance width, which italic glyphs
             lean past. An undocumented device is italic, and lost the tail of its
@@ -101,6 +165,7 @@ export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect
             starred={starred}
             onSelect={onSelect}
             onToggle={onToggle}
+            dnd={dnd}
           />
         ))}
     </>
