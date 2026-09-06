@@ -95,6 +95,128 @@ def test_hardware_block_handles_a_count_without_a_model():
     assert "4 cores" in t.block_hardware(_device(cpu_model=None))
 
 
+# ── hardware comes out of `properties` first ────────────────────────────────
+
+# What the Proxmox import and the scanner actually write.
+_PROXMOX_PROPERTIES = [
+    {"key": "VMID", "value": "108"},
+    {"key": "Kind", "value": "LXC"},
+    {"key": "CPU Cores", "value": "4"},
+    {"key": "RAM", "value": "6.1 GB"},
+    {"key": "Disk", "value": "50.0 GB"},
+]
+
+
+def _from_properties(**overrides):
+    """A row as the importers leave it: hardware in properties, columns empty."""
+    return _device(
+        **{
+            "properties": _PROXMOX_PROPERTIES,
+            "cpu_count": None,
+            "cpu_model": None,
+            "ram_gb": None,
+            "disk_gb": None,
+            **overrides,
+        }
+    )
+
+
+def test_hardware_block_reads_the_properties_when_the_columns_are_empty():
+    """The regression: an empty hardware table beside a full properties one.
+
+    `cpu_count` / `ram_gb` / `disk_gb` are barely written any more — the same
+    facts arrive as properties — so the table printed three em dashes next to a
+    properties table listing all three.
+    """
+    md = t.block_hardware(_from_properties())
+    assert "| 4 cores | 6.1 GB | 50.0 GB |" in md
+    assert "—" not in md
+
+
+def test_hardware_block_takes_a_property_value_verbatim():
+    # "6.1 GB" is already formatted; appending a unit would say "6.1 GB GB", and
+    # guessing one onto a bare number would be inventing a fact.
+    md = t.block_hardware(_from_properties(properties=[{"key": "RAM", "value": "12288 MB"}]))
+    assert "| 12288 MB |" in md
+
+
+def test_hardware_block_matches_property_keys_whatever_their_case():
+    md = t.block_hardware(_from_properties(properties=[{"key": "ram", "value": "8 GB"}]))
+    assert "8 GB" in md
+
+
+def test_hardware_block_accepts_the_common_synonyms():
+    md = t.block_hardware(
+        _from_properties(
+            properties=[
+                {"key": "Processor", "value": "Xeon E3-1220"},
+                {"key": "vCPU", "value": "8"},
+                {"key": "Memory", "value": "64 GB"},
+                {"key": "Storage", "value": "4 TB"},
+            ]
+        )
+    )
+    assert "| Xeon E3-1220 ×8 | 64 GB | 4 TB |" in md
+
+
+def test_hardware_block_prefers_a_property_over_the_legacy_column():
+    md = t.block_hardware(_device(properties=[{"key": "RAM", "value": "64 GB"}]))
+    assert "64 GB" in md
+    assert "20 GB" not in md
+
+
+def test_hardware_block_still_falls_back_to_the_columns():
+    # A row that predates the move, or one typed into the inventory modal.
+    md = t.block_hardware(_device(properties=[]))
+    assert "Intel Celeron J4125 ×4" in md
+    assert "20 GB" in md
+
+
+def test_hardware_block_is_empty_when_neither_source_has_anything():
+    md = t.block_hardware(
+        _device(properties=[], cpu_count=None, cpu_model=None, ram_gb=None, disk_gb=None)
+    )
+    assert "| — | — | — |" in md
+
+
+def test_hardware_block_ignores_a_property_with_no_value():
+    md = t.block_hardware(_from_properties(properties=[{"key": "RAM", "value": ""}]))
+    assert "| — | — | — |" in md
+
+
+def test_property_map_keeps_the_first_of_a_repeated_key():
+    device = _device(properties=[{"key": "RAM", "value": "first"}, {"key": "RAM", "value": "second"}])
+    assert t.property_map(device)["ram"] == "first"
+
+
+# ── the snapshot follows what the tables print ──────────────────────────────
+
+
+def test_the_snapshot_carries_the_properties():
+    snapshot = t.facts_snapshot(_from_properties())
+    assert snapshot["properties"]["RAM"] == "6.1 GB"
+
+
+def test_editing_a_property_is_drift():
+    before = t.facts_snapshot(_from_properties())
+    after = t.facts_snapshot(
+        _from_properties(properties=[*_PROXMOX_PROPERTIES[:3], {"key": "RAM", "value": "12 GB"}])
+    )
+    assert before != after
+
+
+def test_the_snapshot_survives_its_json_round_trip():
+    """It is stored as JSON and compared against a freshly computed one.
+
+    A tuple or a set would come back a list and every document would read as
+    drifted forever, so the shape has to be JSON-native on both sides.
+    """
+    import json
+
+    snapshot = t.facts_snapshot(_from_properties())
+    assert json.loads(json.dumps(snapshot)) == snapshot
+
+
 def test_services_block_writes_one_section_per_service():
     md = t.block_services(_device())
     assert "### Synology DSM — `5000/tcp`" in md
