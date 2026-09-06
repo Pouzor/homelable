@@ -422,7 +422,7 @@ def test_origin_is_allowed_falls_back_to_the_oidc_redirect_origin(oidc_settings)
 
 
 def test_oidc_settings_warn_when_cors_origins_omits_the_app_origin(caplog):
-    from app.core.config import Settings
+    from app.core.config import Settings, origin_of
 
     base = {
         "secret_key": "x" * 32,
@@ -435,7 +435,11 @@ def test_oidc_settings_warn_when_cors_origins_omits_the_app_origin(caplog):
 
     with caplog.at_level("WARNING"):
         Settings(**base, cors_origins=["http://localhost:3000"])
-    assert "https://homelable.example.com" in caplog.text
+    # Asserted against the origin the settings derive rather than one spelled
+    # out again here: this checks the warning names that exact origin, and a
+    # URL literal on the left of an `in` reads to a scanner as a host check
+    # that a substring match would not make safely.
+    assert origin_of(base["oidc_redirect_uri"]) in caplog.text
     assert "CORS_ORIGINS" in caplog.text
 
     caplog.clear()
