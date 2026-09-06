@@ -84,6 +84,26 @@ def test_parse_frontmatter_of_an_empty_body_is_empty():
     assert doc_tree.parse_frontmatter("") == {}
 
 
+def test_parse_frontmatter_keeps_a_trailing_space_on_the_fence():
+    assert doc_tree.parse_frontmatter("--- \ntitle: NAS\n--- \n") == {"title": "NAS"}
+
+
+def test_parse_frontmatter_of_an_unclosed_block_does_not_go_quadratic():
+    """A body that opens a block and never closes it must still be linear.
+
+    The shape a document has while the block is being typed, and the input the
+    scanner named: `---\n` then many repetitions of `\n `. With `\s*` around the
+    fences the closing alternative was reachable two ways and each added line
+    multiplied the backtracking.
+    """
+    import time
+
+    body = "---\n" + "\n " * 40_000
+    started = time.perf_counter()
+    assert doc_tree.parse_frontmatter(body) == {}
+    assert time.perf_counter() - started < 1.0
+
+
 def test_tags_accepts_a_list_or_a_comma_string():
     assert doc_tree.tags_from({"tags": ["a", " b "]}) == ["a", "b"]
     assert doc_tree.tags_from({"tags": "a, b"}) == ["a", "b"]

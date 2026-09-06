@@ -36,6 +36,20 @@ describe('parseFrontmatter', () => {
     expect(parseFrontmatter('---\n- a\n- b\n---\nbody').data).toEqual({})
   })
 
+  it('keeps a trailing space on the fence line', () => {
+    expect(parseFrontmatter('--- \ntitle: NAS\n--- \n').data).toEqual({ title: 'NAS' })
+  })
+
+  it('stays linear on a block that was opened and never closed', () => {
+    // What a document looks like while the block is being typed. With `\s*`
+    // around the fences the closing alternative was reachable two ways, and
+    // each added line multiplied the backtracking.
+    const body = `---\n${'\n '.repeat(40_000)}`
+    const started = performance.now()
+    expect(parseFrontmatter(body).data).toEqual({})
+    expect(performance.now() - started).toBeLessThan(1000)
+  })
+
   it('handles CRLF line endings', () => {
     expect(parseFrontmatter('---\r\ntitle: NAS\r\n---\r\nbody').data).toEqual({ title: 'NAS' })
   })

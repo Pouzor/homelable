@@ -9,7 +9,11 @@ import yaml from 'js-yaml'
  * block parses again.
  */
 
-const BLOCK = /^---\s*\r?\n([\s\S]*?)\r?\n---\s*(?:\r?\n|$)/
+// `[ \t]*`, not `\s*`: `\s` matches the newline the fence line ends with, so the
+// same position is reachable two ways and the match goes quadratic on a body
+// that opens with `---` and never closes it — which is what a document looks
+// like for as long as the user is still typing the block.
+const BLOCK = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
 
 export interface Frontmatter {
   data: Record<string, unknown>
