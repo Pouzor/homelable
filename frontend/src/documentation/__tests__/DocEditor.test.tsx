@@ -59,6 +59,97 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
+describe('DocEditor — undo', () => {
+  const source = () => screen.getByLabelText('Document source') as HTMLTextAreaElement
+
+  it('takes back a typed burst', async () => {
+    const user = userEvent.setup()
+    setupLive('start')
+
+    await user.click(source())
+    await user.keyboard(' and more')
+    expect(source().value).toBe('start and more')
+
+    await user.keyboard('{Control>}z{/Control}')
+    expect(source().value).toBe('start')
+  })
+
+  it('takes back a toolbar insertion, and only that', async () => {
+    const user = userEvent.setup()
+    setupLive('start')
+
+    await user.click(source())
+    await user.keyboard('!')
+    await user.click(screen.getByTitle('Bullet list'))
+    expect(source().value).toBe('start!\n- ')
+
+    // The insert hands focus back on the next frame; a real user pressing the
+    // shortcut is long past it.
+    await user.click(source())
+    await user.keyboard('{Control>}z{/Control}')
+    expect(source().value).toBe('start!')
+    await user.keyboard('{Control>}z{/Control}')
+    expect(source().value).toBe('start')
+  })
+
+  it('takes back an inserted block, which the browser could not', async () => {
+    const user = userEvent.setup()
+    api.block.mockResolvedValue({ data: { block: 'device-info', markdown: '| IP | 10.0.0.1 |' } } as never)
+    setupLive('')
+
+    await user.click(source())
+    await user.keyboard('/')
+    await user.click(await screen.findByText('/device'))
+    await waitFor(() => expect(source().value).toBe('| IP | 10.0.0.1 |\n'))
+
+    // Setting the value from code is exactly what empties the browser's own
+    // undo stack, so this is the case the editor's history exists for.
+    await user.click(source())
+    await user.keyboard('{Control>}z{/Control}')
+    expect(source().value).toBe('')
+  })
+
+  it('redoes what it took back, on either binding', async () => {
+    const user = userEvent.setup()
+    setupLive('start')
+
+    await user.click(source())
+    await user.keyboard('!')
+    await user.keyboard('{Control>}z{/Control}')
+    expect(source().value).toBe('start')
+
+    await user.keyboard('{Control>}{Shift>}z{/Shift}{/Control}')
+    expect(source().value).toBe('start!')
+
+    await user.keyboard('{Control>}z{/Control}')
+    await user.keyboard('{Control>}y{/Control}')
+    expect(source().value).toBe('start!')
+  })
+
+  it('drops the redo once editing carries on down a new branch', async () => {
+    const user = userEvent.setup()
+    setupLive('start')
+
+    await user.click(source())
+    await user.keyboard('!')
+    await user.keyboard('{Control>}z{/Control}')
+    await user.click(screen.getByTitle('Bullet list'))
+    await user.click(source())
+    await user.keyboard('{Control>}{Shift>}z{/Shift}{/Control}')
+
+    expect(source().value).toBe('start\n- ')
+  })
+
+  it('does nothing, and changes nothing, with no history behind it', async () => {
+    const user = userEvent.setup()
+    const props = setup({ body: 'start' })
+
+    await user.click(screen.getByLabelText('Document source'))
+    await user.keyboard('{Control>}z{/Control}')
+    expect(props.onChange).not.toHaveBeenCalled()
+  })
+})
+
 describe('DocEditor', () => {
   it('shows the source in an editable field', () => {
     setup({ body: '# NAS' })

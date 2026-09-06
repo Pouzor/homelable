@@ -530,8 +530,19 @@ export default function App() {
       const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable
 
       if (ctrl && e.key === 's') { e.preventDefault(); handleSaveRef.current(); return }
-      if (ctrl && e.key === 'z') { e.preventDefault(); undoRef.current(); return }
-      if (ctrl && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); redoRef.current(); return }
+      // Undo belongs to whatever is being typed in — the document editor keeps
+      // its own history, a plain field has the browser's — and the canvas only
+      // gets it when nothing has the caret.
+      if (ctrl && e.key.toLowerCase() === 'z') {
+        if (isInput) return
+        e.preventDefault()
+        // Shift+Z is the other redo, and matched neither branch while both
+        // compared a lowercase key — a shifted `z` arrives as `Z`.
+        if (e.shiftKey) redoRef.current()
+        else undoRef.current()
+        return
+      }
+      if (ctrl && e.key.toLowerCase() === 'y') { if (isInput) return; e.preventDefault(); redoRef.current(); return }
       if (ctrl && e.key === 'k') { e.preventDefault(); setSearchOpen(true); return }
       // Copy/paste (Ctrl/Cmd+C/V) handled in CanvasContainer so paste can place
       // nodes under the cursor / viewport center.
