@@ -162,20 +162,76 @@ def block_device_info(device: Any, **_: Any) -> str:
     return "\n".join(lines)
 
 
+# What the hardware table looks for in `properties`, in order of preference.
+# The scanner and the Proxmox import write these keys ("CPU Cores", "RAM",
+# "Disk"); a user typing their own is likely to reach for one of the synonyms.
+# Matched case-insensitively, so "ram" and "RAM" are the same key.
+_HARDWARE_KEYS: dict[str, tuple[str, ...]] = {
+    "cpu_model": ("cpu model", "cpu", "processor"),
+    "cpu_count": ("cpu cores", "cores", "vcpu", "vcpus", "cpu count"),
+    "ram": ("ram", "memory", "mem"),
+    "disk": ("disk", "storage", "disk size", "capacity"),
+}
+
+
+def property_map(device: Any) -> dict[str, str]:
+    """A device's properties as a lowercased key -> value lookup.
+
+    The first occurrence of a key wins, matching how the tables read: a device
+    carrying two "RAM" rows is showing the first one.
+    """
+    found: dict[str, str] = {}
+    for entry in getattr(device, "properties", None) or []:
+        if not isinstance(entry, dict):
+            continue
+        key = entry.get("key")
+        value = entry.get("value")
+        if not key or value in (None, ""):
+            continue
+        found.setdefault(str(key).strip().lower(), str(value).strip())
+    return found
+
+
+def _hardware_property(properties: dict[str, str], field: str) -> str | None:
+    for candidate in _HARDWARE_KEYS[field]:
+        if candidate in properties:
+            return properties[candidate]
+    return None
+
+
 def block_hardware(device: Any, **_: Any) -> str:
-    cpu_model = getattr(device, "cpu_model", None)
-    cpu_count = getattr(device, "cpu_count", None)
+    """CPU / RAM / Disk, read from `properties` first.
+
+    The `cpu_count` / `cpu_model` / `ram_gb` / `disk_gb` columns are barely
+    written any more — the scanner, the Proxmox import and the inventory modal
+    all put hardware in `properties` instead — so a document generated from the
+    columns alone printed an empty table beside a properties table listing the
+    very same facts. Properties win; the columns are the fallback for a row that
+    still carries them.
+
+    A property value is taken verbatim: it is already formatted the way the user
+    or the importer wrote it ("15.5 GB"), and guessing a unit onto a bare number
+    would be inventing a fact.
+    """
+    properties = property_map(device)
+
+    cpu_model = _hardware_property(properties, "cpu_model") or getattr(device, "cpu_model", None)
+    cpu_count = _hardware_property(properties, "cpu_count") or getattr(device, "cpu_count", None)
     if cpu_model and cpu_count:
         cpu: Any = f"{cpu_model} ×{cpu_count}"
     else:
         cpu = cpu_model or (f"{cpu_count} cores" if cpu_count else None)
-    ram = getattr(device, "ram_gb", None)
-    disk = getattr(device, "disk_gb", None)
+
+    ram_gb = getattr(device, "ram_gb", None)
+    ram = _hardware_property(properties, "ram") or (f"{ram_gb:g} GB" if ram_gb else None)
+    disk_gb = getattr(device, "disk_gb", None)
+    disk = _hardware_property(properties, "disk") or (f"{disk_gb:g} GB" if disk_gb else None)
+
     return "\n".join(
         [
             "| CPU | RAM | Disk |",
             "|---|---|---|",
-            f"| {cell(cpu)} | {cell(f'{ram:g} GB' if ram else None)} | {cell(f'{disk:g} GB' if disk else None)} |",
+            f"| {cell(cpu)} | {cell(ram)} | {cell(disk)} |",
         ]
     )
 
@@ -303,6 +359,15 @@ def facts_snapshot(device: Any) -> dict[str, Any]:
         "cpu_model": getattr(device, "cpu_model", None),
         "ram_gb": getattr(device, "ram_gb", None),
         "disk_gb": getattr(device, "disk_gb", None),
+        # The properties table prints these, and the hardware table now reads
+        # CPU / RAM / Disk out of them — so an edit to one is a real change to
+        # what the document says. A plain dict, because the snapshot is compared
+        # against its own JSON round-trip and a tuple would come back a list.
+        "properties": {
+            str(entry["key"]): str(entry.get("value") or "")
+            for entry in reversed(getattr(device, "properties", None) or [])
+            if isinstance(entry, dict) and entry.get("key")
+        },
         "check_method": getattr(device, "check_method", None),
         "check_target": getattr(device, "check_target", None),
         "services": sorted(service_key(s) for s in services if isinstance(s, dict)),
