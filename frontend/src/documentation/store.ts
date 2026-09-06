@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 import { documentsApi } from '@/api/client'
-import { isOverdue } from './frontmatter'
+import { isOverdue, withTags } from './frontmatter'
 import { isDescendant } from './tree'
 import type {
   Doc,
@@ -141,6 +141,8 @@ export interface DocsState {
   }) => Promise<Doc | null>
   rename: (id: string, title: string) => Promise<void>
   move: (id: string, parentId: string | null) => Promise<void>
+  /** Rewrite the `tags:` list in the open document's frontmatter. */
+  setTags: (tags: string[]) => Promise<boolean>
   toggleStar: (id: string) => Promise<void>
   markReviewed: (id: string) => Promise<void>
   resyncFacts: (id: string) => Promise<void>
@@ -336,6 +338,28 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : d)),
       openDoc: state.openDoc?.id === id ? { ...state.openDoc, ...data } : state.openDoc,
     }))
+  },
+
+  // Tags are frontmatter, and the body is what owns them — the `tags` column is
+  // a cache the server refills from it. So this rewrites the block and saves the
+  // body, rather than patching a field the next body save would overwrite. It
+  // writes straight through, like starring: a chip the user clicked off is not
+  // a draft of the document.
+  setTags: async (tags) => {
+    const { openDoc } = get()
+    if (!openDoc) return false
+    const body = withTags(openDoc.body, tags)
+    try {
+      const { data } = await documentsApi.update(openDoc.id, { body })
+      set((state) => ({
+        openDoc: data,
+        docs: state.docs.map((d) => (d.id === data.id ? { ...d, ...data } : d)),
+      }))
+      return true
+    } catch (error) {
+      set({ loadError: message(error, 'Could not save the tags') })
+      return false
+    }
   },
 
   toggleStar: async (id) => {

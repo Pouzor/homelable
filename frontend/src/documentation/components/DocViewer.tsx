@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Clock, Pencil, RefreshCw, Star, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Clock, Pencil, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -22,6 +22,8 @@ interface Props {
   onOpenDoc: (id: string) => void
   onCreateFromLink: (label: string) => void
   onToggleTask: (body: string) => void
+  /** Writes the whole tag list back into the document's frontmatter. */
+  onSetTags: (tags: string[]) => void
 }
 
 /** The metadata a frontmatter block is worth surfacing as a chip. */
@@ -44,10 +46,27 @@ export function DocViewer({
   onOpenDoc,
   onCreateFromLink,
   onToggleTask,
+  onSetTags,
 }: Props) {
   const { data } = useMemo(() => parseFrontmatter(doc.body), [doc.body])
+  const [tagDraft, setTagDraft] = useState<string | null>(null)
   const toc = useMemo(() => extractToc(doc.body), [doc.body])
   const overdue = isOverdue(data, doc.reviewed_at, doc.created_at)
+
+  // One field takes a whole list: "web, prod" adds two tags, and a tag already
+  // on the document is not added twice whatever its case.
+  function commitTags() {
+    const known = new Set(doc.tags.map((tag) => tag.toLowerCase()))
+    const added: string[] = []
+    for (const raw of (tagDraft ?? '').split(',')) {
+      const tag = raw.trim()
+      if (!tag || known.has(tag.toLowerCase())) continue
+      known.add(tag.toLowerCase())
+      added.push(tag)
+    }
+    if (added.length) onSetTags([...doc.tags, ...added])
+    setTagDraft(null)
+  }
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -92,10 +111,41 @@ export function DocViewer({
             </span>
           ))}
           {doc.tags.map((tag) => (
-            <span key={tag} className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">
+            <span key={tag} className="flex items-center gap-1 rounded bg-primary/10 py-0.5 pl-1.5 pr-1 text-primary">
               #{tag}
+              <button
+                type="button"
+                aria-label={`Remove tag ${tag}`}
+                onClick={() => onSetTags(doc.tags.filter((t) => t !== tag))}
+                className="cursor-pointer opacity-60 hover:opacity-100"
+              >
+                <X size={10} />
+              </button>
             </span>
           ))}
+          {tagDraft === null ? (
+            <button
+              type="button"
+              onClick={() => setTagDraft('')}
+              className="flex cursor-pointer items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
+            >
+              <Plus size={10} /> Tag
+            </button>
+          ) : (
+            <input
+              autoFocus
+              value={tagDraft}
+              aria-label="New tag"
+              placeholder="tag, tag…"
+              onChange={(event) => setTagDraft(event.target.value)}
+              onBlur={commitTags}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') commitTags()
+                if (event.key === 'Escape') setTagDraft(null)
+              }}
+              className="w-28 rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground outline-none ring-1 ring-border focus:ring-primary"
+            />
+          )}
           {!doc.edited_at && (
             <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
               Only the generated header so far

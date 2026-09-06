@@ -7,6 +7,7 @@ import {
   summaryOf,
   tagsOf,
   withFrontmatter,
+  withTags,
 } from '../frontmatter'
 
 describe('parseFrontmatter', () => {
@@ -52,6 +53,42 @@ describe('parseFrontmatter', () => {
 
   it('handles CRLF line endings', () => {
     expect(parseFrontmatter('---\r\ntitle: NAS\r\n---\r\nbody').data).toEqual({ title: 'NAS' })
+  })
+})
+
+describe('withTags', () => {
+  it('replaces an inline list and leaves every other line as written', () => {
+    const body = '---\ntitle: NAS\ntags: [old]\ncreated: 2026-09-07\n---\n\n# NAS\n'
+    expect(withTags(body, ['a', 'b'])).toBe(
+      '---\ntitle: NAS\ntags: [a, b]\ncreated: 2026-09-07\n---\n\n# NAS\n',
+    )
+  })
+
+  it('replaces a block list with its items', () => {
+    const body = '---\ntags:\n  - old\n  - older\nowner: me\n---\n\n# NAS\n'
+    expect(withTags(body, ['a'])).toBe('---\ntags: [a]\nowner: me\n---\n\n# NAS\n')
+  })
+
+  it('adds the key to a block that has none', () => {
+    expect(parseFrontmatter(withTags('---\ntitle: NAS\n---\n\n# NAS\n', ['a'])).data).toEqual({
+      title: 'NAS',
+      tags: ['a'],
+    })
+  })
+
+  it('opens a block on a body that has none', () => {
+    const next = withTags('# NAS', ['a'])
+    expect(parseFrontmatter(next).data).toEqual({ tags: ['a'] })
+    expect(parseFrontmatter(next).content.trim()).toBe('# NAS')
+  })
+
+  it('empties the list rather than dropping the key — the key is how tags are found', () => {
+    expect(withTags('---\ntags: [a]\n---\n', [])).toBe('---\ntags: []\n---\n')
+  })
+
+  it('quotes a tag flow style would misread', () => {
+    const next = withTags('---\ntitle: NAS\n---\n', ['needs: review', 'plain'])
+    expect(parseFrontmatter(next).data.tags).toEqual(['needs: review', 'plain'])
   })
 })
 
