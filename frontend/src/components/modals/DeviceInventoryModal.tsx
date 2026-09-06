@@ -39,6 +39,12 @@ interface DeviceInventoryModalProps {
   onPick?: (device: InventoryEntry) => void
   /** Start with the Rackable filter on (what the rack picker wants). */
   initialRackableOnly?: boolean
+  /**
+   * Opens the Documentation section on a device, from its detail modal. The
+   * list closes on the way out — Documentation is a whole view behind these
+   * dialogs, not something to read under them.
+   */
+  onOpenDocumentation?: (deviceId: string, label: string) => void
 }
 
 const PORT_COLORS: Record<number, string> = {
@@ -151,7 +157,7 @@ function injectAutoEdges(edges: AutoEdge[] | undefined) {
   }))
 }
 
-export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus = 'pending', demoDevices, onPick, initialRackableOnly = false }: DeviceInventoryModalProps) {
+export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus = 'pending', demoDevices, onPick, initialRackableOnly = false, onOpenDocumentation }: DeviceInventoryModalProps) {
   const [devices, setDevices] = useState<InventoryEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<InventoryEntry | null>(null)
@@ -933,6 +939,13 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       <InventoryDeviceModal
         device={selected}
         onClose={() => setSelected(null)}
+        onOpenDocumentation={
+          onOpenDocumentation &&
+          ((deviceId, label) => {
+            setSelected(null)
+            onOpenDocumentation(deviceId, label)
+          })
+        }
         onApprove={handleApprove}
         onHide={handleHide}
         onIgnore={handleIgnore}

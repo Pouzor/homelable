@@ -70,6 +70,30 @@ describe('InventoryDeviceModal — header', () => {
     render(<InventoryDeviceModal {...noop} device={makeDevice({ status: 'hidden' })} />)
     expect(screen.getByText('Hidden')).toBeInTheDocument()
   })
+
+  it('opens the device documentation with the id and the title on screen', () => {
+    const onOpenDocumentation = vi.fn()
+    render(
+      <InventoryDeviceModal
+        {...noop}
+        onOpenDocumentation={onOpenDocumentation}
+        device={makeDevice({ label: 'Big NAS' })}
+      />
+    )
+    fireEvent.click(screen.getByText('Documentation'))
+    expect(onOpenDocumentation).toHaveBeenCalledWith('dev-1', 'Big NAS')
+  })
+
+  it('drops the documentation link where there is no backend to hold one', () => {
+    render(<InventoryDeviceModal {...noop} device={makeDevice()} />)
+    expect(screen.queryByText('Documentation')).not.toBeInTheDocument()
+  })
+
+  it('hides the documentation link while editing — the header belongs to the form', () => {
+    render(<InventoryDeviceModal {...noop} onOpenDocumentation={vi.fn()} device={makeDevice()} />)
+    fireEvent.click(screen.getByText('Edit'))
+    expect(screen.queryByText('Documentation')).not.toBeInTheDocument()
+  })
 })
 
 describe('InventoryDeviceModal — view sections', () => {
