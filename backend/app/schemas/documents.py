@@ -76,6 +76,12 @@ class DocumentSummary(BaseModel):
     frontmatter: dict[str, Any] = {}
     starred: bool = False
     template_id: str | None = None
+    # Whether the device has moved on since the snapshot was taken. Computed by
+    # the server because only the server knows the snapshot's shape: it holds
+    # `label` and `type` through their fallbacks and `properties` as a flat
+    # map, none of which the inventory wire shape can be compared against
+    # field by field.
+    drifted: bool = False
     reviewed_at: datetime | None = None
     edited_at: datetime | None = None
     facts_synced_at: datetime | None = None

@@ -141,6 +141,7 @@ export interface DocsState {
 
   loadRevisions: (id: string) => Promise<void>
   restore: (id: string, revisionId: string) => Promise<void>
+  regenerate: (id: string) => Promise<boolean>
 
   loadCoverage: () => Promise<void>
   scaffold: (input: { deviceIds?: string[]; onlyWithNotes?: boolean }) => Promise<number>
@@ -358,6 +359,27 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
     await get().loadRevisions(id)
   },
 
+  regenerate: async (id) => {
+    try {
+      const { data } = await documentsApi.regenerate(id)
+      // The body the user was editing no longer exists; drop the draft with it
+      // rather than letting a stale edit be saved back over the new one.
+      clearDraft(id)
+      set((state) => ({
+        openDoc: state.openDoc?.id === id ? data : state.openDoc,
+        draft: state.openDoc?.id === id ? null : state.draft,
+        dirty: state.openDoc?.id === id ? false : state.dirty,
+        pendingDraft: state.openDoc?.id === id ? null : state.pendingDraft,
+        docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : d)),
+      }))
+      if (get().openDoc?.id === id && get().revisions.length > 0) await get().loadRevisions(id)
+      return true
+    } catch (error) {
+      set({ loadError: message(error, 'Could not regenerate that document') })
+      return false
+    }
+  },
+
   loadCoverage: async () => {
     if (STANDALONE) return
     try {
@@ -431,6 +453,11 @@ export function isDescendant(all: DocumentSummary[], doc: DocumentSummary, ances
     cursor = byId.get(cursor)?.parent_id ?? null
   }
   return false
+}
+
+/** Document ids the server flagged as drifted. Used for the tree badge. */
+export function driftedIds(docs: DocumentSummary[]): Set<string> {
+  return new Set(docs.filter((doc) => doc.drifted).map((doc) => doc.id))
 }
 
 /** Document ids whose `review_every` has elapsed. Used for the tree badge. */

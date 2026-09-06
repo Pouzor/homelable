@@ -337,6 +337,8 @@ export const documentsApi = {
     ),
   restore: (id: string, revisionId: string) =>
     api.post<import('@/documentation/types').Doc>(`/documents/${id}/revisions/${revisionId}/restore`),
+  regenerate: (id: string) =>
+    api.post<import('@/documentation/types').Doc>(`/documents/${id}/regenerate`),
   search: (q: string, limit = 25) =>
     api.get<import('@/documentation/types').DocSearchResult>('/documents/search', {
       params: { q, limit },

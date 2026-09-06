@@ -167,6 +167,7 @@ Non-destructive and repeatable.
 | `DELETE` | `/api/v1/documents/{id}` — a folder takes its subtree |
 | `GET` | `/api/v1/documents/{id}/revisions`, `/revisions/{rev_id}` |
 | `POST` | `/api/v1/documents/{id}/revisions/{rev_id}/restore` |
+| `POST` | `/api/v1/documents/{id}/regenerate` — erase the body and scaffold it again |
 | `GET` | `/api/v1/documents/search?q=&limit=` |
 | `GET` | `/api/v1/documents/blocks?block=&device_id=` |
 | `GET` | `/api/v1/documents/coverage` |

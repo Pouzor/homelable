@@ -25,6 +25,11 @@ export interface DocumentSummary {
   frontmatter: Record<string, unknown>
   starred: boolean
   template_id?: string | null
+  /**
+   * The device has changed since this document's facts were snapshotted.
+   * Decided by the server — the snapshot is its shape, not the inventory's.
+   */
+  drifted?: boolean
   reviewed_at?: string | null
   edited_at?: string | null
   facts_synced_at?: string | null
@@ -41,7 +46,7 @@ export interface DocRevision {
   id: string
   document_id: string
   title: string
-  reason: 'edit' | 'restore' | 'import' | 'migrate' | 'scaffold'
+  reason: 'edit' | 'restore' | 'import' | 'migrate' | 'scaffold' | 'regenerate'
   saved_at: string
   size: number
 }

@@ -17,6 +17,7 @@ interface Props {
   onEdit: () => void
   onToggleStar: () => void
   onMarkReviewed: () => void
+  onRegenerate: () => void
   onDelete: () => void
   onOpenDoc: (id: string) => void
   onCreateFromLink: (label: string) => void
@@ -38,6 +39,7 @@ export function DocViewer({
   onEdit,
   onToggleStar,
   onMarkReviewed,
+  onRegenerate,
   onDelete,
   onOpenDoc,
   onCreateFromLink,
@@ -65,6 +67,19 @@ export function DocViewer({
           <Button size="sm" variant="ghost" onClick={onEdit} className="cursor-pointer gap-1">
             <Pencil size={13} /> Edit
           </Button>
+          {/* A folder holds children, not a generated body — nothing to rebuild. */}
+          {doc.kind !== 'folder' && (
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              title="Regenerate this document from the database"
+              aria-label="Regenerate this document"
+              onClick={onRegenerate}
+              className="cursor-pointer"
+            >
+              <RefreshCw />
+            </Button>
+          )}
           <Button size="icon-xs" variant="ghost" title="Delete this document" onClick={onDelete} className="cursor-pointer">
             <Trash2 />
           </Button>
