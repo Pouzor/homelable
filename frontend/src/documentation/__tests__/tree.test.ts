@@ -6,6 +6,7 @@ import {
   bucketsFor,
   buildDeviceTree,
   buildLibraryTree,
+  canMoveInto,
   deviceLabel,
   docState,
   filterGroups,
@@ -380,5 +381,42 @@ describe('filterGroups', () => {
 
   it('drops a group that ends up empty', () => {
     expect(filterGroups(groups, 'zzz')).toEqual([])
+  })
+})
+
+describe('canMoveInto', () => {
+  const root = doc({ id: 'root', kind: 'folder', title: 'Runbooks' })
+  const nested = doc({ id: 'nested', kind: 'folder', title: 'Restores', parent_id: 'root' })
+  const page = doc({ id: 'page', kind: 'page', title: 'Restore the NAS', parent_id: null })
+  const all = [root, nested, page]
+
+  it('files a top-level page under a folder', () => {
+    expect(canMoveInto(all, page, 'root')).toBe(true)
+  })
+
+  it('takes a filed page back out to the root', () => {
+    expect(canMoveInto(all, { ...page, parent_id: 'root' }, null)).toBe(true)
+  })
+
+  it('refuses the parent it already has', () => {
+    expect(canMoveInto(all, { ...page, parent_id: 'root' }, 'root')).toBe(false)
+    expect(canMoveInto(all, page, null)).toBe(false)
+  })
+
+  it('refuses a page as a parent — only folders take children', () => {
+    expect(canMoveInto(all, nested, 'page')).toBe(false)
+  })
+
+  it('refuses a folder into itself or its own subtree', () => {
+    expect(canMoveInto(all, root, 'root')).toBe(false)
+    expect(canMoveInto(all, root, 'nested')).toBe(false)
+  })
+
+  it('refuses a device document, which the Library does not hold', () => {
+    expect(canMoveInto(all, doc({ id: 'dev-doc', kind: 'device' }), 'root')).toBe(false)
+  })
+
+  it('refuses a parent that is not there', () => {
+    expect(canMoveInto(all, page, 'gone')).toBe(false)
   })
 })

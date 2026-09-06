@@ -327,3 +327,40 @@ export function filterGroups(groups: TreeGroup[], query: string): TreeGroup[] {
     }))
     .filter((group) => group.items.length > 0)
 }
+
+/** Whether `doc` sits anywhere under `ancestorId`. */
+export function isDescendant(
+  all: DocumentSummary[],
+  doc: DocumentSummary,
+  ancestorId: string,
+): boolean {
+  const byId = new Map(all.map((d) => [d.id, d]))
+  const seen = new Set<string>()
+  let cursor = doc.parent_id ?? null
+  while (cursor && !seen.has(cursor)) {
+    if (cursor === ancestorId) return true
+    seen.add(cursor)
+    cursor = byId.get(cursor)?.parent_id ?? null
+  }
+  return false
+}
+
+/**
+ * Whether `doc` can be filed under `targetId` — `null` being the Library root.
+ *
+ * The server enforces the same four rules; deciding them here too is what lets
+ * a drag refuse the drop instead of asking, moving, and then failing.
+ */
+export function canMoveInto(
+  docs: DocumentSummary[],
+  doc: DocumentSummary,
+  targetId: string | null,
+): boolean {
+  if (doc.kind !== 'page' && doc.kind !== 'folder') return false
+  if ((doc.parent_id ?? null) === targetId) return false
+  if (targetId === null) return true
+  if (targetId === doc.id) return false
+  const target = docs.find((d) => d.id === targetId)
+  if (!target || target.kind !== 'folder') return false
+  return !isDescendant(docs, target, doc.id)
+}

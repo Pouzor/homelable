@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
+import { cn } from '@/lib/utils'
+
 import { DOC_TEMPLATES } from '../types'
 
 interface Props {
   trigger: ReactNode
+  /** Which way the popover opens. The menu sits at the top of the pane now. */
+  placement?: 'up' | 'down'
   parentId?: string | null
   onCreate: (input: { title: string; templateId: string; parentId?: string | null }) => void | Promise<void>
 }
@@ -15,7 +19,7 @@ interface Props {
  * handful of primitives and this needs no focus trapping beyond closing on an
  * outside click or Escape.
  */
-export function NewDocMenu({ trigger, parentId, onCreate }: Props) {
+export function NewDocMenu({ trigger, placement = 'up', parentId, onCreate }: Props) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLDivElement>(null)
 
@@ -39,7 +43,12 @@ export function NewDocMenu({ trigger, parentId, onCreate }: Props) {
     <div ref={root} className="relative">
       <div onClick={() => setOpen((value) => !value)}>{trigger}</div>
       {open && (
-        <div className="absolute bottom-full left-0 z-30 mb-1 w-64 overflow-hidden rounded-lg border border-border bg-popover shadow-lg">
+        <div
+          className={cn(
+            'absolute z-30 w-64 overflow-hidden rounded-lg border border-border bg-popover shadow-lg',
+            placement === 'up' ? 'bottom-full left-0 mb-1' : 'right-0 top-full mt-1',
+          )}
+        >
           {DOC_TEMPLATES.map((template) => (
             <button
               key={template.id}

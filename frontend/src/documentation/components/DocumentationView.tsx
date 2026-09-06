@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, FilePlus, FolderPlus, Search, X } from 'lucide-react'
+import { BookOpen, ChevronDown, ChevronRight, FilePlus, FolderPlus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { scanApi } from '@/api/client'
@@ -11,10 +11,17 @@ import type { InventoryEntry } from '@/types'
 import { cn } from '@/lib/utils'
 import { isOverdue } from '../frontmatter'
 import { driftedIds, useDocsStore } from '../store'
-import { buildDeviceTree, buildLibraryTree, deviceLabel, filterGroups, filterTree } from '../tree'
+import {
+  buildDeviceTree,
+  buildLibraryTree,
+  canMoveInto,
+  deviceLabel,
+  filterGroups,
+  filterTree,
+} from '../tree'
 import { GROUP_BY_LABELS, type GroupBy, type TreeLeaf } from '../types'
 import { DocEditor } from './DocEditor'
-import { DocTreeGroups, DocTreeItem } from './DocTree'
+import { DocTreeGroups, DocTreeItem, type TreeDnd } from './DocTree'
 import { DocViewer } from './DocViewer'
 import { MigrateNotesBanner } from './MigrateNotesBanner'
 import { NewDocMenu } from './NewDocMenu'
@@ -49,6 +56,7 @@ export function DocumentationView() {
     acceptPendingDraft,
     discardPendingDraft,
     create,
+    move,
     remove,
     toggleStar,
     markReviewed,
@@ -60,6 +68,7 @@ export function DocumentationView() {
     setGroupBy,
     expanded,
     toggleExpanded,
+    setExpanded,
     treeWidth,
     setTreeWidth,
     filter,
@@ -142,6 +151,64 @@ export function DocumentationView() {
       }
     },
     [create, devices, dirty, open],
+  )
+
+  // Filing by drag. The confirmation is the point — a document that moves
+  // because a pointer slipped is worse than one nobody filed.
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [overId, setOverId] = useState<string | null>(null)
+  const [rootOver, setRootOver] = useState(false)
+
+  const dragged = useMemo(
+    () => (draggingId ? (docs.find((d) => d.id === draggingId) ?? null) : null),
+    [docs, draggingId],
+  )
+
+  const allowDrop = useCallback(
+    (targetId: string | null) => (dragged ? canMoveInto(docs, dragged, targetId) : false),
+    [docs, dragged],
+  )
+
+  const handleDrop = useCallback(
+    async (targetId: string | null) => {
+      const doc = dragged
+      setDraggingId(null)
+      setOverId(null)
+      setRootOver(false)
+      if (!doc || !canMoveInto(docs, doc, targetId)) return
+      const target = targetId ? docs.find((d) => d.id === targetId) : null
+      if (targetId && !target) return
+      const question = target
+        ? `Move \u201c${doc.title}\u201d into \u201c${target.title}\u201d?`
+        : `Move \u201c${doc.title}\u201d out to the top of the Library?`
+      if (!window.confirm(question)) return
+      try {
+        await move(doc.id, targetId)
+        // Land somewhere the user can see: a closed folder would swallow it.
+        if (targetId && !expanded.includes(targetId)) setExpanded([...expanded, targetId])
+        toast.success(target ? `Moved into \u201c${target.title}\u201d` : 'Moved to the top of the Library')
+      } catch {
+        toast.error('Could not move that document')
+      }
+    },
+    [docs, dragged, expanded, move, setExpanded],
+  )
+
+  const dnd: TreeDnd = useMemo(
+    () => ({
+      draggingId,
+      overId,
+      canDrop: allowDrop,
+      onDragStart: (leaf) => setDraggingId(leaf.docId ?? null),
+      onDragEnd: () => {
+        setDraggingId(null)
+        setOverId(null)
+        setRootOver(false)
+      },
+      onDragOver: setOverId,
+      onDrop: (targetId) => void handleDrop(targetId),
+    }),
+    [allowDrop, draggingId, handleDrop, overId],
   )
 
   const handleSave = useCallback(async () => {
@@ -248,7 +315,84 @@ export function DocumentationView() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
-          <p className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50">
+          <div className="flex items-center gap-0.5 px-2 pb-1 pt-1">
+            <button
+              type="button"
+              onClick={() => setLibraryOpen((value) => !value)}
+              aria-expanded={libraryOpen}
+              className="flex flex-1 cursor-pointer items-center gap-1 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50"
+            >
+              {libraryOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+              Library
+            </button>
+            <NewDocMenu
+              placement="down"
+              onCreate={async (input) => {
+                const doc = await create(input)
+                if (doc) await open(doc.id)
+              }}
+              trigger={
+                <Button size="icon-xs" variant="ghost" aria-label="New document" title="New document">
+                  <FilePlus />
+                </Button>
+              }
+            />
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label="New folder"
+              title="New folder"
+              onClick={async () => {
+                const title = window.prompt('Folder name')
+                if (title?.trim()) await create({ title: title.trim(), kind: 'folder' })
+              }}
+            >
+              <FolderPlus />
+            </Button>
+          </div>
+
+          {/* Dropping on the empty space around the Library files a document at
+              its top level — the only way back out of a folder. */}
+          <div
+            onDragOver={(event) => {
+              if (!allowDrop(null)) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+              setRootOver(true)
+            }}
+            onDragLeave={() => setRootOver(false)}
+            onDrop={(event) => {
+              if (!allowDrop(null)) return
+              event.preventDefault()
+              void handleDrop(null)
+            }}
+            className={cn(
+              'min-h-6 rounded',
+              rootOver && 'bg-primary/10 ring-1 ring-inset ring-primary/40',
+            )}
+          >
+            {libraryOpen &&
+              libraryItems.map((leaf) => (
+                <DocTreeItem
+                  key={leaf.id}
+                  leaf={leaf}
+                  depth={1}
+                  activeId={openDoc?.id ?? null}
+                  expanded={expanded}
+                  starred={starred}
+                  onSelect={(item) => void handleSelect(item)}
+                  onToggle={toggleExpanded}
+                  dnd={dnd}
+                />
+              ))}
+            {libraryOpen && libraryItems.length === 0 && (
+              <p className="px-3 py-1 text-xs text-muted-foreground/60">
+                Nothing here yet — runbooks and overviews live in the Library.
+              </p>
+            )}
+          </div>
+
+          <p className="mt-3 px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50">
             Devices
           </p>
           <DocTreeGroups
@@ -259,67 +403,18 @@ export function DocumentationView() {
             onSelect={(leaf) => void handleSelect(leaf)}
             onToggle={toggleExpanded}
           />
-
-          <button
-            type="button"
-            onClick={() => setLibraryOpen((value) => !value)}
-            aria-expanded={libraryOpen}
-            className="mt-3 flex w-full cursor-pointer items-center px-2 pb-1 pt-1 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50"
-          >
-            Library
-          </button>
-          {libraryOpen &&
-            libraryItems.map((leaf) => (
-              <DocTreeItem
-                key={leaf.id}
-                leaf={leaf}
-                depth={1}
-                activeId={openDoc?.id ?? null}
-                expanded={expanded}
-                starred={starred}
-                onSelect={(item) => void handleSelect(item)}
-                onToggle={toggleExpanded}
-              />
-            ))}
-          {libraryOpen && libraryItems.length === 0 && (
-            <p className="px-3 py-1 text-xs text-muted-foreground/60">
-              Nothing here yet — runbooks and overviews live in the Library.
-            </p>
-          )}
         </div>
 
-        <div className="flex items-center gap-1 border-t border-border px-2 py-1.5">
-          <NewDocMenu
-            onCreate={async (input) => {
-              const doc = await create(input)
-              if (doc) await open(doc.id)
-            }}
-            trigger={
-              <Button size="xs" variant="ghost" className="cursor-pointer gap-1">
-                <FilePlus size={12} /> New
-              </Button>
-            }
-          />
-          <Button
-            size="xs"
-            variant="ghost"
-            className="cursor-pointer gap-1"
-            onClick={async () => {
-              const title = window.prompt('Folder name')
-              if (title?.trim()) await create({ title: title.trim(), kind: 'folder' })
-            }}
-          >
-            <FolderPlus size={12} /> Folder
-          </Button>
-          {coverage && (
+        {coverage && (
+          <div className="flex items-center border-t border-border px-2 py-1.5">
             <span
               className="ml-auto text-[10px] tabular-nums text-muted-foreground/70"
               title={`${coverage.documented} of ${coverage.devices} devices documented · ${coverage.header_only} still only the generated header`}
             >
               {coverage.documented}/{coverage.devices}
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </aside>
 
       <div

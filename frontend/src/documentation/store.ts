@@ -2,6 +2,7 @@ import { create } from 'zustand'
 
 import { documentsApi } from '@/api/client'
 import { isOverdue } from './frontmatter'
+import { isDescendant } from './tree'
 import type {
   Doc,
   DocCoverage,
@@ -19,6 +20,10 @@ import type {
  * to localStorage so closing a tab or switching documents cannot lose an edit.
  * The draft is cleared the moment the save lands.
  */
+
+// The tree owns the parentage walk; the store re-exports it because callers of
+// `remove` and `move` reach for it from here.
+export { isDescendant }
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -302,7 +307,10 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
 
   move: async (id, parentId) => {
     const { data } = await documentsApi.update(id, { parent_id: parentId })
-    set((state) => ({ docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : d)) }))
+    set((state) => ({
+      docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : d)),
+      openDoc: state.openDoc?.id === id ? { ...state.openDoc, ...data } : state.openDoc,
+    }))
   },
 
   toggleStar: async (id) => {
@@ -441,19 +449,6 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
 
   setFilter: (filter) => set({ filter }),
 }))
-
-/** Whether `doc` sits anywhere under `ancestorId`. */
-export function isDescendant(all: DocumentSummary[], doc: DocumentSummary, ancestorId: string): boolean {
-  const byId = new Map(all.map((d) => [d.id, d]))
-  const seen = new Set<string>()
-  let cursor = doc.parent_id ?? null
-  while (cursor && !seen.has(cursor)) {
-    if (cursor === ancestorId) return true
-    seen.add(cursor)
-    cursor = byId.get(cursor)?.parent_id ?? null
-  }
-  return false
-}
 
 /** Document ids the server flagged as drifted. Used for the tree badge. */
 export function driftedIds(docs: DocumentSummary[]): Set<string> {
