@@ -1474,6 +1474,14 @@ export default function App() {
         <DeviceInventoryModal
           open={inventoryModalOpen}
           onClose={() => setInventoryModalOpen(false)}
+          onOpenDocumentation={
+            STANDALONE
+              ? undefined
+              : (deviceId, label) => {
+                  setInventoryModalOpen(false)
+                  void openDocumentationFor(deviceId, label)
+                }
+          }
           highlightId={inventoryHighlightId}
           initialStatus={inventoryModalStatus}
           demoDevices={tourInventoryDemo ? DEMO_INVENTORY_DEVICES : undefined}

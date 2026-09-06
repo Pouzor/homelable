@@ -40,15 +40,20 @@ vi.mock('@/components/modals/InventoryDeviceModal', () => ({
     device,
     onApprove,
     onClose,
+    onOpenDocumentation,
   }: {
-    device: unknown
+    device: { id: string } | null
     onApprove: (d: unknown) => void
     onClose: () => void
+    onOpenDocumentation?: (deviceId: string, label: string) => void
   }) =>
     device ? (
       <div data-testid="approval-modal">
         <button data-testid="do-approve" onClick={() => onApprove(device)}>approve</button>
         <button data-testid="close-detail" onClick={onClose}>close</button>
+        {onOpenDocumentation && (
+          <button data-testid="open-docs" onClick={() => onOpenDocumentation(device.id, 'label')}>docs</button>
+        )}
       </div>
     ) : null,
 }))
@@ -305,6 +310,21 @@ describe('DeviceInventoryModal', () => {
     fireEvent.change(screen.getByPlaceholderText(/Search/), { target: { value: 'host' } })
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     expect(screen.queryByTestId('approval-modal')).not.toBeInTheDocument()
+  })
+
+  it('closes the detail on the way to the documentation of that device', async () => {
+    const onOpenDocumentation = vi.fn()
+    render(<DeviceInventoryModal {...baseProps} highlightId="dev-a" onOpenDocumentation={onOpenDocumentation} />)
+    await waitFor(() => expect(screen.getByTestId('approval-modal')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('open-docs'))
+    expect(onOpenDocumentation).toHaveBeenCalledWith('dev-a', 'label')
+    expect(screen.queryByTestId('approval-modal')).not.toBeInTheDocument()
+  })
+
+  it('offers no documentation link when the caller has nowhere to send it', async () => {
+    render(<DeviceInventoryModal {...baseProps} highlightId="dev-a" />)
+    await waitFor(() => expect(screen.getByTestId('approval-modal')).toBeInTheDocument())
+    expect(screen.queryByTestId('open-docs')).not.toBeInTheDocument()
   })
 
   it('hands the device back instead of stacking a dialog in picker mode', async () => {

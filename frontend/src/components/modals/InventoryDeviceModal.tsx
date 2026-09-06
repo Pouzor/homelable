@@ -16,6 +16,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import {
+  BookOpen,
   Check,
   Copy,
   Factory,
@@ -71,6 +72,9 @@ interface InventoryDeviceModalProps {
   onIgnore: (device: InventoryEntry) => void
   /** Called with the saved row after an edit, so the list can refresh in place. */
   onSaved?: (device: InventoryEntry) => void
+  /** Opens the Documentation section on this device, writing the document
+   *  first if it has none. Absent wherever there is no backend. */
+  onOpenDocumentation?: (deviceId: string, label: string) => void
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -283,7 +287,7 @@ function toRackModel(d: InventoryEntry): DeviceRackModel | null {
 const nullable = (v: string) => (v.trim() === '' ? null : v.trim())
 const numeric = (v: string) => (v.trim() === '' ? null : Number(v))
 
-export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgnore, onSaved }: InventoryDeviceModalProps) {
+export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgnore, onSaved, onOpenDocumentation }: InventoryDeviceModalProps) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<EditForm>(() => (device ? toForm(device) : toForm({} as InventoryEntry)))
   const [properties, setProperties] = useState<NodeProperty[]>(device?.properties ?? [])
@@ -555,14 +559,27 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
               </div>
             </div>
             {!editing && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className={`shrink-0 gap-1.5 text-[#00d4ff] hover:text-[#00d4ff] hover:bg-[#00d4ff]/10 ${modalStyles['modal-interactive']}`}
-                onClick={() => setEditing(true)}
-              >
-                <Pencil size={13} /> Edit
-              </Button>
+              <div className="shrink-0 flex items-center gap-1">
+                {onOpenDocumentation && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={`gap-1.5 text-[#00d4ff] hover:text-[#00d4ff] hover:bg-[#00d4ff]/10 ${modalStyles['modal-interactive']}`}
+                    onClick={() => onOpenDocumentation(device.id, titleLabel)}
+                    title="Open this device's documentation page"
+                  >
+                    <BookOpen size={13} /> Documentation
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={`gap-1.5 text-[#00d4ff] hover:text-[#00d4ff] hover:bg-[#00d4ff]/10 ${modalStyles['modal-interactive']}`}
+                  onClick={() => setEditing(true)}
+                >
+                  <Pencil size={13} /> Edit
+                </Button>
+              </div>
             )}
           </div>
         </DialogHeader>
