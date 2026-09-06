@@ -104,7 +104,6 @@ describe('Sidebar', () => {
     render(<Sidebar {...defaultProps} />)
     expect(screen.getByText('Canvas')).toBeInTheDocument()
     expect(screen.getByText('Device Inventory')).toBeInTheDocument()
-    expect(screen.getByText('Hidden Devices')).toBeInTheDocument()
     expect(screen.getByText('Scan History')).toBeInTheDocument()
   })
 
@@ -242,7 +241,7 @@ describe('Sidebar', () => {
     expect(defaultProps.onScan).toHaveBeenCalledOnce()
   })
 
-  // ── Pending / Hidden open modal ────────────────────────────────────────────
+  // ── Device Inventory opens the modal ───────────────────────────────────────
 
   it('calls onOpenInventory with pending status when Device Inventory is clicked', () => {
     render(<Sidebar {...defaultProps} />)
@@ -250,10 +249,9 @@ describe('Sidebar', () => {
     expect(defaultProps.onOpenInventory).toHaveBeenCalledWith(undefined, 'pending')
   })
 
-  it('calls onOpenInventory with hidden status when Hidden Devices is clicked', () => {
+  it('offers no Hidden Devices shortcut — the modal carries that filter', () => {
     render(<Sidebar {...defaultProps} />)
-    fireEvent.click(screen.getByText('Hidden Devices'))
-    expect(defaultProps.onOpenInventory).toHaveBeenCalledWith(undefined, 'hidden')
+    expect(screen.queryByText('Hidden Devices')).not.toBeInTheDocument()
   })
 
   it('calls onOpenHistory when Scan History nav item is clicked', () => {

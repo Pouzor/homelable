@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, EyeOff, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2, Rows3, BookOpen } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2, Rows3, BookOpen } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -18,11 +18,6 @@ import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
-
-const PENDING_TRIGGERS: { kind: 'pending' | 'hidden'; icon: typeof ScanLine; label: string }[] = [
-  { kind: 'pending', icon: ScanLine, label: 'Device Inventory' },
-  { kind: 'hidden', icon: EyeOff, label: 'Hidden Devices' },
-]
 
 interface SidebarProps {
   onAddNode: () => void
@@ -258,15 +253,16 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
             onClick={() => setView('documentation')}
           />
         )}
-        {!STANDALONE && PENDING_TRIGGERS.map((t) => (
+        {/* The hidden devices are a filter of this same modal, reached from
+            inside it — the sidebar carries the one entry point. */}
+        {!STANDALONE && (
           <SidebarItem
-            key={t.kind}
-            icon={t.icon}
-            label={t.label}
+            icon={ScanLine}
+            label="Device Inventory"
             collapsed={collapsed}
-            onClick={() => onOpenInventory(undefined, t.kind)}
+            onClick={() => onOpenInventory(undefined, 'pending')}
           />
-        ))}
+        )}
         {!STANDALONE && (
           <SidebarItem
             icon={Clock}
