@@ -280,6 +280,57 @@ async def test_editing_the_body_refreshes_the_frontmatter_cache(client: AsyncCli
     assert res.json()["tags"] == ["x"]
 
 
+async def test_the_body_renames_the_document(client: AsyncClient, headers: dict):
+    """`title:` in the frontmatter is the only place a document is named."""
+    doc = await _create(client, headers, title="Page")
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}",
+        json={"body": "---\ntitle: SMB / CIFS\n---\n\n# SMB / CIFS\n"},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["title"] == "SMB / CIFS"
+    assert res.json()["slug"] == "smb-cifs"
+
+
+async def test_a_body_without_a_title_keeps_the_one_it_has(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page")
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"body": "---\ntags: [x]\n---\n\nnew"}, headers=headers
+    )
+    assert res.json()["title"] == "Page"
+
+
+async def test_a_blank_title_in_the_body_is_ignored(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page")
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"body": "---\ntitle: '   '\n---\n\nnew"}, headers=headers
+    )
+    assert res.json()["title"] == "Page"
+
+
+async def test_an_explicit_title_wins_over_the_body_in_the_same_request(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page")
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}",
+        json={"title": "Chosen", "body": "---\ntitle: From the body\n---\n\nnew"},
+        headers=headers,
+    )
+    assert res.json()["title"] == "Chosen"
+
+
+async def test_a_device_document_renamed_in_its_body_keeps_its_device(client: AsyncClient, headers: dict):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}",
+        json={"body": "---\ntitle: The big NAS\n---\n\n# The big NAS\n"},
+        headers=headers,
+    )
+    assert res.json()["title"] == "The big NAS"
+    assert res.json()["device_id"] == device["id"]
+
+
 async def test_renaming_reslugs(client: AsyncClient, headers: dict):
     doc = await _create(client, headers, title="Page")
     res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"title": "New name"}, headers=headers)
@@ -449,6 +500,21 @@ async def test_restoring_brings_back_an_old_body_and_is_itself_undoable(client: 
 
     history = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
     assert [r["reason"] for r in history][0] == "restore"
+
+
+async def test_restoring_brings_back_the_title_that_body_carried(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="---\ntitle: First name\n---\n\nfirst")
+    await client.patch(
+        f"/api/v1/documents/{doc['id']}",
+        json={"body": "---\ntitle: Second name\n---\n\nsecond"},
+        headers=headers,
+    )
+    revision = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()[0]
+
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/revisions/{revision['id']}/restore", headers=headers
+    )
+    assert res.json()["title"] == "First name"
 
 
 async def test_restoring_a_revision_of_another_document_is_404(client: AsyncClient, headers: dict):

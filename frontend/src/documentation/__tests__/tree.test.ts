@@ -258,6 +258,26 @@ describe('buildDeviceTree', () => {
     expect(groups[0].items[0].state).toBe('written')
   })
 
+  it('shows the name the document gives itself, not the inventory label', () => {
+    const groups = buildDeviceTree({
+      groupBy: 'flat',
+      devices: [device({ label: 'nas-01' })],
+      docs: [doc({ device_id: 'dev-1', title: 'The big NAS' })],
+      context: emptyContext,
+    })
+    expect(groups[0].items[0].label).toBe('The big NAS')
+  })
+
+  it('falls back to the inventory label while there is nothing to open', () => {
+    const groups = buildDeviceTree({
+      groupBy: 'flat',
+      devices: [device({ label: 'nas-01' })],
+      docs: [doc({ device_id: 'dev-1', title: '  ' })],
+      context: emptyContext,
+    })
+    expect(groups[0].items[0].label).toBe('nas-01')
+  })
+
   it('lists a multi-homed device under each of its subnets', () => {
     const groups = buildDeviceTree({
       groupBy: 'subnet',

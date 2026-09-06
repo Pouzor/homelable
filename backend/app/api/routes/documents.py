@@ -97,6 +97,22 @@ def _apply_body(doc: Document, body: str) -> None:
     doc.tags = tags_from(frontmatter)
 
 
+async def _adopt_frontmatter_title(db: AsyncSession, doc: Document) -> None:
+    """Follow the name the body gives, since the body is what the user edits.
+
+    `title:` in the frontmatter is the only place a document is named — there is
+    no rename field anywhere in the UI — so a row that kept the title it was
+    created with went stale the moment someone edited that line, and the tree
+    went on showing the old name.
+    """
+    front = doc.frontmatter if isinstance(doc.frontmatter, dict) else {}
+    title = front.get("title")
+    if not isinstance(title, str) or not title.strip() or title.strip() == doc.title:
+        return
+    doc.title = title.strip()
+    doc.slug = await unique_slug(db, doc.title, parent_id=doc.parent_id, exclude_id=doc.id)
+
+
 async def _record_revision(db: AsyncSession, doc: Document, reason: str) -> None:
     """Snapshot the current body, then prune the document's oldest history."""
     db.add(DocumentRevision(document_id=doc.id, title=doc.title, body=doc.body or "", reason=reason))
@@ -484,6 +500,8 @@ async def update_document(
         await _record_revision(db, doc, "edit")
         _apply_body(doc, sent["body"])
         doc.edited_at = _now()
+        # An explicit title in the same request still wins: it is applied below.
+        await _adopt_frontmatter_title(db, doc)
 
     if "title" in sent and sent["title"]:
         doc.title = sent["title"]
@@ -525,6 +543,8 @@ async def restore_revision(
     # The body being replaced becomes history too, so a restore is undoable.
     await _record_revision(db, doc, "restore")
     _apply_body(doc, revision.body or "")
+    # A restored body brings its own title back with it.
+    await _adopt_frontmatter_title(db, doc)
     await db.flush()
     await doc_search.index_document(db, doc)
     await db.commit()
