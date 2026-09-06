@@ -36,10 +36,19 @@ vi.mock('@/api/client', () => ({
 vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 
 vi.mock('@/components/modals/InventoryDeviceModal', () => ({
-  InventoryDeviceModal: ({ device, onApprove }: { device: unknown; onApprove: (d: unknown) => void }) =>
+  InventoryDeviceModal: ({
+    device,
+    onApprove,
+    onClose,
+  }: {
+    device: unknown
+    onApprove: (d: unknown) => void
+    onClose: () => void
+  }) =>
     device ? (
       <div data-testid="approval-modal">
         <button data-testid="do-approve" onClick={() => onApprove(device)}>approve</button>
+        <button data-testid="close-detail" onClick={onClose}>close</button>
       </div>
     ) : null,
 }))
@@ -164,6 +173,9 @@ const baseProps = {
   onClose: vi.fn(),
 }
 
+// jsdom lays nothing out and has no scrollIntoView; the highlighted card calls it.
+Element.prototype.scrollIntoView = vi.fn()
+
 describe('DeviceInventoryModal', () => {
   it('loads and renders pending devices on open', async () => {
     render(<DeviceInventoryModal {...baseProps} />)
@@ -270,6 +282,36 @@ describe('DeviceInventoryModal', () => {
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     expect(screen.getByTestId('approval-modal')).toBeInTheDocument()
+  })
+
+  // ── highlightId — the caller asking for one device ─────────────────────────
+
+  it('opens the detail of the device a caller pointed at', async () => {
+    render(<DeviceInventoryModal {...baseProps} highlightId="dev-a" />)
+    await waitFor(() => expect(screen.getByTestId('approval-modal')).toBeInTheDocument())
+  })
+
+  it('leaves the detail closed when nothing was pointed at', async () => {
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    expect(screen.queryByTestId('approval-modal')).not.toBeInTheDocument()
+  })
+
+  it('does not reopen a detail the user closed', async () => {
+    render(<DeviceInventoryModal {...baseProps} highlightId="dev-a" />)
+    await waitFor(() => expect(screen.getByTestId('approval-modal')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('close-detail'))
+    // A filter change re-runs the effect; the device is still highlighted.
+    fireEvent.change(screen.getByPlaceholderText(/Search/), { target: { value: 'host' } })
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    expect(screen.queryByTestId('approval-modal')).not.toBeInTheDocument()
+  })
+
+  it('hands the device back instead of stacking a dialog in picker mode', async () => {
+    const onPick = vi.fn()
+    render(<DeviceInventoryModal {...baseProps} highlightId="dev-a" onPick={onPick} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    expect(screen.queryByTestId('approval-modal')).not.toBeInTheDocument()
   })
 
   const DUP_409 = {

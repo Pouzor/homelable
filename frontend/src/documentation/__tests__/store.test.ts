@@ -419,3 +419,58 @@ describe('overdueIds', () => {
     expect([...overdueIds(docs, now)]).toEqual(['due'])
   })
 })
+
+// ── the way in from the canvas ──────────────────────────────────────────────
+
+describe('openForDevice', () => {
+  const deviceDoc = summary({ id: 'doc-dev', kind: 'device', device_id: 'dev-1', title: 'bazarr' })
+
+  it('opens the document a device already has', async () => {
+    useDocsStore.setState({ docs: [deviceDoc], loaded: true })
+    api.get.mockResolvedValue({ data: doc({ id: 'doc-dev', device_id: 'dev-1' }) } as never)
+
+    expect(await useDocsStore.getState().openForDevice('dev-1', 'bazarr')).toBe(true)
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.get).toHaveBeenCalledWith('doc-dev')
+    expect(useDocsStore.getState().openDoc?.id).toBe('doc-dev')
+  })
+
+  it('fetches the listing first when the section was never opened', async () => {
+    useDocsStore.setState({ docs: [], loaded: false })
+    api.list.mockResolvedValue({ data: [deviceDoc] } as never)
+    api.get.mockResolvedValue({ data: doc({ id: 'doc-dev', device_id: 'dev-1' }) } as never)
+
+    expect(await useDocsStore.getState().openForDevice('dev-1', 'bazarr')).toBe(true)
+    expect(api.list).toHaveBeenCalled()
+    expect(api.create).not.toHaveBeenCalled()
+  })
+
+  it('writes one from the device facts when there is none', async () => {
+    useDocsStore.setState({ docs: [], loaded: true })
+    api.create.mockResolvedValue({ data: doc({ id: 'doc-new', device_id: 'dev-1' }) } as never)
+    api.get.mockResolvedValue({ data: doc({ id: 'doc-new', device_id: 'dev-1' }) } as never)
+
+    expect(await useDocsStore.getState().openForDevice('dev-1', 'bazarr')).toBe(true)
+    expect(api.create).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'bazarr', kind: 'device', device_id: 'dev-1' }),
+    )
+    expect(useDocsStore.getState().openDoc?.id).toBe('doc-new')
+  })
+
+  it('falls back to a title rather than creating an unnamed document', async () => {
+    useDocsStore.setState({ docs: [], loaded: true })
+    api.create.mockResolvedValue({ data: doc({ id: 'doc-new' }) } as never)
+    api.get.mockResolvedValue({ data: doc({ id: 'doc-new' }) } as never)
+
+    await useDocsStore.getState().openForDevice('dev-1', '   ')
+    expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'Untitled device' }))
+  })
+
+  it('reports a failure rather than switching to an empty section', async () => {
+    useDocsStore.setState({ docs: [], loaded: true })
+    api.create.mockRejectedValue(new Error('nope'))
+
+    expect(await useDocsStore.getState().openForDevice('dev-1', 'bazarr')).toBe(false)
+    expect(useDocsStore.getState().openDoc).toBeNull()
+  })
+})

@@ -120,6 +120,8 @@ export interface DocsState {
 
   loadDocs: () => Promise<void>
   open: (id: string) => Promise<void>
+  /** Open the document describing a device, writing one first if it has none. */
+  openForDevice: (deviceId: string, fallbackTitle?: string) => Promise<boolean>
   close: () => void
 
   startEdit: () => void
@@ -225,6 +227,29 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
     } catch (error) {
       set({ openLoading: false, loadError: message(error, 'Could not open that document') })
     }
+  },
+
+  // The entry point from outside the section: the canvas knows a device id and
+  // nothing about documents. The list may never have been fetched — this is
+  // reachable without ever opening Documentation — so load it first, and treat
+  // a device with no document the way the tree does, by writing one from its
+  // facts rather than showing an empty section.
+  openForDevice: async (deviceId, fallbackTitle) => {
+    if (STANDALONE) return false
+    if (!get().loaded) await get().loadDocs()
+    const existing = get().docs.find((doc) => doc.device_id === deviceId)
+    if (existing) {
+      await get().open(existing.id)
+      return true
+    }
+    const created = await get().create({
+      title: fallbackTitle?.trim() || 'Untitled device',
+      kind: 'device',
+      deviceId,
+    })
+    if (!created) return false
+    await get().open(created.id)
+    return true
   },
 
   close: () => set({ openDoc: null, draft: null, dirty: false, pendingDraft: null, revisions: [] }),
