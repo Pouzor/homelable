@@ -24,7 +24,11 @@ from app.db.models import Document
 # A document is addressed by id; the slug is for readable URLs and export
 # filenames, so it only has to be filesystem- and URL-safe.
 _SLUG_STRIP = re.compile(r"[^a-z0-9]+")
-_FRONTMATTER = re.compile(r"\A---\s*\n(.*?)\n---\s*(?:\n|\Z)", re.DOTALL)
+# `[ \t]*`, not `\s*`: `\s` matches the newline the fence line ends with, and an
+# alternative that can be reached two ways makes the match quadratic on a body
+# that opens with `---` and never closes it — the shape a half-typed document
+# has for as long as the user is typing it.
+_FRONTMATTER = re.compile(r"\A---[ \t]*\n(.*?)\n---[ \t]*(?:\n|\Z)", re.DOTALL)
 
 DOCUMENT_KINDS = frozenset({"device", "node", "design", "page", "folder"})
 
