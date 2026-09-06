@@ -3,6 +3,7 @@ import { Bold, Italic, Link2, List, ListChecks, Save, Table, X } from 'lucide-re
 
 import { documentsApi } from '@/api/client'
 import { caretPoint, placeMenu, type CaretPoint, type Placement } from '@/documentation/caret'
+import { useDocHistory } from '@/documentation/history'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Markdown } from '../markdown/Markdown'
@@ -81,6 +82,8 @@ export function DocEditor({
   // needs its height, so the first paint would otherwise flash at 0,0.
   const [slashAt, setSlashAt] = useState<Placement | null>(null)
 
+  const history = useDocHistory({ body, onChange, textarea })
+
   const commands = useMemo<SlashCommand[]>(() => {
     const generated: SlashCommand[] = deviceId
       ? GENERATED_BLOCKS.map((entry) => ({
@@ -117,6 +120,7 @@ export function DocEditor({
       const start = replacing ?? el.selectionStart
       const end = replacing === null ? el.selectionEnd : Math.min(replacing + 1, body.length)
       const next = `${body.slice(0, start)}${text}${body.slice(end)}`
+      history.record('edit')
       onChange(next)
       requestAnimationFrame(() => {
         el.focus()
@@ -124,7 +128,7 @@ export function DocEditor({
         el.setSelectionRange(caret, caret)
       })
     },
-    [body, onChange],
+    [body, history, onChange],
   )
 
   const runCommand = useCallback(
@@ -150,19 +154,34 @@ export function DocEditor({
       const { selectionStart: start, selectionEnd: end } = el
       const selected = body.slice(start, end)
       const next = `${body.slice(0, start)}${before}${selected}${after}${body.slice(end)}`
+      history.record('edit')
       onChange(next)
       requestAnimationFrame(() => {
         el.focus()
         el.setSelectionRange(start + before.length, end + before.length)
       })
     },
-    [body, onChange],
+    [body, history, onChange],
   )
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
       event.preventDefault()
       onSave()
+      return
+    }
+    // The editor's own history, not the browser's: a controlled textarea loses
+    // the native stack to every programmatic insertion. Always swallowed, so
+    // the canvas' undo cannot fire on a document instead.
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+      event.preventDefault()
+      if (event.shiftKey) history.redo()
+      else history.undo()
+      return
+    }
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'y') {
+      event.preventDefault()
+      history.redo()
       return
     }
     if (event.key === 'Escape') {
@@ -257,7 +276,10 @@ export function DocEditor({
             value={body}
             aria-label="Document source"
             spellCheck={false}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => {
+              history.record('type')
+              onChange(event.target.value)
+            }}
             onKeyDown={handleKeyDown}
             className="h-full w-full resize-none bg-transparent p-4 font-mono text-xs leading-relaxed outline-none"
           />
