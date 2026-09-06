@@ -379,10 +379,15 @@ def render_frontmatter(values: dict[str, Any]) -> str:
 
     Hand-rolled rather than `yaml.safe_dump` so key order is the order written
     here — the frontmatter is read by humans at the top of every document.
+
+    An empty list still prints. `tags: []` is the only advertisement tags have:
+    dropped, the key never appears in any document and nobody learns it exists.
+    An empty string is still dropped — `owner:` teaches nothing a reader of the
+    template does not already see.
     """
     lines = ["---"]
     for key, value in values.items():
-        if value is None or value == "" or value == []:
+        if value is None or value == "":
             continue
         if isinstance(value, list):
             lines.append(f"{key}: [{', '.join(str(v) for v in value)}]")

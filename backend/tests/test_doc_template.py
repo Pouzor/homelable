@@ -310,6 +310,11 @@ def test_device_document_opens_with_versioned_frontmatter():
     assert "device: dev-1" in md
     assert "created: 2026-09-05" in md
     assert "review_every: 6m" in md
+    assert "tags: []" in md
+
+
+def test_library_document_advertises_tags_too():
+    assert "tags: []" in t.render_library_document(t.TEMPLATE_RUNBOOK, "Reboot the NAS")
 
 
 def test_device_document_appends_old_notes_verbatim_with_provenance():
@@ -363,9 +368,10 @@ def test_unknown_template_falls_back_to_blank_rather_than_failing():
     assert "# Scratch" in md
 
 
-def test_frontmatter_omits_empty_values():
+def test_frontmatter_omits_empty_scalars_but_prints_an_empty_list():
+    # `tags: []` is how a user learns tags exist at all, so an empty list stays.
     rendered = t.render_frontmatter({"a": 1, "b": None, "c": "", "d": [], "e": ["x", "y"]})
-    assert rendered == "---\na: 1\ne: [x, y]\n---"
+    assert rendered == "---\na: 1\nd: []\ne: [x, y]\n---"
 
 
 # ── the drift snapshot ──────────────────────────────────────────────────────

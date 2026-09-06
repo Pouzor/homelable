@@ -43,6 +43,38 @@ export function tagsOf(data: Record<string, unknown>): string[] {
   return raw.map((t) => String(t).trim()).filter(Boolean)
 }
 
+/** A tag needs quoting when flow style would read it as YAML syntax. */
+function tagLiteral(tag: string): string {
+  return /[[\]{},:#&*!|>'"%@`]|^\s|\s$/.test(tag) ? JSON.stringify(tag) : tag
+}
+
+/**
+ * Rewrite only the `tags:` entry of the block, leaving every other line byte
+ * for byte as the user wrote it.
+ *
+ * `withFrontmatter` would round-trip the whole block through the YAML dumper,
+ * which reformats what it did not need to touch — `created: 2026-09-07` comes
+ * back as a full timestamp, because that is what the date parsed to. Editing a
+ * tag should not rewrite a date.
+ */
+export function withTags(body: string, tags: string[]): string {
+  const line = `tags: [${tags.map(tagLiteral).join(', ')}]`
+  const match = BLOCK.exec(body ?? '')
+  if (!match) return `---\n${line}\n---\n\n${body ?? ''}`
+  const lines = match[1].split('\n')
+  const at = lines.findIndex((entry) => /^tags[ \t]*:/.test(entry))
+  if (at === -1) {
+    lines.push(line)
+  } else {
+    // The key alone when it was written inline; the key and its items when it
+    // was written as a block list.
+    let end = at + 1
+    while (end < lines.length && /^[ \t]*-[ \t]/.test(lines[end])) end += 1
+    lines.splice(at, end - at, line)
+  }
+  return `---\n${lines.join('\n')}\n---\n${(body ?? '').slice(match[0].length)}`
+}
+
 /** Replace the frontmatter block, or add one when the body has none. */
 export function withFrontmatter(body: string, data: Record<string, unknown>): string {
   const block = `---\n${yaml.dump(data, { lineWidth: 120 }).trimEnd()}\n---\n`

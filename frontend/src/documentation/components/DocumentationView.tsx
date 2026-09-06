@@ -60,6 +60,7 @@ export function DocumentationView() {
     remove,
     toggleStar,
     markReviewed,
+    setTags,
     regenerate,
     coverage,
     loadCoverage,
@@ -470,6 +471,7 @@ export function DocumentationView() {
             onEdit={startEdit}
             onToggleStar={() => void toggleStar(openDoc.id)}
             onMarkReviewed={() => void markReviewed(openDoc.id)}
+            onSetTags={(tags) => void setTags(tags)}
             onRegenerate={() => setRegenerateOpen(true)}
             onDelete={() => void handleDelete()}
             onOpenDoc={(id) => void open(id)}

@@ -264,6 +264,26 @@ describe('mutations', () => {
     expect(useDocsStore.getState().docs[0].starred).toBe(true)
   })
 
+  it('writes tags into the body, because the body owns them', async () => {
+    api.update.mockResolvedValue({ data: doc({ tags: ['prod'] }) } as never)
+    useDocsStore.setState({ docs: [summary()], openDoc: doc({ body: '---\ntitle: NAS\n---\n\n# NAS\n' }) })
+    await useDocsStore.getState().setTags(['prod'])
+    expect(api.update).toHaveBeenCalledWith('doc-1', { body: '---\ntitle: NAS\ntags: [prod]\n---\n\n# NAS\n' })
+    expect(useDocsStore.getState().docs[0].tags).toEqual(['prod'])
+  })
+
+  it('reports a failed tag write rather than pretending it landed', async () => {
+    api.update.mockRejectedValue({ response: { data: { detail: 'nope' } } })
+    useDocsStore.setState({ openDoc: doc() })
+    expect(await useDocsStore.getState().setTags(['prod'])).toBe(false)
+    expect(useDocsStore.getState().loadError).toBe('nope')
+  })
+
+  it('has no tags to write with no document open', async () => {
+    expect(await useDocsStore.getState().setTags(['prod'])).toBe(false)
+    expect(api.update).not.toHaveBeenCalled()
+  })
+
   it('accepts the current facts without touching the body', async () => {
     api.update.mockResolvedValue({ data: doc() } as never)
     useDocsStore.setState({ docs: [summary()] })
