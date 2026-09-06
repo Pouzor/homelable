@@ -243,7 +243,10 @@ export function buildDeviceTree(options: DeviceTreeOptions): TreeGroup[] {
     const doc = docByDevice.get(device.id)
     const leaf: TreeLeaf = {
       id: doc?.id ?? `device:${device.id}`,
-      label: deviceLabel(device),
+      // Once a device is documented the row is that document, so it carries the
+      // name the document gives itself — the `title:` line the user edits — and
+      // falls back to the inventory's label only while there is nothing to open.
+      label: doc?.title?.trim() || deviceLabel(device),
       docId: doc?.id,
       deviceId: device.id,
       kind: doc ? 'device' : 'device-without-doc',
