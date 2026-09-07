@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.db.database as database
 import app.services.inventory_sync as inventory_sync
+from app.core.config import APP_VERSION
 
 # `create_all` under v3.2.0. NOT NULL is reproduced exactly where it was.
 _NODES_320 = (
@@ -412,8 +413,10 @@ async def test_the_newest_backup_that_still_has_the_columns_is_the_one_read(db_3
     shutil.copy2(db_path, pre_split)
 
     await database.init_db()  # drops the columns, and backs up under this version
-    # Post-split backups: newer, and unable to say who drew what.
-    for name in ("back-3.3.1", "back-3.3.2"):
+    # Post-split backups: newer, and unable to say who drew what. On a real
+    # install the current version's own backup is one of them — the columns went
+    # in an earlier boot, not this one — so overwrite the one `init_db` took.
+    for name in ("back-3.3.1", "back-3.3.2", f"back-{APP_VERSION}"):
         shutil.copy2(db_path, db_path.parent / f"{db_path.name}.{name}")
 
     assert database._pre_split_backup() == pre_split
