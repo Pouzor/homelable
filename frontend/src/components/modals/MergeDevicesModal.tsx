@@ -43,7 +43,7 @@ export function MergeDevicesModal({ open, devices, onCancel, onConfirm, busy = f
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
-      <DialogContent className="bg-[#161b22] border-border max-w-lg">
+      <DialogContent className="bg-[#161b22] border-border max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Merge size={16} style={{ color: ACCENT }} />
@@ -57,7 +57,7 @@ export function MergeDevicesModal({ open, devices, onCancel, onConfirm, busy = f
             canvas node, rack mount and document they own moves across.
           </p>
 
-          <div className="max-h-64 overflow-y-auto space-y-1.5">
+          <div className="max-h-[50vh] overflow-y-auto space-y-1.5">
             {devices.map((d) => (
               <label
                 key={d.id}
@@ -85,7 +85,7 @@ export function MergeDevicesModal({ open, devices, onCancel, onConfirm, busy = f
                       </span>
                     )}
                   </span>
-                  <span className="block text-[11px] text-muted-foreground font-mono truncate">
+                  <span className="block text-[11px] text-muted-foreground font-mono break-all">
                     {[d.ip, d.mac, d.ieee_address].filter(Boolean).join(' · ') || 'no address'}
                   </span>
                   <span className="block text-[11px] text-muted-foreground">
