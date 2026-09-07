@@ -11,6 +11,7 @@ import {
   type Node,
   type Edge,
   type Connection,
+  type Viewport,
 } from '@xyflow/react'
 import { MousePointer2, Hand } from 'lucide-react'
 import '@xyflow/react/dist/style.css'
@@ -45,10 +46,16 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     onNodesChange, onEdgesChange,
     setSelectedNode, snapshotHistory,
     fitViewPending, clearFitViewPending,
+    savedViewport, setSavedViewport,
     copySelectedNodes, pasteNodes,
     removeNodesFromGroup,
   } = useCanvasStore()
-  const { fitView, screenToFlowPosition, getIntersectingNodes } = useReactFlow<Node<NodeData>>()
+  const { fitView, getViewport, screenToFlowPosition, getIntersectingNodes } = useReactFlow<Node<NodeData>>()
+
+  // React Flow reads defaultViewport once, on mount. Leaving the canvas
+  // (Documentation) unmounts it, so hold the stored pan/zoom as it was at first
+  // render: later saves must not feed back into the prop.
+  const [initialViewport] = useState(savedViewport)
 
   // Track the last cursor position over the canvas so paste lands under it.
   const cursorRef = useRef<{ x: number; y: number } | null>(null)
@@ -93,11 +100,14 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
   useEffect(() => {
     if (!fitViewPending || nodes.length === 0) return
     const id = setTimeout(() => {
-      fitView({ padding: 0.12, duration: 350 })
+      void fitView({ padding: 0.12, duration: 350 }).then(() => {
+        // Where the fit landed is the viewport to come back to.
+        setSavedViewport(getViewport())
+      })
       clearFitViewPending()
     }, 50)
     return () => clearTimeout(id)
-  }, [fitViewPending, nodes.length, fitView, clearFitViewPending])
+  }, [fitViewPending, nodes.length, fitView, getViewport, setSavedViewport, clearFitViewPending])
 
   const activeTheme = useThemeStore((s) => s.activeTheme)
   const theme = THEMES[activeTheme]
@@ -124,6 +134,12 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
   const onPaneClick = useCallback(() => {
     setSelectedNode(null)
   }, [setSelectedNode])
+
+  // Every pan / zoom the user ends is remembered, so leaving the canvas and
+  // coming back does not reset the view to 1:1 at the origin.
+  const handleMoveEnd = useCallback((_: unknown, viewport: Viewport) => {
+    setSavedViewport(viewport)
+  }, [setSavedViewport])
 
   const handleEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge<EdgeData>) => {
     onEdgeDoubleClick?.(edge)
@@ -216,6 +232,8 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         onNodeDragStart={onNodeDragStart}
         onNodeDrag={onNodeDrag}
         onNodeDragStop={handleNodeDragStop}
+        onMoveEnd={handleMoveEnd}
+        defaultViewport={initialViewport ?? undefined}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         deleteKeyCode={['Backspace', 'Delete']}
