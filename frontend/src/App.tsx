@@ -1429,6 +1429,14 @@ export default function App() {
           open={searchOpen}
           onClose={() => setSearchOpen(false)}
           onOpenInventory={(deviceId) => openInventoryModal(deviceId)}
+          onOpenDocument={
+            STANDALONE
+              ? undefined
+              : (docId) => {
+                  setAppView('documentation')
+                  void useDocsStore.getState().open(docId)
+                }
+          }
         />
         <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
