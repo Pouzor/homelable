@@ -6,6 +6,7 @@ import {
   type NodePositionChange,
   type EdgeChange,
   type Connection,
+  type Viewport,
   applyNodeChanges,
   applyEdgeChanges,
 } from '@xyflow/react'
@@ -348,6 +349,11 @@ interface CanvasState {
   applyLayout: (nodes: Node<NodeData>[], edges: Edge<EdgeData>[]) => void
   fitViewPending: boolean
   clearFitViewPending: () => void
+  /** Last pan/zoom the user was looking at. React Flow unmounts whenever the app
+   *  leaves the canvas (Documentation, a rack design…), and remounts at the
+   *  default 1:1 viewport; this is what the canvas restores from on the way back. */
+  savedViewport: Viewport | null
+  setSavedViewport: (viewport: Viewport) => void
   notifyScanDeviceFound: () => void
   setServiceStatuses: (nodeId: string, statuses: { port?: number; protocol?: string; host?: string | null; status: ServiceStatus }[]) => void
   hideIp: boolean
@@ -396,6 +402,7 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
   floorMap: null,
   floorMapEditNonce: 0,
   fitViewPending: false,
+  savedViewport: null,
 
   past: [],
   future: [],
@@ -1245,6 +1252,9 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
       past: [],
       future: [],
       fitViewPending: true,
+      // A new design's viewport is whatever fitView lands on, never the pan/zoom
+      // the previous one was left at.
+      savedViewport: null,
       // What the server just gave us: the reference a save diffs against.
       factsBaseline: factsBaselines(nodes),
     })
@@ -1265,6 +1275,8 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
     }),
 
   clearFitViewPending: () => set({ fitViewPending: false }),
+
+  setSavedViewport: (viewport) => set({ savedViewport: viewport }),
 
   applyTypeNodeStyle: (nodeType, style) =>
     set((state) => ({

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
+import { act, render } from '@testing-library/react'
 import { CanvasContainer } from '../CanvasContainer'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useThemeStore } from '@/stores/themeStore'
@@ -10,7 +10,11 @@ import type { NodeData, EdgeData } from '@/types'
 let rfProps: Record<string, unknown> = {}
 
 // Hoisted holder so the mock factory can read the configurable intersection set.
-const rf = vi.hoisted(() => ({ intersecting: [] as unknown[] }))
+const rf = vi.hoisted(() => ({
+  intersecting: [] as unknown[],
+  viewport: { x: 0, y: 0, zoom: 1 },
+  fitView: vi.fn(() => Promise.resolve(true)),
+}))
 
 vi.mock('@xyflow/react', () => ({
   ReactFlow: (props: Record<string, unknown>) => {
@@ -25,7 +29,8 @@ vi.mock('@xyflow/react', () => ({
   SelectionMode: { Partial: 'partial' },
   Position: { Top: 'top', Right: 'right', Bottom: 'bottom', Left: 'left' },
   useReactFlow: () => ({
-    fitView: vi.fn(),
+    fitView: rf.fitView,
+    getViewport: () => rf.viewport,
     screenToFlowPosition: vi.fn(),
     getIntersectingNodes: () => rf.intersecting,
     setNodes: vi.fn(),
@@ -52,7 +57,12 @@ describe('CanvasContainer', () => {
   beforeEach(() => {
     rfProps = {}
     rf.intersecting = []
-    useCanvasStore.setState({ nodes: [], edges: [], selectedNodeId: null })
+    rf.viewport = { x: 0, y: 0, zoom: 1 }
+    rf.fitView.mockClear()
+    useCanvasStore.setState({
+      nodes: [], edges: [], selectedNodeId: null,
+      savedViewport: null, fitViewPending: false,
+    })
     useThemeStore.setState({ activeTheme: 'default' })
   })
 
@@ -443,5 +453,61 @@ describe('CanvasContainer', () => {
     const result = await (rfProps.onBeforeDelete as () => Promise<boolean>)()
     expect(snapshotHistory).toHaveBeenCalledOnce()
     expect(result).toBe(true)
+  })
+
+  // ── Viewport persistence across unmount (#docs round-trip) ────────────────
+
+  it('onMoveEnd stores the viewport the user ended on', () => {
+    render(<CanvasContainer />)
+    act(() => {
+      ;(rfProps.onMoveEnd as (...args: unknown[]) => unknown)({}, { x: -300, y: 120, zoom: 0.5 })
+    })
+    expect(useCanvasStore.getState().savedViewport).toEqual({ x: -300, y: 120, zoom: 0.5 })
+  })
+
+  it('mounts at the stored viewport — leaving for Documentation must not reset to 1:1', () => {
+    useCanvasStore.setState({ savedViewport: { x: -300, y: 120, zoom: 0.5 } })
+    render(<CanvasContainer />)
+    expect(rfProps.defaultViewport).toEqual({ x: -300, y: 120, zoom: 0.5 })
+  })
+
+  it('keeps the stored viewport across an unmount / remount round-trip', () => {
+    const first = render(<CanvasContainer />)
+    act(() => {
+      ;(rfProps.onMoveEnd as (...args: unknown[]) => unknown)({}, { x: -80, y: 15, zoom: 0.75 })
+    })
+    first.unmount()
+    render(<CanvasContainer />)
+    expect(rfProps.defaultViewport).toEqual({ x: -80, y: 15, zoom: 0.75 })
+  })
+
+  it('leaves defaultViewport undefined on a first load, so React Flow fits', () => {
+    render(<CanvasContainer />)
+    expect(rfProps.defaultViewport).toBeUndefined()
+  })
+
+  it('does not feed a later pan back into defaultViewport (read once, on mount)', () => {
+    render(<CanvasContainer />)
+    act(() => {
+      ;(rfProps.onMoveEnd as (...args: unknown[]) => unknown)({}, { x: -80, y: 15, zoom: 0.75 })
+    })
+    expect(rfProps.defaultViewport).toBeUndefined()
+  })
+
+  it('stores where fitView landed, so the fitted view survives the round-trip', async () => {
+    vi.useFakeTimers()
+    try {
+      rf.viewport = { x: -42, y: 7, zoom: 0.6 }
+      useCanvasStore.setState({ nodes: [makeNode('n1')], fitViewPending: true })
+      render(<CanvasContainer />)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100)
+      })
+      expect(rf.fitView).toHaveBeenCalledOnce()
+      expect(useCanvasStore.getState().savedViewport).toEqual({ x: -42, y: 7, zoom: 0.6 })
+      expect(useCanvasStore.getState().fitViewPending).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
