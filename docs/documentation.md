@@ -124,6 +124,47 @@ ordinary markdown for anything else that reads it.
 **Raw HTML is deliberately not rendered** — `rehype-raw` is absent — so a
 document cannot inject markup and no sanitiser is needed.
 
+### Backlinks
+
+Every document lists what points at it, under **Linked from**, with the line the
+link was written on and the label it was written as.
+
+The inversion is done **server-side** (`services/doc_backlinks.py`,
+`GET /documents/{id}/backlinks`), because the browser holds no bodies but the
+open one: `GET /documents` is metadata-only so the tree can badge without
+downloading the space. That service mirrors the resolution rules in
+`wikilinks.ts` — same prefixes, same id → slug → title fallback, same
+case-insensitivity — the way the generator's `service_url` mirrors
+`utils/serviceUrl.ts`. Change one and change the other;
+`test_doc_backlinks.py` pins the rules.
+
+Repeated links from the same document collapse into one entry with a count, and
+a document never backlinks itself. The inventory is only loaded when some body
+actually carries a `[[device:…]]`.
+
+---
+
+## History
+
+Every explicit save that changes the body snapshots the previous one, capped at
+`REVISION_LIMIT` (50) per document; so do restore, regenerate, scaffold and the
+notes migration, each recording why.
+
+The clock-arrow button in the header opens the history rail: what each version
+was (Saved, Regenerated, Restored, Migrated from notes…), when, and how big.
+Selecting one replaces the body with that version — same title, same chips, same
+rail — and **Changes** turns it into a line diff against the current body, with
+long unchanged runs collapsed. **Restore** brings it back, snapshotting the body
+it replaces first, so a restore is itself undoable.
+
+A revision's body is fetched only when it is opened: the list carries a size, not
+the text, so fifty versions cost one small request.
+
+The diff is a plain LCS over lines (`documentation/diff.ts`), after the common
+head and tail are trimmed — no diff library, and a pathological pair of long,
+wholly different bodies degrades to "replaced wholesale" instead of building a
+250k-cell matrix.
+
 ---
 
 ## Search
@@ -166,6 +207,7 @@ Non-destructive and repeatable.
 | `PATCH` | `/api/v1/documents/{id}` |
 | `DELETE` | `/api/v1/documents/{id}` — a folder takes its subtree |
 | `GET` | `/api/v1/documents/{id}/revisions`, `/revisions/{rev_id}` |
+| `GET` | `/api/v1/documents/{id}/backlinks` — the documents linking here |
 | `POST` | `/api/v1/documents/{id}/revisions/{rev_id}/restore` |
 | `POST` | `/api/v1/documents/{id}/regenerate` — erase the body and scaffold it again |
 | `GET` | `/api/v1/documents/search?q=&limit=` |
@@ -188,5 +230,6 @@ into `localStorage` with no search and no history.
 
 Export/import of the tree as `.md` files, a print/handbook view, an aggregated
 open-tasks view, image upload inside a document (would reuse
-`api/routes/media.py`, full-mode only), and the MCP tools — those are the
+`api/routes/media.py`, full-mode only), documents in the canvas-wide search
+modal, `[[` autocompletion in the editor, and the MCP tools — those are the
 planned second lot.
