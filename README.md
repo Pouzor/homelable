@@ -51,8 +51,8 @@ If you are running  <img width="22" height="22" align="top" alt="New_Home_Assist
 <p align="center">
   <img src="docs/homelable1.png" alt="Homelable canvas overview" width="100%" />
   <img  alt="Homelable Device inventory" src="https://github.com/user-attachments/assets/f3903ac8-354d-4873-81ba-1914971890ed" />
- 
-<img alt="Rack display" src="https://github.com/user-attachments/assets/43273605-4f46-4163-8aea-8bf8a76a3f76" />
+  <img alt="Rack display in homelable" src="https://github.com/user-attachments/assets/43273605-4f46-4163-8aea-8bf8a76a3f76" />
+ <img alt="Documentation in Homelable" src="https://github.com/user-attachments/assets/4310bd8a-769b-4640-af84-085dc6d8b9ac" />
 
 </p>
 
