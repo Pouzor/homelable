@@ -8,7 +8,8 @@ import { getCenteredPosition } from '@/utils/viewportCenter'
 import { resolveVirtualEdgeParent } from '@/utils/virtualEdgeParent'
 import { generateMarkdownTable } from '@/utils/exportMarkdown'
 import { copyToClipboard } from '@/utils/clipboard'
-import { getDesignIdFromUrl, setDesignIdInUrl, getDocIdFromUrl, isDocsViewInUrl, setDocsViewInUrl } from '@/utils/designUrl'
+import { getDesignIdFromUrl, setDesignIdInUrl } from '@/utils/designUrl'
+import { useDocsUrlSync } from '@/hooks/useDocsUrlSync'
 import { withBase } from '@/utils/basePath'
 import { ExportModal } from '@/components/modals/ExportModal'
 import { exportCanvasToYaml, downloadYaml } from '@/utils/exportYaml'
@@ -488,10 +489,22 @@ export default function App() {
     if (activeDesignId) setDesignIdInUrl(activeDesignId)
   }, [activeDesignId])
 
-  // A document is linkable in the same way: `?view=docs&doc=<id>`.
-  useEffect(() => {
-    setDocsViewInUrl(appView === 'documentation', openDocId)
-  }, [appView, openDocId])
+  // A document is linkable in the same way: `?view=docs&doc=<id>` — written on
+  // every change, and read back on boot so a refresh reopens it.
+  const restoreDocsUrl = useCallback(
+    async (docId: string | null) => {
+      setAppView('documentation')
+      if (docId) await useDocsStore.getState().open(docId)
+    },
+    [setAppView],
+  )
+  useDocsUrlSync({
+    view: appView,
+    openDocId,
+    ready: isAuthenticated,
+    enabled: !STANDALONE,
+    onRestore: restoreDocsUrl,
+  })
 
   // The canvas' way into Documentation: it knows a device id, and the section
   // resolves that to a document — writing one from the device's facts when
@@ -504,16 +517,6 @@ export default function App() {
     },
     [setAppView],
   )
-
-  // Reopen the section, and the document, the URL asks for. Once, on boot.
-  const docsUrlApplied = useRef(false)
-  useEffect(() => {
-    if (docsUrlApplied.current || STANDALONE || !isDocsViewInUrl()) return
-    docsUrlApplied.current = true
-    setAppView('documentation')
-    const docId = getDocIdFromUrl()
-    if (docId) void useDocsStore.getState().open(docId)
-  }, [setAppView])
 
   // Keep refs for store actions so keydown handler is always up-to-date without re-registering
   const undoRef = useRef(undo)
