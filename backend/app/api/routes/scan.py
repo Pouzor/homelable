@@ -28,6 +28,7 @@ from app.schemas.scan import (
     InventoryDeviceUpdate,
     ScanRunResponse,
 )
+from app.services.device_merge import merge_devices
 from app.services.discovery_sources import add_source
 from app.services.doc_links import unlink_documents
 from app.services.inventory_sync import find_device_for, merge_properties, merge_services
@@ -115,6 +116,13 @@ def merge_mac_property(
         return out
     out.append({"key": "MAC", "value": mac, "icon": None, "visible": False})
     return out
+
+
+class MergeDevicesRequest(BaseModel):
+    """Which inventory rows fold into which. ``winner_id`` is the survivor."""
+
+    winner_id: str
+    loser_ids: list[str]
 
 
 class BulkActionRequest(BaseModel):
@@ -619,6 +627,45 @@ async def list_proxmox_children(
         )
     )
     return await _with_canvas_counts(db, list(result.scalars().all()))
+
+
+@router.post("/pending/merge", response_model=InventoryDeviceResponse)
+async def merge_inventory_devices(
+    payload: MergeDevicesRequest,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> InventoryDevice:
+    """Fold several inventory rows into one, keeping ``winner_id``.
+
+    The manual half of the duplicate repair. Identity matching only runs when a
+    row is created, so two rows describing one host — minted before either
+    carried the address that would have matched them — stay separate forever.
+    Where they share no address at all, no automatic rule can join them safely
+    (a name is not an identity), and this is the only way to say "these are the
+    same machine".
+
+    Non-destructive: facts are unioned onto the survivor and every canvas node,
+    rack mount and document is re-pointed at it before the extras go.
+    """
+    winner = await db.get(InventoryDevice, payload.winner_id)
+    if winner is None:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    loser_ids = [i for i in dict.fromkeys(payload.loser_ids) if i != winner.id]
+    if not loser_ids:
+        raise HTTPException(status_code=400, detail="Select at least two devices to merge")
+
+    losers = (
+        await db.execute(select(InventoryDevice).where(InventoryDevice.id.in_(loser_ids)))
+    ).scalars().all()
+    missing = set(loser_ids) - {row.id for row in losers}
+    if missing:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    await merge_devices(db, winner, list(losers))
+    await db.commit()
+    await db.refresh(winner)
+    return (await _with_canvas_counts(db, [winner]))[0]
 
 
 @router.post("/pending/bulk-approve", response_model=dict)

@@ -212,6 +212,14 @@ export const scanApi = {
       skipped: number
       skipped_devices: SkippedDevice[]
     }>('/scan/pending/bulk-approve', { device_ids: ids, design_id: designId ?? undefined }),
+  /**
+   * Fold several inventory rows into one, keeping `winnerId`. Returns the
+   * survivor. The losers' facts, canvas nodes, rack mounts and documents move
+   * onto it first — the identity match only runs when a row is created, so two
+   * rows for one host never converge on their own.
+   */
+  merge: (winnerId: string, loserIds: string[]) =>
+    api.post<InventoryEntry>('/scan/pending/merge', { winner_id: winnerId, loser_ids: loserIds }),
   bulkHide: (ids: string[]) => api.post<{ hidden: number; skipped: number }>('/scan/pending/bulk-hide', { device_ids: ids }),
   restore: (id: string) => api.post<{ restored: boolean; device_id: string }>(`/scan/pending/${id}/restore`),
   bulkRestore: (ids: string[]) => api.post<{ restored: number; skipped: number }>('/scan/pending/bulk-restore', { device_ids: ids }),

@@ -15,10 +15,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Edge, Node
+from app.db.models import Document, Edge, Node, RackDevice
 from app.services.inventory_sync import find_device_for
 
 logger = logging.getLogger(__name__)
@@ -142,6 +142,29 @@ async def dedupe_nodes_by_device(db: AsyncSession) -> int:
                 await db.delete(edge)
                 continue
             seen_pairs.add(key)
+
+        # A rack mount reads live status through `node_id`, and a document may
+        # describe the node itself. Both are `SET NULL` in the schema and SQLite
+        # runs with foreign keys off here, so a duplicate deleted from under them
+        # would leave the column naming a node that no longer exists.
+        await db.execute(
+            update(RackDevice).where(RackDevice.node_id.in_(dup_ids)).values(node_id=canonical.id)
+        )
+        own_doc = (
+            await db.execute(select(Document.id).where(Document.node_id == canonical.id).limit(1))
+        ).scalar_one_or_none()
+        doc_rows = (
+            await db.execute(
+                select(Document)
+                .where(Document.node_id.in_(dup_ids))
+                .order_by(Document.created_at, Document.id)
+            )
+        ).scalars().all()
+        for i, doc in enumerate(doc_rows):
+            # `documents.node_id` is unique (partial index): only one document
+            # can describe the survivor. The rest are orphaned, not deleted —
+            # what the user wrote outlives the node it was attached to.
+            doc.node_id = canonical.id if i == 0 and own_doc is None else None
 
         await db.flush()
         for dup in dups:
