@@ -24,13 +24,14 @@ Here's what Homelable can do. One line on what each feature is, then how to swit
 10. [Z-Wave Import](#10-z-wave-import-)
 11. [Proxmox VE Import](#11-proxmox-ve-import-)
 12. [Device Inventory](#12-device-inventory-)
-13. [Live Status Monitoring](#13-live-status-monitoring-)
-14. [Export (PNG / SVG / YAML / Markdown)](#14-export)
-15. [Live View (read-only public canvas)](#15-live-view-)
-16. [Gethomepage Widget](#16-gethomepage-widget-)
-17. [MCP Server (AI integration)](#17-mcp-server-)
-18. [Settings & Shortcuts](#18-settings--shortcuts)
-19. [Authentication (Local / OpenID Connect)](#19-authentication-local--openid-connect-)
+13. [Documentation](#13-documentation-)
+14. [Live Status Monitoring](#14-live-status-monitoring-)
+15. [Export (PNG / SVG / YAML / Markdown)](#15-export)
+16. [Live View (read-only public canvas)](#16-live-view-)
+17. [Gethomepage Widget](#17-gethomepage-widget-)
+18. [MCP Server (AI integration)](#18-mcp-server-)
+19. [Settings & Shortcuts](#19-settings--shortcuts)
+20. [Authentication (Local / OpenID Connect)](#20-authentication-local--openid-connect-)
 
 ---
 
@@ -187,7 +188,25 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 
 ---
 
-## 13. Live Status Monitoring 🔒
+## 13. Documentation 🔒
+
+**What:** A markdown documentation space for the whole lab. Every device gets a document written once from what the scan actually found — identity, hardware, services, network, operations, troubleshooting — and it is yours from there; nothing rewrites it behind you. Next to it, a Library of pages you write yourself: runbooks, incidents, decisions, a network overview.
+
+**Use:**
+- Sidebar → **Documentation**. The **Devices** root re-pivots instantly by zone, group, type, physical/virtual, subnet, rack, vendor, discovery source, status, tag or A–Z; picking a device with no document writes one from its facts.
+- The **Library** is folders you make. **New page** / **New folder** in the header, drag an item to file it. Templates: blank, runbook, service, network overview, incident, procedure, decision (ADR), zone.
+- Editing is plain markdown and **saving is explicit**, like the canvas. An unsaved body is kept in your browser and offered back if you close the tab. `/` in the editor inserts a freshly generated block — services, hardware, network, rack — from the device's current data.
+- **Link documents** with `[[VLAN plan]]`, `[[device:nas-01]]` or `[[doc:slug|label]]`. A link to a document that does not exist yet renders red and offers to create it, and every document lists **Linked from** at the bottom — who points here.
+- **History**: the clock-arrow button in the header lists earlier versions, up to 50 per document. Read one, hit **Changes** for a line-by-line diff against the current body, **Restore** to bring it back — the body it replaces is saved to the history first.
+- **Keeping it honest**: `review_every: 6m` in a document's frontmatter badges it "due for review" when it lapses; a **device data changed** banner appears when the device has moved on since the document was written; **Regenerate** rebuilds a device document from scratch (old body kept in the history). Tags are chips under the title.
+- **Search** the whole space from the box above the tree — title, tags and body.
+- Coming from the old per-device **Notes** field? A banner offers to migrate every device that has one into a document. It copies, it does not move: the `notes` field is left exactly as it was.
+
+> **Full documentation:** [docs/documentation.md](./docs/documentation.md)
+
+---
+
+## 14. Live Status Monitoring 🔒
 
 **What:** Keeps checking each node and shows its status (🟢 online / 🔴 offline / ⚫ unknown) right on the canvas.
 
@@ -208,7 +227,7 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 
 ---
 
-## 14. Export
+## 15. Export
 
 **What:** Get your canvas out as a picture or as structured data.
 
@@ -220,7 +239,7 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 
 ---
 
-## 15. Live View 🔒
+## 16. Live View 🔒
 
 **What:** A read-only, no-login snapshot of a canvas you can share on your LAN. Off by default.
 
@@ -232,7 +251,7 @@ Pan and zoom only, no editing. Click a node with an IP and it opens in a new tab
 
 ---
 
-## 16. Gethomepage Widget 🔒
+## 17. Gethomepage Widget 🔒
 
 **What:** A tiny JSON stats endpoint for [gethomepage](https://gethomepage.dev)'s `customapi` widget. Off by default.
 
@@ -244,7 +263,7 @@ Widget snippet lives in the [README](./README.md#gethomepage-widget-read-only-st
 
 ---
 
-## 17. MCP Server 🔒
+## 18. MCP Server 🔒
 
 **What:** A [Model Context Protocol](https://modelcontextprotocol.io) server so an MCP client (Claude Code, Claude Desktop, Open WebUI…) can read and change your topology. Optional, runs as its own service.
 
@@ -262,7 +281,7 @@ The AI can list nodes/edges/canvas/zones/designs/inventory/scans, add/update/del
 
 ---
 
-## 18. Settings & Shortcuts
+## 19. Settings & Shortcuts
 
 **What:** App config and keyboard shortcuts.
 
@@ -273,7 +292,7 @@ The AI can list nodes/edges/canvas/zones/designs/inventory/scans, add/update/del
 
 ---
 
-## 19. Authentication (Local / OpenID Connect) 🔒
+## 20. Authentication (Local / OpenID Connect) 🔒
 
 **What:** Homelable protects the app behind a login. Two exclusive modes, set once in `.env` with `AUTH_MODE`:
 - **`local`** (default) — a single username + bcrypt-hashed password. Nothing changes for existing installs.

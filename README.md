@@ -35,6 +35,8 @@ Homelable is a self-hosted infrastructure visualization solution. It provides a 
 
 Homelable also offers a healthcheck system through multiple methods (ping/TCP, /health API, etc.) to get a global overview of online/offline services.
 
+Every device also gets a **document** — written for you from what the scan found, and yours to maintain from there — next to a Library of pages you write yourself: runbooks, incidents, a network overview. Your homelab stops being documented in a wiki somewhere else.
+
 You can also select some pre-built design styles, or personalize each device in your diagram.
 
 If you just like the design, you can only run the frontend and export your design as PNG.
@@ -57,7 +59,7 @@ If you are running  <img width="22" height="22" align="top" alt="New_Home_Assist
 
 ## Features
 
-From one-click **network scans** and **Proxmox / Zigbee / Z-Wave** imports to **live status monitoring**, floor plans, **rack canvases** with port-to-port patching, multi-canvas layouts and an **MCP server** for AI assistants — Homelable maps and watches your whole homelab.
+From one-click **network scans** and **Proxmox / Zigbee / Z-Wave** imports to **live status monitoring**, floor plans, **rack canvases** with port-to-port patching, a **markdown documentation space** for the whole lab, multi-canvas layouts and an **MCP server** for AI assistants — Homelable maps, documents and watches your whole homelab.
 
 Every feature, with how to turn it on and use it, is described in **[FEATURES.md](./FEATURES.md)**.
 
@@ -84,6 +86,28 @@ Next to the network diagram, Homelable draws the **physical** side of your lab: 
 Gear sits in a U range and part of a 12-column width grid, so half- and third-width machines share a U; a drop snaps to the nearest free slot. A mount can follow the status check of its matching diagram node, and **Import links** derives patches from the links already drawn on your diagrams.
 
 > **Full documentation:** [docs/rack-canvas.md](./docs/rack-canvas.md)
+
+---
+
+## Documentation
+
+Homelable keeps its own markdown documentation space, so the lab is described where it is drawn. Sidebar → **Documentation**.
+
+Every device has a document, generated once from what the scan actually found — identity, hardware, one section per service, network, operations, troubleshooting — and never rewritten behind you. Beside it, a **Library** of pages you write: runbooks, incidents, decisions, a network overview, from a template or blank.
+
+### Usage
+
+1. **Pick a device** in the tree — one with no document yet gets one written from its facts. Re-pivot the tree by zone, subnet, type, rack, vendor, tag… at no cost; it is grouped from data the app already holds
+2. **Write markdown**, save explicitly — nothing is ever saved behind your back. `/` inserts a freshly generated block (services, hardware, network, rack) from the device's current data
+3. **Link things**: `[[VLAN plan]]`, `[[device:nas-01]]`. Each document lists **Linked from** at the bottom, so you can see what points at it
+4. **History**: up to 50 versions per document. Read one, diff it against the current body, restore it — what it replaces is kept too
+5. **Search** the whole space, tag documents, and set `review_every: 6m` on the ones that rot; a document past its interval is badged as due
+
+A device that changes after its document was written raises a **device data changed** banner, and **Regenerate** rebuilds the document from scratch when you want that. Old per-device **Notes** migrate into documents from a banner, non-destructively.
+
+Full mode only — documents need the backend to store, index and search them.
+
+> **Full documentation:** [docs/documentation.md](./docs/documentation.md)
 
 ---
 
