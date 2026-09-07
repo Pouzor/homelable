@@ -19,6 +19,8 @@ export interface WalkthroughActionApi {
   selectTwoNodes: () => void
   openStyle: () => void
   openZigbeeImport: () => void
+  /** Swaps the whole main pane for the Documentation section (`closeAll` swaps it back). */
+  openDocumentation: () => void
 }
 
 const WalkthroughActionsContext = createContext<WalkthroughActionApi | null>(null)

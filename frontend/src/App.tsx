@@ -383,6 +383,9 @@ export default function App() {
       setEditNodeId(null)
       setThemeModalOpen(false)
       setZigbeeImportOpen(false)
+      // The Documentation steps replace the whole main pane; every other step
+      // anchors on the toolbar or the canvas, so put the view back first.
+      setAppView('canvas')
       // Clear any tour-driven multi-selection so the DetailPanel closes.
       useCanvasStore.setState((s) => ({
         nodes: s.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
@@ -418,7 +421,8 @@ export default function App() {
     },
     openStyle: () => setThemeModalOpen(true),
     openZigbeeImport: () => setZigbeeImportOpen(true),
-  }), [openInventoryModal])
+    openDocumentation: () => setAppView('documentation'),
+  }), [openInventoryModal, setAppView])
 
   // Load designs + canvas on auth (or immediately in standalone mode, which has
   // no auth gate).

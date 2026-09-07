@@ -306,6 +306,12 @@ describe('Sidebar', () => {
     // stops carrying leaves the step spotlighting nothing.
     expect(document.querySelector(step!.anchor!)).toBeInTheDocument()
 
+    // The Documentation entry is the first Documentation step's target, and the
+    // only way the tour has into the section.
+    const docs = STEPS.find((s) => s.id === 'docs')
+    expect(docs?.anchor).toBe('[data-tour="documentation"]')
+    expect(document.querySelector(docs!.anchor!)).toBeInTheDocument()
+
     // Unmount before restoring, so the store reset never re-renders the sidebar.
     unmount()
     useDesignStore.setState({

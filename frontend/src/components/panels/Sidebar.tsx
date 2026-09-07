@@ -251,6 +251,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
             collapsed={collapsed}
             active={view === 'documentation'}
             onClick={() => setView('documentation')}
+            dataTour="documentation"
           />
         )}
         {/* The hidden devices are a filter of this same modal, reached from
