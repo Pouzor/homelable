@@ -4,6 +4,11 @@
  * Parsed as a plain text pass rather than a remark plugin: the syntax is one
  * token with no nesting, and keeping it out of the AST pipeline means the
  * markdown stays ordinary markdown for anything that reads the file elsewhere.
+ *
+ * This is the forward direction only — where a link goes. The reverse ("what
+ * links here") lives in `backend/app/services/doc_backlinks.py`, which mirrors
+ * the rules below, because it needs every body and the browser holds none but
+ * the open one. Change a rule here and change it there.
  */
 
 export type WikiTarget = 'device' | 'doc' | 'node'
@@ -55,7 +60,7 @@ export function splitWikiLinks(text: string): Segment[] {
   return segments
 }
 
-/** Every wiki-link in a body, for the backlinks index. */
+/** Every wiki-link in a body. */
 export function collectWikiLinks(body: string): WikiLink[] {
   const found: WikiLink[] = []
   LINK.lastIndex = 0
@@ -103,21 +108,4 @@ export function resolveWikiLink(
     docs.find((doc) => doc.title.toLowerCase() === key)?.id ??
     null
   )
-}
-
-/** doc id → the documents that link to it. */
-export function backlinkIndex(
-  docs: (LinkableDoc & { body: string })[],
-  devices: LinkableDevice[] = [],
-): Record<string, string[]> {
-  const index: Record<string, string[]> = {}
-  for (const doc of docs) {
-    for (const link of collectWikiLinks(doc.body)) {
-      const targetId = resolveWikiLink(link, docs, devices)
-      if (!targetId || targetId === doc.id) continue
-      const current = index[targetId] ?? []
-      if (!current.includes(doc.id)) index[targetId] = [...current, doc.id]
-    }
-  }
-  return index
 }

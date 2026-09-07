@@ -9,6 +9,7 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import type { InventoryEntry } from '@/types'
 import { cn } from '@/lib/utils'
+import { formatRelative } from '@/utils/timeFormat'
 import { isOverdue } from '../frontmatter'
 import { driftedIds, useDocsStore } from '../store'
 import {
@@ -62,6 +63,15 @@ export function DocumentationView() {
     markReviewed,
     setTags,
     regenerate,
+    revisions,
+    revisionsLoading,
+    revisionPreview,
+    loadRevisions,
+    previewRevision,
+    closeRevisionPreview,
+    restore,
+    backlinks,
+    backlinksLoading,
     coverage,
     loadCoverage,
     scaffold,
@@ -84,6 +94,7 @@ export function DocumentationView() {
   const [libraryOpen, setLibraryOpen] = useState(true)
   const [regenerateOpen, setRegenerateOpen] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   useEffect(() => {
     void loadDocs()
@@ -235,6 +246,38 @@ export function DocumentationView() {
     setRegenerateOpen(false)
     toast.success('Document regenerated — the old body is in its history')
   }, [openDoc, regenerate])
+
+  // The rail is loaded when it is opened, and again whenever the document it is
+  // showing changes underneath it — a save adds a revision to the list.
+  const openDocId = openDoc?.id
+  const openDocSavedAt = openDoc?.updated_at
+  useEffect(() => {
+    if (!historyOpen || !openDocId) return
+    void loadRevisions(openDocId)
+  }, [historyOpen, openDocId, openDocSavedAt, loadRevisions])
+
+  const handleToggleHistory = useCallback(() => {
+    setHistoryOpen((open) => {
+      // Closing the rail leaves the version being read; there would be no way
+      // back to the current body otherwise.
+      if (open) closeRevisionPreview()
+      return !open
+    })
+  }, [closeRevisionPreview])
+
+  const handleRestore = useCallback(
+    async (revisionId: string) => {
+      if (!openDoc) return
+      const revision = revisions.find((r) => r.id === revisionId)
+      const when = revision ? formatRelative(revision.saved_at) : 'that version'
+      if (!window.confirm(`Restore the version from ${when}? The current body is saved to the history first.`)) {
+        return
+      }
+      await restore(openDoc.id, revisionId)
+      toast.success('Version restored — the body it replaced is in the history')
+    },
+    [openDoc, restore, revisions],
+  )
 
   const handleMigrate = useCallback(async () => {
     const created = await scaffold({ onlyWithNotes: true })
@@ -468,6 +511,18 @@ export function DocumentationView() {
             docs={docs}
             devices={linkableDevices}
             drifted={openDoc.drifted ?? false}
+            backlinks={backlinks}
+            backlinksLoading={backlinksLoading}
+            history={{
+              open: historyOpen,
+              loading: revisionsLoading,
+              revisions,
+              preview: revisionPreview,
+              onToggle: handleToggleHistory,
+              onSelect: (id) => void previewRevision(id),
+              onClosePreview: closeRevisionPreview,
+              onRestore: (id) => void handleRestore(id),
+            }}
             onEdit={startEdit}
             onToggleStar={() => void toggleStar(openDoc.id)}
             onMarkReviewed={() => void markReviewed(openDoc.id)}

@@ -25,6 +25,7 @@ from app.api.deps import get_current_user
 from app.db.database import get_db
 from app.db.models import Document, DocumentRevision, Edge, InventoryDevice, Node, Rack, RackDevice
 from app.schemas.documents import (
+    BacklinkHit,
     CoverageResponse,
     DocumentCreate,
     DocumentResponse,
@@ -37,7 +38,7 @@ from app.schemas.documents import (
     SearchHit,
     SearchResponse,
 )
-from app.services import doc_search
+from app.services import doc_backlinks, doc_search
 from app.services.doc_template import (
     BLOCKS,
     TEMPLATE_DEVICE,
@@ -386,6 +387,54 @@ async def list_revisions(
             size=len(r.body or ""),
         )
         for r in revisions
+    ]
+
+
+@router.get("/{document_id}/backlinks", response_model=list[BacklinkHit])
+async def list_backlinks(
+    document_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> list[BacklinkHit]:
+    """The documents whose body links here.
+
+    Answered on the server because the browser only holds document *metadata* —
+    the list endpoint carries no bodies, and loading every body to invert the
+    links client-side would trade a small query for a large download on every
+    open.
+    """
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    # Every document is loaded because every one is a possible *target* of a
+    # link — a bare `[[VLAN plan]]` resolves by title. Only the bodies carrying
+    # `[[` are walked as sources, and the inventory is fetched only when a
+    # `[[device:…]]` is actually in play.
+    docs = list(
+        (
+            await db.execute(select(Document).order_by(Document.sort_order, Document.title))
+        ).scalars().all()
+    )
+    devices = (
+        list((await db.execute(select(InventoryDevice))).scalars().all())
+        if doc_backlinks.has_device_link(docs)
+        else []
+    )
+
+    titles = {d.id: d for d in docs}
+    return [
+        BacklinkHit(
+            doc_id=hit.doc_id,
+            title=titles[hit.doc_id].title,
+            kind=titles[hit.doc_id].kind,
+            device_id=titles[hit.doc_id].device_id,
+            label=hit.label,
+            context=hit.context,
+            count=hit.count,
+        )
+        for hit in doc_backlinks.backlinks_for(document_id, docs, devices)
+        if hit.doc_id in titles
     ]
 
 

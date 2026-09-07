@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  backlinkIndex,
   collectWikiLinks,
   parseWikiLink,
   resolveWikiLink,
@@ -114,26 +113,5 @@ describe('collectWikiLinks', () => {
 
   it('finds none in a body with none', () => {
     expect(collectWikiLinks('# Heading\n\nplain text')).toEqual([])
-  })
-})
-
-describe('backlinkIndex', () => {
-  it('maps a document to the documents that link to it', () => {
-    const bodies = [
-      { ...docs[0], body: 'see [[doc:vlan-plan]]' },
-      { ...docs[1], body: 'no links' },
-      { ...docs[2], body: 'also [[VLAN plan]]' },
-    ]
-    expect(backlinkIndex(bodies)).toEqual({ d2: ['d1', 'd3'] })
-  })
-
-  it('ignores a document linking to itself', () => {
-    const bodies = [{ ...docs[1], body: 'see [[VLAN plan]]' }]
-    expect(backlinkIndex(bodies)).toEqual({})
-  })
-
-  it('does not list the same source twice', () => {
-    const bodies = [{ ...docs[0], body: '[[VLAN plan]] and [[doc:vlan-plan]]' }, { ...docs[1], body: '' }]
-    expect(backlinkIndex(bodies)).toEqual({ d2: ['d1'] })
   })
 })

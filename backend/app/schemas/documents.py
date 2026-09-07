@@ -127,6 +127,20 @@ class SearchResponse(BaseModel):
     hits: list[SearchHit]
 
 
+class BacklinkHit(BaseModel):
+    """A document that links here, and the line it does it on."""
+
+    doc_id: str
+    title: str
+    kind: str
+    device_id: str | None = None
+    # What the link was written as, so a `[[…|label]]` reads back as the author
+    # meant it rather than as the target's own title.
+    label: str
+    context: str
+    count: int = 1
+
+
 class ScaffoldRequest(BaseModel):
     """Create the missing device documents.
 
