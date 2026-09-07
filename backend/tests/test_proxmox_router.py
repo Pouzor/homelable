@@ -40,14 +40,17 @@ def _host_node() -> dict:
     }
 
 
-def _guest_node(vmid: int, ip: str | None, status: str = "online", mac: str | None = None) -> dict:
+def _guest_node(
+    vmid: int, ip: str | None, status: str = "online", mac: str | None = None,
+    host: str = "pve1",
+) -> dict:
     return {
-        "id": f"pve-pve1-{vmid}", "label": f"vm{vmid}", "type": "vm",
-        "ieee_address": f"pve-pve1-{vmid}", "hostname": f"vm{vmid}", "ip": ip,
+        "id": f"pve-{host}-{vmid}", "label": f"vm{vmid}", "type": "vm",
+        "ieee_address": f"pve-{host}-{vmid}", "hostname": f"vm{vmid}", "ip": ip,
         "mac": mac,
         "status": status, "cpu_count": 2, "ram_gb": 4.0, "disk_gb": 32.0,
         "vendor": "Proxmox VE", "model": "QEMU", "vmid": vmid,
-        "parent_ieee": "pve-node-pve1",
+        "parent_ieee": f"pve-node-{host}",
     }
 
 
@@ -339,6 +342,67 @@ async def test_persist_merges_the_oldest_scan_row_when_two_share_an_ip(db_sessio
     assert len(rows) == 2                                  # merged, never a third
     merged = next(r for r in rows if r.ieee_address == "pve-pve1-101")
     assert merged.mac == "aa:bb:cc:00:00:02"               # the older row
+
+
+@pytest.mark.asyncio
+async def test_persist_merges_a_guest_that_moved_to_another_host(db_session) -> None:
+    # The synthetic ieee embeds the host name, so a live migration or a node
+    # rename changes it for what is the same guest. The NIC MAC survives both:
+    # merge and re-point the row, rather than filing a new device and orphaning
+    # the old row (which would then never resolve as a host→guest link end).
+    await _persist_pending_import(
+        db_session, [_guest_node(802, "10.0.0.5", mac="bc:24:11:aa:bb:cc")], []
+    )
+    row = (await db_session.execute(select(InventoryDevice))).scalars().one()
+    row.status = "approved"
+    await db_session.commit()
+
+    await _persist_pending_import(
+        db_session,
+        [_guest_node(802, "10.0.0.5", mac="bc:24:11:aa:bb:cc", host="pve2")],
+        [],
+    )
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert len(rows) == 1                                  # no duplicate, no orphan
+    assert rows[0].ieee_address == "pve-pve2-802"          # re-pointed to the new host
+
+
+@pytest.mark.asyncio
+async def test_persist_never_repoints_a_mesh_ieee(db_session) -> None:
+    # A zigbee/zwave ieee is a real hardware address. A Proxmox import that
+    # merges into such a row by MAC must not overwrite it.
+    db_session.add(InventoryDevice(
+        id=str(uuid.uuid4()), ieee_address="0x00124b0022a1b2c3",
+        mac="bc:24:11:aa:bb:cc", suggested_type="zigbee_device", status="pending",
+        discovery_source="zigbee", discovery_sources=["zigbee"],
+    ))
+    await db_session.commit()
+
+    await _persist_pending_import(
+        db_session, [_guest_node(101, None, mac="bc:24:11:aa:bb:cc")], []
+    )
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].ieee_address == "0x00124b0022a1b2c3"
+
+
+@pytest.mark.asyncio
+async def test_persist_merges_two_guests_that_share_a_nic_mac(db_session) -> None:
+    # Accepted trade-off of matching on MAC: two guests configured with the same
+    # NIC MAC collapse into one row. That is a misconfiguration which already
+    # breaks their networking, and the alternative — excluding claimed rows from
+    # the MAC fallback — orphans every migrated guest. Shared *IPs* stay split;
+    # see test_persist_never_overwrites_another_guest_row_on_a_shared_ip.
+    nodes = [
+        _guest_node(802, "10.0.0.5", mac="bc:24:11:aa:bb:cc"),
+        _guest_node(812, "10.0.0.6", mac="bc:24:11:aa:bb:cc"),
+    ]
+    await _persist_pending_import(db_session, nodes, [])
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert len(rows) == 1
 
 
 @pytest.mark.asyncio
