@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -271,6 +272,73 @@ async def test_persist_merges_pending_scan_row_by_mac(db_session) -> None:
     assert row.ieee_address == "pve-pve1-101"          # adopted proxmox identity
     assert row.suggested_type == "vm"                  # kept proxmox type
     assert set(row.discovery_sources) == {"arp", "proxmox"}  # shows in both filters
+
+
+@pytest.mark.asyncio
+async def test_persist_never_overwrites_another_guest_row_on_a_shared_ip(db_session) -> None:
+    # Issue #419: two guests report the same address (duplicate lease, re-used
+    # DHCP, or a container bridge address the agent lists first). Importing 812
+    # used to match 802's row on that IP and overwrite its hostname and specs,
+    # leaving no row for the original guest.
+    db_session.add(InventoryDevice(
+        id=str(uuid.uuid4()), ieee_address="pve-pve1-802", ip="10.0.0.5",
+        hostname="vm802", suggested_type="vm", status="pending",
+        cpu_count=8, ram_gb=32.0, disk_gb=500.0,
+        discovery_source="proxmox", discovery_sources=["proxmox"],
+    ))
+    await db_session.commit()
+
+    await _persist_pending_import(db_session, [_guest_node(812, "10.0.0.5")], [])
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert len(rows) == 2                                  # 802 still its own row
+    kept = next(r for r in rows if r.ieee_address == "pve-pve1-802")
+    assert kept.hostname == "vm802"                        # not stomped by 812
+    assert (kept.cpu_count, kept.ram_gb, kept.disk_gb) == (8, 32.0, 500.0)
+    added = next(r for r in rows if r.ieee_address == "pve-pve1-812")
+    assert added.hostname == "vm812"
+
+
+@pytest.mark.asyncio
+async def test_persist_matches_ieee_before_a_shared_ip(db_session) -> None:
+    # Both rows exist and share an IP. The guest's own ieee wins over the other
+    # row's matching address, whichever order the database yields them in.
+    for vmid, hostname in ((802, "vm802"), (812, "stale")):
+        db_session.add(InventoryDevice(
+            id=str(uuid.uuid4()), ieee_address=f"pve-pve1-{vmid}", ip="10.0.0.5",
+            hostname=hostname, suggested_type="vm", status="pending",
+            discovery_source="proxmox", discovery_sources=["proxmox"],
+        ))
+    await db_session.commit()
+
+    await _persist_pending_import(db_session, [_guest_node(812, "10.0.0.5")], [])
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert len(rows) == 2
+    assert next(r for r in rows if r.ieee_address == "pve-pve1-802").hostname == "vm802"
+    assert next(r for r in rows if r.ieee_address == "pve-pve1-812").hostname == "vm812"
+
+
+@pytest.mark.asyncio
+async def test_persist_merges_the_oldest_scan_row_when_two_share_an_ip(db_session) -> None:
+    # Unclaimed scan rows on one address: pick deterministically (oldest), so a
+    # re-import lands on the same row instead of whichever comes back first.
+    for offset, mac in ((2, "aa:bb:cc:00:00:01"), (1, "aa:bb:cc:00:00:02")):
+        db_session.add(InventoryDevice(
+            id=str(uuid.uuid4()), ip="10.0.0.5", mac=mac,
+            suggested_type="generic", status="pending",
+            discovered_at=datetime(2026, 1, offset, tzinfo=timezone.utc),
+            discovery_source="arp", discovery_sources=["arp"],
+        ))
+    await db_session.commit()
+
+    for _ in range(2):
+        await _persist_pending_import(db_session, [_guest_node(101, "10.0.0.5")], [])
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert len(rows) == 2                                  # merged, never a third
+    merged = next(r for r in rows if r.ieee_address == "pve-pve1-101")
+    assert merged.mac == "aa:bb:cc:00:00:02"               # the older row
 
 
 @pytest.mark.asyncio

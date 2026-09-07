@@ -30,6 +30,28 @@ def test_extract_qemu_ip_skips_loopback() -> None:
     assert svc._extract_qemu_ip({"result": []}) is None
 
 
+def test_extract_qemu_ip_prefers_the_configured_nic() -> None:
+    # A guest running k8s/Docker: the agent lists the CNI bridge first, and that
+    # address repeats across guests. Pick the interface holding the NIC MAC from
+    # /config instead (issue #419).
+    payload = {
+        "result": [
+            {
+                "name": "cni0", "hardware-address": "0a:58:0a:2a:00:01",
+                "ip-addresses": [{"ip-address-type": "ipv4", "ip-address": "10.42.0.1"}],
+            },
+            {
+                "name": "eth0", "hardware-address": "BC:24:11:AA:BB:CC",
+                "ip-addresses": [{"ip-address-type": "ipv4", "ip-address": "192.168.1.20"}],
+            },
+        ]
+    }
+    assert svc._extract_qemu_ip(payload, "bc:24:11:aa:bb:cc") == "192.168.1.20"
+    # No MAC known, or none matching: first non-loopback IPv4, as before.
+    assert svc._extract_qemu_ip(payload) == "10.42.0.1"
+    assert svc._extract_qemu_ip(payload, "de:ad:be:ef:00:00") == "10.42.0.1"
+
+
 def test_extract_lxc_ip_parses_net0_static() -> None:
     cfg = {"net0": "name=eth0,bridge=vmbr0,ip=192.168.1.30/24,gw=192.168.1.1"}
     assert svc._extract_lxc_ip(cfg) == "192.168.1.30"
