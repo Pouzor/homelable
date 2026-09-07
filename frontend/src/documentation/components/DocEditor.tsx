@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Markdown } from '../markdown/Markdown'
 import type { LinkableDevice, LinkableDoc } from '../wikilinks'
+import { EditorMenu, type EditorMenuItem } from './EditorMenu'
 
 /**
  * Source on the left, rendered on the right.
@@ -34,6 +35,8 @@ interface Props {
   saving: boolean
   /** Set when the document describes a device — enables the generated blocks. */
   deviceId?: string | null
+  /** The document being edited, so `[[` does not offer a link to itself. */
+  currentDocId?: string | null
   docs?: LinkableDoc[]
   devices?: LinkableDevice[]
 }
@@ -64,6 +67,7 @@ export function DocEditor({
   dirty,
   saving,
   deviceId,
+  currentDocId,
   docs = [],
   devices = [],
 }: Props) {
@@ -78,6 +82,13 @@ export function DocEditor({
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashQuery, setSlashQuery] = useState('')
   const [inserting, setInserting] = useState(false)
+  // The `[[` picker. Same machinery as the slash menu, anchored on the first
+  // of the two brackets, because both of them are replaced by the finished link.
+  const linkIndex = useRef<number | null>(null)
+  const linkMenu = useRef<HTMLDivElement>(null)
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkQuery, setLinkQuery] = useState('')
+  const [linkAt, setLinkAt] = useState<Placement | null>(null)
   // Null until measured: the menu is rendered to be measured, and placing it
   // needs its height, so the first paint would otherwise flash at 0,0.
   const [slashAt, setSlashAt] = useState<Placement | null>(null)
@@ -105,20 +116,60 @@ export function DocEditor({
   }, [commands, slashQuery])
 
   /**
+   * What `[[` can point at: the documents that exist.
+   *
+   * Only documents, deliberately. A device with no document is not a link
+   * target yet — writing `[[device:nas-01]]` at one would render red — and
+   * creating a document from inside an unsaved editor is a different feature.
+   * A device that *is* documented is in this list through its document.
+   *
+   * The text inserted is the title when no other document shares it, and
+   * `[[doc:<id>]]` when one does: a bare link resolves by title, so an
+   * ambiguous one would silently point at whichever came first.
+   */
+  const linkTargets = useMemo<(EditorMenuItem & { text: string })[]>(() => {
+    const byTitle = new Map<string, number>()
+    for (const doc of docs) {
+      const key = doc.title.toLowerCase()
+      byTitle.set(key, (byTitle.get(key) ?? 0) + 1)
+    }
+    const deviceLabels = new Map(devices.map((device) => [device.id, device.label]))
+    return docs.filter((doc) => doc.id !== currentDocId).map((doc) => {
+      const unique = (byTitle.get(doc.title.toLowerCase()) ?? 0) < 2
+      const device = doc.device_id ? deviceLabels.get(doc.device_id) : undefined
+      return {
+        id: doc.id,
+        label: doc.title,
+        hint: device ? `Device · ${device}` : doc.slug,
+        text: unique ? `[[${doc.title}]]` : `[[doc:${doc.id}]]`,
+      }
+    })
+  }, [docs, devices, currentDocId])
+
+  const linkVisible = useMemo(() => {
+    const needle = linkQuery.trim().toLowerCase()
+    if (!needle) return linkTargets.slice(0, 50)
+    return linkTargets
+      .filter((item) => `${item.label} ${item.hint}`.toLowerCase().includes(needle))
+      .slice(0, 50)
+  }, [linkTargets, linkQuery])
+
+  /**
    * Insert `text`, either at the live caret or over the `/` at `replacing`.
    *
-   * The `/` is the only thing the menu ever put in the document — the query was
-   * typed into the menu's own field — so replacing it consumes exactly that one
-   * character. The index is passed in rather than read from the textarea:
+   * The `/` is the only thing the slash menu ever put in the document — the
+   * query was typed into the menu's own field — so replacing it consumes
+   * exactly that one character; the `[[` picker passes 2 for its two brackets.
+   * The index is passed in rather than read from the textarea:
    * opening the menu moves focus, which freezes the textarea's selection
    * wherever it happened to be, and every later keystroke widens the gap.
    */
   const insertAtCursor = useCallback(
-    (text: string, replacing: number | null) => {
+    (text: string, replacing: number | null, replacedLength = 1) => {
       const el = textarea.current
       if (!el) return
       const start = replacing ?? el.selectionStart
-      const end = replacing === null ? el.selectionEnd : Math.min(replacing + 1, body.length)
+      const end = replacing === null ? el.selectionEnd : Math.min(replacing + replacedLength, body.length)
       const next = `${body.slice(0, start)}${text}${body.slice(end)}`
       history.record('edit')
       onChange(next)
@@ -146,6 +197,26 @@ export function DocEditor({
     },
     [insertAtCursor],
   )
+
+  const runLink = useCallback(
+    (item: EditorMenuItem) => {
+      const target = linkTargets.find((entry) => entry.id === item.id)
+      // Read before closing: the reset effect clears the index.
+      const at = linkIndex.current
+      setLinkOpen(false)
+      setLinkQuery('')
+      if (target) insertAtCursor(target.text, at)
+    },
+    [insertAtCursor, linkTargets],
+  )
+
+  /** Close without picking, giving back the bracket the menu held. */
+  const cancelLink = useCallback(() => {
+    const at = linkIndex.current
+    setLinkOpen(false)
+    setLinkQuery('')
+    if (at !== null) insertAtCursor('[[', at)
+  }, [insertAtCursor])
 
   const wrapSelection = useCallback(
     (before: string, after = before) => {
@@ -185,13 +256,32 @@ export function DocEditor({
       return
     }
     if (event.key === 'Escape') {
-      if (slashOpen) {
+      if (slashOpen || linkOpen) {
         event.preventDefault()
         setSlashOpen(false)
+        if (linkOpen) cancelLink()
         return
       }
       event.preventDefault()
       onCancel()
+      return
+    }
+    if (event.key === '[') {
+      const el = event.currentTarget
+      // Typing over a selection replaces it; that is not an opening bracket.
+      if (el.selectionStart !== el.selectionEnd) return
+      if (!body.slice(0, el.selectionStart).endsWith('[')) return
+      // The second bracket is swallowed on purpose. Opening the menu moves
+      // focus to its filter field, and a character typed as focus moves is not
+      // reliably delivered to either box — so the body is left holding exactly
+      // one `[`, which is what the insertion replaces. Cancelling puts the
+      // second one back, so what the user typed survives either way.
+      event.preventDefault()
+      caretRef.current = caretPoint(el, el.selectionStart)
+      linkIndex.current = el.selectionStart - 1
+      setSlashOpen(false)
+      setLinkOpen(true)
+      setLinkQuery('')
       return
     }
     if (event.key === '/') {
@@ -216,6 +306,29 @@ export function DocEditor({
       slashIndex.current = null
     }
   }, [slashOpen])
+
+  useEffect(() => {
+    if (!linkOpen) {
+      setLinkQuery('')
+      setLinkAt(null)
+      linkIndex.current = null
+    }
+  }, [linkOpen])
+
+  useEffect(() => {
+    if (!linkOpen) return
+    const caret = caretRef.current
+    const paneEl = pane.current
+    const menuEl = linkMenu.current
+    if (!caret || !paneEl || !menuEl) return
+    setLinkAt(
+      placeMenu({
+        caret,
+        pane: { width: paneEl.clientWidth, height: paneEl.clientHeight },
+        menu: { width: menuEl.offsetWidth, height: menuEl.offsetHeight },
+      }),
+    )
+  }, [linkOpen, linkVisible.length])
 
   // Place the menu once it (and the filtered list) have a height. Re-runs as the
   // query narrows the list, so a menu that shrank stops hanging off the bottom.
@@ -256,7 +369,8 @@ export function DocEditor({
           <Link2 />
         </Button>
         <span className="ml-2 text-[10px] text-muted-foreground/70">
-          Type <kbd className="rounded border border-border px-1">/</kbd> on a new line to insert
+          <kbd className="rounded border border-border px-1">/</kbd> on a new line to insert,{' '}
+          <kbd className="rounded border border-border px-1">[[</kbd> to link
         </span>
         <div className="ml-auto flex items-center gap-2">
           {dirty && <span className="text-[10px] text-muted-foreground">Unsaved</span>}
@@ -284,48 +398,36 @@ export function DocEditor({
             className="h-full w-full resize-none bg-transparent p-4 font-mono text-xs leading-relaxed outline-none"
           />
           {slashOpen && (
-            <div
-              ref={menu}
-              style={slashAt ? { top: slashAt.top, left: slashAt.left } : undefined}
-              className={cn(
-                'absolute z-20 w-72 overflow-hidden rounded-lg border border-border bg-popover shadow-lg',
-                // Hidden, not unmounted, for the frame it takes to measure it —
-                // placing it needs the height it only has once rendered.
-                !slashAt && 'invisible',
-              )}
-            >
-              <input
-                autoFocus
-                value={slashQuery}
-                onChange={(event) => setSlashQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') setSlashOpen(false)
-                  if (event.key === 'Enter' && visible[0]) {
-                    event.preventDefault()
-                    void runCommand(visible[0])
-                  }
-                }}
-                placeholder="Insert…"
-                aria-label="Insert a block"
-                className="w-full border-b border-border bg-transparent px-3 py-2 text-xs outline-none"
-              />
-              <div className="max-h-56 overflow-y-auto">
-                {visible.length === 0 && (
-                  <p className="px-3 py-2 text-xs text-muted-foreground">Nothing matches.</p>
-                )}
-                {visible.map((command) => (
-                  <button
-                    key={command.id}
-                    type="button"
-                    onClick={() => void runCommand(command)}
-                    className="flex w-full cursor-pointer flex-col items-start px-3 py-1.5 text-left hover:bg-muted"
-                  >
-                    <span className="font-mono text-xs">{command.label}</span>
-                    <span className="text-[10px] text-muted-foreground">{command.hint}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <EditorMenu
+              items={visible}
+              query={slashQuery}
+              onQuery={setSlashQuery}
+              placeholder="Insert…"
+              ariaLabel="Insert a block"
+              emptyText="Nothing matches."
+              at={slashAt}
+              menuRef={menu}
+              monoLabels
+              onPick={(item) => {
+                const command = commands.find((entry) => entry.id === item.id)
+                if (command) void runCommand(command)
+              }}
+              onClose={() => setSlashOpen(false)}
+            />
+          )}
+          {linkOpen && (
+            <EditorMenu
+              items={linkVisible}
+              query={linkQuery}
+              onQuery={setLinkQuery}
+              placeholder="Link to…"
+              ariaLabel="Link to a document"
+              emptyText="No document to link to yet."
+              at={linkAt}
+              menuRef={linkMenu}
+              onPick={runLink}
+              onClose={cancelLink}
+            />
           )}
           {inserting && (
             <span className="absolute bottom-2 right-3 text-[10px] text-muted-foreground">Inserting…</span>

@@ -552,6 +552,7 @@ export function DocumentationView() {
             dirty={dirty}
             saving={saving}
             deviceId={openDoc.device_id}
+            currentDocId={openDoc.id}
             docs={docs}
             devices={linkableDevices}
           />
