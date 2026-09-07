@@ -376,7 +376,13 @@ export function DocumentationView() {
                 if (doc) await open(doc.id)
               }}
               trigger={
-                <Button size="icon-xs" variant="ghost" aria-label="New document" title="New document">
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="New document"
+                  title="New document"
+                  data-tour="docs-new"
+                >
                   <FilePlus />
                 </Button>
               }
@@ -436,7 +442,10 @@ export function DocumentationView() {
             )}
           </div>
 
-          <p className="mt-3 px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50">
+          <p
+            data-tour="docs-devices"
+            className="mt-3 px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/50"
+          >
             Devices
           </p>
           <DocTreeGroups
