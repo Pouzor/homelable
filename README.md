@@ -1,7 +1,7 @@
 <h1 align="center"><img src="docs/logo/icon-inline.svg" alt="Homelable" width="58" align="middle" />&nbsp;Homelable</h1>
 
 <p align="center">
-  <strong>Self-hosted homelab infrastructure visualization, scanning &amp; live monitoring</strong>
+  <strong>Self-hosted homelab infrastructure visualization, documentation, scanning &amp; live monitoring</strong>
 </p>
 
 <p align="center">
@@ -21,6 +21,7 @@
   <a href="#screenshots">Screenshots</a> ·
   <a href="#features">Features</a> ·
   <a href="#installation">Installation</a> ·
+  <a href="#documentation">Documentation</a> ·
   <a href="#rack-canvas">Rack Canvas</a> ·
   <a href="#network-scanner">Network Scanner</a> ·
   <a href="#zigbee2mqtt-import">Zigbee / Z-Wave</a> ·
@@ -31,7 +32,7 @@
 
 ## About
 
-Homelable is a self-hosted infrastructure visualization solution. It provides a network/zigbee scanning feature to accelerate the identification of machines, devices and services deployed on your local infrastructure.
+Homelable is a self-hosted infrastructure visualization solution. It provides a network/zigbee/zwave scanning feature to accelerate the identification of machines, devices and services deployed on your local infrastructure.
 
 Homelable also offers a healthcheck system through multiple methods (ping/TCP, /health API, etc.) to get a global overview of online/offline services.
 
