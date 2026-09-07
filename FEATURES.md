@@ -196,10 +196,10 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
 - Sidebar → **Documentation**. The **Devices** root re-pivots instantly by zone, group, type, physical/virtual, subnet, rack, vendor, discovery source, status, tag or A–Z; picking a device with no document writes one from its facts.
 - The **Library** is folders you make. **New page** / **New folder** in the header, drag an item to file it. Templates: blank, runbook, service, network overview, incident, procedure, decision (ADR), zone.
 - Editing is plain markdown and **saving is explicit**, like the canvas. An unsaved body is kept in your browser and offered back if you close the tab. `/` in the editor inserts a freshly generated block — services, hardware, network, rack — from the device's current data.
-- **Link documents** with `[[VLAN plan]]`, `[[device:nas-01]]` or `[[doc:slug|label]]`. A link to a document that does not exist yet renders red and offers to create it, and every document lists **Linked from** at the bottom — who points here.
+- **Link documents** with `[[VLAN plan]]`, `[[device:nas-01]]` or `[[doc:slug|label]]`. Typing `[[` opens a picker that writes the link for you. A link to a document that does not exist yet renders red and offers to create it, and every document lists **Linked from** at the bottom — who points here.
 - **History**: the clock-arrow button in the header lists earlier versions, up to 50 per document. Read one, hit **Changes** for a line-by-line diff against the current body, **Restore** to bring it back — the body it replaces is saved to the history first.
 - **Keeping it honest**: `review_every: 6m` in a document's frontmatter badges it "due for review" when it lapses; a **device data changed** banner appears when the device has moved on since the document was written; **Regenerate** rebuilds a device document from scratch (old body kept in the history). Tags are chips under the title.
-- **Search** the whole space from the box above the tree — title, tags and body.
+- **Search** the whole space from the box above the tree — title, tags and body. The canvas' own search (Ctrl/Cmd+K) finds documents too, and picking one jumps here.
 - Coming from the old per-device **Notes** field? A banner offers to migrate every device that has one into a document. It copies, it does not move: the `notes` field is left exactly as it was.
 
 > **Full documentation:** [docs/documentation.md](./docs/documentation.md)

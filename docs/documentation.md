@@ -108,6 +108,15 @@ revert a change made elsewhere.
 `/` at the start of a line opens the insert menu: the generated blocks above,
 plus table, checklist, callout, wiki-link and date.
 
+`[[` opens the link picker, anywhere in the line: filter by title, pick, and the
+finished link is written for you. It offers documents only — a device with no
+document is not a link target yet — and it addresses a document by title, or by
+`[[doc:<id>]]` when another document shares that title, since a bare link
+resolves by title and an ambiguous one would silently pick the first. The second
+bracket is held back while the menu is open (opening it moves focus, and a
+keystroke landing mid-move belongs to neither box) and given back if you cancel,
+so what you typed survives either way.
+
 ---
 
 ## Links between documents
@@ -171,6 +180,12 @@ wholly different bodies degrades to "replaced wholesale" instead of building a
 
 `GET /api/v1/documents/search?q=` over title, tags and body.
 
+The same index answers the canvas' own search modal (Ctrl/Cmd+K), which lists
+matching documents under the nodes and pending devices; picking one switches to
+Documentation and opens it. The request is debounced and skipped below two
+characters, and a failure there costs only the document rows — the node and
+device halves filter lists already in memory.
+
 FTS5 is **not** assumed: the SQLite shipped in the LXC and Docker images may be
 built without it, the same reason `database.py` avoids JSON1. `doc_search.py`
 probes once and falls back to `LIKE`, and the response says which engine
@@ -230,6 +245,5 @@ into `localStorage` with no search and no history.
 
 Export/import of the tree as `.md` files, a print/handbook view, an aggregated
 open-tasks view, image upload inside a document (would reuse
-`api/routes/media.py`, full-mode only), documents in the canvas-wide search
-modal, `[[` autocompletion in the editor, and the MCP tools — those are the
+`api/routes/media.py`, full-mode only), and the MCP tools — those are the
 planned second lot.
