@@ -5,6 +5,18 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.4.1] - 2026-09-07
+
+### Features
+
+- Duplicate Device Inventory rows can be merged. A **Merge** action in the inventory's select mode lets you pick the survivor — the only way to collapse rows that share no address at all, since a name is not an identity — and `reconcile_duplicates` now runs at the end of a Proxmox import and of a scan to collapse what a shared MAC proves (never a shared IP alone, never across two distinct IEEEs). Merging keeps everything: the survivor fills its gaps from the others, addresses, services, properties and sources union, and canvas nodes, rack mounts, documents and mesh links are re-pointed before the extra rows go. (#424)
+
+### Fixes
+
+- `dedupe_nodes_by_device` deleted duplicate nodes while `rack_devices.node_id` and `documents.node_id` still named them; SQLite runs with foreign keys off, so the declared `ON DELETE SET NULL` never fired. (#424)
+- The scanner's duplicate collapse merges instead of deleting inventory rows outright, which lost their facts and orphaned whatever drew them. Its guard against removing a second approved row is unchanged. (#424)
+- The merge dialog is wide enough to read an IEEE. The addresses are what the choice is made on, and a long name was clipped at the edge of the dialog; the address line now wraps instead of truncating, and the list grows with the viewport. (#424)
+
 ## [3.4.0] - 2026-09-07
 
 ### Features
