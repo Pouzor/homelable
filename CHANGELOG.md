@@ -5,6 +5,38 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.4.0] - 2026-09-07
+
+### Features
+
+- **Documentation** — a real document space for the homelab, beside the canvases. Markdown documents attached to a device, a node, a canvas, or standing on their own; a Library of folders, a Devices tree pivoted by zone, group, type, subnet, rack, vendor or tag, wiki-links between documents, full-text search (FTS5, with a `LIKE` fallback where SQLite ships without it), up to 50 revisions per document with a line diff and restore, backlinks under every body, tags, and a "needs attention" bucket driven by a per-document review interval. A device document is scaffolded once from the scan facts and then belongs to you — nothing rewrites it — with an explicit "device data changed" banner and a per-block regenerate when you want the new facts. The old `device_inventory.notes` are migrated in verbatim and left in place. (#418, #421)
+- Documents are reachable from where you already are: a node's detail panel, a device's inventory modal, and the canvas search modal, which now finds documents too. Wiki-links are written from a picker instead of from memory. (#418, #421)
+- The rack faceplate is a real, editable object, and the **Device Inventory owns it**: plate, U height, column span, colour and the port list — with each port placed by hand — are carried by the device, so it wears the same panel in every rack it is mounted in. Only placement, pinned status and label stay per canvas. A device's front panel can also be drawn and edited straight from its inventory row. (#405)
+- A rack mount chooses when it shows its ports — `auto`, `always` or `hover` — and a cable can no longer end on a plate drawing no socket. (#407)
+- Proxmox guests can be nested inside their host on the canvas instead of sitting beside it on virtual edges. Both entry points ask: the import modal and adding a Proxmox host from the Device Inventory. (#399)
+- Homelable can be served under a subpath. One build-time knob, `VITE_BASE_PATH`, becomes Vite's `base` and is threaded through every hand-built URL, the status WebSocket, the OIDC login and callback, and both shipped nginx configs. Defaults to `/`, where nothing changes. (#412)
+- The MCP server covers the rack canvas and the Device Inventory writes — 24 tools to 47. Racks, mounts, accessories, moves, faceplates and cables, plus create/edit/delete on inventory entries. (#414)
+- The Homelable logo is in the brand icon picker, first in the catalog, for both node and service icons. (#411)
+
+### Fixes
+
+- The scanner and the status checker no longer send an HTTP `GET` to TCP/9100. A printer speaking JetDirect printed that request as a page of plaintext — once a minute, forever, for an approved node. LPD (515) and JetDirect (9100-9107) are now on the non-HTTP denylist. Trade-off: Prometheus Node Exporter on 9100 loses its status check and shows grey. (#406)
+- A device declaring several IPs is matched on every one of them instead of coming back as a new pending row on each scan. Hiding it hides it at all of its addresses, and the deduplication collapses the duplicates an extra address had already spawned — never deleting a second approved row. (#416)
+- A Proxmox import no longer overwrites one guest's inventory row with another's facts. Identity is now the synthetic per-guest ieee first, then NIC MAC, then IP — and the IP fallback skips rows already claimed by a guest, since a shared VIP, a re-used lease or a CNI bridge address describes several machines. A migrated or renamed guest keeps its row. (#420)
+- Coming back to the canvas from Documentation keeps the pan and zoom you left it at, instead of remounting zoomed in at the origin. (#422)
+- Switching back to a rack canvas restores its saved pan and zoom instead of shrinking the racks into a corner until a hard reload. (#409)
+- The basic edge animation runs the same way whichever direction the nodes were dragged in; the dash direction was derived from the source and target's on-screen geometry. (#402)
+- Login works under `podman-compose`. Quoted `AUTH_PASSWORD_HASH`, `SECRET_KEY` and `OIDC_CLIENT_SECRET` values arrive with their quotes attached, which Docker Compose strips and podman-compose does not; a matched pair of surrounding quotes is now unwrapped in the backend, so one `.env` works under either runtime. (#413)
+- A zone or group description is kept on save. (#418)
+- MCP node properties are keyed on `key`, not `name`, so they no longer collapse silently. (#414)
+- Eight Dependabot advisories cleared in the frontend lockfile (`fast-uri`, `@humanfs/node`, `qs`, `nanoid`); all dev-only, `npm audit` reports zero. (#417)
+- The npm and pip audit CI jobs retry a registry outage instead of failing the run. (#409)
+
+### Docs
+
+- README and FEATURES.md cover the Documentation section, and `docs/documentation.md` documents the tree, wiki-links, search, history, backlinks and the API. (#421)
+- `.env.example` notes that quoting a secret is optional and works either way. (#413)
+
 ## [3.3.5] - 2026-08-21
 
 ### Features
