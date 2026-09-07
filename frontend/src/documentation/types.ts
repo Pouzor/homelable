@@ -51,6 +51,18 @@ export interface DocRevision {
   size: number
 }
 
+/** A document pointing at the open one. Inverted server-side — see the route. */
+export interface DocBacklink {
+  doc_id: string
+  title: string
+  kind: DocKind
+  device_id?: string | null
+  /** The link as it was written, which may differ from the target's title. */
+  label: string
+  context: string
+  count: number
+}
+
 export interface DocSearchHit {
   doc_id: string
   title: string

@@ -1,19 +1,40 @@
 import { useMemo, useState } from 'react'
-import { Clock, Pencil, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react'
+import { Clock, History, Link2, Pencil, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { isOverdue, parseFrontmatter } from '../frontmatter'
 import { Markdown } from '../markdown/Markdown'
 import { extractToc } from '../markdown/toc'
-import type { Doc } from '../types'
+import type { Doc, DocBacklink, DocRevision } from '../types'
 import type { LinkableDevice, LinkableDoc } from '../wikilinks'
+import { DocHistoryRail, RevisionPreview } from './DocHistory'
+
+/** Everything the history rail and the revision preview need, in one prop. */
+export interface HistoryControls {
+  open: boolean
+  loading: boolean
+  revisions: DocRevision[]
+  preview: { revision: DocRevision; body: string } | null
+  onToggle: () => void
+  onSelect: (revisionId: string) => void
+  onClosePreview: () => void
+  onRestore: (revisionId: string) => void
+}
 
 interface Props {
   doc: Doc
   docs: LinkableDoc[]
   devices: LinkableDevice[]
   drifted: boolean
+  /** The documents linking here. Empty until the server answers. */
+  backlinks?: DocBacklink[]
+  backlinksLoading?: boolean
+  /**
+   * Omitted by a host that keeps no history state, and then the viewer offers
+   * none — the button would have nothing to open.
+   */
+  history?: HistoryControls
   onEdit: () => void
   onToggleStar: () => void
   onMarkReviewed: () => void
@@ -24,6 +45,17 @@ interface Props {
   onToggleTask: (body: string) => void
   /** Writes the whole tag list back into the document's frontmatter. */
   onSetTags: (tags: string[]) => void
+}
+
+const NO_HISTORY: HistoryControls = {
+  open: false,
+  loading: false,
+  revisions: [],
+  preview: null,
+  onToggle: () => {},
+  onSelect: () => {},
+  onClosePreview: () => {},
+  onRestore: () => {},
 }
 
 /** The metadata a frontmatter block is worth surfacing as a chip. */
@@ -38,6 +70,9 @@ export function DocViewer({
   docs,
   devices,
   drifted,
+  backlinks = [],
+  backlinksLoading = false,
+  history,
   onEdit,
   onToggleStar,
   onMarkReviewed,
@@ -48,6 +83,7 @@ export function DocViewer({
   onToggleTask,
   onSetTags,
 }: Props) {
+  const controls = history ?? NO_HISTORY
   const { data } = useMemo(() => parseFrontmatter(doc.body), [doc.body])
   const [tagDraft, setTagDraft] = useState<string | null>(null)
   const toc = useMemo(() => extractToc(doc.body), [doc.body])
@@ -68,6 +104,36 @@ export function DocViewer({
     setTagDraft(null)
   }
 
+  // Reading an old version replaces the body, not the page: the title, the
+  // chips and the history rail stay put, so it reads as the same document at a
+  // different moment rather than as somewhere else.
+  const preview = controls.preview
+  if (preview) {
+    return (
+      <div className="flex min-h-0 flex-1">
+        <RevisionPreview
+          revision={preview.revision}
+          body={preview.body}
+          currentBody={doc.body}
+          docs={docs}
+          devices={devices}
+          onOpenDoc={onOpenDoc}
+          onRestore={() => controls.onRestore(preview.revision.id)}
+          onClose={controls.onClosePreview}
+        />
+        {controls.open && (
+          <DocHistoryRail
+            revisions={controls.revisions}
+            activeId={preview.revision.id}
+            loading={controls.loading}
+            onSelect={controls.onSelect}
+            onClose={controls.onToggle}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-0 flex-1">
       <div className="min-w-0 flex-1 overflow-y-auto">
@@ -86,6 +152,19 @@ export function DocViewer({
           <Button size="sm" variant="ghost" onClick={onEdit} className="cursor-pointer gap-1">
             <Pencil size={13} /> Edit
           </Button>
+          {history && (
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              title="Earlier versions of this document"
+              aria-label="Version history"
+              aria-pressed={history.open}
+              onClick={history.onToggle}
+              className={cn('cursor-pointer', history.open && 'bg-muted')}
+            >
+              <History />
+            </Button>
+          )}
           {/* A folder holds children, not a generated body — nothing to rebuild. */}
           {doc.kind !== 'folder' && (
             <Button
@@ -174,11 +253,54 @@ export function DocViewer({
           onOpenDoc={onOpenDoc}
           onCreateFromLink={onCreateFromLink}
           onToggleTask={onToggleTask}
-          className="max-w-[72ch] px-6 pb-16 pt-2 text-sm"
+          className="max-w-[72ch] px-6 pb-6 pt-2 text-sm"
         />
+
+        {/* A wiki-link only says where it goes; this is the other direction,
+            and the reason a device document is worth linking to at all. */}
+        {!backlinksLoading && backlinks.length > 0 && (
+          <section aria-labelledby="backlinks-heading" className="max-w-[72ch] px-6 pb-16">
+            <h2
+              id="backlinks-heading"
+              className="mb-2 flex items-center gap-1.5 border-t border-border pt-4 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70"
+            >
+              <Link2 size={11} /> Linked from ({backlinks.length})
+            </h2>
+            <ul className="space-y-1">
+              {backlinks.map((link) => (
+                <li key={link.doc_id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenDoc(link.doc_id)}
+                    className="w-full cursor-pointer rounded px-2 py-1.5 text-left hover:bg-muted/60"
+                  >
+                    <span className="flex items-baseline gap-1.5">
+                      <span className="truncate text-xs text-primary">{link.title}</span>
+                      {link.count > 1 && (
+                        <span className="text-[10px] text-muted-foreground">×{link.count}</span>
+                      )}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                      {link.context}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
 
-      {toc.length > 1 && (
+      {controls.open ? (
+        <DocHistoryRail
+          revisions={controls.revisions}
+          activeId={null}
+          loading={controls.loading}
+          onSelect={controls.onSelect}
+          onClose={controls.onToggle}
+        />
+      ) : (
+        toc.length > 1 && (
         <nav aria-label="On this page" className="hidden w-52 shrink-0 overflow-y-auto border-l border-border px-3 py-5 xl:block">
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
             On this page
@@ -193,7 +315,8 @@ export function DocViewer({
               {entry.text}
             </a>
           ))}
-        </nav>
+          </nav>
+        )
       )}
     </div>
   )

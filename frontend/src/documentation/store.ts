@@ -5,6 +5,7 @@ import { isOverdue, withTags } from './frontmatter'
 import { isDescendant } from './tree'
 import type {
   Doc,
+  DocBacklink,
   DocCoverage,
   DocRevision,
   DocSearchResult,
@@ -109,6 +110,14 @@ export interface DocsState {
   pendingDraft: string | null
 
   revisions: DocRevision[]
+  revisionsLoading: boolean
+  /** A revision being read, alongside the current body. Null when not reading one. */
+  revisionPreview: { revision: DocRevision; body: string } | null
+
+  /** The documents linking to the open one. Inverted server-side. */
+  backlinks: DocBacklink[]
+  backlinksLoading: boolean
+
   coverage: DocCoverage | null
   search: DocSearchResult | null
   searching: boolean
@@ -149,9 +158,12 @@ export interface DocsState {
   remove: (id: string) => Promise<void>
 
   loadRevisions: (id: string) => Promise<void>
+  previewRevision: (revisionId: string) => Promise<void>
+  closeRevisionPreview: () => void
   restore: (id: string, revisionId: string) => Promise<void>
   regenerate: (id: string) => Promise<boolean>
 
+  loadBacklinks: (id: string) => Promise<void>
   loadCoverage: () => Promise<void>
   scaffold: (input: { deviceIds?: string[]; onlyWithNotes?: boolean }) => Promise<number>
   runSearch: (query: string) => Promise<void>
@@ -186,6 +198,12 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   pendingDraft: null,
 
   revisions: [],
+  revisionsLoading: false,
+  revisionPreview: null,
+
+  backlinks: [],
+  backlinksLoading: false,
+
   coverage: null,
   search: null,
   searching: false,
@@ -212,7 +230,16 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   },
 
   open: async (id) => {
-    set({ openLoading: true, draft: null, dirty: false, pendingDraft: null, revisions: [] })
+    set({
+      openLoading: true,
+      draft: null,
+      dirty: false,
+      pendingDraft: null,
+      revisions: [],
+      revisionsLoading: false,
+      revisionPreview: null,
+      backlinks: [],
+    })
     try {
       const { data } = await documentsApi.get(id)
       // A draft newer than the stored document is unsaved work from a previous
@@ -226,6 +253,8 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       })
       if (draft && stale) clearDraft(id)
       writeUi({ ...readUi(), lastDocId: id })
+      // Not awaited: the document renders now, the "Linked from" block fills in.
+      void get().loadBacklinks(id)
     } catch (error) {
       set({ openLoading: false, loadError: message(error, 'Could not open that document') })
     }
@@ -254,7 +283,17 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
     return true
   },
 
-  close: () => set({ openDoc: null, draft: null, dirty: false, pendingDraft: null, revisions: [] }),
+  close: () =>
+    set({
+      openDoc: null,
+      draft: null,
+      dirty: false,
+      pendingDraft: null,
+      revisions: [],
+      revisionsLoading: false,
+      revisionPreview: null,
+      backlinks: [],
+    }),
 
   startEdit: () => {
     const doc = get().openDoc
@@ -400,9 +439,32 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   },
 
   loadRevisions: async (id) => {
-    const { data } = await documentsApi.revisions(id)
-    set({ revisions: data })
+    set({ revisionsLoading: true })
+    try {
+      const { data } = await documentsApi.revisions(id)
+      if (get().openDoc?.id !== id) return
+      set({ revisions: data, revisionsLoading: false })
+    } catch (error) {
+      if (get().openDoc?.id !== id) return
+      set({ revisionsLoading: false, loadError: message(error, 'Could not load the history') })
+    }
   },
+
+  // A revision's body is fetched on demand rather than with the list: the list
+  // is what the history panel shows, and fifty bodies to render one of them is
+  // the whole reason `RevisionSummary` carries a size instead of the text.
+  previewRevision: async (revisionId) => {
+    const revision = get().revisions.find((r) => r.id === revisionId)
+    if (!revision) return
+    try {
+      const { data } = await documentsApi.revision(revisionId)
+      set({ revisionPreview: { revision, body: data.body } })
+    } catch (error) {
+      set({ loadError: message(error, 'Could not read that version') })
+    }
+  },
+
+  closeRevisionPreview: () => set({ revisionPreview: null }),
 
   restore: async (id, revisionId) => {
     const { data } = await documentsApi.restore(id, revisionId)
@@ -411,6 +473,9 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       openDoc: data,
       draft: state.draft === null ? null : data.body,
       dirty: false,
+      // The restored body is now the current one; there is nothing left to
+      // compare it against, so the preview closes rather than showing itself.
+      revisionPreview: null,
       docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : d)),
     }))
     await get().loadRevisions(id)
@@ -434,6 +499,25 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
     } catch (error) {
       set({ loadError: message(error, 'Could not regenerate that document') })
       return false
+    }
+  },
+
+  // Backlinks are the server's answer because the browser holds no bodies but
+  // its own: `list()` is metadata-only so the tree can badge without a download.
+  loadBacklinks: async (id) => {
+    if (STANDALONE) return
+    set({ backlinksLoading: true })
+    try {
+      const { data } = await documentsApi.backlinks(id)
+      // A slow answer for a document the user has already left is dropped
+      // rather than shown under the new one.
+      if (get().openDoc?.id !== id) return
+      set({ backlinks: data, backlinksLoading: false })
+    } catch {
+      // Backlinks are a bonus panel; a failure must not break reading. A failure
+      // for a document already left must not wipe the one now on screen either.
+      if (get().openDoc?.id !== id) return
+      set({ backlinks: [], backlinksLoading: false })
     }
   },
 
