@@ -339,15 +339,22 @@ async def _find_pending(
 
     1. The synthetic ``ieee_address`` (``pve-{host}-{vmid}``). Unique per guest
        and the only key that identifies one.
-    2. Else MAC, else IP — merging into a row an IP/ARP scan found first.
+    2. Else the NIC MAC, else the IP — merging into a row an IP/ARP scan found
+       first, or into this same guest under its previous host name.
 
     An IP is not an identity: a duplicated static lease, a re-used DHCP address,
     two guests behind one NAT, or a container-bridge address several guests
     report to the agent all make one address describe several machines. So the
-    fallback skips any row already claimed by a *different* Proxmox guest —
-    matching one used to overwrite that guest's hostname, VMID and specs, and
+    IP fallback skips any row already claimed by a Proxmox guest — matching one
+    used to overwrite that guest's hostname, VMID and specs, and
     non-deterministically, since one flat OR with no ordering returned whichever
     row the database yielded first. Oldest row wins, so a re-import is stable.
+
+    A MAC *is* an identity, so its fallback matches a claimed row too. It has to:
+    the synthetic ieee embeds the host name, and a live migration or a node
+    rename changes it for what is the same guest (``pve-pve1-802`` →
+    ``pve-pve2-802``). Excluding claimed rows there would file the migrated
+    guest as a new device and orphan its old row. See ``_adopted_ieee``.
     """
     exact = (
         await db.execute(
@@ -361,19 +368,37 @@ async def _find_pending(
         InventoryDevice.ieee_address.is_(None),
         ~InventoryDevice.ieee_address.startswith(_PVE_IEEE_PREFIX),
     )
-    for column, value in ((InventoryDevice.mac, mac), (InventoryDevice.ip, ip)):
+    for column, value, claimed_ok in (
+        (InventoryDevice.mac, mac, True),
+        (InventoryDevice.ip, ip, False),
+    ):
         if not value:
             continue
+        where = [column == value] if claimed_ok else [column == value, unclaimed]
         row = (
             await db.execute(
                 select(InventoryDevice)
-                .where(column == value, unclaimed)
+                .where(*where)
                 .order_by(InventoryDevice.discovered_at, InventoryDevice.id)
             )
         ).scalars().first()
         if row is not None:
             return row
     return None
+
+
+def _adopted_ieee(current: str | None, ieee: str) -> str:
+    """The ``ieee_address`` a row should carry once this guest merges into it.
+
+    Re-point a row that already belongs to a Proxmox guest: matched by NIC MAC,
+    it is this same guest under a stale host name (migrated, or the node was
+    renamed). Links are rebuilt keyed on the ieee, so a row left on the old one
+    stops resolving as a host→guest endpoint. A mesh ieee is a real hardware
+    address and is never overwritten.
+    """
+    if not current or current.startswith(_PVE_IEEE_PREFIX):
+        return ieee
+    return current
 
 
 def _new_pending(
@@ -432,7 +457,7 @@ def _refresh_pending(
 ) -> None:
     # Compute sources before adopting the pve ieee (needs the pre-merge origin).
     pending.discovery_sources = _sources_after_merge(pending)
-    pending.ieee_address = pending.ieee_address or ieee
+    pending.ieee_address = _adopted_ieee(pending.ieee_address, ieee)
     pending.ip = ip or pending.ip
     pending.mac = pending.mac or mac
     pending.hostname = n.get("hostname") or pending.hostname
@@ -464,7 +489,7 @@ async def _ensure_inventory_row(
     else:
         # Compute sources before adopting the pve ieee (needs the pre-merge origin).
         inv.discovery_sources = _sources_after_merge(inv)
-        inv.ieee_address = inv.ieee_address or ieee
+        inv.ieee_address = _adopted_ieee(inv.ieee_address, ieee)
         inv.ip = ip or inv.ip
         inv.mac = inv.mac or mac
         inv.hostname = n.get("hostname") or inv.hostname
