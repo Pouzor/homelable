@@ -70,6 +70,10 @@ Every feature, with how to turn it on and use it, is described in **[FEATURES.md
 
 Docker (from the **[pre-built GHCR images](./INSTALLATION.md#pre-built-docker-images)**), Proxmox LXC, **[bare metal without Docker](./INSTALLATION.md#bare-metal--no-docker)** (`sudo bash scripts/install-baremetal.sh` — systemd unit plus nginx on a Debian/Ubuntu host), build from source, configuration, and development setup are all covered in **[INSTALLATION.md](./INSTALLATION.md)**.
 
+### ☁️ One-Click Cloud Deploy
+
+[![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/Homelable/)
+
 ---
 
 ## Rack Canvas
