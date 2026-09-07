@@ -52,6 +52,9 @@ router = APIRouter()
 # 'virtual' edges; host↔host cluster links render as 'cluster' edges.
 _PROXMOX_GUEST_SOURCE = "proxmox"
 _PROXMOX_CLUSTER_SOURCE = "proxmox_cluster"
+# Every imported guest/host carries a synthetic ieee under this prefix
+# (``pve-node-{host}`` / ``pve-{host}-{vmid}``), built in proxmox_service.
+_PVE_IEEE_PREFIX = "pve-"
 
 
 def _resolve_credentials(payload: ProxmoxConnectionRequest) -> tuple[str, str]:
@@ -255,10 +258,12 @@ async def _persist_pending_import(
 ) -> ProxmoxImportPendingResponse:
     """Upsert Proxmox nodes/edges into device_inventory + device_inventory_links.
 
-    Two-tier identity (order matters):
-      1. Match an existing canvas Node or pending row by **IP** (merge into a
-         device previously found by a scan) — never duplicate.
-      2. Else match by synthetic ``ieee_address`` (``pve-...``).
+    Two-tier identity (order matters) — see ``_find_pending``:
+      1. Match by the synthetic ``ieee_address`` (``pve-{host}-{vmid}``), the
+         only key that identifies a guest.
+      2. Else match an existing pending row by MAC, then IP, to merge into a
+         device a scan found first — never duplicate. Rows already claimed by
+         another Proxmox guest are excluded.
 
     Update-in-place only. Nothing is ever deleted; hidden rows stay hidden.
     """
@@ -330,14 +335,45 @@ async def _persist_pending_import(
 async def _find_pending(
     db: AsyncSession, ieee: str, ip: str | None, mac: str | None
 ) -> InventoryDevice | None:
-    filters = [InventoryDevice.ieee_address == ieee]
-    if ip:
-        filters.append(InventoryDevice.ip == ip)
-    if mac:
-        filters.append(InventoryDevice.mac == mac)
-    return (
-        await db.execute(select(InventoryDevice).where(or_(*filters)))
+    """The inventory row this guest *is*, in strict precedence order.
+
+    1. The synthetic ``ieee_address`` (``pve-{host}-{vmid}``). Unique per guest
+       and the only key that identifies one.
+    2. Else MAC, else IP — merging into a row an IP/ARP scan found first.
+
+    An IP is not an identity: a duplicated static lease, a re-used DHCP address,
+    two guests behind one NAT, or a container-bridge address several guests
+    report to the agent all make one address describe several machines. So the
+    fallback skips any row already claimed by a *different* Proxmox guest —
+    matching one used to overwrite that guest's hostname, VMID and specs, and
+    non-deterministically, since one flat OR with no ordering returned whichever
+    row the database yielded first. Oldest row wins, so a re-import is stable.
+    """
+    exact = (
+        await db.execute(
+            select(InventoryDevice).where(InventoryDevice.ieee_address == ieee)
+        )
     ).scalars().first()
+    if exact is not None:
+        return exact
+
+    unclaimed = or_(
+        InventoryDevice.ieee_address.is_(None),
+        ~InventoryDevice.ieee_address.startswith(_PVE_IEEE_PREFIX),
+    )
+    for column, value in ((InventoryDevice.mac, mac), (InventoryDevice.ip, ip)):
+        if not value:
+            continue
+        row = (
+            await db.execute(
+                select(InventoryDevice)
+                .where(column == value, unclaimed)
+                .order_by(InventoryDevice.discovered_at, InventoryDevice.id)
+            )
+        ).scalars().first()
+        if row is not None:
+            return row
+    return None
 
 
 def _new_pending(
@@ -380,7 +416,7 @@ def _sources_after_merge(row: InventoryDevice) -> list[str]:
     device (no ``pve-`` ieee) was found by a scan; keep an IP-scan source.
     """
     sources = add_source(row.discovery_sources, row.discovery_source)
-    was_scanned = not (row.ieee_address or "").startswith("pve-")
+    was_scanned = not (row.ieee_address or "").startswith(_PVE_IEEE_PREFIX)
     if was_scanned and row.ip and not any(s in ("arp", "mdns") for s in sources):
         sources = add_source(sources, "arp")
     return add_source(sources, _PROXMOX_GUEST_SOURCE)

@@ -93,24 +93,52 @@ def _guest_type_to_homelable(kind: str) -> str:
     return "vm" if kind == "qemu" else "lxc"
 
 
-def _extract_qemu_ip(agent_payload: dict[str, Any] | None) -> str | None:
-    """Pull the first non-loopback IPv4 from a qemu guest-agent interfaces reply."""
+def _iface_ipv4(iface: Any) -> str | None:
+    """First non-loopback IPv4 of one guest-agent interface entry."""
+    if not isinstance(iface, dict):
+        return None
+    for addr in iface.get("ip-addresses") or []:
+        if not isinstance(addr, dict):
+            continue
+        if addr.get("ip-address-type") != "ipv4":
+            continue
+        ip = addr.get("ip-address")
+        if isinstance(ip, str) and ip and not ip.startswith("127."):
+            return ip
+    return None
+
+
+def _extract_qemu_ip(
+    agent_payload: dict[str, Any] | None, mac: str | None = None
+) -> str | None:
+    """The guest's LAN IPv4 from a qemu guest-agent interfaces reply.
+
+    Prefer the interface whose ``hardware-address`` is the NIC MAC from the
+    guest ``/config`` — the agent lists every interface, and on a guest running
+    Docker/k8s the bridge (``cni0``, ``flannel``, ``docker0``) can come first.
+    Those addresses repeat across guests, and a shared address is what let one
+    guest's import land on another's inventory row. Fall back to the first
+    non-loopback IPv4 when no MAC is known or none matches.
+    """
     if not agent_payload:
         return None
     result = agent_payload.get("result")
     if not isinstance(result, list):
         return None
-    for iface in result:
-        if not isinstance(iface, dict):
-            continue
-        for addr in iface.get("ip-addresses") or []:
-            if not isinstance(addr, dict):
+    wanted = normalize_mac(mac)
+    if wanted:
+        for iface in result:
+            if not isinstance(iface, dict):
                 continue
-            if addr.get("ip-address-type") != "ipv4":
+            if normalize_mac(iface.get("hardware-address")) != wanted:
                 continue
-            ip = addr.get("ip-address")
-            if isinstance(ip, str) and ip and not ip.startswith("127."):
+            ip = _iface_ipv4(iface)
+            if ip:
                 return ip
+    for iface in result:
+        ip = _iface_ipv4(iface)
+        if ip:
+            return ip
     return None
 
 
@@ -374,7 +402,7 @@ async def _resolve_guest_net(
                 data = await _get_json(
                     client, f"/nodes/{host_name}/qemu/{vmid}/agent/network-get-interfaces"
                 )
-                ip = _extract_qemu_ip(data)
+                ip = _extract_qemu_ip(data, mac)
         else:
             config = await _get_json(client, f"/nodes/{host_name}/lxc/{vmid}/config")
             ip = _extract_lxc_ip(config)
