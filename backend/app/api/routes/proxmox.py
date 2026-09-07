@@ -33,6 +33,7 @@ from app.schemas.proxmox import (
     ProxmoxTestConnectionResponse,
 )
 from app.schemas.scan import ScanRunResponse
+from app.services.device_merge import reconcile_duplicates
 from app.services.discovery_sources import add_source
 from app.services.inventory_sync import attach_device_ids
 from app.services.mac_utils import normalize_mac
@@ -320,6 +321,12 @@ async def _persist_pending_import(
                 ).scalars().all():
                     en.left_handles = max(en.left_handles or 0, 1)
                     en.right_handles = max(en.right_handles or 0, 1)
+
+    # Fold in any row this import just proved to be the same device: a guest
+    # matched here by its synthetic ieee can share a MAC or an IP with a row an
+    # earlier scan (or an older canvas node) minted before either side carried
+    # the address that would have matched them.
+    await reconcile_duplicates(db)
 
     links_recorded = await _replace_links(db, edges_raw, cluster_pairs)
     await db.commit()

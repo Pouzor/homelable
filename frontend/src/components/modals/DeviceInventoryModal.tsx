@@ -22,6 +22,7 @@ import { getCenteredPosition } from '@/utils/viewportCenter'
 import { sourceBuckets, orderedSources, isRackDevice, SOURCE_META, type SourceBucket } from '@/utils/deviceSources'
 import { isRackable } from '@/utils/rackable'
 import { ProxmoxApproveModal, type ProxmoxApproveChoice } from '@/components/modals/ProxmoxApproveModal'
+import { MergeDevicesModal } from '@/components/modals/MergeDevicesModal'
 import { layoutProxmoxContainers, measureProxmoxContainers } from '@/utils/proxmoxContainerLayout'
 
 interface DeviceInventoryModalProps {
@@ -184,6 +185,9 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
   // Set when a Proxmox host with guests is about to be placed — the user picks
   // whether the guests come along, and nested or linked.
   const [proxmoxPrompt, setProxmoxPrompt] = useState<{ host: InventoryEntry; children: InventoryEntry[] } | null>(null)
+  // Set when the user asks to merge the selected rows — they pick the survivor.
+  const [mergePrompt, setMergePrompt] = useState<InventoryEntry[] | null>(null)
+  const [merging, setMerging] = useState(false)
 
   const load = useCallback(async () => {
     // Tour/demo mode: show injected devices, never touch the backend.
@@ -589,6 +593,27 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
     }
   }
 
+  const handleMerge = async (winnerId: string) => {
+    const ids = (mergePrompt ?? []).map((d) => d.id).filter((id) => id !== winnerId)
+    if (ids.length === 0) return
+    setMerging(true)
+    try {
+      await scanApi.merge(winnerId, ids)
+      setMergePrompt(null)
+      setSelectedIds(new Set())
+      // Reload rather than patch: a merge moves canvas links around, so
+      // `canvas_count` on the survivor is only right coming from the server.
+      await load()
+      toast.success(`Merged ${ids.length + 1} devices into one`, {
+        description: 'Facts, canvas nodes, rack mounts and documents were kept.',
+      })
+    } catch {
+      toast.error('Failed to merge devices')
+    } finally {
+      setMerging(false)
+    }
+  }
+
   const handleBulkHide = async () => {
     const ids = [...selectedIds]
     if (ids.length === 0) return
@@ -851,6 +876,14 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 Clear
               </button>
               <div className="flex-1" />
+              <button
+                onClick={() => setMergePrompt(devices.filter((d) => selectedIds.has(d.id)))}
+                disabled={selectedIds.size < 2}
+                title="Fold the selected rows into one device"
+                className="text-xs px-3 py-1.5 rounded bg-[#00d4ff]/20 text-[#00d4ff] hover:bg-[#00d4ff]/30 disabled:opacity-40 font-medium transition-colors"
+              >
+                Merge ({selectedIds.size})
+              </button>
               {statusFilter === 'pending' && (
                 <>
                   <button
@@ -955,6 +988,14 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
           setDevices((prev) => prev.map((d) => (d.id === saved.id ? saved : d)))
           setSelected(saved)
         }}
+      />
+
+      <MergeDevicesModal
+        open={mergePrompt !== null}
+        devices={mergePrompt ?? []}
+        busy={merging}
+        onCancel={() => setMergePrompt(null)}
+        onConfirm={handleMerge}
       />
 
       <ProxmoxApproveModal

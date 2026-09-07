@@ -16,6 +16,7 @@ const mockHidden = vi.fn()
 const mockAddNode = vi.fn()
 const mockSetSelectedNode = vi.fn()
 const mockProxmoxChildren = vi.fn()
+const mockMerge = vi.fn()
 
 vi.mock('@/api/client', () => ({
   scanApi: {
@@ -30,6 +31,7 @@ vi.mock('@/api/client', () => ({
     restore: (...a: unknown[]) => mockRestore(...a),
     bulkRestore: (...a: unknown[]) => mockBulkRestore(...a),
     proxmoxChildren: (...a: unknown[]) => mockProxmoxChildren(...a),
+    merge: (...a: unknown[]) => mockMerge(...a),
   },
 }))
 
@@ -495,6 +497,29 @@ describe('DeviceInventoryModal', () => {
     fireEvent.click(screen.getByTestId('pending-card-dev-a'))
     fireEvent.click(screen.getByRole('button', { name: /Hide \(1\)/ }))
     await waitFor(() => expect(mockBulkHide).toHaveBeenCalledWith(['dev-a']))
+  })
+
+  it('merge needs two rows, then folds them into the chosen survivor', async () => {
+    mockMerge.mockResolvedValue({ data: { ...DEVICE_IP } })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
+
+    // One row is not a duplicate of anything — the action stays disabled.
+    fireEvent.click(screen.getByTestId('pending-card-dev-a'))
+    expect(screen.getByRole('button', { name: /Merge \(1\)/ })).toBeDisabled()
+
+    fireEvent.click(screen.getByTestId('pending-card-dev-b'))
+    fireEvent.click(screen.getByRole('button', { name: /Merge \(2\)/ }))
+
+    // The dialog asks which row survives before anything is sent.
+    expect(mockMerge).not.toHaveBeenCalled()
+    fireEvent.click(await screen.findByRole('button', { name: /^merge into/i }))
+    await waitFor(() => expect(mockMerge).toHaveBeenCalledTimes(1))
+    const [winner, losers] = mockMerge.mock.calls[0]
+    expect([winner, ...losers].sort()).toEqual(['dev-a', 'dev-b'])
+    // Reloaded, so the survivor's canvas count comes from the server.
+    await waitFor(() => expect(mockPending).toHaveBeenCalledTimes(2))
   })
 
   it('does not load when closed', () => {

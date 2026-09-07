@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import InventoryDevice, ScanRun
+from app.services.device_merge import merge_devices, reconcile_duplicates
 from app.services.discovery_sources import add_source
 from app.services.fingerprint import fingerprint_ports, suggest_node_type
 from app.services.http_probe import probe_open_ports
@@ -643,10 +644,12 @@ async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
     for group in _group_by_shared_ip(list(rows)):
         if len(group) < 2:
             continue
-        _, dups = _collapse_targets(group)
-        for dup in dups:
-            await db.delete(dup)
-            deleted += 1
+        keep, dups = _collapse_targets(group)
+        if dups:
+            # Non-destructive, for the same reason as `process_host`: whatever
+            # drew the duplicate follows it into `keep`.
+            await merge_devices(db, keep, dups)
+            deleted += len(dups)
     if deleted:
         await db.commit()
     return deleted
@@ -720,8 +723,12 @@ async def process_host(
         # by earlier scans — except a second approved row, which keeps its
         # own canvas links (see `_collapse_targets`).
         keep, dups = _collapse_targets(existing_rows)
-        for dup in dups:
-            await db.delete(dup)
+        # Merge rather than delete: a duplicate row may be the one a canvas node
+        # or a rack mount points at, and SQLite runs with foreign keys off here
+        # so the declared `ON DELETE SET NULL` never fires. `merge_devices`
+        # re-points every reference onto `keep` and unions the facts first.
+        if dups:
+            await merge_devices(db, keep, dups)
         keep.ip = keep.ip or ip  # fill an IP a Proxmox import lacked
         keep.mac = norm_mac or keep.mac
         keep.hostname = host.get("hostname") or keep.hostname
@@ -856,6 +863,14 @@ async def run_scan(
                 await _process_host(host, discovery_source="mdns")
         else:
             mdns_task.cancel()
+
+        # A scan is where a row first learns its MAC, so it is also where two
+        # rows can first be proven to be one device — fold those together before
+        # reporting the run done.
+        merged = await reconcile_duplicates(db)
+        if merged:
+            await db.commit()
+            logger.info("Scan %s: merged %d duplicate inventory row(s)", run_id, merged)
 
         # Mark scan as done or cancelled
         run = await db.get(ScanRun, run_id)
