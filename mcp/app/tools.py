@@ -106,6 +106,21 @@ _ZONE_COLOR_FIELDS = {
 #
 # The node must already have the connection point — left/right default to none —
 # or the backend answers 422 rather than storing an edge the canvas cannot draw.
+# Presentation, mirroring the backend EdgeBase (backend/app/schemas/edges.py) and
+# the EdgeData types the canvas draws from (frontend/src/types/index.ts). Every one
+# is optional: an omitted field keeps the edge type's own preset.
+_EDGE_STYLE_FIELDS = {
+    "animated":     {"type": "string", "enum": ["none", "basic", "snake", "flow"], "description": "Line animation. 'basic' is the dashed march, 'snake' a travelling segment, 'flow' a continuous drift."},
+    "custom_color": {"type": "string", "description": "Line colour override, e.g. '#00d4ff'. Omit to use the edge type's colour."},
+    "path_style":   {"type": "string", "enum": ["bezier", "smooth"], "description": "How the line is routed between the two connection points."},
+    "line_style":   {"type": "string", "enum": ["solid", "dashed", "dotted"], "description": "How the line itself is stroked."},
+    "width_mult":   {"type": "number", "minimum": 1, "maximum": 4, "description": "Stroke-width multiplier (1-4x) on the edge type's base width."},
+    "marker_start": {"type": "string", "enum": ["none", "arrow", "arrow-open", "circle", "diamond", "square"], "description": "Marker drawn at the source end."},
+    "marker_end":   {"type": "string", "enum": ["none", "arrow", "arrow-open", "circle", "diamond", "square"], "description": "Marker drawn at the target end."},
+    "vlan_id":      {"type": "integer", "description": "VLAN tag carried by the link. Shown on the edge for a 'vlan' type."},
+    "speed":        {"type": "string", "description": "Link speed as it should read on the canvas, e.g. '10G' or '2.5 Gbps'."},
+}
+
 _EDGE_HANDLE_FIELDS = {
     "source_handle": {"type": "string", "description": "Connection point on the source node, e.g. 'bottom' or 'right-2'. The node must have it already — raise that side's *_handles first, or the call is rejected. Omit to let the server pick."},
     "target_handle": {"type": "string", "description": "Connection point on the target node, e.g. 'top' or 'left-3'. The node must have it already — raise that side's *_handles first, or the call is rejected. Omit to let the server pick."},
@@ -158,17 +173,19 @@ def _build_tools() -> list[Tool]:
                 "target": {"type": "string"},
                 "type":   {"type": "string", "enum": EDGE_TYPES, "default": "ethernet"},
                 "label":  {"type": "string"},
+                **_EDGE_STYLE_FIELDS,
                 **_EDGE_HANDLE_FIELDS,
                 **_DESIGN_ID_FIELD,
             },
         }),
-        Tool(name="update_edge", description="Update an existing link: its type, label, or which connection points it attaches to. Call get_canvas to discover edge ids.", inputSchema={
+        Tool(name="update_edge", description="Update an existing link: its type, label, styling (animation, colour, line/path style, width, endpoint markers), or which connection points it attaches to. Call get_canvas to discover edge ids.", inputSchema={
             "type": "object",
             "required": ["id"],
             "properties": {
                 "id":    {"type": "string", "description": "Edge id."},
                 "type":  {"type": "string", "enum": EDGE_TYPES},
                 "label": {"type": "string"},
+                **_EDGE_STYLE_FIELDS,
                 **_EDGE_HANDLE_FIELDS,
             },
         }),
