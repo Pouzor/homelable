@@ -103,9 +103,12 @@ _ZONE_COLOR_FIELDS = {
 # per-side handle IDs (see the *_handles fields above): 'bottom', 'bottom-2',
 # 'left-3', ... Omit both on create and the backend picks them from the two nodes'
 # relative positions (_auto_handles in backend/app/api/routes/edges.py).
+#
+# The node must already have the connection point — left/right default to none —
+# or the backend answers 422 rather than storing an edge the canvas cannot draw.
 _EDGE_HANDLE_FIELDS = {
-    "source_handle": {"type": "string", "description": "Connection point on the source node, e.g. 'bottom' or 'right-2'. Omit to let the server pick."},
-    "target_handle": {"type": "string", "description": "Connection point on the target node, e.g. 'top' or 'left-3'. Omit to let the server pick."},
+    "source_handle": {"type": "string", "description": "Connection point on the source node, e.g. 'bottom' or 'right-2'. The node must have it already — raise that side's *_handles first, or the call is rejected. Omit to let the server pick."},
+    "target_handle": {"type": "string", "description": "Connection point on the target node, e.g. 'top' or 'left-3'. The node must have it already — raise that side's *_handles first, or the call is rejected. Omit to let the server pick."},
 }
 
 # Optional design/canvas selector. The backend attaches nodes/edges to the first

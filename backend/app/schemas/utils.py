@@ -1,4 +1,5 @@
 import math
+import re
 
 
 def normalize_animated(v: object) -> str:
@@ -83,3 +84,29 @@ def handle_id(side: str, idx: int) -> str:
 def removed_handle_ids(side: str, old_count: int, new_count: int) -> set[str]:
     """The source handle IDs dropped when a side shrinks from old to new count."""
     return {handle_id(side, i) for i in range(new_count, old_count)}
+
+
+# A side handle ID, in either the source form ('left', 'left-3') or the
+# invisible target form the frontend renders alongside it ('left-t', 'left-3-t').
+_SIDE_HANDLE_RE = re.compile(r'^(top|bottom|left|right)(?:-(\d+))?(?:-t)?$')
+
+
+def parse_side_handle(handle: str) -> tuple[str, int] | None:
+    """Split a side handle ID into (side, slot index), or None when it isn't one.
+
+    A handle outside this vocabulary is left for its owner to interpret — the
+    'cluster-*' IDs a specialized node renderer draws are not per-side handles
+    and must not be validated against a side's count.
+
+    The numbered form is 2-based, because slot 0 keeps the bare side name: an
+    ID ending in '-0' or '-1' is therefore one the canvas never emits, and is
+    reported as slot -1 so that no count can satisfy it.
+    """
+    m = _SIDE_HANDLE_RE.match(handle)
+    if m is None:
+        return None
+    side, slot = m.group(1), m.group(2)
+    if slot is None:
+        return side, 0
+    idx = int(slot) - 1
+    return side, (idx if idx >= 1 else -1)
