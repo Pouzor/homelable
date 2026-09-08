@@ -119,6 +119,18 @@ async def test_save_canvas_round_trips_per_side_handles(client: AsyncClient, hea
     assert node["right_handles"] == 4
 
 
+async def test_save_canvas_clamps_per_side_handles(client: AsyncClient, headers: dict):
+    # Same 0..64 bound the create/update routes apply (#435): the renderer clamps
+    # at draw time, so a saved count above it would draw a node the row doesn't
+    # describe.
+    n1 = node_payload(label="Sw", type="switch", bottom_handles=5000, left_handles=-2)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1], "edges": [], "viewport": {"x": 0, "y": 0, "zoom": 1}}, headers=headers)
+
+    node = (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"][0]
+    assert node["bottom_handles"] == 64
+    assert node["left_handles"] == 0
+
+
 async def test_save_canvas_defaults_per_side_handles(client: AsyncClient, headers: dict):
     # Nodes saved without the new fields fall back to top/bottom=1, left/right=0.
     n1 = node_payload(label="Srv", type="server")

@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationInfo, field_validator
+
+from app.schemas.utils import clamp_handles
 
 
 class NodeBase(BaseModel):
@@ -38,6 +40,18 @@ class NodeBase(BaseModel):
     top_handles: int = 1
     left_handles: int = 0
     right_handles: int = 0
+
+    # Connection-point counts are clamped to 0..64 here rather than in the route:
+    # the frontend clamps them again at render (handleUtils.clampHandles), so an
+    # unclamped row would draw a different node than it stores. See #435 — the MCP
+    # write tools reach these fields without the canvas UI's own bounds.
+    @field_validator('bottom_handles', 'top_handles', 'left_handles', 'right_handles', mode='before')
+    @classmethod
+    def clamp_handle_count(cls, v: object, info: ValidationInfo) -> object:
+        if v is None:
+            return None
+        side = (info.field_name or '').removesuffix('_handles')
+        return clamp_handles(side, v)
 
 
 class NodeCreate(NodeBase):
@@ -84,6 +98,18 @@ class NodeUpdate(BaseModel):
     top_handles: int | None = None
     left_handles: int | None = None
     right_handles: int | None = None
+
+    # Connection-point counts are clamped to 0..64 here rather than in the route:
+    # the frontend clamps them again at render (handleUtils.clampHandles), so an
+    # unclamped row would draw a different node than it stores. See #435 — the MCP
+    # write tools reach these fields without the canvas UI's own bounds.
+    @field_validator('bottom_handles', 'top_handles', 'left_handles', 'right_handles', mode='before')
+    @classmethod
+    def clamp_handle_count(cls, v: object, info: ValidationInfo) -> object:
+        if v is None:
+            return None
+        side = (info.field_name or '').removesuffix('_handles')
+        return clamp_handles(side, v)
 
 
 class NodeResponse(NodeBase):

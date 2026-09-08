@@ -1,13 +1,20 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.database import get_db
-from app.db.models import Design, InventoryDevice, Node
+from app.db.models import Design, Edge, InventoryDevice, Node
 from app.schemas.nodes import NodeCreate, NodeResponse, NodeUpdate
+from app.schemas.utils import (
+    SIDES,
+    handle_count_field,
+    handle_id,
+    removed_handle_ids,
+    side_default,
+)
 from app.services.doc_links import unlink_documents
 from app.services.inventory_sync import (
     facts_from_payload,
@@ -20,6 +27,47 @@ from app.services.inventory_sync import (
 from app.services.node_dedupe import find_duplicate_node
 
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Connection-point helpers
+# ---------------------------------------------------------------------------
+
+
+async def _remap_shrunk_handles(db: AsyncSession, node: Node, sent: dict[str, Any]) -> None:
+    """Move this node's edges off the connection points a shrink just deleted.
+
+    The canvas store does the same remap client-side (canvasStore.updateNode), so
+    the UI never hits this; an API client — the MCP write tools — lowers a handle
+    count without it, and React Flow silently drops an edge whose handle no longer
+    exists. Removed handles fall back to the side's slot-0 ID, or to 'bottom' when
+    the side went to zero and has no slot 0 left.
+
+    Call before the new counts are written to the node.
+    """
+    fallbacks: dict[str, str] = {}
+    for side in SIDES:
+        field = handle_count_field(side)
+        new_count = sent.get(field)
+        if new_count is None:
+            continue
+        raw_old = getattr(node, field, None)
+        old_count = raw_old if isinstance(raw_old, int) else side_default(side)
+        if new_count >= old_count:
+            continue
+        fallback = 'bottom' if new_count == 0 else handle_id(side, 0)
+        for hid in removed_handle_ids(side, old_count, new_count):
+            fallbacks[hid] = fallback
+
+    if not fallbacks:
+        return
+
+    result = await db.execute(select(Edge).where(or_(Edge.source == node.id, Edge.target == node.id)))
+    for edge in result.scalars().all():
+        if edge.source == node.id and edge.source_handle in fallbacks:
+            edge.source_handle = fallbacks[edge.source_handle]
+        if edge.target == node.id and edge.target_handle in fallbacks:
+            edge.target_handle = fallbacks[edge.target_handle]
+
 
 # ---------------------------------------------------------------------------
 # Auto-positioning helpers
@@ -156,6 +204,8 @@ async def update_node(
     # Dropped rather than rejected so the rest of the edit still lands.
     if sent.get("parent_id") == node_id:
         sent.pop("parent_id")
+    # Before the new counts land: the old ones are what says which handles go away.
+    await _remap_shrunk_handles(db, node, sent)
     for field, value in node_columns(sent).items():
         setattr(node, field, value)
     # The user edited the device, not just its drawing: push the facts down.

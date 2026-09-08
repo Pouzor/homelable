@@ -487,3 +487,184 @@ async def test_a_device_node_never_keeps_a_description(client: AsyncClient, head
     )
     assert res.json()["description"] is None
     assert res.json()["notes"] == "Backs up nightly."
+
+
+# ---------------------------------------------------------------------------
+# Connection points (#435)
+# ---------------------------------------------------------------------------
+# Handle counts became writable over the MCP, which reaches these fields without
+# the canvas UI's own bounds and edge bookkeeping. Both now live server-side.
+
+
+async def test_handle_count_is_clamped_on_create(client: AsyncClient, headers: dict):
+    # The renderer clamps to 0..64 anyway (handleUtils.clampHandles), so an
+    # unclamped row would draw a different node than it stores.
+    res = await client.post(
+        "/api/v1/nodes",
+        json={"type": "switch", "label": "sw1", "bottom_handles": 5000, "left_handles": -3},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    assert res.json()["bottom_handles"] == 64
+    assert res.json()["left_handles"] == 0
+
+
+async def test_handle_count_is_clamped_on_update(client: AsyncClient, headers: dict):
+    node_id = (
+        await client.post("/api/v1/nodes", json={"type": "switch", "label": "sw1"}, headers=headers)
+    ).json()["id"]
+
+    res = await client.patch(f"/api/v1/nodes/{node_id}", json={"right_handles": 999}, headers=headers)
+
+    assert res.status_code == 200
+    assert res.json()["right_handles"] == 64
+
+
+async def test_a_handle_count_of_zero_is_honoured(client: AsyncClient, headers: dict):
+    # 0 is a real value, not a missing one: a side can have no connection point.
+    node_id = (
+        await client.post("/api/v1/nodes", json={"type": "switch", "label": "sw1"}, headers=headers)
+    ).json()["id"]
+
+    res = await client.patch(f"/api/v1/nodes/{node_id}", json={"top_handles": 0}, headers=headers)
+
+    assert res.json()["top_handles"] == 0
+
+
+async def _edge_by_id(client: AsyncClient, headers: dict, edge_id: str) -> dict:
+    edges = (await client.get("/api/v1/edges", headers=headers)).json()
+    return next(e for e in edges if e["id"] == edge_id)
+
+
+async def test_shrinking_a_side_moves_its_edges_to_slot_zero(client: AsyncClient, headers: dict):
+    # Regression: React Flow silently drops an edge whose handle no longer
+    # exists, so the link vanishes from the canvas with no error.
+    src = (
+        await client.post(
+            "/api/v1/nodes", json={"type": "switch", "label": "sw1", "bottom_handles": 4}, headers=headers
+        )
+    ).json()["id"]
+    tgt = (await client.post("/api/v1/nodes", json={"type": "nas", "label": "nas1"}, headers=headers)).json()["id"]
+    edge_id = (
+        await client.post(
+            "/api/v1/edges",
+            json={"source": src, "target": tgt, "source_handle": "bottom-4", "target_handle": "top"},
+            headers=headers,
+        )
+    ).json()["id"]
+
+    await client.patch(f"/api/v1/nodes/{src}", json={"bottom_handles": 2}, headers=headers)
+
+    edge = await _edge_by_id(client, headers, edge_id)
+    assert edge["source_handle"] == "bottom"
+    assert edge["target_handle"] == "top"
+
+
+async def test_shrinking_a_side_leaves_the_surviving_handles_alone(client: AsyncClient, headers: dict):
+    src = (
+        await client.post(
+            "/api/v1/nodes", json={"type": "switch", "label": "sw1", "bottom_handles": 4}, headers=headers
+        )
+    ).json()["id"]
+    tgt = (await client.post("/api/v1/nodes", json={"type": "nas", "label": "nas1"}, headers=headers)).json()["id"]
+    edge_id = (
+        await client.post(
+            "/api/v1/edges",
+            json={"source": src, "target": tgt, "source_handle": "bottom-2", "target_handle": "top"},
+            headers=headers,
+        )
+    ).json()["id"]
+
+    await client.patch(f"/api/v1/nodes/{src}", json={"bottom_handles": 2}, headers=headers)
+
+    assert (await _edge_by_id(client, headers, edge_id))["source_handle"] == "bottom-2"
+
+
+async def test_a_side_dropped_to_zero_falls_back_to_bottom(client: AsyncClient, headers: dict):
+    # Slot 0 goes away with the side, so there is nothing on it to fall back to.
+    src = (
+        await client.post(
+            "/api/v1/nodes", json={"type": "switch", "label": "sw1", "right_handles": 2}, headers=headers
+        )
+    ).json()["id"]
+    tgt = (await client.post("/api/v1/nodes", json={"type": "nas", "label": "nas1"}, headers=headers)).json()["id"]
+    edge_id = (
+        await client.post(
+            "/api/v1/edges",
+            json={"source": src, "target": tgt, "source_handle": "right-2", "target_handle": "top"},
+            headers=headers,
+        )
+    ).json()["id"]
+
+    await client.patch(f"/api/v1/nodes/{src}", json={"right_handles": 0}, headers=headers)
+
+    assert (await _edge_by_id(client, headers, edge_id))["source_handle"] == "bottom"
+
+
+async def test_the_target_end_is_remapped_too(client: AsyncClient, headers: dict):
+    src = (await client.post("/api/v1/nodes", json={"type": "router", "label": "r1"}, headers=headers)).json()["id"]
+    tgt = (
+        await client.post(
+            "/api/v1/nodes", json={"type": "switch", "label": "sw1", "top_handles": 3}, headers=headers
+        )
+    ).json()["id"]
+    edge_id = (
+        await client.post(
+            "/api/v1/edges",
+            json={"source": src, "target": tgt, "source_handle": "bottom", "target_handle": "top-3"},
+            headers=headers,
+        )
+    ).json()["id"]
+
+    await client.patch(f"/api/v1/nodes/{tgt}", json={"top_handles": 1}, headers=headers)
+
+    edge = await _edge_by_id(client, headers, edge_id)
+    assert edge["target_handle"] == "top"
+    assert edge["source_handle"] == "bottom"
+
+
+async def test_growing_a_side_touches_no_edge(client: AsyncClient, headers: dict):
+    src = (
+        await client.post(
+            "/api/v1/nodes", json={"type": "switch", "label": "sw1", "bottom_handles": 2}, headers=headers
+        )
+    ).json()["id"]
+    tgt = (await client.post("/api/v1/nodes", json={"type": "nas", "label": "nas1"}, headers=headers)).json()["id"]
+    edge_id = (
+        await client.post(
+            "/api/v1/edges",
+            json={"source": src, "target": tgt, "source_handle": "bottom-2", "target_handle": "top"},
+            headers=headers,
+        )
+    ).json()["id"]
+
+    await client.patch(f"/api/v1/nodes/{src}", json={"bottom_handles": 8}, headers=headers)
+
+    assert (await _edge_by_id(client, headers, edge_id))["source_handle"] == "bottom-2"
+
+
+async def test_another_nodes_edges_are_not_remapped(client: AsyncClient, headers: dict):
+    # The shrink is scoped to the node being edited; an unrelated link that
+    # happens to sit on the same handle ID must survive untouched.
+    shrunk = (
+        await client.post(
+            "/api/v1/nodes", json={"type": "switch", "label": "sw1", "bottom_handles": 4}, headers=headers
+        )
+    ).json()["id"]
+    other = (
+        await client.post(
+            "/api/v1/nodes", json={"type": "switch", "label": "sw2", "bottom_handles": 4}, headers=headers
+        )
+    ).json()["id"]
+    tgt = (await client.post("/api/v1/nodes", json={"type": "nas", "label": "nas1"}, headers=headers)).json()["id"]
+    edge_id = (
+        await client.post(
+            "/api/v1/edges",
+            json={"source": other, "target": tgt, "source_handle": "bottom-4", "target_handle": "top"},
+            headers=headers,
+        )
+    ).json()["id"]
+
+    await client.patch(f"/api/v1/nodes/{shrunk}", json={"bottom_handles": 1}, headers=headers)
+
+    assert (await _edge_by_id(client, headers, edge_id))["source_handle"] == "bottom-4"

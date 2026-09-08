@@ -62,6 +62,15 @@ _NODE_FIELDS = {
     # (`merge_properties` / `apply_view` in backend/app/services/inventory_sync.py).
     # A property with no `key` collapses with every other keyless one — send two
     # and the node draws one.
+    # Connection points. The count is per side; the IDs an edge references are
+    # derived from it — slot 0 is the bare side name, slot N >= 1 is
+    # '{side}-{N + 1}' (frontend/src/utils/handleUtils.ts). Lowering a count
+    # moves the edges that used the dropped handles back to the side's slot 0.
+    "top_handles":    {"type": "integer", "minimum": 0, "maximum": 64, "description": "Connection points on the top side (default 1). Their IDs are 'top', 'top-2', 'top-3', ..."},
+    "bottom_handles": {"type": "integer", "minimum": 0, "maximum": 64, "description": "Connection points on the bottom side (default 1). Their IDs are 'bottom', 'bottom-2', 'bottom-3', ..."},
+    "left_handles":   {"type": "integer", "minimum": 0, "maximum": 64, "description": "Connection points on the left side (default 0). Their IDs are 'left', 'left-2', 'left-3', ..."},
+    "right_handles":  {"type": "integer", "minimum": 0, "maximum": 64, "description": "Connection points on the right side (default 0). Their IDs are 'right', 'right-2', 'right-3', ..."},
+    "show_port_numbers": {"type": "boolean", "description": "Number each connection point on the node card."},
     "properties":    {
         "type": "array",
         "description": "Key/value metadata shown on the node. `key` is the identity: two properties sharing one are the same property.",
@@ -88,6 +97,15 @@ _ZONE_COLOR_FIELDS = {
     "border_style": {"type": "string", "enum": ["solid", "dashed", "dotted"]},
     "border_width": {"type": "number"},
     "text_color":   {"type": "string", "description": "Label colour, e.g. '#e6edf3'."},
+}
+
+# Which connection point each end of an edge attaches to. The IDs are the node's
+# per-side handle IDs (see the *_handles fields above): 'bottom', 'bottom-2',
+# 'left-3', ... Omit both on create and the backend picks them from the two nodes'
+# relative positions (_auto_handles in backend/app/api/routes/edges.py).
+_EDGE_HANDLE_FIELDS = {
+    "source_handle": {"type": "string", "description": "Connection point on the source node, e.g. 'bottom' or 'right-2'. Omit to let the server pick."},
+    "target_handle": {"type": "string", "description": "Connection point on the target node, e.g. 'top' or 'left-3'. Omit to let the server pick."},
 }
 
 # Optional design/canvas selector. The backend attaches nodes/edges to the first
@@ -129,7 +147,7 @@ def _build_tools() -> list[Tool]:
             "required": ["id"],
             "properties": {"id": {"type": "string"}},
         }),
-        Tool(name="create_edge", description="Create a network link between two nodes", inputSchema={
+        Tool(name="create_edge", description="Create a network link between two nodes. Pass source_handle/target_handle to choose which connection points it attaches to; omit them and the server picks from the nodes' relative positions.", inputSchema={
             "type": "object",
             "required": ["source", "target"],
             "properties": {
@@ -137,8 +155,23 @@ def _build_tools() -> list[Tool]:
                 "target": {"type": "string"},
                 "type":   {"type": "string", "enum": EDGE_TYPES, "default": "ethernet"},
                 "label":  {"type": "string"},
+                **_EDGE_HANDLE_FIELDS,
                 **_DESIGN_ID_FIELD,
             },
+        }),
+        Tool(name="update_edge", description="Update an existing link: its type, label, or which connection points it attaches to. Call get_canvas to discover edge ids.", inputSchema={
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+                "id":    {"type": "string", "description": "Edge id."},
+                "type":  {"type": "string", "enum": EDGE_TYPES},
+                "label": {"type": "string"},
+                **_EDGE_HANDLE_FIELDS,
+            },
+        }),
+        Tool(name="list_edges", description="List every link with its full detail — type, label, waypoints, and the source_handle/target_handle each end attaches to. get_canvas slims edges down to id/source/target/type/label; use this when the connection points or styling matter.", inputSchema={
+            "type": "object",
+            "properties": {},
         }),
         Tool(name="delete_edge", description="Delete a network link", inputSchema={
             "type": "object",
@@ -370,6 +403,13 @@ async def _dispatch(name: str, args: dict) -> dict:
 
     if name == "create_edge":
         return await backend.post("/api/v1/edges", args)
+
+    if name == "update_edge":
+        edge_id = args.pop("id")
+        return await backend.patch(f"/api/v1/edges/{edge_id}", args)
+
+    if name == "list_edges":
+        return await backend.get("/api/v1/edges")
 
     if name == "delete_edge":
         return await backend.delete(f"/api/v1/edges/{args['id']}")
