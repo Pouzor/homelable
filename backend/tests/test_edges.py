@@ -330,3 +330,154 @@ async def test_create_edge_child_node_abs_y_resolved_through_parent(client: Asyn
     data = res.json()
     assert data["source_handle"] == "bottom"
     assert data["target_handle"] == "top-t"
+
+
+# ---------------------------------------------------------------------------
+# Connection-point guards (#435)
+# ---------------------------------------------------------------------------
+# An edge whose handle ID resolves to no element is dropped by React Flow: it
+# persists in the DB and is simply invisible. Handles became settable over the
+# MCP, so the endpoints now check them.
+
+
+async def test_create_edge_rejects_a_handle_the_node_does_not_have(client: AsyncClient, headers: dict, two_nodes):
+    src, tgt = two_nodes
+    res = await client.post(
+        "/api/v1/edges",
+        json={"source": src, "target": tgt, "source_handle": "right-3", "target_handle": "top"},
+        headers=headers,
+    )
+    assert res.status_code == 422
+    assert "right-3" in res.json()["detail"]
+    assert (await client.get("/api/v1/edges", headers=headers)).json() == []
+
+
+async def test_create_edge_rejects_a_side_the_node_opted_out_of(client: AsyncClient, headers: dict):
+    # left/right default to zero connection points, so even slot 0 is absent.
+    src = (await client.post("/api/v1/nodes", json={"type": "router", "label": "R1"}, headers=headers)).json()["id"]
+    tgt = (await client.post("/api/v1/nodes", json={"type": "nas", "label": "N1"}, headers=headers)).json()["id"]
+
+    res = await client.post(
+        "/api/v1/edges", json={"source": src, "target": tgt, "source_handle": "left"}, headers=headers
+    )
+
+    assert res.status_code == 422
+
+
+async def test_create_edge_accepts_a_handle_the_node_opted_into(client: AsyncClient, headers: dict):
+    src = (
+        await client.post(
+            "/api/v1/nodes", json={"type": "proxmox", "label": "pve1", "right_handles": 1}, headers=headers
+        )
+    ).json()["id"]
+    tgt = (
+        await client.post(
+            "/api/v1/nodes", json={"type": "proxmox", "label": "pve2", "left_handles": 1}, headers=headers
+        )
+    ).json()["id"]
+
+    res = await client.post(
+        "/api/v1/edges",
+        json={"source": src, "target": tgt, "type": "cluster", "source_handle": "right", "target_handle": "left"},
+        headers=headers,
+    )
+
+    assert res.status_code == 201
+    assert res.json()["source_handle"] == "right"
+
+
+async def test_create_edge_accepts_the_target_form_of_a_handle(client: AsyncClient, headers: dict):
+    # '<side>-t' is the invisible target twin the canvas renders beside slot 0;
+    # the auto-assignment stores exactly that, so it must validate.
+    src = (await client.post("/api/v1/nodes", json={"type": "router", "label": "R1"}, headers=headers)).json()["id"]
+    tgt = (
+        await client.post("/api/v1/nodes", json={"type": "nas", "label": "N1", "top_handles": 2}, headers=headers)
+    ).json()["id"]
+
+    res = await client.post(
+        "/api/v1/edges",
+        json={"source": src, "target": tgt, "source_handle": "bottom", "target_handle": "top-2-t"},
+        headers=headers,
+    )
+
+    assert res.status_code == 201
+    assert res.json()["target_handle"] == "top-2-t"
+
+
+async def test_create_edge_leaves_a_foreign_handle_namespace_alone(client: AsyncClient, headers: dict, two_nodes):
+    # 'cluster-right' is not a per-side handle; no count here describes it, so
+    # the guard must not judge it.
+    src, tgt = two_nodes
+    res = await client.post(
+        "/api/v1/edges",
+        json={"source": src, "target": tgt, "type": "cluster", "source_handle": "cluster-right"},
+        headers=headers,
+    )
+    assert res.status_code == 201
+
+
+async def test_update_edge_rejects_a_handle_the_node_does_not_have(client: AsyncClient, headers: dict, two_nodes):
+    src, tgt = two_nodes
+    edge_id = (
+        await client.post("/api/v1/edges", json={"source": src, "target": tgt}, headers=headers)
+    ).json()["id"]
+
+    res = await client.patch(f"/api/v1/edges/{edge_id}", json={"source_handle": "bottom-9"}, headers=headers)
+
+    assert res.status_code == 422
+    edge = (await client.get("/api/v1/edges", headers=headers)).json()[0]
+    assert edge["source_handle"] == "bottom"
+
+
+async def test_update_edge_accepts_a_handle_the_node_has(client: AsyncClient, headers: dict):
+    src = (
+        await client.post(
+            "/api/v1/nodes", json={"type": "switch", "label": "sw1", "bottom_handles": 4}, headers=headers
+        )
+    ).json()["id"]
+    tgt = (await client.post("/api/v1/nodes", json={"type": "nas", "label": "N1"}, headers=headers)).json()["id"]
+    edge_id = (
+        await client.post("/api/v1/edges", json={"source": src, "target": tgt}, headers=headers)
+    ).json()["id"]
+
+    res = await client.patch(f"/api/v1/edges/{edge_id}", json={"source_handle": "bottom-4"}, headers=headers)
+
+    assert res.status_code == 200
+    assert res.json()["source_handle"] == "bottom-4"
+
+
+async def test_auto_assignment_avoids_a_side_with_no_connection_point(client: AsyncClient, headers: dict):
+    # The caller supplied no handle, so the server corrects its own pick rather
+    # than raising: bottom is gone, and the node's remaining side is used.
+    src = (
+        await client.post(
+            "/api/v1/nodes",
+            json={"type": "switch", "label": "sw1", "bottom_handles": 0, "top_handles": 0, "right_handles": 2},
+            headers=headers,
+        )
+    ).json()["id"]
+    tgt = (await client.post("/api/v1/nodes", json={"type": "nas", "label": "N1"}, headers=headers)).json()["id"]
+
+    res = await client.post("/api/v1/edges", json={"source": src, "target": tgt}, headers=headers)
+
+    assert res.status_code == 201
+    assert res.json()["source_handle"] == "right"
+    assert res.json()["target_handle"] == "top-t"
+
+
+async def test_auto_assignment_keeps_its_pick_when_the_node_has_nothing(client: AsyncClient, headers: dict):
+    # Every side is empty: there is no better handle to reach for, and refusing
+    # the edge would lose more than it saves.
+    src = (
+        await client.post(
+            "/api/v1/nodes",
+            json={"type": "switch", "label": "sw1", "top_handles": 0, "bottom_handles": 0},
+            headers=headers,
+        )
+    ).json()["id"]
+    tgt = (await client.post("/api/v1/nodes", json={"type": "nas", "label": "N1"}, headers=headers)).json()["id"]
+
+    res = await client.post("/api/v1/edges", json={"source": src, "target": tgt}, headers=headers)
+
+    assert res.status_code == 201
+    assert res.json()["source_handle"] == "bottom"
