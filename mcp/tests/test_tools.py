@@ -688,3 +688,78 @@ def test_update_node_documents_that_status_is_observed_not_set():
     tool = next(t for t in TOOLS if t.name == "update_node")
     description = tool.inputSchema["properties"]["status"]["description"]
     assert "status checker" in description and "unknown" in description
+
+
+# ---------------------------------------------------------------------------
+# Connection points (#435)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("tool_name", ["create_node", "update_node"])
+def test_node_schemas_expose_the_handle_counts(tool_name):
+    # They were readable through get_node but not settable — the whole of #435.
+    props = _tool_schema(tool_name)
+    for side in ("top", "bottom", "left", "right"):
+        field = f"{side}_handles"
+        assert field in props, f"{tool_name} schema missing {field}"
+        assert props[field]["minimum"] == 0
+        assert props[field]["maximum"] == 64
+    assert "show_port_numbers" in props
+
+
+def test_edge_schemas_expose_the_connection_points():
+    for tool_name in ("create_edge", "update_edge"):
+        props = _tool_schema(tool_name)
+        assert "source_handle" in props, f"{tool_name} schema missing source_handle"
+        assert "target_handle" in props, f"{tool_name} schema missing target_handle"
+
+
+def test_update_edge_schema_cannot_repoint_or_move_an_edge():
+    # EdgeUpdate carries neither source/target nor design_id: an edge is deleted
+    # and recreated to change what it connects, never patched.
+    props = _tool_schema("update_edge")
+    assert props.keys() >= {"id"}
+    for absent in ("source", "target", "design_id"):
+        assert absent not in props
+
+
+@pytest.mark.anyio
+async def test_update_node_forwards_handle_counts(mock_backend):
+    await _dispatch("update_node", {"id": "42", "left_handles": 3, "right_handles": 0})
+    mock_backend.patch.assert_called_once_with(
+        "/api/v1/nodes/42", {"left_handles": 3, "right_handles": 0}
+    )
+
+
+@pytest.mark.anyio
+async def test_create_node_forwards_handle_counts(mock_backend):
+    args = {"type": "switch", "label": "sw1", "bottom_handles": 8, "show_port_numbers": True}
+    await _dispatch("create_node", dict(args))
+    mock_backend.post.assert_called_once_with("/api/v1/nodes", args)
+
+
+@pytest.mark.anyio
+async def test_create_edge_forwards_explicit_handles(mock_backend):
+    args = {"source": "1", "target": "2", "source_handle": "bottom-3", "target_handle": "left"}
+    await _dispatch("create_edge", dict(args))
+    mock_backend.post.assert_called_once_with("/api/v1/edges", args)
+
+
+@pytest.mark.anyio
+async def test_update_edge_patches_by_id(mock_backend):
+    await _dispatch("update_edge", {"id": "e7", "source_handle": "right-2", "label": "uplink"})
+    mock_backend.patch.assert_called_once_with(
+        "/api/v1/edges/e7", {"source_handle": "right-2", "label": "uplink"}
+    )
+
+
+@pytest.mark.anyio
+async def test_list_edges_returns_the_unslimmed_edges(mock_backend):
+    # get_canvas slims source_handle/target_handle away; this is how they're read.
+    edge = {"id": "e1", "source": "1", "target": "2", "source_handle": "bottom-2", "target_handle": "top"}
+    mock_backend.get = AsyncMock(return_value=[edge])
+
+    result = await _dispatch("list_edges", {})
+
+    mock_backend.get.assert_called_once_with("/api/v1/edges")
+    assert result == [edge]

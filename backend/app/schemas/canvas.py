@@ -1,10 +1,10 @@
 from typing import Any
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ValidationInfo, field_validator, model_validator
 
 from app.schemas.edges import EdgeResponse
 from app.schemas.nodes import NodeResponse
-from app.schemas.utils import normalize_animated, normalize_marker
+from app.schemas.utils import clamp_handles, normalize_animated, normalize_marker
 
 
 class NodeSave(BaseModel):
@@ -53,6 +53,16 @@ class NodeSave(BaseModel):
     right_handles: int = 0
     pos_x: float = 0
     pos_y: float = 0
+
+    # Same 0..64 clamp the create/update schemas apply, so a full-canvas save
+    # cannot store a count the renderer would silently narrow.
+    @field_validator('bottom_handles', 'top_handles', 'left_handles', 'right_handles', mode='before')
+    @classmethod
+    def clamp_handle_count(cls, v: object, info: ValidationInfo) -> object:
+        if v is None:
+            return None
+        side = (info.field_name or '').removesuffix('_handles')
+        return clamp_handles(side, v)
 
     @model_validator(mode="after")
     def drop_self_parent(self) -> "NodeSave":
