@@ -763,3 +763,45 @@ async def test_list_edges_returns_the_unslimmed_edges(mock_backend):
 
     mock_backend.get.assert_called_once_with("/api/v1/edges")
     assert result == [edge]
+
+
+def test_edge_schemas_expose_the_styling_fields():
+    # The backend has always accepted these; only the canvas UI could set them.
+    for tool_name in ("create_edge", "update_edge"):
+        props = _tool_schema(tool_name)
+        for field in ("animated", "custom_color", "path_style", "line_style",
+                      "width_mult", "marker_start", "marker_end", "vlan_id", "speed"):
+            assert field in props, f"{tool_name} schema missing {field}"
+
+
+def test_edge_style_enums_match_what_the_backend_normalizes():
+    # normalize_animated / normalize_marker (backend/app/schemas/utils.py) coerce
+    # anything outside these sets to 'none', so an advertised value that isn't
+    # there would silently do nothing.
+    props = _tool_schema("create_edge")
+    assert set(props["animated"]["enum"]) == {"none", "basic", "snake", "flow"}
+    markers = {"none", "arrow", "arrow-open", "circle", "diamond", "square"}
+    assert set(props["marker_start"]["enum"]) == markers
+    assert set(props["marker_end"]["enum"]) == markers
+    assert set(props["path_style"]["enum"]) == {"bezier", "smooth"}
+    assert set(props["line_style"]["enum"]) == {"solid", "dashed", "dotted"}
+    assert (props["width_mult"]["minimum"], props["width_mult"]["maximum"]) == (1, 4)
+
+
+@pytest.mark.anyio
+async def test_create_edge_forwards_the_styling_fields(mock_backend):
+    args = {
+        "source": "1", "target": "2", "type": "wifi",
+        "animated": "basic", "custom_color": "#00d4ff", "line_style": "dashed",
+        "width_mult": 2, "marker_end": "arrow", "vlan_id": 20, "speed": "10G",
+    }
+    await _dispatch("create_edge", dict(args))
+    mock_backend.post.assert_called_once_with("/api/v1/edges", args)
+
+
+@pytest.mark.anyio
+async def test_update_edge_forwards_the_styling_fields(mock_backend):
+    await _dispatch("update_edge", {"id": "e7", "animated": "flow", "path_style": "smooth"})
+    mock_backend.patch.assert_called_once_with(
+        "/api/v1/edges/e7", {"animated": "flow", "path_style": "smooth"}
+    )
