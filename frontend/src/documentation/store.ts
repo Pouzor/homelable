@@ -387,7 +387,9 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   setTags: async (tags) => {
     const { openDoc } = get()
     if (!openDoc) return false
-    const body = withTags(openDoc.body, tags)
+    const draft = readDraft(openDoc.id)
+    const baseBody = (draft && draft.base === openDoc.updated_at) ? draft.body : openDoc.body
+    const body = withTags(baseBody, tags)
     try {
       const { data } = await documentsApi.update(openDoc.id, { body })
       set((state) => ({
@@ -558,26 +560,34 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   clearSearch: () => set({ search: null }),
 
   setGroupBy: (groupBy) => {
-    set({ groupBy })
-    writeUi({ ...readUi(), groupBy })
+    set((s) => {
+      writeUi({ groupBy, expanded: s.expanded, treeWidth: s.treeWidth, lastDocId: readUi().lastDocId })
+      return { groupBy }
+    })
   },
 
   toggleExpanded: (key) => {
-    const expanded = get().expanded.includes(key)
-      ? get().expanded.filter((k) => k !== key)
-      : [...get().expanded, key]
-    set({ expanded })
-    writeUi({ ...readUi(), expanded })
+    set((s) => {
+      const expanded = s.expanded.includes(key)
+        ? s.expanded.filter((k) => k !== key)
+        : [...s.expanded, key]
+      writeUi({ groupBy: s.groupBy, expanded, treeWidth: s.treeWidth, lastDocId: readUi().lastDocId })
+      return { expanded }
+    })
   },
 
   setExpanded: (keys) => {
-    set({ expanded: keys })
-    writeUi({ ...readUi(), expanded: keys })
+    set((s) => {
+      writeUi({ groupBy: s.groupBy, expanded: keys, treeWidth: s.treeWidth, lastDocId: readUi().lastDocId })
+      return { expanded: keys }
+    })
   },
 
   setTreeWidth: (treeWidth) => {
-    set({ treeWidth })
-    writeUi({ ...readUi(), treeWidth })
+    set((s) => {
+      writeUi({ groupBy: s.groupBy, expanded: s.expanded, treeWidth, lastDocId: readUi().lastDocId })
+      return { treeWidth }
+    })
   },
 
   setFilter: (filter) => set({ filter }),
