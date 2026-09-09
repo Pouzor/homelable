@@ -262,6 +262,8 @@ async def merge_devices(
     db: AsyncSession,
     winner: InventoryDevice,
     losers: list[InventoryDevice],
+    *,
+    dedupe_nodes: bool = True,
 ) -> dict[str, Any]:
     """Fold ``losers`` into ``winner``. Does not commit — the caller owns that.
 
@@ -286,7 +288,7 @@ async def merge_devices(
     loser_ids = [row.id for row in losers]
     # Oldest first: where two losers both fill the same gap, the older sighting
     # is the one that has survived longest without being contradicted.
-    for loser in sorted(losers, key=lambda d: (d.discovered_at, d.id)):
+    for loser in sorted(losers, key=lambda d: (d.discovered_at or datetime.min, d.id)):
         for field in _FILL_SCALARS:
             if _blank(getattr(winner, field, None)):
                 value = getattr(loser, field, None)
@@ -335,9 +337,11 @@ async def merge_devices(
         await _rewrite_links(db, winner.ieee_address, loser_ieees)
 
     # Two nodes on one canvas may now draw the survivor — that is exactly the
-    # same-design duplicate the node repair collapses.
-    await dedupe_nodes_by_device(db)
-    await db.flush()
+    # same-design duplicate the node repair collapses. Batch callers set
+    # dedupe_nodes=False and run dedupe_nodes_by_device once after all merges.
+    if dedupe_nodes:
+        await dedupe_nodes_by_device(db)
+        await db.flush()
 
     logger.info(
         "Inventory merge: %d row(s) folded into %s (%s)",
@@ -378,7 +382,7 @@ def _pick_winner(group: list[InventoryDevice]) -> InventoryDevice:
         key=lambda d: (
             0 if d.ieee_address else 1,
             0 if d.status == "approved" else 1,
-            d.discovered_at,
+            d.discovered_at or datetime.min,
             d.id,
         ),
     )[0]
@@ -442,6 +446,11 @@ async def reconcile_duplicates(db: AsyncSession) -> int:
     merged = 0
     for group in _auto_groups(list(rows)):
         winner = _pick_winner(group)
-        result = await merge_devices(db, winner, [row for row in group if row is not winner])
+        result = await merge_devices(
+            db, winner, [row for row in group if row is not winner], dedupe_nodes=False
+        )
         merged += int(result["merged"])
+    if merged:
+        await dedupe_nodes_by_device(db)
+        await db.flush()
     return merged
