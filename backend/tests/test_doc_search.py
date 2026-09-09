@@ -170,3 +170,38 @@ def test_excerpt_centres_on_the_match():
 
 def test_excerpt_falls_back_to_the_head_when_there_is_no_match():
     assert doc_search._excerpt("short body", "absent") == "short body"
+
+
+# ── Regression: FTS5 probe failure must not cache False (#448) ──────────────
+
+
+async def test_fts_probe_failure_does_not_permanently_disable_search(db_session: AsyncSession):
+    """A transient OperationalError must not set _available=False for the session.
+
+    After the probe fails (FTS table dropped), reset_availability_cache() clears
+    the flag and the next call re-probes. Before the fix the second call would
+    return False because the failure was cached.
+    """
+    docs = await _seed(db_session)
+
+    # Simulate a transient unavailability: drop the table, probe (returns False),
+    # then restore it.
+    await db_session.execute(text("DROP TABLE documents_fts"))
+    doc_search.reset_availability_cache()
+    result = await doc_search.fts_available(db_session)
+    assert result is False
+
+    # After the fix, _available must still be None (not cached False), so the
+    # next probe after FTS5 comes back wins.
+    assert doc_search._available is None
+
+    # Restore the table and re-index — probe should now succeed.
+    await db_session.execute(text(
+        "CREATE VIRTUAL TABLE documents_fts USING fts5(doc_id, title, tags, body)"
+    ))
+    for doc in docs:
+        await doc_search.index_document(db_session, doc)
+    await db_session.flush()
+
+    result = await doc_search.fts_available(db_session)
+    assert result is True

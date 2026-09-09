@@ -211,6 +211,40 @@ async def test_a_device_document_records_its_zone_and_neighbours(client: AsyncCl
     assert "`switch-core`" in doc["body"]
 
 
+async def test_text_annotation_node_is_not_used_as_zone_label(client: AsyncClient, headers: dict):
+    """A device parented in a text annotation must not inherit the annotation as its zone.
+
+    Regression for #446: _FURNITURE_TYPES included 'text', causing arbitrary
+    annotation content to appear as zone_label in the generated device document.
+    """
+    design_id = await _design(client, headers)
+    device = await _device(client, headers)
+    text_node = await client.post(
+        "/api/v1/nodes",
+        json={"type": "text", "label": "⚠ maintenance zone", "design_id": design_id, "pos_x": 0, "pos_y": 0},
+        headers=headers,
+    )
+    text_id = text_node.json()["id"]
+    await client.post(
+        "/api/v1/nodes",
+        json={
+            "type": "nas",
+            "label": "nas-01",
+            "design_id": design_id,
+            "ip": "192.168.1.20",
+            "hostname": "nas-01.lan",
+            "parent_id": text_id,
+            "pos_x": 0,
+            "pos_y": 0,
+        },
+        headers=headers,
+    )
+
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    assert "maintenance zone" not in doc["body"]
+    assert "Zone" not in doc["body"]
+
+
 # ── blocks ──────────────────────────────────────────────────────────────────
 
 
