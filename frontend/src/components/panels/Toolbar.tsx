@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Save, LayoutDashboard, Download, Palette, Undo2, Redo2, HelpCircle, Table2, FileDown, Upload, Eye } from 'lucide-react'
+import { Save, LayoutDashboard, Download, Palette, Undo2, Redo2, HelpCircle, FileDown, Upload, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/ui/Logo'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -17,13 +17,12 @@ interface ToolbarProps {
   onUndo: () => void
   onRedo: () => void
   onShortcuts: () => void
-  onExportMd: () => void
   onExportYaml: () => void
   onImportYaml: (content: string) => void
   onViewOnly: () => void
 }
 
-export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo, onRedo, onShortcuts, onExportMd, onExportYaml, onImportYaml, onViewOnly }: ToolbarProps) {
+export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo, onRedo, onShortcuts, onExportYaml, onImportYaml, onViewOnly }: ToolbarProps) {
   const { hasUnsavedChanges: canvasDirty, past, future } = useCanvasStore()
   const isRack = useDesignStore((s) => s.activeDesignType) === 'rack'
   const rackDirty = useRackStore((s) => s.hasUnsavedChanges)
@@ -98,11 +97,6 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExport} title="Download canvas as PNG">
         <FileDown size={14} /> PNG
       </Button>
-      {!isRack && (
-        <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExportMd} title="Copy inventory as Markdown table">
-          <Table2 size={14} /> MD
-        </Button>
-      )}
       {/* Live view reads backend/localStorage canvas; pointless in standalone
           where the editor already shows the only (localStorage) copy. Rack
           canvases have no live view yet. */}

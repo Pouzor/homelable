@@ -28,7 +28,6 @@ const defaultProps = {
   onUndo: vi.fn(),
   onRedo: vi.fn(),
   onShortcuts: vi.fn(),
-  onExportMd: vi.fn(),
   onExportYaml: vi.fn(),
   onImportYaml: vi.fn(),
   onViewOnly: vi.fn(),
@@ -116,6 +115,6 @@ describe('Toolbar (standalone)', () => {
     expect(screen.queryByText('View')).not.toBeInTheDocument()
     // Other actions remain.
     expect(screen.getByText('Save')).toBeInTheDocument()
-    expect(screen.getByText('MD')).toBeInTheDocument()
+    expect(screen.getByText('PNG')).toBeInTheDocument()
   })
 })
