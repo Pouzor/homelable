@@ -668,13 +668,16 @@ def _relocate_after_shrink(state: dict[str, Any], rack: dict[str, Any]) -> None:
         settled.append(device)
 
 
-async def _mount_device(design_id: str, args: dict[str, Any]) -> dict[str, Any]:
+async def _mount_device(
+    design_id: str, args: dict[str, Any], inventory: dict[str, Any] | None = None
+) -> dict[str, Any]:
     state = await _load_state(design_id)
     rack = _rack_or_raise(state, args["rack_id"])
 
-    inventory = cast(
-        dict[str, Any], await backend.get(f"/api/v1/racks/inventory?design_id={quote(design_id)}")
-    )
+    if inventory is None:
+        inventory = cast(
+            dict[str, Any], await backend.get(f"/api/v1/racks/inventory?design_id={quote(design_id)}")
+        )
     item = next(
         (i for i in inventory.get("items", []) if i["id"] == args["inventory_device_id"]), None
     )

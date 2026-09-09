@@ -61,6 +61,8 @@ class BackendClient:
             await self._client.aclose()
 
     async def request(self, method: str, path: str, **kwargs) -> dict:
+        if self._client is None:
+            raise BackendError(method, path, 0, "Backend client not initialized — startup failed")
         resp = await self._client.request(method, path, **kwargs)
         if resp.is_error:
             raise BackendError(method, path, resp.status_code, _detail_of(resp))
