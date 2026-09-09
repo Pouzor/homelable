@@ -131,6 +131,15 @@ async def test_create_rejects_a_device_that_does_not_exist(client: AsyncClient, 
     assert res.status_code == 404
 
 
+async def test_create_rejects_a_design_that_does_not_exist(client: AsyncClient, headers: dict):
+    res = await client.post(
+        "/api/v1/documents",
+        json={"title": "X", "kind": "design", "design_id": str(uuid.uuid4())},
+        headers=headers,
+    )
+    assert res.status_code == 404
+
+
 async def test_a_device_gets_at_most_one_document(client: AsyncClient, headers: dict):
     device = await _device(client, headers)
     body = {"title": "nas", "kind": "device", "device_id": device["id"]}
