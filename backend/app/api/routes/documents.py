@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.database import get_db
-from app.db.models import Document, DocumentRevision, Edge, InventoryDevice, Node, Rack, RackDevice
+from app.db.models import Design, Document, DocumentRevision, Edge, InventoryDevice, Node, Rack, RackDevice
 from app.schemas.documents import (
     BacklinkHit,
     CoverageResponse,
@@ -520,6 +520,7 @@ async def create_document(
     for link, model, what in (
         (body.device_id, InventoryDevice, "Device"),
         (body.node_id, Node, "Node"),
+        (body.design_id, Design, "Design"),
     ):
         if link and not await db.get(model, link):
             raise HTTPException(404, f"{what} not found")
