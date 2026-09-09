@@ -323,6 +323,12 @@ async def merge_devices(
         # `ieee_address` is UNIQUE, so the address can only move once the row
         # holding it is gone — assigned after the delete below.
         adopted = loser_ieees[0]
+        if len(loser_ieees) > 1:
+            logger.warning(
+                "Inventory merge: winner %s has no IEEE address; adopting %s "
+                "and discarding %d other IEEE address(es): %s",
+                winner.id, adopted, len(loser_ieees) - 1, loser_ieees[1:],
+            )
 
     for loser in losers:
         await db.delete(loser)

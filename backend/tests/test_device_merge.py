@@ -7,6 +7,7 @@ document, and not the *visibility* of the facts that just arrived on a canvas
 that never saw them.
 """
 
+import logging
 from datetime import datetime, timezone
 
 import pytest
@@ -403,3 +404,28 @@ async def test_merge_route_requires_auth(client, db_session):
         "/api/v1/scan/pending/merge", json={"winner_id": "w", "loser_ids": ["l"]}
     )
     assert res.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_merge_warns_when_multiple_loser_ieees_collapse(db_session, caplog):
+    # Winner has no IEEE; two losers each have a distinct IEEE address.
+    # Only the first can be adopted (ieee_address is UNIQUE). Verify a
+    # WARNING is emitted so operators can see the discarded address.
+    winner = await _device(db_session, id="w", ip="10.0.0.1")
+    loser1 = await _device(db_session, id="l1", ip="10.0.0.2",
+                            ieee_address="aa:bb:cc:dd:ee:01")
+    loser2 = await _device(db_session, id="l2", ip="10.0.0.3",
+                            ieee_address="aa:bb:cc:dd:ee:02")
+    await db_session.commit()
+
+    with caplog.at_level(logging.WARNING, logger="app.services.device_merge"):
+        await merge_devices(db_session, winner, [loser1, loser2])
+        await db_session.commit()
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING
+                and "discarding" in r.message]
+    assert warnings, "expected a WARNING about discarded IEEE address(es)"
+    assert "aa:bb:cc:dd:ee:02" in warnings[0].message
+    # Winner adopts the first loser's address
+    await db_session.refresh(winner)
+    assert winner.ieee_address == "aa:bb:cc:dd:ee:01"
