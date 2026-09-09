@@ -40,8 +40,12 @@ async def fts_available(db: AsyncSession) -> bool:
             await db.execute(text("SELECT doc_id FROM documents_fts LIMIT 1"))
             _available = True
         except OperationalError:
-            _available = False
+            # Don't cache False: a transient startup error (container ordering
+            # race, brief DB unavailability) would permanently disable FTS5 for
+            # the process lifetime. Re-probe each call until the index confirms
+            # it exists; the probe is a single cheap SELECT.
             logger.info("FTS5 unavailable — document search falls back to LIKE")
+            return False
     return _available
 
 

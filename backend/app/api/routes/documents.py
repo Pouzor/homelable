@@ -62,7 +62,7 @@ router = APIRouter()
 
 # Node.type values that are canvas furniture. A zone or a group is documented
 # through its node; everything else is documented through its device.
-_FURNITURE_TYPES = {"group", "groupRect", "text"}
+_FURNITURE_TYPES = {"group", "groupRect"}
 
 _INTERVAL = re.compile(r"^\s*(\d+)\s*([dwmy])\s*$", re.IGNORECASE)
 _INTERVAL_DAYS = {"d": 1, "w": 7, "m": 30, "y": 365}
