@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BookOpen, ChevronDown, ChevronRight, FilePlus, FolderPlus, Search, X } from 'lucide-react'
+import { Archive, BookOpen, ChevronDown, ChevronRight, FilePlus, FolderPlus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { scanApi } from '@/api/client'
@@ -10,6 +10,7 @@ import { useDesignStore } from '@/stores/designStore'
 import type { InventoryEntry } from '@/types'
 import { cn } from '@/lib/utils'
 import { formatRelative } from '@/utils/timeFormat'
+import { downloadAllDocs, downloadDoc } from '../export'
 import { isOverdue } from '../frontmatter'
 import { driftedIds, useDocsStore } from '../store'
 import {
@@ -95,6 +96,7 @@ export function DocumentationView() {
   const [regenerateOpen, setRegenerateOpen] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
     void loadDocs()
@@ -233,6 +235,20 @@ export function DocumentationView() {
     await remove(openDoc.id)
     toast.success('Document deleted')
   }, [openDoc, remove])
+
+  // The whole space, zipped server-side: the tree only holds summaries, so the
+  // bodies to write are not in the browser yet.
+  const handleExportAll = useCallback(async () => {
+    setExporting(true)
+    try {
+      await downloadAllDocs()
+      toast.success('Documentation exported')
+    } catch {
+      toast.error('Could not export the documentation')
+    } finally {
+      setExporting(false)
+    }
+  }, [])
 
   const handleRegenerate = useCallback(async () => {
     if (!openDoc) return
@@ -458,16 +474,27 @@ export function DocumentationView() {
           />
         </div>
 
-        {coverage && (
-          <div className="flex items-center border-t border-border px-2 py-1.5">
+        <div className="flex items-center gap-1 border-t border-border px-2 py-1.5">
+          <Button
+            size="xs"
+            variant="ghost"
+            className="cursor-pointer gap-1 px-1.5"
+            title="Download every document as a zip of Markdown files"
+            disabled={exporting || docs.length === 0}
+            onClick={() => void handleExportAll()}
+          >
+            <Archive size={12} />
+            {exporting ? 'Exporting…' : 'Export all'}
+          </Button>
+          {coverage && (
             <span
               className="ml-auto text-[10px] tabular-nums text-muted-foreground/70"
               title={`${coverage.documented} of ${coverage.devices} devices documented · ${coverage.header_only} still only the generated header`}
             >
               {coverage.documented}/{coverage.devices}
             </span>
-          </div>
-        )}
+          )}
+        </div>
       </aside>
 
       <div
@@ -537,6 +564,7 @@ export function DocumentationView() {
             onMarkReviewed={() => void markReviewed(openDoc.id)}
             onSetTags={(tags) => void setTags(tags)}
             onRegenerate={() => setRegenerateOpen(true)}
+            onDownload={() => downloadDoc(openDoc)}
             onDelete={() => void handleDelete()}
             onOpenDoc={(id) => void open(id)}
             onCreateFromLink={async (label) => {

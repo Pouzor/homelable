@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Clock, History, Link2, Pencil, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react'
+import { Clock, Download, History, Link2, Pencil, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -39,6 +39,8 @@ interface Props {
   onToggleStar: () => void
   onMarkReviewed: () => void
   onRegenerate: () => void
+  /** Saves this document to disk as the `.md` file its body already is. */
+  onDownload: () => void
   onDelete: () => void
   onOpenDoc: (id: string) => void
   onCreateFromLink: (label: string) => void
@@ -77,6 +79,7 @@ export function DocViewer({
   onToggleStar,
   onMarkReviewed,
   onRegenerate,
+  onDownload,
   onDelete,
   onOpenDoc,
   onCreateFromLink,
@@ -178,6 +181,16 @@ export function DocViewer({
               <RefreshCw />
             </Button>
           )}
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            title="Download this document as Markdown"
+            aria-label="Download this document"
+            onClick={onDownload}
+            className="cursor-pointer"
+          >
+            <Download />
+          </Button>
           <Button size="icon-xs" variant="ghost" title="Delete this document" onClick={onDelete} className="cursor-pointer">
             <Trash2 />
           </Button>

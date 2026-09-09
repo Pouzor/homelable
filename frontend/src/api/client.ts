@@ -358,6 +358,9 @@ export const documentsApi = {
       params: { block, device_id: deviceId },
     }),
   coverage: () => api.get<import('@/documentation/types').DocCoverage>('/documents/coverage'),
+  // A zip of `.md` files mirroring the tree. Fetched through axios rather than
+  // a plain link so the Bearer header rides along.
+  export: () => api.get<Blob>('/documents/export', { responseType: 'blob' }),
   scaffold: (data: { device_ids?: string[]; only_with_notes?: boolean }) =>
     api.post<{ created: import('@/documentation/types').DocumentSummary[]; skipped: number }>(
       '/documents/scaffold',
