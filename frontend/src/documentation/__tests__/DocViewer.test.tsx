@@ -33,6 +33,7 @@ const noop = {
   onToggleStar: vi.fn(),
   onMarkReviewed: vi.fn(),
   onRegenerate: vi.fn(),
+  onDownload: vi.fn(),
   onDelete: vi.fn(),
   onOpenDoc: vi.fn(),
   onCreateFromLink: vi.fn(),
@@ -90,5 +91,26 @@ describe('DocViewer — tags', () => {
     render(<DocViewer {...noop} doc={makeDoc()} onSetTags={vi.fn()} />)
     addTag('backup')
     expect(screen.getByText('Tag')).toBeInTheDocument()
+  })
+})
+
+describe('DocViewer — download', () => {
+  it('hands the open document to the host on click', () => {
+    const onDownload = vi.fn()
+    render(<DocViewer {...noop} doc={makeDoc()} onSetTags={vi.fn()} onDownload={onDownload} />)
+    fireEvent.click(screen.getByLabelText('Download this document'))
+    expect(onDownload).toHaveBeenCalledTimes(1)
+  })
+
+  // A folder hides Regenerate, and the two buttons sit side by side — the
+  // download must not be hidden along with it.
+  it('is offered for a folder too', () => {
+    const onDownload = vi.fn()
+    render(
+      <DocViewer {...noop} doc={makeDoc({ kind: 'folder' })} onSetTags={vi.fn()} onDownload={onDownload} />,
+    )
+    expect(screen.queryByLabelText('Regenerate this document')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Download this document'))
+    expect(onDownload).toHaveBeenCalledTimes(1)
   })
 })

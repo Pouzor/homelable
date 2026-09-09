@@ -17,7 +17,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +39,7 @@ from app.schemas.documents import (
     SearchResponse,
 )
 from app.services import doc_backlinks, doc_search
+from app.services.doc_export import ExportDoc, build_zip
 from app.services.doc_template import (
     BLOCKS,
     TEMPLATE_DEVICE,
@@ -347,6 +348,42 @@ async def generated_block(
         raise HTTPException(404, "Device not found")
     context = await _device_context(db, device_id) if block in {"rack", "network"} else {}
     return {"block": block, "markdown": render_block(block, device, **context)}
+
+
+@router.get("/export")
+async def export_documents(
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> Response:
+    """Every document as a zip of `.md` files mirroring the tree.
+
+    Declared above `/{document_id}` so "export" is not read as an id.
+    """
+    docs = (await db.execute(select(Document))).scalars().all()
+    archive = build_zip(
+        [
+            ExportDoc(
+                id=doc.id,
+                kind=doc.kind,
+                title=doc.title,
+                slug=doc.slug,
+                parent_id=doc.parent_id,
+                body=doc.body or "",
+            )
+            for doc in docs
+        ]
+    )
+    filename = f"homelable-documentation-{_now():%Y%m%d}.zip"
+    return Response(
+        content=archive,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            # The browser reads the name from the header, and a cross-origin
+            # fetch cannot see it unless it is exposed.
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
