@@ -8,6 +8,7 @@ that never saw them.
 """
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
@@ -345,6 +346,55 @@ async def test_reconcile_is_idempotent(db_session):
     assert await reconcile_duplicates(db_session) == 1
     await db_session.flush()
     assert await reconcile_duplicates(db_session) == 0
+
+
+# --- Regression: nullable discovered_at (#439) ---------------------------
+
+
+@pytest.mark.asyncio
+async def test_merge_devices_tolerates_null_discovered_at(db_session):
+    """A loser with discovered_at=None must not raise TypeError in the sort key."""
+    winner = await _device(db_session, id="w", ip="10.0.0.1", mac="aa:bb:cc:dd:ee:01")
+    loser = InventoryDevice(id="l", ip="10.0.0.2", mac="aa:bb:cc:dd:ee:02", discovered_at=None)
+    db_session.add(loser)
+    await db_session.flush()
+
+    result = await merge_devices(db_session, winner, [loser])
+    assert result["merged"] == 1
+
+
+@pytest.mark.asyncio
+async def test_reconcile_tolerates_null_discovered_at(db_session):
+    """reconcile_duplicates must not abort when a row has discovered_at=None."""
+    await _device(db_session, id="a", mac="aa:bb:cc:dd:ee:ff", discovered_at=_at(1))
+    loser = InventoryDevice(id="b", mac="aa:bb:cc:dd:ee:ff", discovered_at=None)
+    db_session.add(loser)
+    await db_session.flush()
+
+    merged = await reconcile_duplicates(db_session)
+    assert merged == 1
+
+
+# --- Regression: dedupe called once per reconcile batch (#450) -----------
+
+
+@pytest.mark.asyncio
+async def test_reconcile_calls_dedupe_nodes_once_regardless_of_group_count(db_session):
+    """dedupe_nodes_by_device must be called exactly once even with N merge groups."""
+    for i in range(3):
+        mac = f"aa:bb:cc:dd:ee:{i:02x}"
+        await _device(db_session, id=f"a{i}", mac=mac, discovered_at=_at(1))
+        await _device(db_session, id=f"b{i}", mac=mac, discovered_at=_at(2))
+
+    with patch(
+        "app.services.device_merge.dedupe_nodes_by_device", new_callable=AsyncMock
+    ) as mock_dedupe:
+        merged = await reconcile_duplicates(db_session)
+
+    assert merged == 3
+    assert mock_dedupe.call_count == 1, (
+        f"dedupe_nodes_by_device called {mock_dedupe.call_count} times; expected 1"
+    )
 
 
 # --- The route -----------------------------------------------------------
