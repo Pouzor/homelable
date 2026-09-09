@@ -90,3 +90,19 @@ async def test_a_success_is_returned_unchanged():
     backend = _client_answering(httpx.Response(200, json={"id": "e1"}))
 
     assert await backend.get("/api/v1/edges/e1") == {"id": "e1"}
+
+
+@pytest.mark.anyio
+async def test_request_before_start_raises_backend_error_not_attribute_error():
+    """A BackendClient that was never started must raise BackendError, not AttributeError.
+
+    Regression for #444: _client is None until start() is called; a degraded
+    startup left it None and every tool call crashed with an opaque AttributeError.
+    """
+    backend = BackendClient()
+
+    with pytest.raises(BackendError) as exc:
+        await backend.get("/api/v1/nodes")
+
+    assert exc.value.status_code == 0
+    assert "not initialized" in exc.value.detail.lower()
