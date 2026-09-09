@@ -272,6 +272,27 @@ describe('mutations', () => {
     expect(useDocsStore.getState().docs[0].tags).toEqual(['prod'])
   })
 
+  it('applies tags to the draft body, not the server body, when a fresh draft exists', async () => {
+    // The user typed edits that are only in localStorage. Without the fix,
+    // setTags would read openDoc.body (the server copy) and save that —
+    // discarding all unsaved edits permanently.
+    const serverBody = '---\ntitle: NAS\n---\n\noriginal server text'
+    const draftBody  = '---\ntitle: NAS\n---\n\nedited text the user typed'
+    const updatedAt  = '2026-01-01T00:00:00Z'
+
+    api.update.mockResolvedValue({ data: doc({ tags: ['prod'], updated_at: updatedAt }) } as never)
+    useDocsStore.setState({ docs: [summary({ updated_at: updatedAt })], openDoc: doc({ body: serverBody, updated_at: updatedAt }) })
+    writeDraft('doc-1', { body: draftBody, savedAt: Date.now(), base: updatedAt })
+
+    await useDocsStore.getState().setTags(['prod'])
+
+    // The saved body must contain the draft's text, not the server's.
+    const savedBody = (api.update.mock.calls[0][1] as { body: string }).body
+    expect(savedBody).toContain('edited text the user typed')
+    expect(savedBody).not.toContain('original server text')
+    expect(savedBody).toContain('tags: [prod]')
+  })
+
   it('reports a failed tag write rather than pretending it landed', async () => {
     api.update.mockRejectedValue({ response: { data: { detail: 'nope' } } })
     useDocsStore.setState({ openDoc: doc() })
@@ -400,6 +421,31 @@ describe('preferences', () => {
     expect(useDocsStore.getState().expanded).toContain('zone:Garage')
     useDocsStore.getState().toggleExpanded('zone:Garage')
     expect(useDocsStore.getState().expanded).not.toContain('zone:Garage')
+  })
+
+  it('does not lose setGroupBy when setTreeWidth fires in the same tick', () => {
+    // Pre-fix: setGroupBy called readUi() then writeUi(). setTreeWidth did the
+    // same. When both fired synchronously the second readUi() returned stale
+    // state (before the first write landed), so the first change was silently
+    // overwritten. Both writes now happen inside the Zustand set() updater,
+    // which receives committed state — no race.
+    const s = useDocsStore.getState()
+    s.setGroupBy('subnet')
+    s.setTreeWidth(320)
+
+    const ui = JSON.parse(localStorage.getItem('homelable_docs_ui') ?? '{}')
+    expect(ui.groupBy).toBe('subnet')
+    expect(ui.treeWidth).toBe(320)
+  })
+
+  it('does not lose toggleExpanded when setGroupBy fires in the same tick', () => {
+    const s = useDocsStore.getState()
+    s.toggleExpanded('zone:Garage')
+    s.setGroupBy('tag')
+
+    const ui = JSON.parse(localStorage.getItem('homelable_docs_ui') ?? '{}')
+    expect(ui.expanded).toContain('zone:Garage')
+    expect(ui.groupBy).toBe('tag')
   })
 })
 
