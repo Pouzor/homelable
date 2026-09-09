@@ -6,8 +6,6 @@ import { serializeNode, serializeEdge, deserializeApiNode, deserializeApiEdge, m
 import { generateUUID } from '@/utils/uuid'
 import { getCenteredPosition } from '@/utils/viewportCenter'
 import { resolveVirtualEdgeParent } from '@/utils/virtualEdgeParent'
-import { generateMarkdownTable } from '@/utils/exportMarkdown'
-import { copyToClipboard } from '@/utils/clipboard'
 import { getDesignIdFromUrl, setDesignIdInUrl } from '@/utils/designUrl'
 import { useDocsUrlSync } from '@/hooks/useDocsUrlSync'
 import { withBase } from '@/utils/basePath'
@@ -794,16 +792,6 @@ export default function App() {
     toast.success('Canvas auto-arranged')
   }, [nodes, edges, applyLayout])
 
-  const handleExportMd = useCallback(async () => {
-    const md = generateMarkdownTable(nodes)
-    if (!md) { toast.error('No nodes to export'); return }
-    if (await copyToClipboard(md)) {
-      toast.success('Markdown table copied to clipboard')
-    } else {
-      toast.error('Markdown copy failed')
-    }
-  }, [nodes])
-
   const handleExportYaml = useCallback(() => {
     if (nodes.length === 0) { toast.error('No nodes to export'); return }
     const content = exportCanvasToYaml(nodes, edges)
@@ -1187,7 +1175,6 @@ export default function App() {
               onUndo={undo}
               onRedo={redo}
               onShortcuts={() => setShortcutsOpen(true)}
-              onExportMd={handleExportMd}
               onExportYaml={handleExportYaml}
               onImportYaml={handleImportYaml}
               onViewOnly={handleViewOnly}
