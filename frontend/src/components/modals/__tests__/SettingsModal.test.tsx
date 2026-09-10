@@ -8,6 +8,11 @@ vi.mock('@/api/client', () => ({
     get: vi.fn(),
     save: vi.fn(),
   },
+  xcpngApi: {
+    getConfig: vi.fn(),
+    saveConfig: vi.fn(),
+    syncNow: vi.fn(),
+  },
   proxmoxApi: {
     getConfig: vi.fn(),
     saveConfig: vi.fn(),
@@ -25,7 +30,7 @@ vi.mock('@/api/client', () => ({
   },
 }))
 
-import { settingsApi, proxmoxApi, zigbeeApi, zwaveApi } from '@/api/client'
+import { settingsApi, xcpngApi, proxmoxApi, zigbeeApi, zwaveApi } from '@/api/client'
 import { toast } from 'sonner'
 import { useCanvasStore } from '@/stores/canvasStore'
 
@@ -34,6 +39,9 @@ describe('SettingsModal', () => {
     vi.clearAllMocks()
     vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: false, service_check_interval: 300 } } as never)
     vi.mocked(settingsApi.save).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: false, service_check_interval: 300 } } as never)
+    vi.mocked(xcpngApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(xcpngApi.saveConfig).mockResolvedValue({ data: {} } as never)
+    vi.mocked(xcpngApi.syncNow).mockResolvedValue({ data: {} } as never)
     vi.mocked(proxmoxApi.getConfig).mockRejectedValue(new Error('not configured'))
     vi.mocked(proxmoxApi.saveConfig).mockResolvedValue({ data: {} } as never)
     // Zigbee/Z-Wave default to "not configured" so the mesh sections stay hidden
