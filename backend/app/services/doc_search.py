@@ -12,6 +12,7 @@ in sync through `_try_migrate` forever.
 """
 
 import logging
+import time
 from typing import Any
 
 from sqlalchemy import text
@@ -24,25 +25,55 @@ logger = logging.getLogger(__name__)
 _BODY_COLUMN = 3
 
 _available: bool | None = None
+_checked_at: float = 0.0
+
+# How long an "unavailable" answer stands before the probe is worth repeating.
+# A build without FTS5 never gains it, so the retry is pure waste there and the
+# interval keeps that waste to one failed SELECT a minute; a lock that closed the
+# index for one request clears in milliseconds, so a minute of LIKE is the cost
+# of not hammering a database that is already busy.
+_RECHECK_SECONDS = 60.0
 
 
 def reset_availability_cache() -> None:
     """Forget the probed FTS5 state. Tests swap databases between cases."""
-    global _available
+    global _available, _checked_at
     _available = None
+    _checked_at = 0.0
+
+
+def _mark_unavailable(reason: str) -> None:
+    """Record that the index is not usable, logging only on the way down."""
+    global _available, _checked_at
+    if _available is not False:
+        logger.info("FTS5 unavailable — document search falls back to LIKE (%s)", reason)
+    _available = False
+    _checked_at = time.monotonic()
 
 
 async def fts_available(db: AsyncSession) -> bool:
-    """Whether this SQLite build has FTS5 and the index table exists."""
-    global _available
-    if _available is None:
-        try:
-            await db.execute(text("SELECT doc_id FROM documents_fts LIMIT 1"))
-            _available = True
-        except OperationalError:
-            _available = False
-            logger.info("FTS5 unavailable — document search falls back to LIKE")
-    return _available
+    """Whether this SQLite build has FTS5 and the index table exists.
+
+    The answer is cached, but a negative one only for `_RECHECK_SECONDS`. The
+    probe is one statement against a local file, and the errors it can raise are
+    not all permanent: `database is locked` while the boot reindex or the scanner
+    thread holds a write is transient, and caching it forever cost the process
+    every ranked search it would ever run. So a failure is a "not right now",
+    re-asked on the first call after the interval; only success is final.
+    """
+    global _available, _checked_at
+    if _available is True:
+        return True
+    if _available is False and time.monotonic() - _checked_at < _RECHECK_SECONDS:
+        return False
+    try:
+        await db.execute(text("SELECT doc_id FROM documents_fts LIMIT 1"))
+    except OperationalError as exc:
+        _mark_unavailable(str(exc))
+        return False
+    _available = True
+    _checked_at = time.monotonic()
+    return True
 
 
 def tags_text(tags: Any) -> str:
@@ -56,16 +87,34 @@ async def index_document(db: AsyncSession, doc: Any) -> None:
     """Re-index one document. Safe to call when FTS5 is missing."""
     if not await fts_available(db):
         return
-    await unindex_document(db, doc.id)
-    await db.execute(
-        text("INSERT INTO documents_fts (doc_id, title, tags, body) VALUES (:i, :t, :g, :b)"),
-        {"i": doc.id, "t": doc.title or "", "g": tags_text(doc.tags), "b": doc.body or ""},
-    )
+    # A savepoint, so a write against an index that vanished under us rolls back
+    # to here instead of poisoning the document write this is part of. Saving a
+    # document must not fail because its search index did.
+    try:
+        async with db.begin_nested():
+            await _delete_indexed(db, doc.id)
+            await db.execute(
+                text(
+                    "INSERT INTO documents_fts (doc_id, title, tags, body) "
+                    "VALUES (:i, :t, :g, :b)"
+                ),
+                {"i": doc.id, "t": doc.title or "", "g": tags_text(doc.tags), "b": doc.body or ""},
+            )
+    except OperationalError as exc:
+        _mark_unavailable(str(exc))
 
 
 async def unindex_document(db: AsyncSession, doc_id: str) -> None:
     if not await fts_available(db):
         return
+    try:
+        async with db.begin_nested():
+            await _delete_indexed(db, doc_id)
+    except OperationalError as exc:
+        _mark_unavailable(str(exc))
+
+
+async def _delete_indexed(db: AsyncSession, doc_id: str) -> None:
     await db.execute(text("DELETE FROM documents_fts WHERE doc_id = :i"), {"i": doc_id})
 
 
