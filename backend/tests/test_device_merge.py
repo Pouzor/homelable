@@ -22,7 +22,13 @@ from app.db.models import (
     Rack,
     RackDevice,
 )
-from app.services.device_merge import _naive, _newest, merge_devices, reconcile_duplicates
+from app.services.device_merge import (
+    _naive,
+    _newest,
+    distinct_ieees,
+    merge_devices,
+    reconcile_duplicates,
+)
 
 
 def _at(day: int) -> datetime:
@@ -284,6 +290,69 @@ async def test_the_survivor_adopts_an_ieee_it_lacks(db_session):
     await db_session.flush()
 
     assert winner.ieee_address == "pve-pve1-130"
+
+
+@pytest.mark.asyncio
+async def test_the_survivor_adopts_the_first_ieee_and_reports_the_rest(db_session):
+    """Regression for #453: a merge has room for one IEEE, so say what it drops.
+
+    Two losers carrying distinct addresses collapse onto an IEEE-less survivor.
+    Only the first can be adopted — `ieee_address` is UNIQUE — and the second
+    goes with the row that held it. The automatic passes refuse such a group
+    outright; a hand merge is allowed to do it, but never silently.
+    """
+    winner = await _device(db_session, id="w", ip="192.168.1.62", ieee_address=None)
+    first = await _device(db_session, id="a", ieee_address="0xAABB", discovered_at=_at(1))
+    second = await _device(db_session, id="b", ieee_address="0xCCDD", discovered_at=_at(2))
+
+    result = await merge_devices(db_session, winner, [first, second])
+    await db_session.flush()
+
+    assert winner.ieee_address == "0xAABB"
+    assert result["ieee_dropped"] == ["0xCCDD"]
+
+
+@pytest.mark.asyncio
+async def test_an_ieee_the_survivor_already_holds_is_not_reported_as_dropped(db_session):
+    winner = await _device(db_session, id="w", ieee_address="0xAABB", ip="192.168.1.62")
+    loser = await _device(db_session, id="l", ieee_address="0xaabb".upper(), ip="192.168.1.62")
+
+    result = await merge_devices(db_session, winner, [loser])
+
+    assert result["ieee_dropped"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_losers_ieee_is_reported_when_the_survivor_holds_its_own(db_session):
+    """The survivor keeps what it has, so a different address on a loser is lost."""
+    winner = await _device(db_session, id="w", ieee_address="pve-pve1-130", ip="192.168.1.62")
+    loser = await _device(db_session, id="l", ieee_address="0xCCDD", ip="192.168.1.62")
+
+    result = await merge_devices(db_session, winner, [loser])
+
+    assert result["ieee_dropped"] == ["0xCCDD"]
+
+
+@pytest.mark.asyncio
+async def test_a_merge_that_loses_no_address_reports_nothing(db_session):
+    winner = await _device(db_session, id="w", ip="192.168.1.62", ieee_address=None)
+    loser = await _device(db_session, id="l", ip="192.168.1.62", ieee_address=None)
+
+    result = await merge_devices(db_session, winner, [loser])
+
+    assert result["ieee_dropped"] == []
+
+
+def test_distinct_ieees_folds_case_and_keeps_the_first_spelling():
+    rows = [
+        InventoryDevice(id="a", ieee_address="0xAABB"),
+        InventoryDevice(id="b", ieee_address="0xaabb"),
+        InventoryDevice(id="c", ieee_address=None),
+        InventoryDevice(id="d", ieee_address=""),
+        InventoryDevice(id="e", ieee_address="0xCCDD"),
+    ]
+
+    assert distinct_ieees(rows) == ["0xAABB", "0xCCDD"]
 
 
 @pytest.mark.asyncio

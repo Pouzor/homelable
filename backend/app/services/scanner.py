@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import InventoryDevice, ScanRun
-from app.services.device_merge import merge_devices, reconcile_duplicates
+from app.services.device_merge import distinct_ieees, merge_devices, reconcile_duplicates
 from app.services.discovery_sources import add_source
 from app.services.fingerprint import fingerprint_ports, suggest_node_type
 from app.services.http_probe import probe_open_ports
@@ -618,9 +618,28 @@ def _collapse_targets(
     decide which of them loses its links: every approved row stands, and only
     the pending ones are collapsed. The pair then stays visible in the inventory
     for the user to sort out.
+
+    A group carrying two distinct IEEE addresses is left alone whole, for the
+    same reason the reconcile pass leaves it alone: the merge has room for one
+    address and would destroy the rest.
     """
     approved = [row for row in group if row.status == "approved"]
     keep = approved[0] if approved else group[0]
+    if len(distinct_ieees(group)) > 1:
+        # One row survives a merge, so it keeps one IEEE — collapsing this group
+        # would delete the others, and the next import or scan keying on one of
+        # them would no longer find the device and would mint a duplicate. Two
+        # distinct IEEEs sharing an address is not a duplicate anyway: it is two
+        # Proxmox guests behind one host, or two radios. Drop the group whole
+        # rather than guess which member does not belong — the same rule
+        # `_group_candidates` applies in the reconcile pass. The rows stay
+        # visible in the inventory, and the manual merge can still join them.
+        logger.info(
+            "Inventory collapse: leaving %d row(s) sharing an address alone — "
+            "their IEEE says they are different devices (%s)",
+            len(group), ", ".join(row.id for row in group),
+        )
+        return keep, []
     if len(approved) > 1:
         return keep, [row for row in group if row.status != "approved"]
     return keep, [row for row in group if row is not keep]

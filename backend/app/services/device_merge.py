@@ -278,6 +278,25 @@ async def _rewrite_links(db: AsyncSession, winner_ieee: str, loser_ieees: list[s
         seen.add(key)
 
 
+def distinct_ieees(rows: list[InventoryDevice]) -> list[str]:
+    """Every distinct non-blank IEEE carried by ``rows``, first spelling wins.
+
+    ``ieee_address`` is UNIQUE and is what every other writer comes back to —
+    the import matches on it before anything else, the mesh links and the
+    Proxmox host→guest graph are keyed on it. A merge has exactly one row left
+    at the end, so it has room for exactly one of these: any group holding two
+    is a group that cannot be collapsed without destroying an identity. Callers
+    use this to refuse the collapse; :func:`merge_devices` uses it to say what
+    it dropped when the user asked for it anyway.
+    """
+    out: dict[str, str] = {}
+    for row in rows:
+        ieee = row.ieee_address
+        if ieee and not _blank(ieee):
+            out.setdefault(ieee.lower(), ieee)
+    return list(out.values())
+
+
 async def merge_devices(
     db: AsyncSession,
     winner: InventoryDevice,
@@ -303,6 +322,7 @@ async def merge_devices(
             "nodes_repointed": 0,
             "documents_orphaned": 0,
             "views_extended": 0,
+            "ieee_dropped": [],
         }
 
     loser_ids = [row.id for row in losers]
@@ -346,6 +366,27 @@ async def merge_devices(
         # holding it is gone — assigned after the delete below.
         adopted = loser_ieees[0]
 
+    # One row survives, so it can hold one IEEE. Every other distinct address in
+    # the group goes with the row that carried it, and whatever keys on it — a
+    # Proxmox import, a re-scan, a mesh writer — stops finding this device and
+    # mints a fresh duplicate instead. The automatic passes refuse such a group
+    # outright (`_group_candidates`, the scanner's `_collapse_targets`); reaching
+    # here means the user asked for it by hand, so it is allowed and recorded
+    # rather than vetoed. The mesh links themselves survive: `_rewrite_links`
+    # moves them onto the survivor's address below.
+    kept_ieee = adopted or winner.ieee_address
+    kept_key = kept_ieee.lower() if kept_ieee else None
+    ieee_dropped = [
+        ieee for ieee in distinct_ieees([winner, *losers]) if ieee.lower() != kept_key
+    ]
+    if ieee_dropped:
+        logger.warning(
+            "Inventory merge: %s keeps %s and drops %d other IEEE address(es) — "
+            "anything keying on %s will no longer find this device (%s)",
+            winner.id, kept_ieee or "no IEEE", len(ieee_dropped),
+            ", ".join(ieee_dropped), winner.label or winner.friendly_name or winner.ip,
+        )
+
     for loser in losers:
         await db.delete(loser)
     await db.flush()
@@ -373,6 +414,7 @@ async def merge_devices(
         "nodes_repointed": nodes.rowcount or 0,
         "documents_orphaned": orphaned,
         "views_extended": shown,
+        "ieee_dropped": ieee_dropped,
     }
 
 
