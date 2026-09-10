@@ -204,6 +204,19 @@ async def update_node(
     # Dropped rather than rejected so the rest of the edit still lands.
     if sent.get("parent_id") == node_id:
         sent.pop("parent_id")
+    # A `text` annotation is a caption, not a container. The canvas never nests
+    # anything under one, but the API is reachable without it (MCP write tools,
+    # scripts), and a device that lands there is read back as being *in* the
+    # annotation — its content is printed as the device's zone in the generated
+    # document (#446). Rejected rather than dropped: unlike a self-parent this is
+    # a wrong argument, not a slip, and the caller should hear about it.
+    if sent.get("parent_id"):
+        parent = await db.get(Node, sent["parent_id"])
+        if parent is not None and parent.type == "text":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A text annotation cannot be a parent node",
+            )
     # Before the new counts land: the old ones are what says which handles go away.
     await _remap_shrunk_handles(db, node, sent)
     for field, value in node_columns(sent).items():

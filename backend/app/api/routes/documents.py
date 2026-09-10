@@ -60,9 +60,12 @@ from app.services.doc_tree import (
 
 router = APIRouter()
 
-# Node.type values that are canvas furniture. A zone or a group is documented
-# through its node; everything else is documented through its device.
-_FURNITURE_TYPES = {"group", "groupRect", "text"}
+# The furniture a device can sit *in*, and so be located by. Deliberately not
+# `inventory_sync.FURNITURE_TYPES`, which answers a different question: a `text`
+# annotation is furniture — it draws no device — but it is a caption, not a
+# place, and its content is nobody's zone name (#446). A device parented in one
+# keeps walking up to the zone that really holds it, if there is one.
+_ZONE_TYPES = {"group", "groupRect"}
 
 _INTERVAL = re.compile(r"^\s*(\d+)\s*([dwmy])\s*$", re.IGNORECASE)
 _INTERVAL_DAYS = {"d": 1, "w": 7, "m": 30, "y": 365}
@@ -150,7 +153,7 @@ async def _device_context(db: AsyncSession, device_id: str) -> dict[str, Any]:
             parent = await db.get(Node, parent_id)
             if parent is None:
                 break
-            if parent.type in _FURNITURE_TYPES:
+            if parent.type in _ZONE_TYPES:
                 context["zone_label"] = parent.label
                 break
             parent_id = parent.parent_id
