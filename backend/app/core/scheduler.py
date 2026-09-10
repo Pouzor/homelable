@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.database import AsyncSessionLocal
-from app.db.models import InventoryDevice, Node
+from app.db.models import Edge, InventoryDevice, Node
 from app.services.status_checker import check_node, check_services
 
 if TYPE_CHECKING:
@@ -153,6 +153,183 @@ async def _run_service_checks() -> None:
             logger.error("Service checks failed for device %s: %s", device_id, exc)
 
 
+def _norm_mac(mac: str) -> str:
+    return mac.lower().replace(":", "").replace("-", "").replace(".", "")
+
+
+def _match_neighbor(
+    neighbor: dict[str, Any],
+    mac_index: dict[str, str],
+    hostname_index: dict[str, str],
+    ip_index: dict[str, str],
+) -> str | None:
+    chassis = neighbor.get("chassis_id") or ""
+    if chassis:
+        norm = _norm_mac(chassis)
+        if norm in mac_index:
+            return mac_index[norm]
+        if chassis in ip_index:
+            return ip_index[chassis]
+    sys_name = (neighbor.get("sys_name") or "").lower()
+    if sys_name and sys_name in hostname_index:
+        return hostname_index[sys_name]
+    return None
+
+
+async def _run_snmp_poll() -> None:
+    """Poll SNMP-enabled devices and upsert current OID values into snmp_metrics."""
+    from app.services.snmp import poll_device
+
+    async with AsyncSessionLocal() as db:
+        devices = (
+            await db.execute(
+                select(InventoryDevice).where(
+                    InventoryDevice.snmp_enabled.is_(True),
+                    InventoryDevice.status != "hidden",
+                )
+            )
+        ).scalars().all()
+        checkable = [
+            (d.id, d.ip, d.snmp_community, d.snmp_version, d.snmp_port, list(d.snmp_oids or []))
+            for d in devices
+            if d.ip
+        ]
+
+    if not checkable:
+        return
+
+    async def _poll_one(
+        device_id: str,
+        ip: str,
+        community: str,
+        version: str,
+        port: int,
+        oids: list[dict[str, Any]],
+    ) -> None:
+        try:
+            results = await poll_device(ip, community, version, port, oids or None)
+            now = datetime.now(timezone.utc)
+            async with AsyncSessionLocal() as db:
+                for r in results:
+                    await db.execute(
+                        text(
+                            "INSERT OR REPLACE INTO snmp_metrics "
+                            "(device_id, oid, label, value, value_type, polled_at) "
+                            "VALUES (:device_id, :oid, :label, :value, :value_type, :polled_at)"
+                        ),
+                        {
+                            "device_id": device_id,
+                            "oid": r["oid"],
+                            "label": r.get("label"),
+                            "value": r.get("value"),
+                            "value_type": r.get("value_type"),
+                            "polled_at": now,
+                        },
+                    )
+                await db.commit()
+        except Exception as exc:
+            logger.error("SNMP poll failed for device %s: %s", device_id, exc)
+
+    await asyncio.gather(*[
+        _poll_one(device_id, ip, community, version, port, oids)
+        for device_id, ip, community, version, port, oids in checkable
+    ])
+
+
+async def _run_lldp_discovery() -> None:
+    """Walk LLDP/CDP neighbor tables on SNMP-enabled devices and auto-create canvas edges."""
+    from app.services.lldp import discover_neighbors
+
+    async with AsyncSessionLocal() as db:
+        devices = (
+            await db.execute(
+                select(InventoryDevice).where(
+                    InventoryDevice.snmp_enabled.is_(True),
+                    InventoryDevice.status != "hidden",
+                )
+            )
+        ).scalars().all()
+        pollable = [
+            (d.id, d.ip, d.snmp_community, d.snmp_port, d.mac, d.hostname, d.label)
+            for d in devices
+            if d.ip
+        ]
+        all_devices = (await db.execute(select(InventoryDevice))).scalars().all()
+        node_map = await _nodes_by_device(db)
+
+    if not pollable:
+        return
+
+    mac_index: dict[str, str] = {}
+    hostname_index: dict[str, str] = {}
+    ip_index: dict[str, str] = {}
+    for d in all_devices:
+        if d.mac:
+            mac_index[_norm_mac(d.mac)] = d.id
+        if d.hostname:
+            hostname_index[d.hostname.lower()] = d.id
+        if d.label:
+            hostname_index[d.label.lower()] = d.id
+        if d.ip:
+            for ip in d.ip.split(","):
+                ip = ip.strip()
+                if ip:
+                    ip_index[ip] = d.id
+
+    for device_id, ip, community, port, *_ in pollable:
+        host = ip.split(",")[0].strip()
+        try:
+            neighbors = await discover_neighbors(host, community or "public", port or 161)
+        except Exception as exc:
+            logger.error("LLDP discovery failed for %s: %s", device_id, exc)
+            continue
+
+        for neighbor in neighbors:
+            neighbor_device_id = _match_neighbor(neighbor, mac_index, hostname_index, ip_index)
+            if not neighbor_device_id or neighbor_device_id == device_id:
+                continue
+
+            src_nodes = node_map.get(device_id, [])
+            tgt_nodes = node_map.get(neighbor_device_id, [])
+            if not src_nodes or not tgt_nodes:
+                continue
+
+            src_node_id = src_nodes[0]
+            tgt_node_id = tgt_nodes[0]
+
+            async with AsyncSessionLocal() as db:
+                existing = (
+                    await db.execute(
+                        select(Edge).where(
+                            (
+                                (Edge.source == src_node_id) & (Edge.target == tgt_node_id)
+                            ) | (
+                                (Edge.source == tgt_node_id) & (Edge.target == src_node_id)
+                            )
+                        )
+                    )
+                ).scalar_one_or_none()
+                if existing:
+                    continue
+
+                src_node = await db.get(Node, src_node_id)
+                design_id = src_node.design_id if src_node else None
+
+                edge = Edge(
+                    source=src_node_id,
+                    target=tgt_node_id,
+                    design_id=design_id,
+                    type="ethernet",
+                    label="LLDP",
+                )
+                db.add(edge)
+                await db.commit()
+                logger.info(
+                    "LLDP: auto-created edge %s -> %s (devices %s <-> %s)",
+                    src_node_id, tgt_node_id, device_id, neighbor_device_id,
+                )
+
+
 async def _run_proxmox_sync() -> None:
     """Fetch the Proxmox inventory and upsert it into pending (auto-sync).
 
@@ -244,6 +421,28 @@ async def _run_zwave_sync() -> None:
     await _run_mesh_sync("zwave")
 
 
+def _add_snmp_poll_job() -> None:
+    scheduler.add_job(
+        _run_snmp_poll,
+        "interval",
+        seconds=settings.snmp_poll_interval,
+        id="snmp_poll",
+        max_instances=1,
+        coalesce=True,
+    )
+
+
+def _add_lldp_discovery_job() -> None:
+    scheduler.add_job(
+        _run_lldp_discovery,
+        "interval",
+        seconds=settings.lldp_discovery_interval,
+        id="lldp_discovery",
+        max_instances=1,
+        coalesce=True,
+    )
+
+
 def _add_service_check_job() -> None:
     scheduler.add_job(
         _run_service_checks,
@@ -304,6 +503,10 @@ def start_scheduler() -> None:
         max_instances=1,
         coalesce=True,
     )
+    if settings.snmp_poll_enabled:
+        _add_snmp_poll_job()
+    if settings.lldp_discovery_enabled:
+        _add_lldp_discovery_job()
     if settings.service_check_enabled:
         _add_service_check_job()
     if settings.proxmox_sync_enabled:
@@ -325,6 +528,56 @@ def reschedule_status_checks(interval_seconds: int) -> None:
         return
     scheduler.reschedule_job("status_checks", trigger="interval", seconds=interval_seconds)
     logger.info("Status checks rescheduled to every %ds", interval_seconds)
+
+
+def reschedule_snmp_poll(interval_seconds: int) -> None:
+    """Update the SNMP poll interval on the running scheduler (if enabled)."""
+    if interval_seconds < 60:
+        raise ValueError(f"interval_seconds must be >= 60, got {interval_seconds}")
+    if not scheduler.running:
+        logger.warning("Scheduler not running, skipping reschedule")
+        return
+    if scheduler.get_job("snmp_poll"):
+        scheduler.reschedule_job("snmp_poll", trigger="interval", seconds=interval_seconds)
+        logger.info("SNMP poll rescheduled to every %ds", interval_seconds)
+
+
+def set_snmp_poll_enabled(enabled: bool) -> None:
+    """Add or remove the SNMP poll job on the running scheduler."""
+    if not scheduler.running:
+        return
+    job = scheduler.get_job("snmp_poll")
+    if enabled and not job:
+        _add_snmp_poll_job()
+        logger.info("SNMP poll enabled — every %ds", settings.snmp_poll_interval)
+    elif not enabled and job:
+        scheduler.remove_job("snmp_poll")
+        logger.info("SNMP poll disabled")
+
+
+def reschedule_lldp_discovery(interval_seconds: int) -> None:
+    """Update the LLDP discovery interval on the running scheduler (if enabled)."""
+    if interval_seconds < 300:
+        raise ValueError(f"interval_seconds must be >= 300, got {interval_seconds}")
+    if not scheduler.running:
+        logger.warning("Scheduler not running, skipping reschedule")
+        return
+    if scheduler.get_job("lldp_discovery"):
+        scheduler.reschedule_job("lldp_discovery", trigger="interval", seconds=interval_seconds)
+        logger.info("LLDP discovery rescheduled to every %ds", interval_seconds)
+
+
+def set_lldp_discovery_enabled(enabled: bool) -> None:
+    """Add or remove the LLDP discovery job on the running scheduler."""
+    if not scheduler.running:
+        return
+    job = scheduler.get_job("lldp_discovery")
+    if enabled and not job:
+        _add_lldp_discovery_job()
+        logger.info("LLDP discovery enabled — every %ds", settings.lldp_discovery_interval)
+    elif not enabled and job:
+        scheduler.remove_job("lldp_discovery")
+        logger.info("LLDP discovery disabled")
 
 
 def reschedule_service_checks(interval_seconds: int) -> None:
