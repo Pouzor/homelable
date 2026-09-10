@@ -211,6 +211,83 @@ async def test_a_device_document_records_its_zone_and_neighbours(client: AsyncCl
     assert "`switch-core`" in doc["body"]
 
 
+async def test_a_text_annotation_is_never_read_as_a_zone(client: AsyncClient, headers: dict):
+    """A device parented in a text annotation has no zone, not the caption (#446).
+
+    The annotation's content is arbitrary user text; printed as `zone_label` it
+    is indistinguishable from a real zone in the Physical Location section.
+    """
+    design_id = await _design(client, headers)
+    device = await _device(client, headers)
+    annotation = await client.post(
+        "/api/v1/nodes",
+        json={"type": "text", "label": "\u26a0 maintenance zone", "design_id": design_id, "pos_x": 0, "pos_y": 0},
+        headers=headers,
+    )
+    node = await client.post(
+        "/api/v1/nodes",
+        json={
+            "type": "nas",
+            "label": "nas-01",
+            "design_id": design_id,
+            "ip": "192.168.1.20",
+            "hostname": "nas-01.lan",
+            "parent_id": annotation.json()["id"],
+            "pos_x": 0,
+            "pos_y": 0,
+        },
+        headers=headers,
+    )
+    # Without the link there is no node to walk up from and the test would pass
+    # on nothing at all.
+    assert node.json()["device_id"] == device["id"], node.text
+
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    assert "maintenance zone" not in doc["body"]
+    assert "Zone **" not in doc["body"]
+
+
+async def test_a_zone_above_a_text_annotation_still_names_the_device(client: AsyncClient, headers: dict):
+    """Skipping the annotation means walking past it, not giving up (#446)."""
+    design_id = await _design(client, headers)
+    device = await _device(client, headers)
+    zone = await client.post(
+        "/api/v1/nodes",
+        json={"type": "groupRect", "label": "Garage", "design_id": design_id, "pos_x": 0, "pos_y": 0},
+        headers=headers,
+    )
+    annotation = await client.post(
+        "/api/v1/nodes",
+        json={
+            "type": "text",
+            "label": "\u26a0 maintenance",
+            "design_id": design_id,
+            "parent_id": zone.json()["id"],
+            "pos_x": 0,
+            "pos_y": 0,
+        },
+        headers=headers,
+    )
+    node = await client.post(
+        "/api/v1/nodes",
+        json={
+            "type": "nas",
+            "label": "nas-01",
+            "design_id": design_id,
+            "ip": "192.168.1.20",
+            "hostname": "nas-01.lan",
+            "parent_id": annotation.json()["id"],
+            "pos_x": 0,
+            "pos_y": 0,
+        },
+        headers=headers,
+    )
+    assert node.json()["device_id"] == device["id"], node.text
+
+    doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
+    assert "Zone **Garage**." in doc["body"]
+
+
 # ── blocks ──────────────────────────────────────────────────────────────────
 
 

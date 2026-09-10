@@ -443,6 +443,40 @@ async def test_update_node_self_parent_leaves_a_real_parent_alone(client: AsyncC
     assert res.json()["parent_id"] == host_id
 
 
+# ── text-parent guard (#446) ─────────────────────────────────────────────────
+
+async def test_update_node_refuses_a_text_annotation_as_parent(client: AsyncClient, headers: dict):
+    annotation = await client.post(
+        "/api/v1/nodes", json={"type": "text", "label": "\u26a0 maintenance zone"}, headers=headers
+    )
+    node = await client.post("/api/v1/nodes", json={"type": "nas", "label": "nas1"}, headers=headers)
+
+    res = await client.patch(
+        f"/api/v1/nodes/{node.json()['id']}",
+        json={"parent_id": annotation.json()["id"], "label": "renamed"},
+        headers=headers,
+    )
+
+    assert res.status_code == 400
+    assert "text annotation" in res.json()["detail"]
+    # Rejected whole: unlike the self-parent slip, the rest of the edit does not land.
+    read = await client.get(f"/api/v1/nodes/{node.json()['id']}", headers=headers)
+    assert read.json()["parent_id"] is None
+    assert read.json()["label"] == "nas1"
+
+
+async def test_update_node_still_accepts_a_group_as_parent(client: AsyncClient, headers: dict):
+    group = await client.post("/api/v1/nodes", json={"type": "groupRect", "label": "Garage"}, headers=headers)
+    node = await client.post("/api/v1/nodes", json={"type": "nas", "label": "nas1"}, headers=headers)
+
+    res = await client.patch(
+        f"/api/v1/nodes/{node.json()['id']}", json={"parent_id": group.json()["id"]}, headers=headers
+    )
+
+    assert res.status_code == 200
+    assert res.json()["parent_id"] == group.json()["id"]
+
+
 # ── furniture descriptions ───────────────────────────────────────────────────
 
 async def test_create_and_update_a_group_description(client: AsyncClient, headers: dict):
