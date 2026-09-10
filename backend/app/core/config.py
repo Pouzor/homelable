@@ -289,6 +289,14 @@ class Settings(BaseSettings):
             return parsed.port or self.unifi_port
         return self.unifi_port
 
+    # XCP-ng (Xen Orchestra) import.
+    xcpng_host: str = ""
+    xcpng_username: str = ""
+    xcpng_password: str = ""
+    xcpng_verify_tls: bool = True
+    xcpng_sync_enabled: bool = False
+    xcpng_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"
 

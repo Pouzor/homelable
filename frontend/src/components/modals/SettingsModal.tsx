@@ -4,10 +4,12 @@ import { Button } from '@/components/ui/button'
 import {
   settingsApi,
   proxmoxApi,
+  xcpngApi,
   zigbeeApi,
   zwaveApi,
   unifiApi,
   type ProxmoxConfigData,
+  type XcpngConfigData,
   type ZigbeeConfigData,
   type ZwaveConfigData,
   type UnifiConfigData,
@@ -136,6 +138,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [pmSyncEnabled, setPmSyncEnabled] = useState(false)
   const [pmInterval, setPmInterval] = useState(3600)
   const [pmSyncing, setPmSyncing] = useState(false)
+  const [xcConfig, setXcConfig] = useState<XcpngConfigData | null>(null)
+  const [xcSyncEnabled, setXcSyncEnabled] = useState(false)
+  const [xcInterval, setXcInterval] = useState(3600)
+  const [xcSyncing, setXcSyncing] = useState(false)
   const [zbConfig, setZbConfig] = useState<ZigbeeConfigData | null>(null)
   const [zbSyncEnabled, setZbSyncEnabled] = useState(false)
   const [zbInterval, setZbInterval] = useState(3600)
@@ -178,6 +184,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setPmInterval(res.data.sync_interval)
       })
       .catch(() => {/* proxmox not configured */})
+    xcpngApi.getConfig()
+      .then((res) => {
+        setXcConfig(res.data)
+        setXcSyncEnabled(res.data.sync_enabled)
+        setXcInterval(res.data.sync_interval)
+      })
+      .catch(() => {/* xcpng not configured */})
     zigbeeApi.getConfig()
       .then((res) => {
         setZbConfig(res.data)
@@ -239,6 +252,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       toast.error('Failed to run UniFi sync')
     } finally {
       setUnSyncing(false)
+  const handleXcSyncNow = async () => {
+    setXcSyncing(true)
+    try {
+      await xcpngApi.syncNow()
+      toast.success('XCP-ng sync started')
+    } catch {
+      toast.error('Failed to start XCP-ng sync')
+    } finally {
+      setXcSyncing(false)
     }
   }
 
@@ -286,6 +308,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         await proxmoxApi.saveConfig({
           sync_enabled: pmSyncEnabled,
           sync_interval: pmInterval,
+        })
+      }
+      if (xcConfig) {
+        await xcpngApi.saveConfig({
+          sync_enabled: xcSyncEnabled,
+          sync_interval: xcInterval,
         })
       }
       if (zbConfig) {
@@ -585,6 +613,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <p className="text-[10px] text-[#e3b341] leading-tight">
                 No controller credentials configured. Set <span className="font-mono">UNIFI_USER</span> and{' '}
                 <span className="font-mono">UNIFI_PASS</span> in the server .env to enable auto-sync.
+          {/* XCP-ng auto-sync */}
+          {!STANDALONE && xcConfig && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">XCP-ng auto-sync</span>
+            {!xcConfig.credentials_configured ? (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                No credentials configured. Set <span className="font-mono">XCPNG_HOST</span>,{' '}
+                <span className="font-mono">XCPNG_USERNAME</span>, and{' '}
+                <span className="font-mono">XCPNG_PASSWORD</span> in the server .env to enable auto-sync.
               </p>
             ) : (
               <>
@@ -599,6 +636,16 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   />
                 </label>
                 <div className={unSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+                  <span className="text-xs text-foreground">Auto-sync XCP-ng inventory</span>
+                  <input
+                    type="checkbox"
+                    checked={xcSyncEnabled}
+                    onChange={(e) => setXcSyncEnabled(e.target.checked)}
+                    className="cursor-pointer accent-[#0ea5e9]"
+                    aria-label="Toggle XCP-ng auto-sync"
+                  />
+                </label>
+                <div className={xcSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
                   <label className="text-xs text-muted-foreground">Sync interval (s)</label>
                   <div className="flex items-center gap-2">
                     <input
@@ -648,6 +695,26 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       className="h-7 text-xs border-[#0559c9] text-[#0559c9] hover:bg-[#0559c9]/10"
                     >
                       {unSyncing ? 'Syncing…' : 'Re-sync now'}
+                      value={xcInterval}
+                      onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setXcInterval(v) }}
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#0ea5e9]"
+                      aria-label="XCP-ng sync interval"
+                    />
+                    <span className="text-xs text-muted-foreground">seconds</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    Re-imports XCP-ng hosts/VMs into the pending inventory. Min 300s (5 min).
+                  </p>
+                </div>
+                {xcConfig.host ? (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      onClick={handleXcSyncNow}
+                      disabled={xcSyncing}
+                      className="h-7 text-xs border-[#0ea5e9] text-[#0ea5e9] hover:bg-[#0ea5e9]/10"
+                    >
+                      {xcSyncing ? 'Syncing…' : 'Re-sync now'}
                     </Button>
                     <span className="text-[10px] text-muted-foreground leading-tight">
                       Runs one import immediately using the server .env config.
@@ -656,6 +723,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 ) : (
                   <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
                     Set <span className="font-mono">UNIFI_HOST</span> in the server .env to enable manual re-sync.
+                    Set <span className="font-mono">XCPNG_HOST</span> in the server .env to enable manual re-sync.
                   </p>
                 )}
               </>
