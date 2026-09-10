@@ -1652,6 +1652,99 @@ async def test_dedupe_never_deletes_a_second_approved_row(mem_db):
 
 
 @pytest.mark.asyncio
+async def test_dedupe_leaves_rows_carrying_two_distinct_ieees_alone(mem_db):
+    """Regression for #453: a collapse has room for one IEEE, so it refuses two.
+
+    Two Proxmox guests behind one host address are not a duplicate. Collapsing
+    them would delete one of the IEEEs, and the next import keying on it would
+    no longer find the device and would mint a fresh row.
+    """
+    from app.services.scanner import _dedupe_pending_by_ip
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="keep", ip="10.0.0.1", status="pending", ieee_address=None,
+            discovered_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ))
+        session.add(InventoryDevice(
+            id="a", ip="10.0.0.1", status="pending", ieee_address="pve-pve1-130",
+            discovered_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        ))
+        session.add(InventoryDevice(
+            id="b", ip="10.0.0.1", status="pending", ieee_address="pve-pve1-131",
+            discovered_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        deleted = await _dedupe_pending_by_ip(session)
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert deleted == 0
+    assert sorted(d.id for d in devices) == ["a", "b", "keep"]
+    assert sorted(d.ieee_address or "" for d in devices) == ["", "pve-pve1-130", "pve-pve1-131"]
+
+
+@pytest.mark.asyncio
+async def test_dedupe_still_collapses_a_group_holding_one_ieee(mem_db):
+    """One address across the group is what the survivor has room for."""
+    from app.services.scanner import _dedupe_pending_by_ip
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="keep", ip="10.0.0.1", status="pending", ieee_address=None,
+            discovered_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ))
+        session.add(InventoryDevice(
+            id="dup", ip="10.0.0.1", status="pending", ieee_address="pve-pve1-130",
+            discovered_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        deleted = await _dedupe_pending_by_ip(session)
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert deleted == 1
+    assert [d.id for d in devices] == ["keep"]
+    assert devices[0].ieee_address == "pve-pve1-130"
+
+
+def test_collapse_targets_refuses_a_group_with_two_ieees():
+    from app.services.scanner import _collapse_targets
+
+    group = [
+        InventoryDevice(id="keep", ip="10.0.0.1", status="approved"),
+        InventoryDevice(id="a", ip="10.0.0.1", status="pending", ieee_address="0xAABB"),
+        InventoryDevice(id="b", ip="10.0.0.1", status="pending", ieee_address="0xCCDD"),
+    ]
+
+    keep, dups = _collapse_targets(group)
+
+    assert keep.id == "keep"
+    assert dups == []
+
+
+def test_collapse_targets_ignores_case_when_counting_ieees():
+    """The same address spelled two ways is one address, so the group collapses."""
+    from app.services.scanner import _collapse_targets
+
+    group = [
+        InventoryDevice(id="keep", ip="10.0.0.1", status="pending", ieee_address="0xAABB"),
+        InventoryDevice(id="dup", ip="10.0.0.1", status="pending", ieee_address="0xaabb"),
+    ]
+
+    keep, dups = _collapse_targets(group)
+
+    assert keep.id == "keep"
+    assert [d.id for d in dups] == ["dup"]
+
+
+@pytest.mark.asyncio
 async def test_process_host_never_deletes_a_second_approved_row(mem_db):
     """The same guard on the scan path: the merge target refreshes, no row goes."""
     from app.services.scanner import DeepScanOptions, process_host
