@@ -653,6 +653,21 @@ async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
     Rows carrying several addresses count as duplicates of any row holding one
     of them — that is what declaring the extra address is for.
     """
+    # Step 1: tokenize all IP strings to find which individual tokens appear
+    # more than once.  A row like ip="1.2.3.4, 1.2.3.5" holds two tokens; a
+    # subquery that groups by the raw string would miss it.
+    ip_strings = (await db.execute(
+        select(InventoryDevice.ip)
+        .where(InventoryDevice.status != "hidden", InventoryDevice.ip.isnot(None))
+    )).scalars().all()
+    token_count: dict[str, int] = {}
+    for s in ip_strings:
+        for t in ip_tokens(s):
+            token_count[t] = token_count.get(t, 0) + 1
+    if not any(c > 1 for c in token_count.values()):
+        return 0
+
+    # Step 2: fetch all candidate rows; _group_by_shared_ip handles the rest.
     rows = (await db.execute(
         select(InventoryDevice)
         .where(InventoryDevice.status != "hidden", InventoryDevice.ip.isnot(None))
