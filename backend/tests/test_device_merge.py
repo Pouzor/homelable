@@ -22,7 +22,7 @@ from app.db.models import (
     Rack,
     RackDevice,
 )
-from app.services.device_merge import merge_devices, reconcile_duplicates
+from app.services.device_merge import _naive, _newest, merge_devices, reconcile_duplicates
 
 
 def _at(day: int) -> datetime:
@@ -348,34 +348,63 @@ async def test_reconcile_is_idempotent(db_session):
     assert await reconcile_duplicates(db_session) == 0
 
 
-# --- Regression: nullable discovered_at (#439) ---------------------------
+# --- Regression: mixed tz-awareness on discovered_at (#440) --------------
+#
+# Every other test in this file builds both rows in one session, so both carry
+# the tz-aware value the column default gave them and every comparison is
+# naive-vs-naive or aware-vs-aware. Production is not like that: SQLite stores
+# no offset, so a row read back is naive, while a row this session just created
+# is aware — and `expire_on_commit=False` means no commit reconciles them.
+# `expire_all` reproduces that split, which is the state a scan reconcile runs
+# in: it is where a row first learns the MAC that proves it a duplicate.
+
+
+async def _stored(db, **kwargs):
+    """A row as it comes back from the database — naive, offset dropped."""
+    device = await _device(db, **kwargs)
+    await db.flush()
+    db.expire_all()
+    await db.refresh(device)
+    return device
 
 
 @pytest.mark.asyncio
-async def test_merge_devices_tolerates_null_discovered_at(db_session):
-    """A loser with discovered_at=None must not raise TypeError in the sort key."""
-    winner = await _device(db_session, id="w", ip="10.0.0.1", mac="aa:bb:cc:dd:ee:01")
-    loser = InventoryDevice(id="l", ip="10.0.0.2", mac="aa:bb:cc:dd:ee:02", discovered_at=None)
-    db_session.add(loser)
+async def test_merge_devices_compares_stored_and_session_timestamps(db_session):
+    """A loser read from the database must sort against a winner created here."""
+    stored = await _stored(db_session, id="l", ip="10.0.0.2", mac="aa:bb:cc:dd:ee:02")
+    assert stored.discovered_at.tzinfo is None, "row from the database should be naive"
+    winner = InventoryDevice(id="w", ip="10.0.0.1", mac="aa:bb:cc:dd:ee:01")
+    db_session.add(winner)
     await db_session.flush()
+    assert winner.discovered_at.tzinfo is not None, "row made here should be tz-aware"
 
-    result = await merge_devices(db_session, winner, [loser])
+    result = await merge_devices(db_session, winner, [stored])
     assert result["merged"] == 1
+    # The survivor keeps the earlier sighting, whichever form it was stored in.
+    assert _naive(winner.discovered_at) == _naive(stored.discovered_at)
 
 
 @pytest.mark.asyncio
-async def test_reconcile_tolerates_null_discovered_at(db_session):
-    """reconcile_duplicates must not abort when a row has discovered_at=None."""
-    await _device(db_session, id="a", mac="aa:bb:cc:dd:ee:ff", discovered_at=_at(1))
-    loser = InventoryDevice(id="b", mac="aa:bb:cc:dd:ee:ff", discovered_at=None)
-    db_session.add(loser)
+async def test_reconcile_compares_stored_and_session_timestamps(db_session):
+    """A scan reconcile folds a row it just made into one already on disk."""
+    await _stored(db_session, id="a", mac="aa:bb:cc:dd:ee:ff")
+    fresh = InventoryDevice(id="b", mac="aa:bb:cc:dd:ee:ff")
+    db_session.add(fresh)
     await db_session.flush()
 
-    merged = await reconcile_duplicates(db_session)
-    assert merged == 1
+    assert await reconcile_duplicates(db_session) == 1
 
 
-# --- Regression: dedupe called once per reconcile batch (#450) -----------
+@pytest.mark.asyncio
+async def test_newest_compares_stored_and_session_timestamps():
+    """`last_seen`/`last_scan` carry the same split — scanner writes them aware."""
+    stored = datetime(2026, 1, 2)
+    fresh = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert _newest(stored, fresh) is stored
+    assert _newest(fresh, stored) is stored
+
+
+# --- Regression: dedupe called once per reconcile batch ------------------
 
 
 @pytest.mark.asyncio

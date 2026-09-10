@@ -24,7 +24,7 @@ here, so the declared ``ON DELETE SET NULL`` never fires.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import or_, select, update
@@ -77,10 +77,30 @@ def _blank(value: Any) -> bool:
     return value is None or value == ""
 
 
+def _naive(value: datetime | None) -> datetime:
+    """A stored timestamp in a form two rows can be compared in.
+
+    SQLite keeps no offset, so a row read back from the database carries a naive
+    datetime while a row created in this session still holds the tz-aware value
+    ``_now`` gave it — and ``expire_on_commit=False`` means no commit ever
+    reconciles the two. A reconcile pass sorts exactly those two together (a
+    scan is where a row first learns the MAC that proves it a duplicate), so
+    comparing them raw raises ``TypeError: can't compare offset-naive and
+    offset-aware datetimes`` and aborts the merge. Normalise to naive UTC before
+    every comparison. ``datetime.min`` stands in for no timestamp at all, which
+    the column forbids but a hand-edited database could still hold.
+    """
+    if value is None:
+        return datetime.min
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def _newest(left: datetime | None, right: datetime | None) -> datetime | None:
     if left is None or right is None:
         return left or right
-    return max(left, right)
+    return max(left, right, key=_naive)
 
 
 def _merged_ip(winner: str | None, loser: str | None) -> str | None:
@@ -288,7 +308,7 @@ async def merge_devices(
     loser_ids = [row.id for row in losers]
     # Oldest first: where two losers both fill the same gap, the older sighting
     # is the one that has survived longest without being contradicted.
-    for loser in sorted(losers, key=lambda d: (d.discovered_at or datetime.min, d.id)):
+    for loser in sorted(losers, key=lambda d: (_naive(d.discovered_at), d.id)):
         for field in _FILL_SCALARS:
             if _blank(getattr(winner, field, None)):
                 value = getattr(loser, field, None)
@@ -307,7 +327,7 @@ async def merge_devices(
         winner.last_scan = _newest(winner.last_scan, loser.last_scan)
         # The device has been known since the earliest of the rows saw it.
         if loser.discovered_at and winner.discovered_at:
-            winner.discovered_at = min(winner.discovered_at, loser.discovered_at)
+            winner.discovered_at = min(winner.discovered_at, loser.discovered_at, key=_naive)
 
     winner.status = _merged_status(winner.status, losers)
 
@@ -382,7 +402,7 @@ def _pick_winner(group: list[InventoryDevice]) -> InventoryDevice:
         key=lambda d: (
             0 if d.ieee_address else 1,
             0 if d.status == "approved" else 1,
-            d.discovered_at or datetime.min,
+            _naive(d.discovered_at),
             d.id,
         ),
     )[0]
