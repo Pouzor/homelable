@@ -283,14 +283,23 @@ async def init_db() -> None:
                     "discovered_at DATETIME"
                     ")"
                 )
+                # Carry every column the old table actually has, the way the
+                # nodes rebuild does. A hand-written list silently drops
+                # whatever it forgets — this one forgot `properties`, which
+                # wiped the Zigbee/Z-Wave attributes off every device it
+                # migrated. Intersecting with the old shape also keeps the
+                # rebuild working on a DB predating any of these columns.
+                new_cols = [
+                    "id", "ip", "mac", "hostname", "os", "services",
+                    "suggested_type", "status", "discovery_source",
+                    "ieee_address", "friendly_name", "device_subtype",
+                    "model", "vendor", "lqi", "properties", "discovered_at",
+                ]
+                old_cols = {c[1] for c in cols}
+                carried = ", ".join(c for c in new_cols if c in old_cols)
                 await conn.exec_driver_sql(
-                    "INSERT INTO device_inventory_new "
-                    "(id, ip, mac, hostname, os, services, suggested_type, status, "
-                    "discovery_source, ieee_address, friendly_name, device_subtype, "
-                    "model, vendor, lqi, discovered_at) "
-                    "SELECT id, ip, mac, hostname, os, services, suggested_type, status, "
-                    "discovery_source, ieee_address, friendly_name, device_subtype, "
-                    "model, vendor, lqi, discovered_at FROM device_inventory"
+                    f"INSERT INTO device_inventory_new ({carried}) "
+                    f"SELECT {carried} FROM device_inventory"
                 )
                 await conn.exec_driver_sql("DROP TABLE device_inventory")
                 await conn.exec_driver_sql(
