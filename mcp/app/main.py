@@ -6,13 +6,25 @@ from starlette.routing import Mount
 
 from .auth import ApiKeyMiddleware
 from .backend_client import backend
+from .config import settings
 from .resources import register_resources
 from .tools import register_tools
 
 
-mcp_server = Server("homelable")
-register_resources(mcp_server)
-register_tools(mcp_server)
+def create_mcp_server(*, read_only: bool | None = None) -> Server:
+    """Build an MCP server with resources and, unless requested, canvas tools.
+
+    A separate process with ``MCP_READ_ONLY=true`` can share the backend but
+    expose no tools to topology-only agents. Keeping this process-level avoids
+    accidentally granting write capabilities through a shared API key.
+    """
+    server = Server("homelable")
+    register_resources(server)
+    register_tools(server, read_only=settings.mcp_read_only if read_only is None else read_only)
+    return server
+
+
+mcp_server = create_mcp_server()
 
 session_manager = StreamableHTTPSessionManager(
     app=mcp_server,
