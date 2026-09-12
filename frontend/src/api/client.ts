@@ -298,6 +298,31 @@ export const proxmoxApi = {
     }>('/proxmox/sync-now'),
 }
 
+export interface XcpngConfigData {
+  host: string
+  verify_tls: boolean
+  sync_enabled: boolean
+  sync_interval: number
+  credentials_configured: boolean
+}
+
+export const xcpngApi = {
+  testConnection: (data: { host: string; username?: string; password?: string; verify_tls?: boolean }) =>
+    api.post<{ connected: boolean; message: string }>('/xcpng/test-connection', data),
+
+  importToPending: (data: { host: string; username?: string; password?: string; verify_tls?: boolean }) =>
+    api.post<{ device_count: number; pending_created: number; pending_updated: number; links_recorded: number }>(
+      '/xcpng/import-pending', data,
+    ),
+
+  getConfig: () => api.get<XcpngConfigData>('/xcpng/config'),
+  saveConfig: (data: { sync_enabled: boolean; sync_interval: number }) =>
+    api.post<XcpngConfigData>('/xcpng/config', data),
+  syncNow: () => api.post<{ device_count: number; pending_created: number; pending_updated: number; links_recorded: number }>(
+    '/xcpng/sync-now',
+  ),
+}
+
 export const designsApi = {
   list: () => api.get<import('@/types').Design[]>('/designs'),
   create: (data: { name: string; icon?: string; design_type?: string }) =>
