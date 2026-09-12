@@ -141,4 +141,23 @@ describe('canvasStore — applyDeviceFacts keeps each node\'s arrangement', () =
     useCanvasStore.getState().applyDeviceFacts('d-1', { services: [ssh] })
     expect(useCanvasStore.getState().nodes[0].data.services).toEqual([ssh])
   })
+
+  it('redraws a renamed service instead of losing it (#468)', () => {
+    // Correcting a scanner guess in the Device Inventory is a label change, not
+    // a different service — the node keeps drawing it, under the new name.
+    useCanvasStore.getState().loadCanvas([drawnAs('n1', [ssh, kuma])], [])
+    const homepage = { ...kuma, service_name: 'Homepage' }
+    useCanvasStore.getState().applyDeviceFacts('d-1', { services: [ssh, homepage] })
+    expect(useCanvasStore.getState().nodes[0].data.services).toEqual([ssh, homepage])
+  })
+
+  it('does not claim a rename it took from the row as a canvas edit', () => {
+    useCanvasStore.getState().loadCanvas([drawnAs('n1', [ssh, kuma])], [])
+    useCanvasStore.getState().applyDeviceFacts('d-1', {
+      services: [ssh, { ...kuma, service_name: 'Homepage' }],
+    })
+    const { nodes, factsBaseline } = useCanvasStore.getState()
+    expect(changedFactFields(nodes[0].data, factsBaseline.n1)).toEqual([])
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(false)
+  })
 })

@@ -47,11 +47,25 @@ const encode = (value: unknown): string => JSON.stringify(value ?? null)
  * a service or dragging a property into place is not an edit to the device and
  * must not be reported as one — otherwise a rearranged canvas would push its
  * arrangement onto every other canvas showing the same device.
+ *
+ * A service is identified by its port and protocol, never by its name — the
+ * same identity the backend's `_service_identity_key` uses. The name is a
+ * label: the scanner guesses it, the user corrects it, and keying on it made a
+ * rename look like a different service. `listArrangedForNode` would then drop
+ * the entry the node drew and append the renamed one hidden, so correcting a
+ * service in the Device Inventory made it vanish from every canvas (issue #468).
+ *
+ * A service with no port keeps the three-part form, name included: nothing else
+ * tells two of those apart.
  */
-const keyOf = (item: Record<string, unknown>): string =>
-  'key' in item
-    ? String(item.key ?? '').toLowerCase()
-    : `${item.port ?? ''}|${item.protocol ?? ''}|${String(item.service_name ?? '').toLowerCase()}`
+const keyOf = (item: Record<string, unknown>): string => {
+  if ('key' in item) return String(item.key ?? '').toLowerCase()
+  const { port, protocol } = item
+  if (port === undefined || port === null || port === '') {
+    return `None|${protocol ?? ''}|${String(item.service_name ?? '').toLowerCase()}`
+  }
+  return `${port}|${protocol ?? ''}`
+}
 
 const encodeFacts = (field: DeviceFactField, value: unknown): string => {
   if (field !== 'services' && field !== 'properties') return encode(value)
