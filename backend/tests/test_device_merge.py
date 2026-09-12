@@ -554,3 +554,74 @@ async def test_merge_route_requires_auth(client, db_session):
         "/api/v1/scan/pending/merge", json={"winner_id": "w", "loser_ids": ["l"]}
     )
     assert res.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_a_merge_keeps_the_survivor_name_for_a_service_on_the_same_port(db_session):
+    """Two rows describing one device describe one service per port.
+
+    The winner is the row the canvas points at, and a loser is usually a pending
+    row a scan minted, carrying the fingerprint's guess. Collapsing the pair must
+    not let that guess overwrite the name, icon and category the user curated —
+    the collapse runs unattended during a background scan.
+    """
+    winner = await _device(
+        db_session, id="w", ip="192.168.1.62",
+        services=[{
+            "port": 80, "protocol": "tcp", "service_name": "Homepage",
+            "icon": "brand:homepage", "category": "monitoring",
+        }],
+    )
+    loser = await _device(
+        db_session, id="l", ip="192.168.1.62",
+        services=[{
+            "port": 80, "protocol": "tcp", "service_name": "nginx",
+            "icon": "Globe", "category": "web", "path": "/dash",
+        }],
+    )
+
+    await merge_devices(db_session, winner, [loser])
+    await db_session.flush()
+
+    assert len(winner.services) == 1
+    assert winner.services[0]["service_name"] == "Homepage"
+    assert winner.services[0]["icon"] == "brand:homepage"
+    assert winner.services[0]["category"] == "monitoring"
+    # Everything that is not the user's call still comes across.
+    assert winner.services[0]["path"] == "/dash"
+
+
+@pytest.mark.asyncio
+async def test_a_merge_still_takes_a_service_the_survivor_never_had(db_session):
+    """Curating the collision must not stop the union doing its job."""
+    winner = await _device(
+        db_session, id="w", ip="192.168.1.62",
+        services=[{"port": 80, "protocol": "tcp", "service_name": "Homepage"}],
+    )
+    loser = await _device(
+        db_session, id="l", ip="192.168.1.62",
+        services=[{"port": 5678, "protocol": "tcp", "service_name": "n8n"}],
+    )
+
+    await merge_devices(db_session, winner, [loser])
+    await db_session.flush()
+
+    assert [s["service_name"] for s in winner.services] == ["Homepage", "n8n"]
+
+
+@pytest.mark.asyncio
+async def test_a_merge_names_a_service_the_survivor_left_unnamed(db_session):
+    """A blank name is silence, so the loser's fills it rather than being dropped."""
+    winner = await _device(
+        db_session, id="w", ip="192.168.1.62",
+        services=[{"port": 80, "protocol": "tcp"}],
+    )
+    loser = await _device(
+        db_session, id="l", ip="192.168.1.62",
+        services=[{"port": 80, "protocol": "tcp", "service_name": "nginx"}],
+    )
+
+    await merge_devices(db_session, winner, [loser])
+    await db_session.flush()
+
+    assert [s["service_name"] for s in winner.services] == ["nginx"]

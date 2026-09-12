@@ -21,6 +21,7 @@ from app.services.inventory_sync import (
     link_facts,
     merge_properties,
     merge_services,
+    normalize_view_key,
     seed_node_views,
 )
 
@@ -1643,3 +1644,44 @@ class TestPerNodeView:
         assert hydrated_node(node, device)["services"] == [
             {"protocol": "tcp", "service_name": "Vaultwarden", "visible": False}
         ]
+
+    @pytest.mark.asyncio
+    async def test_a_port_less_key_stored_with_an_empty_port_still_matches(self, db_session):
+        """`port: ""` used to render an empty first segment, `None` renders it now.
+
+        Both spell the same absent port, so the older one is narrowed to today's
+        rather than missing and dragging the service back into view.
+        """
+        device = InventoryDevice(
+            id="d-1", services=[{"port": "", "protocol": "tcp", "service_name": "Vaultwarden"}]
+        )
+        node = _node(await _design(db_session), device_id="d-1")
+        node.display_view = {
+            "services": [{"key": "|tcp|vaultwarden", "visible": False}],
+            "properties": [],
+        }
+        assert hydrated_node(node, device)["services"] == [
+            {"port": "", "protocol": "tcp", "service_name": "Vaultwarden", "visible": False}
+        ]
+
+
+class TestNormalizeViewKey:
+    """Stored view keys, narrowed to the identity the row is addressed by."""
+
+    def test_a_key_naming_a_port_drops_the_name(self):
+        assert normalize_view_key("3001|tcp|uptime kuma", "services") == "3001|tcp"
+
+    def test_a_key_already_in_todays_form_is_left_alone(self):
+        assert normalize_view_key("3001|tcp", "services") == "3001|tcp"
+
+    def test_a_port_less_key_keeps_its_name(self):
+        assert normalize_view_key("None|tcp|vaultwarden", "services") == "None|tcp|vaultwarden"
+
+    def test_an_empty_port_is_spelled_the_way_it_is_rendered_today(self):
+        assert normalize_view_key("|tcp|vaultwarden", "services") == "None|tcp|vaultwarden"
+
+    def test_a_name_carrying_a_pipe_survives_the_split(self):
+        assert normalize_view_key("None|tcp|a|b", "services") == "None|tcp|a|b"
+
+    def test_a_property_key_is_never_touched(self):
+        assert normalize_view_key("rack", "properties") == "rack"
