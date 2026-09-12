@@ -154,7 +154,7 @@ export interface DuplicateNodeConflict {
  */
 export const scanApi = {
   trigger: (deepScan?: Partial<DeepScanConfig>) => api.post('/scan/trigger', deepScan ?? {}),
-  pending: () => api.get('/scan/pending'),
+  pending: () => api.get<InventoryEntry[]>('/scan/pending'),
   /** Add an inventory entry by hand, for hardware no scan can discover. */
   createPending: (data: {
     hostname: string
@@ -165,7 +165,19 @@ export const scanApi = {
     vendor?: string | null
     /** "manual" (default) or "rack" for gear created from a rack canvas. */
     discovery_source?: 'manual' | 'rack'
-  }) => api.post<{ id: string; hostname: string | null }>('/scan/pending', data),
+    label?: string | null
+    type?: string | null
+    os?: string | null
+    notes?: string | null
+    check_method?: string | null
+    check_target?: string | null
+    /**
+     * Skip the fold into a row that already carries one of these addresses.
+     * One device is one row by default; this says the caller means a separate
+     * one anyway — two services on one host, split apart from the node editor.
+     */
+    force?: boolean
+  }) => api.post<InventoryEntry>('/scan/pending', data),
   /**
    * Edit an inventory row. Partial: only the keys sent are applied, so a caller
    * touching one field never clears the rest. Lifecycle (`status`) and discovery
@@ -181,7 +193,7 @@ export const scanApi = {
    */
   rescanDevice: (id: string, opts?: { full_ports?: boolean; ports?: string; http_probe_enabled?: boolean; verify_tls?: boolean }) =>
     api.post<ScanRunSummary>(`/scan/pending/${id}/rescan`, opts ?? {}),
-  hidden: () => api.get('/scan/hidden'),
+  hidden: () => api.get<InventoryEntry[]>('/scan/hidden'),
   /**
    * Inventory rows for the guests a Proxmox host runs, resolved from the
    * host→guest links the Proxmox import records. Empty for a non-host device.

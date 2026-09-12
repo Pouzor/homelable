@@ -1,4 +1,5 @@
-import { Fragment, createElement, useState } from 'react'
+import { Fragment, createElement, useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import modalStyles from './modal-interactive.module.css'
 import { RotateCcw, ChevronDown, Palette } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -7,7 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod, type NodeTypeStyle } from '@/types'
+import { NODE_TYPE_LABELS, type InventoryEntry, type NodeData, type NodeType, type CheckMethod, type NodeTypeStyle } from '@/types'
+import { scanApi } from '@/api/client'
+import { deviceFactsToNodeData } from '@/utils/deviceFacts'
 import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
@@ -15,6 +18,47 @@ import { IconPickerPanel } from './IconPickerPanel'
 import { MAX_HANDLES, MIN_HANDLES, clampHandles, sideDefault, handleCountField, type Side } from '@/utils/handleUtils'
 import { isValidParentNode } from '@/utils/virtualEdgeParent'
 import { NODE_TYPE_GROUPS, isFurnitureType } from '@/utils/nodeTypeGroups'
+
+// No backend in standalone mode, so no Device Inventory to point a node at.
+// The link is a full-mode concept end to end — see ADR-001 for the same rule
+// applied to uploads.
+const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
+
+// Sentinel values for the device picker. Real ids are uuids, so neither can
+// collide with one.
+const DEVICE_NONE = '__none__'
+const DEVICE_NEW = '__new__'
+
+/** A device as the picker names it, falling back until something is printable. */
+function deviceName(device: InventoryEntry): string {
+  return (
+    device.label
+    || device.friendly_name
+    || device.hostname
+    || device.ip
+    || device.mac
+    || 'Unnamed device'
+  )
+}
+
+/**
+ * A device as one row of the picker: its name, then its addresses so two rows
+ * named the same can be told apart. One text node — the list renders inside an
+ * option, which takes no markup of its own.
+ */
+function deviceLabel(device: InventoryEntry): string {
+  const addresses = [device.ip, device.mac, device.ieee_address].filter(Boolean).join(' · ')
+  return addresses ? `${deviceName(device)} — ${addresses}` : deviceName(device)
+}
+
+/**
+ * Gear created from a rack canvas. It documents a mount — a patch panel, a
+ * shelf — not a host to draw on a logical canvas, and the backend refuses to
+ * approve one onto a design, so the picker does not offer it either.
+ */
+function isRackOnly(device: InventoryEntry): boolean {
+  return device.discovery_source === 'rack' || (device.discovery_sources ?? []).includes('rack')
+}
 
 // Maps a side to its per-type default field on NodeTypeStyle.
 const SIDE_STYLE_KEY: Record<Side, keyof NodeTypeStyle> = {
@@ -147,6 +191,80 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
 
   const set = (key: keyof NodeData, value: unknown) =>
     setForm((f) => ({ ...f, [key]: value }))
+
+  // ── Device Inventory link ────────────────────────────────────────────────
+  // Which row this node draws. It owns the facts above, so two nodes on one row
+  // show — and edit — the same device. That used to be decided silently from the
+  // ip field and could not be undone (#475); it is a choice here.
+  const [devices, setDevices] = useState<InventoryEntry[]>([])
+  const [deviceBusy, setDeviceBusy] = useState(false)
+  const showDevicePicker = !STANDALONE && !isFurniture
+
+  useEffect(() => {
+    if (!open || !showDevicePicker) return
+    let cancelled = false
+    scanApi
+      .pending()
+      .then((res) => {
+        if (!cancelled) setDevices(res.data.filter((d) => !isRackOnly(d)))
+      })
+      // The picker is one field in a large form. A failed list leaves the node
+      // on the row it already has, which is the status quo, not an error worth
+      // interrupting the edit for.
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [open, showDevicePicker])
+
+  const linkedDevice = devices.find((d) => d.id === form.device_id)
+
+  /**
+   * Adopt a row: point the node at it and show what it will actually display.
+   *
+   * The facts on screen belong to the old row. Leaving them would have the user
+   * save a device they can see and reload into a different one, so they are
+   * replaced here the same way the server hydrates them on read.
+   */
+  const linkDevice = (device: InventoryEntry) =>
+    setForm((f) => ({ ...f, ...deviceFactsToNodeData(device), device_id: device.id }))
+
+  /** Split this node onto a row of its own, whatever the addresses suggest. */
+  const createDevice = async () => {
+    setDeviceBusy(true)
+    try {
+      const { data } = await scanApi.createPending({
+        hostname: form.hostname || form.label || 'device',
+        ip: form.ip || null,
+        mac: form.mac || null,
+        os: form.os || null,
+        notes: form.notes || null,
+        label: form.label || null,
+        type: form.type ?? null,
+        check_method: form.check_method ?? null,
+        check_target: form.check_target || null,
+        discovery_source: 'manual',
+        // Without this the new row folds straight back into the one this node
+        // is trying to leave.
+        force: true,
+      })
+      setDevices((list) => [...list, data])
+      set('device_id', data.id)
+      toast.success('Separate device created')
+    } catch {
+      toast.error('Could not create the device')
+    } finally {
+      setDeviceBusy(false)
+    }
+  }
+
+  const onPickDevice = (value: string | null) => {
+    if (value === DEVICE_NEW) {
+      void createDevice()
+      return
+    }
+    if (value === DEVICE_NONE) return
+    const picked = devices.find((d) => d.id === value)
+    if (picked) linkDevice(picked)
+  }
 
   const customStyle = useThemeStore((s) => s.customStyle)
   // Effective default count for a side: the per-type style default if set,
@@ -398,6 +516,47 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 </div>
               )
             })()}
+
+            {/* Device Inventory link */}
+            {showDevicePicker && (
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <Label className="text-xs text-muted-foreground">Device</Label>
+                <Select
+                  value={form.device_id ?? DEVICE_NONE}
+                  onValueChange={onPickDevice}
+                  disabled={deviceBusy}
+                >
+                  <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Device inventory selector">
+                    <SelectValue>
+                      {linkedDevice
+                        ? deviceName(linkedDevice)
+                        : form.device_id
+                          ? 'Linked device'
+                          : 'Not linked yet'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#21262d] border-[#30363d]">
+                    {!form.device_id && (
+                      <SelectItem value={DEVICE_NONE} className="text-sm">Not linked yet</SelectItem>
+                    )}
+                    {devices.map((d) => (
+                      <SelectItem key={d.id} value={d.id} className="text-sm">
+                        {deviceLabel(d)}
+                      </SelectItem>
+                    ))}
+                    <SelectSeparator />
+                    <SelectItem value={DEVICE_NEW} className="text-sm">
+                      Create a separate device
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-[10px] text-muted-foreground/60">
+                  The inventory row this node draws. It owns the fields above, so
+                  every node on the same device shows — and edits — the same
+                  values.
+                </span>
+              </div>
+            )}
 
             {/* Container mode */}
             {CONTAINER_MODE_TYPES.includes((form.type ?? 'generic') as NodeType) && (
