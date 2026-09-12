@@ -166,3 +166,48 @@ async def test_idempotent_noop_when_unique(db_session):
     await db_session.flush()
     assert await dedupe_nodes_by_device(db_session) == 0
     assert await dedupe_nodes_by_device(db_session) == 0
+
+
+@pytest.mark.asyncio
+async def test_keeps_nodes_on_a_row_with_no_address(db_session):
+    """#475 — a shared row nothing identified must not cost a node.
+
+    Two containers whose ip field holds a docker port mapping (`:3001`) were
+    matched as one host and put on a single inventory row. Collapsing them here
+    would delete one of the two on the next scan.
+    """
+    d = await _design(db_session)
+    device = await _device(db_session, ieee=None, ip=":3001")
+    db_session.add(Node(label="NoteShare", type="docker_container", design_id=d.id, device_id=device.id))
+    await db_session.flush()
+    db_session.add(Node(label="gitea", type="docker_container", design_id=d.id, device_id=device.id))
+    await db_session.flush()
+
+    assert await dedupe_nodes_by_device(db_session) == 0
+    kept = (await db_session.execute(select(Node).where(Node.device_id == device.id))).scalars().all()
+    assert {n.label for n in kept} == {"NoteShare", "gitea"}
+
+
+@pytest.mark.asyncio
+async def test_collapses_when_the_row_carries_a_real_ip(db_session):
+    """The guard is about addresses, not about how the row was born."""
+    d = await _design(db_session)
+    device = await _device(db_session, ieee=None, ip="192.168.1.10")
+    db_session.add(Node(label="NAS", type="nas", design_id=d.id, device_id=device.id))
+    await db_session.flush()
+    db_session.add(Node(label="NAS", type="nas", design_id=d.id, device_id=device.id))
+    await db_session.flush()
+
+    assert await dedupe_nodes_by_device(db_session) == 1
+
+
+@pytest.mark.asyncio
+async def test_collapses_when_the_row_carries_only_a_mac(db_session):
+    d = await _design(db_session)
+    device = await _device(db_session, ieee=None, ip=None, mac="aa:bb:cc:dd:ee:ff")
+    db_session.add(Node(label="AP", type="ap", design_id=d.id, device_id=device.id))
+    await db_session.flush()
+    db_session.add(Node(label="AP", type="ap", design_id=d.id, device_id=device.id))
+    await db_session.flush()
+
+    assert await dedupe_nodes_by_device(db_session) == 1

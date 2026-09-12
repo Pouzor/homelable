@@ -13,6 +13,7 @@ Nothing here commits — the caller owns the transaction.
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 from collections.abc import Callable, Mapping
@@ -63,6 +64,31 @@ def ip_tokens(ip: str | None) -> list[str]:
     from addresses shares this rule, the scanner included.
     """
     return [t.strip() for t in ip.split(",") if t.strip()] if ip else []
+
+
+def identity_ip_tokens(ip: str | None) -> list[str]:
+    """The tokens of an ``ip`` field that are actually addresses.
+
+    The field is free text and users write more than addresses in it: a docker
+    port mapping (``:3001``, ``9000:9000``), a placeholder (``-``, ``N/A``,
+    ``dhcp``), a note. Two devices sharing one of those share nothing — but the
+    matcher used to read them as the same host and merge the pair into a single
+    inventory row, which is #475: editing one node edited the other, and no edit
+    could separate them again.
+
+    So identity needs a real address. Everything else stays in the field, shown
+    and saved as the user typed it, and is simply not evidence of who the device
+    is. Matching on the rest — ``ieee``, ``mac``, an explicit ``device_id`` — is
+    untouched.
+    """
+    out = []
+    for token in ip_tokens(ip):
+        try:
+            ipaddress.ip_address(token)
+        except ValueError:
+            continue
+        out.append(token)
+    return out
 
 
 def _blank(value: Any) -> bool:
@@ -126,8 +152,13 @@ async def find_device_for(
     bulk-approve skip order so a device is identified the same way everywhere.
     Hidden rows are eligible: a hidden device is still that device, and silently
     minting a second row for it would resurrect the duplicate the user hid.
+
+    Only the parts of ``ip`` that are addresses count — see
+    :func:`identity_ip_tokens`. With nothing identifying left, the answer is
+    ``None`` and the caller mints a row of its own, which is the right outcome:
+    two devices the user only described are two devices.
     """
-    ip_toks = ip_tokens(ip)
+    ip_toks = identity_ip_tokens(ip)
     conds = []
     if ieee:
         # Case-insensitive: `0x00124B00…` and `0x00124b00…` are the same radio,

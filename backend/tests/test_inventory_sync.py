@@ -18,6 +18,7 @@ from app.services.inventory_sync import (
     changed_facts,
     find_device_for,
     hydrated_node,
+    identity_ip_tokens,
     link_facts,
     merge_properties,
     merge_services,
@@ -307,6 +308,62 @@ class TestFindDeviceFor:
             db_session, ip=None, mac=None, ieee="0x00124B0022334455"
         )
         assert found is not None and found.id == "d-1"
+
+    @pytest.mark.asyncio
+    async def test_ignores_an_ip_field_that_is_not_an_address(self, db_session):
+        """#475 — two containers described by a docker port mapping.
+
+        The user writes `:3001` in the ip field of both. That is a note, not an
+        address, and reading it as identity merged two unrelated containers onto
+        one row: editing one edited the other, with no way back.
+        """
+        db_session.add(InventoryDevice(id="d-noteshare", ip=":3001"))
+        await db_session.commit()
+
+        assert await find_device_for(db_session, ip=":3001", mac=None, ieee=None) is None
+
+    @pytest.mark.asyncio
+    async def test_ignores_a_port_mapping_list(self, db_session):
+        db_session.add(InventoryDevice(id="d-caddy", ip="4381:4381, 1025:1025"))
+        await db_session.commit()
+
+        assert await find_device_for(
+            db_session, ip="4381:4381, 1025:1025", mac=None, ieee=None
+        ) is None
+
+    @pytest.mark.asyncio
+    async def test_still_matches_the_real_address_beside_a_placeholder(self, db_session):
+        """The junk is dropped, not the whole field."""
+        db_session.add(InventoryDevice(id="d-1", ip="dhcp, 10.0.0.5"))
+        await db_session.commit()
+
+        found = await find_device_for(db_session, ip="10.0.0.5", mac=None, ieee=None)
+        assert found is not None and found.id == "d-1"
+
+    @pytest.mark.asyncio
+    async def test_falls_through_to_mac_when_the_ip_field_is_not_an_address(self, db_session):
+        db_session.add(InventoryDevice(id="d-1", ip=":3001", mac="aa:bb:cc:dd:ee:ff"))
+        await db_session.commit()
+
+        found = await find_device_for(
+            db_session, ip=":3001", mac="aa:bb:cc:dd:ee:ff", ieee=None
+        )
+        assert found is not None and found.id == "d-1"
+
+
+class TestIdentityIpTokens:
+    def test_keeps_addresses_and_drops_everything_else(self):
+        assert identity_ip_tokens("10.0.0.5, fd00::1") == ["10.0.0.5", "fd00::1"]
+        assert identity_ip_tokens(":3001") == []
+        assert identity_ip_tokens("9000:9000, 9001:9001") == []
+        assert identity_ip_tokens("dhcp, N/A, -") == []
+        assert identity_ip_tokens("nas.local") == []
+        assert identity_ip_tokens("10.0.0.5/24") == []
+        assert identity_ip_tokens(None) == []
+        assert identity_ip_tokens("") == []
+
+    def test_keeps_the_user_spelling_of_what_it_keeps(self):
+        assert identity_ip_tokens(" 10.0.0.5 , :3001 ") == ["10.0.0.5"]
 
 
 class TestIeeeCollisions:

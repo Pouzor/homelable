@@ -18,8 +18,8 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Document, Edge, Node, RackDevice
-from app.services.inventory_sync import find_device_for
+from app.db.models import Document, Edge, InventoryDevice, Node, RackDevice
+from app.services.inventory_sync import find_device_for, identity_ip_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +58,10 @@ async def find_duplicate_node(
     # same precedence find_device_for used: ieee > ip > mac.
     match: str
     value: str | None
-    device_ips = {t.strip() for t in (device.ip or "").split(",") if t.strip()}
-    shared_ip = next((t.strip() for t in (ip or "").split(",") if t.strip() in device_ips), None)
+    # Only real addresses identify — the same rule find_device_for just used, so
+    # the reported match is the one it actually made (see identity_ip_tokens).
+    device_ips = set(identity_ip_tokens(device.ip))
+    shared_ip = next((t for t in identity_ip_tokens(ip) if t in device_ips), None)
     if ieee and device.ieee_address == ieee:
         match, value = "ieee", ieee
     elif shared_ip:
@@ -77,11 +79,32 @@ async def find_duplicate_node(
     }
 
 
+async def _identified_by_address(db: AsyncSession, device_ids: set[str]) -> set[str]:
+    """Of ``device_ids``, those whose row carries an address worth trusting.
+
+    An ieee, a mac, or at least one ip token that really is an address. A row
+    with none of the three names no host: whatever put two nodes on it was not
+    identity, and merging them would destroy one of the two on a guess.
+    """
+    if not device_ids:
+        return set()
+    devices = (
+        await db.execute(select(InventoryDevice).where(InventoryDevice.id.in_(device_ids)))
+    ).scalars().all()
+    return {
+        d.id
+        for d in devices
+        if d.ieee_address or d.mac or identity_ip_tokens(d.ip)
+    }
+
+
 async def dedupe_nodes_by_device(db: AsyncSession) -> int:
     """Merge duplicate nodes drawing the same device on the same canvas.
 
     Returns the number of nodes removed. Idempotent. Nodes drawing one device on
-    *different* designs are left alone — that is valid cross-canvas placement.
+    *different* designs are left alone — that is valid cross-canvas placement,
+    and so are nodes on a row that carries no address at all (see
+    :func:`_identified_by_address`).
     The device facts live on the inventory row, so nothing has to be merged out
     of the extras: only edges and parent links are re-pointed before they go.
     Does not commit — the caller owns the transaction.
@@ -98,9 +121,20 @@ async def dedupe_nodes_by_device(db: AsyncSession) -> int:
     for node in rows:
         groups.setdefault((node.device_id, node.design_id), []).append(node)  # type: ignore[arg-type]
 
+    identified = await _identified_by_address(
+        db, {device_id for (device_id, _), nodes in groups.items() if len(nodes) > 1}
+    )
+
     removed = 0
     for (device_id, _design), nodes in groups.items():
         if len(nodes) < 2:
+            continue
+        # Collapsing deletes a node, so the row has to have been identified by
+        # something real. A row carrying no address at all was matched on a
+        # value the user typed into the ip field that is not one — a port
+        # mapping, a placeholder — and the two nodes are two devices that only
+        # look alike (#475). Leave them; the device picker separates them.
+        if device_id not in identified:
             continue
         canonical, *dups = nodes  # oldest first (ordered above)
         dup_ids = {d.id for d in dups}
