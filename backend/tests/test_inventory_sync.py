@@ -73,7 +73,7 @@ class TestMergeRules:
         assert out[0]["value"] == "A1"
         assert out[0]["icon"] == "Server"
 
-    def test_services_union_on_port_protocol_and_name(self):
+    def test_services_union_on_port_and_protocol(self):
         base = [{"port": 22, "protocol": "tcp", "service_name": "ssh"}]
         incoming = [
             {"port": 22, "protocol": "tcp", "service_name": "SSH", "icon": "Terminal"},
@@ -83,6 +83,77 @@ class TestMergeRules:
         assert len(out) == 2
         assert out[0]["icon"] == "Terminal"
         assert out[1]["port"] == 80
+
+    def test_a_renamed_service_is_not_duplicated_by_the_next_scan(self):
+        """Issue #469: identity is the port, not the name the scanner guessed.
+
+        The user renamed 3001/tcp from "Uptime Kuma" to "Homepage"; the rescan
+        fingerprints the same port and offers its own guess again.
+        """
+        base = [{"port": 3001, "protocol": "tcp", "service_name": "Homepage"}]
+        incoming = [{"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"}]
+        out = merge_services(base, incoming, discovered=True)
+        assert len(out) == 1
+        assert out[0]["service_name"] == "Homepage"
+
+    def test_a_scan_still_names_a_service_that_never_had_one(self):
+        out = merge_services(
+            [{"port": 3001, "protocol": "tcp"}],
+            [{"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"}],
+            discovered=True,
+        )
+        assert len(out) == 1
+        assert out[0]["service_name"] == "Uptime Kuma"
+
+    def test_a_user_edit_still_renames_a_service(self):
+        """The guard is for scanner output only — an edit is an edit."""
+        out = merge_services(
+            [{"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"}],
+            [{"port": 3001, "protocol": "tcp", "service_name": "Homepage"}],
+        )
+        assert len(out) == 1
+        assert out[0]["service_name"] == "Homepage"
+
+    def test_a_scan_refreshes_facts_that_are_not_curated(self):
+        """Only name, icon and category are the user's; the rest is observation."""
+        out = merge_services(
+            [{"port": 3001, "protocol": "tcp", "service_name": "Homepage", "path": "/old"}],
+            [{"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma", "path": "/new"}],
+            discovered=True,
+        )
+        assert out[0]["service_name"] == "Homepage"
+        assert out[0]["path"] == "/new"
+
+    def test_duplicates_already_on_the_row_collapse_on_the_next_merge(self):
+        """Rows written before the #469 fix heal without a migration.
+
+        First entry wins: the user's rename was there before the scan appended
+        its guess underneath it.
+        """
+        base = [
+            {"port": 3001, "protocol": "tcp", "service_name": "Homepage", "icon": "House"},
+            {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"},
+            {"port": 9090, "protocol": "tcp", "service_name": "Watchtower"},
+            {"port": 9090, "protocol": "tcp", "service_name": "Prometheus"},
+        ]
+        out = merge_services(base, None)
+        assert [s["service_name"] for s in out] == ["Homepage", "Watchtower"]
+        assert out[0]["icon"] == "House"
+
+    def test_port_less_services_still_key_on_their_name(self):
+        """Nothing else tells two of them apart — they must not collapse."""
+        base = [{"protocol": "tcp", "service_name": "Vaultwarden", "host": "vault.lan"}]
+        incoming = [{"protocol": "tcp", "service_name": "Gitea", "host": "git.lan"}]
+        out = merge_services(base, incoming)
+        assert len(out) == 2
+        assert [s["service_name"] for s in out] == ["Vaultwarden", "Gitea"]
+
+    def test_the_same_port_on_udp_and_tcp_stays_two_services(self):
+        out = merge_services(
+            [{"port": 53, "protocol": "tcp", "service_name": "dns"}],
+            [{"port": 53, "protocol": "udp", "service_name": "dns"}],
+        )
+        assert len(out) == 2
 
 
     def test_a_scan_never_repaints_an_icon_the_user_picked(self):
