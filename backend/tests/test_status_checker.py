@@ -1,4 +1,5 @@
 """Tests for status_checker service: each check method."""
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -6,6 +7,7 @@ import pytest
 
 from app.services.status_checker import (
     _http_get,
+    _parse_rtt_ms,
     _ping,
     _tcp_connect,
     check_node,
@@ -67,15 +69,15 @@ async def test_check_node_unknown_without_host():
 
 @pytest.mark.asyncio
 async def test_check_node_ping_online():
-    with patch("app.services.status_checker._ping", new_callable=AsyncMock, return_value=True):
+    with patch("app.services.status_checker._ping", new_callable=AsyncMock, return_value=(True, 3)):
         result = await check_node("ping", None, "192.168.1.1")
     assert result["status"] == "online"
-    assert result["response_time_ms"] is not None
+    assert result["response_time_ms"] == 3
 
 
 @pytest.mark.asyncio
 async def test_check_node_ping_offline():
-    with patch("app.services.status_checker._ping", new_callable=AsyncMock, return_value=False):
+    with patch("app.services.status_checker._ping", new_callable=AsyncMock, return_value=(False, None)):
         result = await check_node("ping", None, "192.168.1.1")
     assert result["status"] == "offline"
 
@@ -170,7 +172,7 @@ async def test_check_node_health_appends_health():
 
 @pytest.mark.asyncio
 async def test_check_node_unknown_method_falls_back_to_ping():
-    with patch("app.services.status_checker._ping", new_callable=AsyncMock, return_value=True) as mock_ping:
+    with patch("app.services.status_checker._ping", new_callable=AsyncMock, return_value=(True, 7)) as mock_ping:
         result = await check_node("foobar", None, "10.0.0.1")
     mock_ping.assert_called_once()
     assert result["status"] == "online"
@@ -194,7 +196,7 @@ async def test_ping_uses_unix_args_on_non_windows():
         captured["args"] = args
         proc = MagicMock()
         proc.returncode = 0
-        proc.wait = AsyncMock()
+        proc.communicate = AsyncMock(return_value=(b"", b""))
         return proc
 
     with patch("app.services.status_checker.sys.platform", "linux"), \
@@ -223,7 +225,7 @@ async def test_ping_uses_macos_millisecond_timeout():
         captured["args"] = args
         proc = MagicMock()
         proc.returncode = 0
-        proc.wait = AsyncMock()
+        proc.communicate = AsyncMock(return_value=(b"", b""))
         return proc
 
     with patch("app.services.status_checker.sys.platform", "darwin"), \
@@ -244,7 +246,7 @@ async def test_ping_uses_windows_args_on_win32():
         captured["args"] = args
         proc = MagicMock()
         proc.returncode = 0
-        proc.wait = AsyncMock()
+        proc.communicate = AsyncMock(return_value=(b"", b""))
         return proc
 
     with patch("app.services.status_checker.sys.platform", "win32"), \
@@ -267,7 +269,7 @@ async def test_ping_ipv6_linux_uses_dash6():
         captured["args"] = args
         proc = MagicMock()
         proc.returncode = 0
-        proc.wait = AsyncMock()
+        proc.communicate = AsyncMock(return_value=(b"", b""))
         return proc
 
     with patch("app.services.status_checker.sys.platform", "linux"), \
@@ -287,7 +289,7 @@ async def test_ping_ipv6_macos_uses_ping6():
         captured["args"] = args
         proc = MagicMock()
         proc.returncode = 0
-        proc.wait = AsyncMock()
+        proc.communicate = AsyncMock(return_value=(b"", b""))
         return proc
 
     with patch("app.services.status_checker.sys.platform", "darwin"), \
@@ -305,7 +307,7 @@ async def test_ping_ipv6_windows_uses_dash6():
         captured["args"] = args
         proc = MagicMock()
         proc.returncode = 0
-        proc.wait = AsyncMock()
+        proc.communicate = AsyncMock(return_value=(b"", b""))
         return proc
 
     with patch("app.services.status_checker.sys.platform", "win32"), \
@@ -313,6 +315,141 @@ async def test_ping_ipv6_windows_uses_dash6():
         await _ping("2001:db8::1")
 
     assert "-6" in captured["args"]
+
+
+# --- _ping RTT parsing (issue #470) ---
+
+LINUX_PING_OUTPUT = """PING 192.168.1.1 (192.168.1.1) 56(84) bytes of data.
+64 bytes from 192.168.1.1: icmp_seq=1 ttl=64 time=0.812 ms
+64 bytes from 192.168.1.1: icmp_seq=2 ttl=64 time=0.344 ms
+
+--- 192.168.1.1 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1001ms
+rtt min/avg/max/mdev = 0.344/0.578/0.812/0.234 ms
+"""
+
+
+def test_parse_rtt_reads_unix_probe_lines_not_the_summary():
+    """The summary line's numbers must not win over the real probes."""
+    # min of the two probes (0.344), rounded — not 1001 from "time 1001ms" of
+    # the statistics line, and not anything from the rtt min/avg/max line.
+    assert _parse_rtt_ms(LINUX_PING_OUTPUT) == 0
+
+
+def test_parse_rtt_takes_the_minimum_probe():
+    output = (
+        "64 bytes from 10.0.0.1: icmp_seq=1 ttl=64 time=42.5 ms\n"
+        "64 bytes from 10.0.0.1: icmp_seq=2 ttl=64 time=12.4 ms\n"
+    )
+    # First probe carries ARP resolution, so the minimum is the fair reading.
+    assert _parse_rtt_ms(output) == 12
+
+
+def test_parse_rtt_windows_sub_millisecond():
+    output = (
+        "Reply from 192.168.1.1: bytes=32 time<1ms TTL=64\r\n"
+        "Reply from 192.168.1.1: bytes=32 time<1ms TTL=64\r\n"
+    )
+    # "bytes=32" must not be read as an RTT — only "<1ms" is.
+    assert _parse_rtt_ms(output) == 1
+
+
+def test_parse_rtt_localized_windows_wording():
+    """Translated Windows keeps the "<label><sep><number>ms" shape."""
+    assert _parse_rtt_ms("Reponse de 192.168.1.1 : octets=32 temps=3ms TTL=64") == 3
+    assert _parse_rtt_ms("Antwort von 192.168.1.1: Bytes=32 Zeit=5ms TTL=64") == 5
+
+
+def test_parse_rtt_accepts_comma_decimal_separator():
+    assert _parse_rtt_ms("64 bytes from 10.0.0.1: icmp_seq=1 ttl=64 time=12,7 ms") == 13
+
+
+def test_parse_rtt_returns_none_when_unparseable():
+    assert _parse_rtt_ms("") is None
+    assert _parse_rtt_ms("ping: unknown host nope.local") is None
+
+
+@pytest.mark.asyncio
+async def test_ping_returns_parsed_rtt_not_subprocess_walltime():
+    """Regression for #470: 2 probes pace at ~1s, so wall-clock is not the RTT."""
+    async def fake_exec(*args, **kwargs):
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.communicate = AsyncMock(return_value=(LINUX_PING_OUTPUT.encode(), b""))
+        return proc
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+        ok, rtt_ms = await _ping("192.168.1.1")
+
+    assert ok is True
+    assert rtt_ms == 0
+
+
+@pytest.mark.asyncio
+async def test_ping_captures_stdout_and_drains_it():
+    """stdout must be piped (to read the RTT) and drained via communicate()."""
+    captured = {}
+
+    async def fake_exec(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.communicate = AsyncMock(return_value=(LINUX_PING_OUTPUT.encode(), b""))
+        # wait() on a filled pipe deadlocks — it must not be what we call.
+        proc.wait = AsyncMock(side_effect=AssertionError("must use communicate()"))
+        return proc
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+        await _ping("192.168.1.1")
+
+    assert captured["kwargs"]["stdout"] is asyncio.subprocess.PIPE
+
+
+@pytest.mark.asyncio
+async def test_ping_offline_reports_no_rtt():
+    async def fake_exec(*args, **kwargs):
+        proc = MagicMock()
+        proc.returncode = 1
+        proc.communicate = AsyncMock(return_value=(b"", b""))
+        return proc
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+        ok, rtt_ms = await _ping("192.168.1.99")
+
+    assert ok is False
+    assert rtt_ms is None
+
+
+@pytest.mark.asyncio
+async def test_ping_undecodable_output_falls_back_to_no_rtt():
+    """Non-UTF8 bytes from a localized ping must not raise."""
+    async def fake_exec(*args, **kwargs):
+        proc = MagicMock()
+        proc.returncode = 0
+        proc.communicate = AsyncMock(return_value=(b"\xff\xfe not utf8", b""))
+        return proc
+
+    with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+        ok, rtt_ms = await _ping("192.168.1.1")
+
+    assert ok is True
+    assert rtt_ms is None
+
+
+@pytest.mark.asyncio
+async def test_check_node_ping_falls_back_to_walltime_when_rtt_unparseable():
+    with patch("app.services.status_checker._ping", new_callable=AsyncMock, return_value=(True, None)):
+        result = await check_node("ping", None, "192.168.1.1")
+    assert result["status"] == "online"
+    assert isinstance(result["response_time_ms"], int)
+
+
+@pytest.mark.asyncio
+async def test_check_node_ping_reports_zero_rtt_not_walltime():
+    """A sub-millisecond LAN reply must survive as 0, not be treated as missing."""
+    with patch("app.services.status_checker._ping", new_callable=AsyncMock, return_value=(True, 0)):
+        result = await check_node("ping", None, "192.168.1.1")
+    assert result["response_time_ms"] == 0
 
 
 def test_is_ipv6_detection():

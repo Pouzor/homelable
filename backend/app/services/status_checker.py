@@ -1,6 +1,7 @@
 """Per-node status checks: ping, http, https, tcp, ssh, prometheus, health, none."""
 import asyncio
 import logging
+import re
 import socket
 import sys
 import time
@@ -31,10 +32,13 @@ async def check_node(check_method: str, target: str | None, ip: str | None) -> d
         return {"status": "unknown", "response_time_ms": None}
 
     start = time.monotonic()
+    # Set by the ping branch when ping's own stdout gave us a real RTT; the
+    # subprocess wall-clock is meaningless there (see _ping).
+    rtt_ms: int | None = None
     try:
         match check_method:
             case "ping":
-                ok = await _ping(host)
+                ok, rtt_ms = await _ping(host)
             case "http":
                 url = host if host.startswith("http") else f"http://{host}"
                 ok = await _http_get(url)
@@ -54,10 +58,13 @@ async def check_node(check_method: str, target: str | None, ip: str | None) -> d
                 url = host if host.startswith("http") else f"http://{host}/health"
                 ok = await _http_get(url)
             case _:
-                ok = await _ping(host)
+                ok, rtt_ms = await _ping(host)
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
-        return {"status": "online" if ok else "offline", "response_time_ms": elapsed_ms}
+        return {
+            "status": "online" if ok else "offline",
+            "response_time_ms": rtt_ms if rtt_ms is not None else elapsed_ms,
+        }
 
     except Exception as exc:
         logger.debug("Check failed for %s (%s): %s", host, check_method, exc)
@@ -73,7 +80,42 @@ def _is_ipv6(host: str) -> bool:
         return False
 
 
-async def _ping(host: str) -> bool:
+# Pulls the per-probe RTT out of ping's stdout: Unix "time=0.344 ms", Windows
+# "time<1ms", and the localized Windows wording ("temps=1ms", "Zeit=1ms") — the
+# "<number>ms" shape survives translation even though the label does not.
+# Deliberately does NOT match the Linux summary line
+# "rtt min/avg/max/mdev = 0.344/0.401/0.459/0.057 ms": after "=" the digits are
+# followed by "/", not by "ms", so the probe lines are the only matches.
+_RTT_RE = re.compile(r"[=<]\s*([\d.,]+)\s*ms")
+
+
+def _parse_rtt_ms(output: str) -> int | None:
+    """Smallest per-probe RTT in ping's stdout, rounded to ms. None if absent.
+
+    The first probe often carries ARP resolution, so the minimum is the fairer
+    reading of the link than the first or the mean. Sub-millisecond LAN replies
+    round down to 0 — response_time_ms is an integer column, and 0 is a truer
+    answer than the ~1000 ms the subprocess wall-clock used to report.
+    """
+    values: list[float] = []
+    for raw in _RTT_RE.findall(output):
+        try:
+            values.append(float(raw.replace(",", ".")))
+        except ValueError:
+            continue
+    if not values:
+        return None
+    return round(min(values))
+
+
+async def _ping(host: str) -> tuple[bool, int | None]:
+    """Ping host. Returns (reachable, rtt_ms) — rtt_ms is None if unparseable.
+
+    The RTT comes from ping's own stdout, never from timing the subprocess: 2
+    probes at ping's default 1 s interval take ~1 s of wall-clock however fast
+    the replies come back, so the wall-clock measures ping's pacing rather than
+    the network (issue #470).
+    """
     # Send 2 probes with a ~2s timeout so a single dropped packet or a slow
     # device (ESPHome, IoT) doesn't flap a node offline. Success = any reply.
     #
@@ -95,11 +137,15 @@ async def _ping(host: str) -> bool:
         args = ["ping", *family, "-c", "2", "-W", "2", host]
     proc = await asyncio.create_subprocess_exec(
         *args,
-        stdout=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
     )
-    await proc.wait()
-    return proc.returncode == 0
+    # communicate(), not wait(): wait() on a process whose stdout pipe fills up
+    # deadlocks, and we need that stdout to read the RTT.
+    stdout, _ = await proc.communicate()
+    if proc.returncode != 0:
+        return False, None
+    return True, _parse_rtt_ms((stdout or b"").decode(errors="replace"))
 
 
 async def _http_get(url: str, verify: bool = False) -> bool:
