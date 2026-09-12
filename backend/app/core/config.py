@@ -153,6 +153,8 @@ class Settings(BaseSettings):
                     app_origin,
                     app_origin,
                 )
+        if self.kubernetes_enabled and self.kubernetes_source == "kubeconfig" and not self.kubernetes_kubeconfig_path:
+            raise ValueError("KUBERNETES_SOURCE=kubeconfig requires KUBERNETES_KUBECONFIG_PATH")
         return self
 
     # Scanner
@@ -245,6 +247,19 @@ class Settings(BaseSettings):
     # Seconds to wait for any MQTT gateway request/response round-trip
     # (the Z-Wave node dump today). Same rationale as the Zigbee twin above.
     mqtt_response_timeout: int = 300
+
+    # Kubernetes topology is intentionally opt-in.  Credentials are never
+    # accepted by the API: when enabled the backend uses a projected in-cluster
+    # ServiceAccount or an operator-mounted read-only kubeconfig. This keeps
+    # the feature read-only and avoids persisting credentials.
+    kubernetes_enabled: bool = False
+    kubernetes_source: Literal["auto", "in_cluster", "kubeconfig"] = "auto"
+    kubernetes_cluster_name: str = "kubernetes"
+    kubernetes_sync_interval: int = Field(default=300, ge=300)
+    # Advanced remote/development mode only. The file must be mounted read-only;
+    # credentials are never accepted via, persisted by, or returned from the API.
+    kubernetes_kubeconfig_path: str = ""
+    kubernetes_kubeconfig_context: str = ""
 
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"
