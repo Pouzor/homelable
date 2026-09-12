@@ -565,3 +565,123 @@ async def test_get_run_returns_status(client: AsyncClient, headers, pending_devi
 async def test_get_run_unknown_id_404(client: AsyncClient, headers):
     res = await client.get(f"/api/v1/scan/runs/{uuid.uuid4()}", headers=headers)
     assert res.status_code == 404
+
+
+# --- forcing a separate row -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_pending_folds_into_a_row_with_the_same_address(
+    client: AsyncClient, headers, pending_device
+):
+    """The default: one device is one row."""
+    res = await client.post(
+        "/api/v1/scan/pending",
+        json={"hostname": "same-host", "ip": "192.168.1.100", "discovery_source": "manual"},
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["id"] == pending_device.id
+
+
+@pytest.mark.asyncio
+async def test_create_pending_force_mints_a_second_row(
+    client: AsyncClient, headers, pending_device
+):
+    """Two services on one host are two devices when the user says so.
+
+    Without this the node modal's "create a separate device" would be handed
+    back the very row it is trying to split away from.
+    """
+    res = await client.post(
+        "/api/v1/scan/pending",
+        json={
+            "hostname": "same-host",
+            "ip": "192.168.1.100",
+            "discovery_source": "manual",
+            "force": True,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["id"] != pending_device.id
+
+    listed = (await client.get("/api/v1/scan/pending", headers=headers)).json()
+    assert len([d for d in listed if d["ip"] == "192.168.1.100"]) == 2
+
+
+# --- match lookup -----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_match_requires_auth(client: AsyncClient):
+    assert (await client.get("/api/v1/scan/match?ip=192.168.1.100")).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_match_reports_the_device_and_the_address_that_found_it(
+    client: AsyncClient, headers, pending_device
+):
+    res = await client.get("/api/v1/scan/match?ip=10.0.0.1,192.168.1.100", headers=headers)
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["device"]["id"] == pending_device.id
+    assert data["matched_on"] == "ip"
+    assert data["matched_value"] == "192.168.1.100"
+
+
+@pytest.mark.asyncio
+async def test_match_normalizes_the_mac_before_looking(
+    client: AsyncClient, headers, pending_device
+):
+    res = await client.get("/api/v1/scan/match?mac=AA-BB-CC-DD-EE-FF", headers=headers)
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["device"]["id"] == pending_device.id
+    assert data["matched_on"] == "mac"
+
+
+@pytest.mark.asyncio
+async def test_match_is_empty_for_an_unknown_address(client: AsyncClient, headers):
+    data = (await client.get("/api/v1/scan/match?ip=10.9.9.9", headers=headers)).json()
+    assert data == {"device": None, "matched_on": None, "matched_value": None, "nodes": []}
+
+
+@pytest.mark.asyncio
+async def test_match_is_empty_for_a_port_mapping(client: AsyncClient, headers, db_session):
+    """#475 — `:3001` is a note, not an address, so it links to nothing."""
+    db_session.add(InventoryDevice(id=str(uuid.uuid4()), ip=":3001", status="approved"))
+    await db_session.commit()
+
+    data = (await client.get("/api/v1/scan/match?ip=:3001", headers=headers)).json()
+    assert data["device"] is None
+
+
+@pytest.mark.asyncio
+async def test_match_lists_the_nodes_already_drawing_the_device(
+    client: AsyncClient, headers, db_session
+):
+    """Linking shares the row's facts with every node on it — name them."""
+    design_id = await _add_design(db_session, "Home")
+    node = await _node_for(db_session, design_id, ip="192.168.1.50")
+    node.label = "NAS"
+    await db_session.commit()
+
+    data = (await client.get("/api/v1/scan/match?ip=192.168.1.50", headers=headers)).json()
+    assert [(n["label"], n["design_name"]) for n in data["nodes"]] == [("NAS", "Home")]
+
+
+@pytest.mark.asyncio
+async def test_match_leaves_out_the_node_that_is_asking(
+    client: AsyncClient, headers, db_session
+):
+    design_id = await _add_design(db_session, "Home")
+    node = await _node_for(db_session, design_id, ip="192.168.1.51")
+
+    data = (
+        await client.get(
+            f"/api/v1/scan/match?ip=192.168.1.51&exclude_node_id={node.id}", headers=headers
+        )
+    ).json()
+    assert data["device"] is not None
+    assert data["nodes"] == []

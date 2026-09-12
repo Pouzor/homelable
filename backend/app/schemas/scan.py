@@ -138,6 +138,12 @@ class InventoryDeviceCreate(BaseModel):
     show_hardware: bool = False
     check_method: str | None = None
     check_target: str | None = None
+    # One device is one row, so an address already known fills that row in rather
+    # than splitting it. `force` says the user knows and wants a separate row
+    # anyway — two containers on one host, a second PSU. Same escape hatch as
+    # `NodeCreate.force`, and what the node modal's "create a separate device"
+    # sends.
+    force: bool = False
 
     @field_validator("discovery_source")
     @classmethod
@@ -145,6 +151,37 @@ class InventoryDeviceCreate(BaseModel):
         if v not in MANUAL_SOURCES:
             raise ValueError(f"discovery_source must be one of {sorted(MANUAL_SOURCES)}")
         return v
+
+
+class DeviceMatchNode(BaseModel):
+    """A canvas node already drawing the matched device."""
+
+    id: str
+    label: str
+    design_id: str | None
+    design_name: str | None
+
+
+class DeviceMatchResponse(BaseModel):
+    """What an address would be linked to, asked before anything is written.
+
+    The node editor saves into the canvas store and the whole canvas is persisted
+    later in one request, so there is no per-node round trip to answer with a
+    409. The editor asks here instead, while the user is still in the dialog, and
+    offers to link to `device` or to keep the node separate.
+
+    `device` is null when nothing matches — the address is new, and saving will
+    mint a row for it.
+    """
+
+    device: InventoryDeviceResponse | None = None
+    # Which address identified it, in find_device_for's own precedence, so the
+    # prompt can name the reason ("matches on 192.168.0.100").
+    matched_on: str | None = None
+    matched_value: str | None = None
+    # Every node drawing that row, this canvas or another — linking to it means
+    # sharing the device's facts with all of them.
+    nodes: list[DeviceMatchNode] = []
 
 
 class InventoryDeviceUpdate(BaseModel):

@@ -23,6 +23,8 @@ from app.db.models import (
 )
 from app.schemas.nodes import NodeCreate
 from app.schemas.scan import (
+    DeviceMatchNode,
+    DeviceMatchResponse,
     InventoryDeviceCreate,
     InventoryDeviceResponse,
     InventoryDeviceUpdate,
@@ -31,7 +33,12 @@ from app.schemas.scan import (
 from app.services.device_merge import merge_devices
 from app.services.discovery_sources import add_source
 from app.services.doc_links import unlink_documents
-from app.services.inventory_sync import find_device_for, merge_properties, merge_services
+from app.services.inventory_sync import (
+    find_device_for,
+    identity_ip_tokens,
+    merge_properties,
+    merge_services,
+)
 from app.services.mac_utils import normalize_mac
 from app.services.node_dedupe import dedupe_nodes_by_device, find_duplicate_node
 from app.services.scanner import (
@@ -443,9 +450,10 @@ async def create_pending(
     """
     # One device is one row. If this host is already known — by ieee, ip or mac —
     # the user is documenting the device they already have, so fill in what the
-    # row is missing rather than splitting it in two.
+    # row is missing rather than splitting it in two. `force` overrides that:
+    # the caller has been shown the match and asked for a separate row anyway.
     mac = normalize_mac(body.mac)
-    existing = await find_device_for(db, ip=body.ip, mac=mac, ieee=None)
+    existing = None if body.force else await find_device_for(db, ip=body.ip, mac=mac, ieee=None)
     if existing is not None:
         for field in (
             "hostname", "ip", "os", "suggested_type", "model", "vendor", "label", "type",
@@ -502,6 +510,65 @@ async def create_pending(
     await db.commit()
     await db.refresh(device)
     return (await _with_canvas_counts(db, [device]))[0]
+
+
+@router.get("/match", response_model=DeviceMatchResponse)
+async def match_device(
+    ip: str | None = None,
+    mac: str | None = None,
+    ieee: str | None = None,
+    exclude_node_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> DeviceMatchResponse:
+    """The inventory row these addresses would link to. Writes nothing.
+
+    A node editor cannot be answered with a 409: its Save writes to the canvas
+    store, and the whole canvas is persisted later in one request carrying every
+    node. So it asks here first, while the user is still in the dialog, and can
+    offer the choice the save itself has no way to put to them — link to the
+    device found, or keep this node on one of its own.
+
+    ``exclude_node_id`` drops the node being edited from ``nodes``: it is the one
+    asking, and listing it back as a reason not to link makes no sense.
+    """
+    normalized = normalize_mac(mac)
+    device = await find_device_for(db, ip=ip, mac=normalized, ieee=ieee)
+    if device is None:
+        return DeviceMatchResponse()
+
+    # Report the address that actually matched, in find_device_for's own
+    # precedence — the user may have typed three and only one is the reason.
+    shared = [t for t in identity_ip_tokens(ip) if t in set(identity_ip_tokens(device.ip))]
+    matched_on: str | None = None
+    matched_value: str | None = None
+    if ieee and (device.ieee_address or "").lower() == ieee.lower():
+        matched_on, matched_value = "ieee", ieee
+    elif shared:
+        matched_on, matched_value = "ip", shared[0]
+    elif normalized and device.mac == normalized:
+        matched_on, matched_value = "mac", normalized
+
+    rows = (
+        await db.execute(
+            select(Node.id, Node.label, Node.design_id, Design.name)
+            .outerjoin(Design, Design.id == Node.design_id)
+            .where(Node.device_id == device.id)
+            .order_by(Node.created_at, Node.id)
+        )
+    ).all()
+
+    await _with_canvas_counts(db, [device])
+    return DeviceMatchResponse(
+        device=InventoryDeviceResponse.model_validate(device),
+        matched_on=matched_on,
+        matched_value=matched_value,
+        nodes=[
+            DeviceMatchNode(id=r[0], label=r[1], design_id=r[2], design_name=r[3])
+            for r in rows
+            if r[0] != exclude_node_id
+        ],
+    )
 
 
 @router.patch("/pending/{device_id}", response_model=InventoryDeviceResponse)
