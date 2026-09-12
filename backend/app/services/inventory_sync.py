@@ -199,12 +199,6 @@ def merge_properties(base: list[Any] | None, incoming: list[Any] | None) -> list
     return out
 
 
-def _service_key(svc: Any) -> Any:
-    if not isinstance(svc, dict):
-        return repr(svc)
-    return (svc.get("port"), svc.get("protocol"), (svc.get("service_name") or "").lower())
-
-
 def _service_identity_key(svc: Any) -> Any:
     """What makes two service entries *the same service*, for merging.
 
@@ -212,8 +206,9 @@ def _service_identity_key(svc: Any) -> Any:
     is called. The name is a label on it — the scanner guesses it from a banner
     and the user corrects it — so keying identity on the name made a rename look
     like a second service, and the next scan re-added the original under its own
-    guess (issue #469). :func:`_service_view_key` keeps using the name-inclusive
-    key: its strings are persisted in node views, and this is not that.
+    guess (issue #469). :func:`_service_view_key` renders the same identity, so
+    the two never disagree about what one service is; keys already persisted in
+    node views are narrowed to it on read by :func:`normalize_view_key`.
 
     Only a service with no port falls back to the name, because nothing else
     tells two of them apart — a hand-added entry that names a host rather than a
@@ -263,8 +258,13 @@ def normalize_view_key(key: str, kind: str) -> str:
     name in one is a snapshot of what the service was called when the view was
     written, so a renamed service cannot be found by re-deriving it — the key
     has to be narrowed instead. A key that names a port drops everything after
-    it; one that does not is port-less and is already in its final form, as is
-    every property key.
+    it; one that does not is port-less and keeps its name, as does every
+    property key.
+
+    A port-less service renders its absent port as ``None`` today, but a key
+    written for one carrying ``""`` stored an empty segment instead. Both mean
+    the same absent port, so the empty one is spelled the new way rather than
+    left to miss.
 
     Applied on read, so a view migrates the next time its node is saved rather
     than needing a migration of its own.
@@ -272,7 +272,11 @@ def normalize_view_key(key: str, kind: str) -> str:
     if kind != "services":
         return key
     parts = key.split("|", 2)
-    if len(parts) != 3 or parts[0] in ("", "None"):
+    if len(parts) != 3:
+        return key
+    if parts[0] == "":
+        return f"None|{parts[1]}|{parts[2]}"
+    if parts[0] == "None":
         return key
     return f"{parts[0]}|{parts[1]}"
 

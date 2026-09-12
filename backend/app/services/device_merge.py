@@ -344,7 +344,14 @@ async def merge_devices(
                     setattr(winner, field, value)
         winner.ip = _merged_ip(winner.ip, loser.ip)
         winner.mac = winner.mac or loser.mac
-        winner.services = merge_services(winner.services, loser.services)
+        # discovered=: the winner is the row the canvas points at (an approved
+        # row wins `_collapse_targets`), and a loser is usually a pending row a
+        # scan just minted, carrying the fingerprint's guess at a name. Both
+        # rows describe one device, so two entries on one port are one service
+        # — and the curated side of it is the winner's. Without this the guess
+        # would overwrite a name, icon or category the user had chosen, in a
+        # collapse that runs unattended during a background scan.
+        winner.services = merge_services(winner.services, loser.services, discovered=True)
         winner.properties = merge_properties(winner.properties, loser.properties)
         winner.show_hardware = winner.show_hardware or loser.show_hardware
         for source in add_source(loser.discovery_sources, loser.discovery_source):
