@@ -163,7 +163,10 @@ async def test_merge_shows_the_new_facts_on_a_canvas_that_never_saw_them(db_sess
 
     services = poor.display_view["services"]
     assert [e["visible"] for e in services] == [True, True]
-    assert {e["key"] for e in services} == {"5678|tcp|http", "22|tcp|ssh"}
+    # The pre-existing entry is kept exactly as it was stored — a view is
+    # rewritten by a save, not by a merge — so the key seeded alongside it is
+    # in today's port-keyed form while that one stays in the older one.
+    assert {e["key"] for e in services} == {"5678|tcp|http", "22|tcp"}
     # A property list this canvas had never seen picks up the survivor's.
     assert [e["key"] for e in poor.display_view["properties"]] == ["vmid"]
 

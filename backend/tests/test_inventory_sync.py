@@ -1409,7 +1409,7 @@ class TestPerNodeView:
         assert await seed_node_views(db_session) == 1
         await db_session.commit()
         assert node.display_view == {
-            "services": [{"key": "22|tcp|ssh", "visible": True}],
+            "services": [{"key": "22|tcp", "visible": True}],
             "properties": [],
         }
         # Idempotent: a second boot finds nothing without a view.
@@ -1542,7 +1542,7 @@ class TestPerNodeView:
         assert await seed_node_views(db_session, drawn=lambda: drawn) == 1
         await db_session.commit()
 
-        assert node.display_view["services"] == [{"key": "22|tcp|ssh", "visible": True}]
+        assert node.display_view["services"] == [{"key": "22|tcp", "visible": True}]
 
     @pytest.mark.asyncio
     async def test_a_node_without_a_view_still_shows_everything(self, db_session):
@@ -1553,4 +1553,93 @@ class TestPerNodeView:
         node = _node(await _design(db_session), device_id="d-1")
         assert hydrated_node(node, device)["services"] == [
             {"port": 22, "protocol": "tcp", "service_name": "ssh"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_renaming_a_service_does_not_hide_it_on_canvases(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """Issue #469, the view half.
+
+        The view addressed a service by a key carrying its name, so renaming one
+        from the inventory modal left every canvas already drawing it addressing
+        a key the row no longer held — and `apply_view` appends an unlisted fact
+        hidden, so the service vanished from the canvas.
+        """
+        db_session.add(
+            InventoryDevice(
+                id="d-1",
+                ip="10.0.0.5",
+                services=[
+                    {"port": 22, "protocol": "tcp", "service_name": "ssh"},
+                    {"port": 3001, "protocol": "tcp", "service_name": "Uptime Kuma"},
+                ],
+            )
+        )
+        await db_session.commit()
+        node = await self._node_on(client, headers, await _design(db_session))
+
+        res = await client.patch(
+            "/api/v1/scan/pending/d-1",
+            json={"services": [
+                {"port": 22, "protocol": "tcp", "service_name": "ssh"},
+                {"port": 3001, "protocol": "tcp", "service_name": "Homepage"},
+            ]},
+            headers=headers,
+        )
+        assert res.status_code == 200
+
+        drawn = (await client.get(f"/api/v1/nodes/{node['id']}", headers=headers)).json()
+        assert [(s["service_name"], s.get("visible", True)) for s in drawn["services"]] == [
+            ("ssh", True), ("Homepage", True),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_view_written_before_the_fix_still_addresses_its_service(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """Old keys are narrowed on read, so nothing needs migrating.
+
+        The hidden one stays hidden even though the row has since renamed it —
+        the point of the key being the port.
+        """
+        db_session.add(
+            InventoryDevice(
+                id="d-1",
+                ip="10.0.0.5",
+                services=[
+                    {"port": 22, "protocol": "tcp", "service_name": "ssh"},
+                    {"port": 3001, "protocol": "tcp", "service_name": "Homepage"},
+                ],
+            )
+        )
+        node = _node(await _design(db_session), device_id="d-1")
+        node.display_view = {
+            "services": [
+                {"key": "22|tcp|ssh", "visible": True},
+                {"key": "3001|tcp|uptime kuma", "visible": False},
+            ],
+            "properties": [],
+        }
+        db_session.add(node)
+        await db_session.commit()
+
+        drawn = (await client.get(f"/api/v1/nodes/{node.id}", headers=headers)).json()
+        assert [(s["service_name"], s.get("visible", True)) for s in drawn["services"]] == [
+            ("ssh", True), ("Homepage", False),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_port_less_service_keeps_its_name_in_the_view_key(self, db_session):
+        """Its name is its identity, so the key keeps the form it always had."""
+        device = InventoryDevice(
+            id="d-1", services=[{"protocol": "tcp", "service_name": "Vaultwarden"}]
+        )
+        node = _node(await _design(db_session), device_id="d-1")
+        node.display_view = {
+            "services": [{"key": "None|tcp|vaultwarden", "visible": False}],
+            "properties": [],
+        }
+        assert hydrated_node(node, device)["services"] == [
+            {"protocol": "tcp", "service_name": "Vaultwarden", "visible": False}
         ]
