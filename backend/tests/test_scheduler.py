@@ -218,6 +218,7 @@ def test_scheduler_uses_settings_interval():
         mock_settings.proxmox_sync_enabled = False
         mock_settings.zigbee_sync_enabled = False
         mock_settings.zwave_sync_enabled = False
+        mock_settings.unifi_sync_enabled = False
         start_scheduler()
         _, kwargs = mock_sched.add_job.call_args
         assert kwargs["seconds"] == 45
@@ -233,6 +234,7 @@ def test_start_and_stop_scheduler():
         mock_settings.proxmox_sync_enabled = False
         mock_settings.zigbee_sync_enabled = False
         mock_settings.zwave_sync_enabled = False
+        mock_settings.unifi_sync_enabled = False
         start_scheduler()
         stop_scheduler()
         mock_sched.add_job.assert_called_once()
