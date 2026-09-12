@@ -18,6 +18,7 @@ vi.mock('@/api/client', () => ({
   scanApi: {
     pending: vi.fn(),
     createPending: vi.fn(),
+    matchDevice: vi.fn(),
   },
 }))
 
@@ -204,5 +205,140 @@ describe('NodeModal — device inventory link (standalone)', () => {
 
     expect(screen.queryByText(/The inventory row this node draws/)).not.toBeInTheDocument()
     expect(api.pending).not.toHaveBeenCalled()
+  })
+})
+
+describe('NodeModal — address match prompt', () => {
+  beforeEach(() => {
+    vi.mocked(scanApi.pending).mockResolvedValue({ data: [] } as never)
+    vi.mocked(scanApi.matchDevice).mockResolvedValue({
+      data: { device: null, matched_on: null, matched_value: null, nodes: [] },
+    } as never)
+  })
+
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const typeIp = (value: string) => {
+    const input = screen.getByPlaceholderText('192.168.1.x, 2001:db8::1')
+    fireEvent.change(input, { target: { value } })
+    fireEvent.blur(input)
+    return input
+  }
+
+  const matching = (over: Partial<InventoryEntry> = {}, nodes: { id: string; label: string; design_id: string | null; design_name: string | null }[] = []) => ({
+    data: {
+      device: makeDevice({ id: 'dev-9', label: 'HomeAssistant', ...over }),
+      matched_on: 'ip',
+      matched_value: '192.168.0.100',
+      nodes,
+    },
+  })
+
+  it('asks before an address makes this node someone else’s device', async () => {
+    vi.mocked(scanApi.matchDevice).mockResolvedValue(
+      matching({}, [{ id: 'n-1', label: 'HomeAssist', design_id: 'd-1', design_name: 'Home' }]) as never,
+    )
+    renderModal()
+
+    typeIp('192.168.0.100')
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      /192\.168\.0\.100 already describes HomeAssistant, drawn as HomeAssist\./,
+    )
+  })
+
+  it('says so when the matched device is on no canvas yet', async () => {
+    vi.mocked(scanApi.matchDevice).mockResolvedValue(matching() as never)
+    renderModal()
+
+    typeIp('192.168.0.100')
+
+    expect(await screen.findByRole('status')).toHaveTextContent(/not on any canvas yet/)
+  })
+
+  it('links the node to the match, facts and all', async () => {
+    vi.mocked(scanApi.matchDevice).mockResolvedValue(
+      matching({ ip: '192.168.0.100', hostname: 'ha.lan' }) as never,
+    )
+    const { onSubmit } = renderModal()
+    typeIp('192.168.0.100')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Link to it' }))
+
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ device_id: 'dev-9', label: 'HomeAssistant' }),
+    )
+  })
+
+  it('keeps the node separate, and does not ask about that device again', async () => {
+    vi.mocked(scanApi.matchDevice).mockResolvedValue(matching() as never)
+    const { onSubmit } = renderModal()
+    typeIp('192.168.0.100')
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep separate' }))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    // Re-blurring the same address must not re-open a question already answered.
+    typeIp('192.168.0.100')
+    await waitFor(() => expect(scanApi.matchDevice).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    // No link was made: the node is saved without one, and mints a row of its
+    // own when it lands.
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('device_id')
+  })
+
+  it('stays quiet when the address is new', async () => {
+    renderModal()
+    typeIp('10.9.9.9')
+
+    await waitFor(() => expect(scanApi.matchDevice).toHaveBeenCalled())
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('stays quiet when the node already draws the matched device', async () => {
+    vi.mocked(scanApi.matchDevice).mockResolvedValue(matching() as never)
+    renderModal({ initial: { ...BASE, device_id: 'dev-9' } })
+
+    typeIp('192.168.0.100')
+
+    await waitFor(() => expect(scanApi.matchDevice).toHaveBeenCalled())
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('does not ask at all for an empty address', async () => {
+    renderModal({ initial: { ...BASE, ip: '' } })
+    typeIp('')
+
+    await waitFor(() => expect(scanApi.pending).toHaveBeenCalled())
+    expect(scanApi.matchDevice).not.toHaveBeenCalled()
+  })
+
+  it('excludes the node being edited from the nodes it names', async () => {
+    vi.mocked(scanApi.matchDevice).mockResolvedValue(matching() as never)
+    renderModal({ currentNodeId: 'node-42' })
+
+    typeIp('192.168.0.100')
+
+    await waitFor(() => expect(scanApi.matchDevice).toHaveBeenCalled())
+    expect(vi.mocked(scanApi.matchDevice).mock.calls[0][0]).toMatchObject({
+      ip: '192.168.0.100',
+      exclude_node_id: 'node-42',
+    })
+  })
+
+  it('says nothing when the lookup fails — the picker still works', async () => {
+    vi.mocked(scanApi.matchDevice).mockRejectedValue(new Error('offline'))
+    renderModal()
+
+    typeIp('192.168.0.100')
+
+    await waitFor(() => expect(scanApi.matchDevice).toHaveBeenCalled())
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 })

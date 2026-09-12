@@ -144,6 +144,28 @@ export interface DuplicateNodeConflict {
   value: string
 }
 
+/** A node already drawing the device an address matched. */
+export interface DeviceMatchNode {
+  id: string
+  label: string
+  design_id: string | null
+  design_name: string | null
+}
+
+/**
+ * What an address would link to, asked before anything is written.
+ *
+ * `device` is null when nothing matches — the address is new, and saving mints
+ * a row for it. `nodes` is every node already drawing the row, since linking
+ * shares its facts with all of them.
+ */
+export interface DeviceMatch {
+  device: InventoryEntry | null
+  matched_on: 'ieee' | 'ip' | 'mac' | null
+  matched_value: string | null
+  nodes: DeviceMatchNode[]
+}
+
 /**
  * The Device Inventory rides the scan routes.
  *
@@ -155,6 +177,20 @@ export interface DuplicateNodeConflict {
 export const scanApi = {
   trigger: (deepScan?: Partial<DeepScanConfig>) => api.post('/scan/trigger', deepScan ?? {}),
   pending: () => api.get<InventoryEntry[]>('/scan/pending'),
+  /**
+   * Which inventory row these addresses would link to. Writes nothing.
+   *
+   * The node editor saves into the canvas store and the canvas is persisted
+   * later in one request, so a duplicate cannot be reported as a 409 the user
+   * would still be there to answer. It asks here instead, while the dialog is
+   * open, and offers to link or to keep the node separate.
+   */
+  matchDevice: (params: {
+    ip?: string
+    mac?: string
+    ieee?: string
+    exclude_node_id?: string
+  }) => api.get<DeviceMatch>('/scan/match', { params }),
   /** Add an inventory entry by hand, for hardware no scan can discover. */
   createPending: (data: {
     hostname: string

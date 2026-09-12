@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { NODE_TYPE_LABELS, type InventoryEntry, type NodeData, type NodeType, type CheckMethod, type NodeTypeStyle } from '@/types'
-import { scanApi } from '@/api/client'
+import { scanApi, type DeviceMatch } from '@/api/client'
 import { deviceFactsToNodeData } from '@/utils/deviceFacts'
 import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
@@ -256,6 +256,56 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
     }
   }
 
+  // ── Address match prompt ─────────────────────────────────────────────────
+  // An address the inventory already knows means this node is about to share a
+  // device with whatever else carries it. Asked here, on blur, because the save
+  // cannot ask: it writes to the canvas store and the whole canvas is persisted
+  // later, long after this dialog closed.
+  const [match, setMatch] = useState<DeviceMatch | null>(null)
+  // Rows the user has already said this node is not. Keyed by device id rather
+  // than by the address, so correcting a typo and typing it back does not
+  // re-open a question that was answered.
+  const [notThisDevice, setNotThisDevice] = useState<string[]>([])
+
+  const checkAddressMatch = async () => {
+    const ip = (form.ip ?? '').trim()
+    const mac = (form.mac ?? '').trim()
+    if (!showDevicePicker || (!ip && !mac)) {
+      setMatch(null)
+      return
+    }
+    try {
+      const { data } = await scanApi.matchDevice({
+        ip: ip || undefined,
+        mac: mac || undefined,
+        // Declared on NodeData only through its index signature, so it arrives
+        // as unknown and has to be narrowed before it can be a query param.
+        ieee: typeof form.ieee_address === 'string' ? form.ieee_address || undefined : undefined,
+        exclude_node_id: currentNodeId,
+      })
+      const found = data.device
+      // Nothing to ask when the node already draws that row, or when the user
+      // has answered for it.
+      setMatch(
+        found && found.id !== form.device_id && !notThisDevice.includes(found.id) ? data : null,
+      )
+    } catch {
+      // The picker below still works; a failed lookup is not worth a toast in
+      // the middle of typing an address.
+      setMatch(null)
+    }
+  }
+
+  const acceptMatch = () => {
+    if (match?.device) linkDevice(match.device)
+    setMatch(null)
+  }
+
+  const rejectMatch = () => {
+    if (match?.device) setNotThisDevice((ids) => [...ids, match.device!.id])
+    setMatch(null)
+  }
+
   const onPickDevice = (value: string | null) => {
     if (value === DEVICE_NEW) {
       void createDevice()
@@ -441,6 +491,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               <Input
                 value={form.ip ?? ''}
                 onChange={(e) => set('ip', e.target.value)}
+                onBlur={() => void checkAddressMatch()}
                 placeholder="192.168.1.x, 2001:db8::1"
                 className={`bg-[#21262d] border-[#30363d] font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
               />
@@ -521,6 +572,42 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {showDevicePicker && (
               <div className="flex flex-col gap-1.5 col-span-2">
                 <Label className="text-xs text-muted-foreground">Device</Label>
+                {match?.device && (
+                  <div
+                    role="status"
+                    className="flex flex-col gap-2 rounded-md border border-[#e3b341]/40 bg-[#e3b341]/10 px-3 py-2"
+                  >
+                    <p className="text-xs text-foreground">
+                      <span className="font-mono">{match.matched_value}</span>
+                      {' already describes '}
+                      <strong className="font-semibold">{deviceName(match.device)}</strong>
+                      {match.nodes.length > 0
+                        ? `, drawn as ${match.nodes.map((n) => n.label).join(', ')}.`
+                        : ', not on any canvas yet.'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/70">
+                      Linking makes this node the same device: both show, and edit,
+                      one set of values.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        onClick={acceptMatch}
+                        className="h-7 px-2.5 text-xs bg-[#21262d] hover:bg-[#30363d] text-foreground"
+                      >
+                        Link to it
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={rejectMatch}
+                        className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        Keep separate
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <Select
                   value={form.device_id ?? DEVICE_NONE}
                   onValueChange={onPickDevice}
