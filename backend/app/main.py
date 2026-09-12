@@ -18,6 +18,8 @@ from app.api.routes import (
     liveview,
     media,
     nodes,
+    opnsense,
+    pfsense,
     proxmox,
     racks,
     scan,
@@ -103,6 +105,8 @@ app.include_router(stats.router, prefix="/api/v1/stats", tags=["stats"])
 app.include_router(media.router, prefix="/api/v1/media", tags=["media"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(docsview.router, prefix="/api/v1/docsview", tags=["docsview"])
+app.include_router(opnsense.router, prefix="/api/v1/opnsense", tags=["opnsense"])
+app.include_router(pfsense.router, prefix="/api/v1/pfsense", tags=["pfsense"])
 
 
 @app.get("/api/v1/health")
