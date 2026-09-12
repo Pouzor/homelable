@@ -237,8 +237,44 @@ VIEW_LISTS = ("services", "properties")
 
 
 def _service_view_key(svc: Any) -> str:
-    port, protocol, name = _service_key(svc) if isinstance(svc, dict) else (None, None, repr(svc))
-    return f"{port}|{protocol}|{name}"
+    """This service's address in a node's view.
+
+    Same identity as the merge uses, so a rename does not move a service out
+    from under the view that addresses it: before #469 the key carried the name,
+    and renaming a service in the inventory modal made every canvas already
+    drawing it lose track and redraw it hidden.
+
+    A port-less service keeps the three-part form it always had, name included —
+    it is the only thing that identifies one, and rendering ``None`` for the
+    absent port is what the stored keys look like.
+    """
+    if not isinstance(svc, dict):
+        return f"None|None|{repr(svc)}"
+    key = _service_identity_key(svc)
+    if len(key) == 2:
+        return f"{key[0]}|{key[1]}"
+    return f"{key[0]}|{key[1]}|{key[2]}"
+
+
+def normalize_view_key(key: str, kind: str) -> str:
+    """A stored view key in today's form.
+
+    Views written before #469 address a service by ``port|protocol|name``. The
+    name in one is a snapshot of what the service was called when the view was
+    written, so a renamed service cannot be found by re-deriving it — the key
+    has to be narrowed instead. A key that names a port drops everything after
+    it; one that does not is port-less and is already in its final form, as is
+    every property key.
+
+    Applied on read, so a view migrates the next time its node is saved rather
+    than needing a migration of its own.
+    """
+    if kind != "services":
+        return key
+    parts = key.split("|", 2)
+    if len(parts) != 3 or parts[0] in ("", "None"):
+        return key
+    return f"{parts[0]}|{parts[1]}"
 
 
 def _property_view_key(prop: Any) -> str:
@@ -354,7 +390,7 @@ def apply_view(items: list[Any] | None, entries: Any, kind: str) -> list[Any]:
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        key = str(entry.get("key"))
+        key = normalize_view_key(str(entry.get("key")), kind)
         item = by_key.get(key)
         if item is None or key in taken:
             continue  # Deleted from the row since — the view catches up on write.

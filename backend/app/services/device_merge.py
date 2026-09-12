@@ -37,6 +37,7 @@ from app.services.inventory_sync import (
     ip_tokens,
     merge_properties,
     merge_services,
+    normalize_view_key,
     view_of_device,
 )
 from app.services.node_dedupe import dedupe_nodes_by_device
@@ -189,7 +190,14 @@ async def _show_merged_facts(db: AsyncSession, winner: InventoryDevice) -> int:
                 # No view at all for this list — `apply_view` already shows
                 # everything the row holds, merged facts included.
                 continue
-            listed = {str(e.get("key")) for e in entries if isinstance(e, dict)}
+            # Normalized: a view written before #469 addresses a service by a
+            # key that carries its name, and comparing it raw against a freshly
+            # seeded key would call an already-listed service missing.
+            listed = {
+                normalize_view_key(str(e.get("key")), kind)
+                for e in entries
+                if isinstance(e, dict)
+            }
             missing = [entry for entry in seeds[kind] if entry["key"] not in listed]
             if missing:
                 view[kind] = [*entries, *missing]
