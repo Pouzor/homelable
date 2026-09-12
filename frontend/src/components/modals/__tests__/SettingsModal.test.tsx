@@ -13,6 +13,16 @@ vi.mock('@/api/client', () => ({
     saveConfig: vi.fn(),
     syncNow: vi.fn(),
   },
+  opnsenseApi: {
+    getConfig: vi.fn(),
+    saveConfig: vi.fn(),
+    syncNow: vi.fn(),
+  },
+  pfsenseApi: {
+    getConfig: vi.fn(),
+    saveConfig: vi.fn(),
+    syncNow: vi.fn(),
+  },
   zigbeeApi: {
     getConfig: vi.fn(),
     saveConfig: vi.fn(),
@@ -25,7 +35,7 @@ vi.mock('@/api/client', () => ({
   },
 }))
 
-import { settingsApi, proxmoxApi, zigbeeApi, zwaveApi } from '@/api/client'
+import { settingsApi, proxmoxApi, opnsenseApi, pfsenseApi, zigbeeApi, zwaveApi } from '@/api/client'
 import { toast } from 'sonner'
 import { useCanvasStore } from '@/stores/canvasStore'
 
@@ -36,6 +46,12 @@ describe('SettingsModal', () => {
     vi.mocked(settingsApi.save).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: false, service_check_interval: 300 } } as never)
     vi.mocked(proxmoxApi.getConfig).mockRejectedValue(new Error('not configured'))
     vi.mocked(proxmoxApi.saveConfig).mockResolvedValue({ data: {} } as never)
+    vi.mocked(opnsenseApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(opnsenseApi.saveConfig).mockResolvedValue({ data: {} } as never)
+    vi.mocked(opnsenseApi.syncNow).mockResolvedValue({ data: { status: 'running' } } as never)
+    vi.mocked(pfsenseApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(pfsenseApi.saveConfig).mockResolvedValue({ data: {} } as never)
+    vi.mocked(pfsenseApi.syncNow).mockResolvedValue({ data: { status: 'running' } } as never)
     // Zigbee/Z-Wave default to "not configured" so the mesh sections stay hidden
     // unless a test opts in — keeps the single Proxmox "Re-sync now" unambiguous.
     vi.mocked(zigbeeApi.getConfig).mockRejectedValue(new Error('not configured'))
