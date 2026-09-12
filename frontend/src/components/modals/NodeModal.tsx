@@ -10,7 +10,9 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { NODE_TYPE_LABELS, type InventoryEntry, type NodeData, type NodeType, type CheckMethod, type NodeTypeStyle } from '@/types'
 import { scanApi, type DeviceMatch } from '@/api/client'
-import { deviceFactsToNodeData } from '@/utils/deviceFacts'
+import { DevicePickerModal } from './DevicePickerModal'
+import { deviceName } from '@/utils/mergeWinner'
+import { deviceAddresses, deviceFactsToNodeData } from '@/utils/deviceFacts'
 import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
@@ -23,33 +25,6 @@ import { NODE_TYPE_GROUPS, isFurnitureType } from '@/utils/nodeTypeGroups'
 // The link is a full-mode concept end to end — see ADR-001 for the same rule
 // applied to uploads.
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
-
-// Sentinel values for the device picker. Real ids are uuids, so neither can
-// collide with one.
-const DEVICE_NONE = '__none__'
-const DEVICE_NEW = '__new__'
-
-/** A device as the picker names it, falling back until something is printable. */
-function deviceName(device: InventoryEntry): string {
-  return (
-    device.label
-    || device.friendly_name
-    || device.hostname
-    || device.ip
-    || device.mac
-    || 'Unnamed device'
-  )
-}
-
-/**
- * A device as one row of the picker: its name, then its addresses so two rows
- * named the same can be told apart. One text node — the list renders inside an
- * option, which takes no markup of its own.
- */
-function deviceLabel(device: InventoryEntry): string {
-  const addresses = [device.ip, device.mac, device.ieee_address].filter(Boolean).join(' · ')
-  return addresses ? `${deviceName(device)} — ${addresses}` : deviceName(device)
-}
 
 /**
  * Gear created from a rack canvas. It documents a mount — a patch panel, a
@@ -198,6 +173,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
   // ip field and could not be undone (#475); it is a choice here.
   const [devices, setDevices] = useState<InventoryEntry[]>([])
   const [deviceBusy, setDeviceBusy] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const showDevicePicker = !STANDALONE && !isFurniture
 
   useEffect(() => {
@@ -248,6 +224,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
       })
       setDevices((list) => [...list, data])
       set('device_id', data.id)
+      setPickerOpen(false)
       toast.success('Separate device created')
     } catch {
       toast.error('Could not create the device')
@@ -306,14 +283,9 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
     setMatch(null)
   }
 
-  const onPickDevice = (value: string | null) => {
-    if (value === DEVICE_NEW) {
-      void createDevice()
-      return
-    }
-    if (value === DEVICE_NONE) return
-    const picked = devices.find((d) => d.id === value)
-    if (picked) linkDevice(picked)
+  const onPickDevice = (device: InventoryEntry) => {
+    linkDevice(device)
+    setPickerOpen(false)
   }
 
   const customStyle = useThemeStore((s) => s.customStyle)
@@ -358,6 +330,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -608,35 +581,29 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                     </div>
                   </div>
                 )}
-                <Select
-                  value={form.device_id ?? DEVICE_NONE}
-                  onValueChange={onPickDevice}
+                <button
+                  type="button"
                   disabled={deviceBusy}
+                  onClick={() => setPickerOpen(true)}
+                  aria-label="Device inventory selector"
+                  className={`flex items-center justify-between gap-2 h-8 px-3 bg-[#21262d] border border-[#30363d] text-sm text-left cursor-pointer disabled:opacity-50 ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
                 >
-                  <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Device inventory selector">
-                    <SelectValue>
+                  <span className="flex flex-col min-w-0">
+                    <span className="truncate">
                       {linkedDevice
                         ? deviceName(linkedDevice)
                         : form.device_id
                           ? 'Linked device'
                           : 'Not linked yet'}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className="bg-[#21262d] border-[#30363d]">
-                    {!form.device_id && (
-                      <SelectItem value={DEVICE_NONE} className="text-sm">Not linked yet</SelectItem>
-                    )}
-                    {devices.map((d) => (
-                      <SelectItem key={d.id} value={d.id} className="text-sm">
-                        {deviceLabel(d)}
-                      </SelectItem>
-                    ))}
-                    <SelectSeparator />
-                    <SelectItem value={DEVICE_NEW} className="text-sm">
-                      Create a separate device
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                    </span>
+                  </span>
+                  <span className="text-xs text-muted-foreground shrink-0">Change</span>
+                </button>
+                {linkedDevice && deviceAddresses(linkedDevice) && (
+                  <span className="text-[10px] font-mono text-muted-foreground/70">
+                    {deviceAddresses(linkedDevice)}
+                  </span>
+                )}
                 <span className="text-[10px] text-muted-foreground/60">
                   The inventory row this node draws. It owns the fields above, so
                   every node on the same device shows — and edits — the same
@@ -879,5 +846,18 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
         </form>
       </DialogContent>
     </Dialog>
+
+    {showDevicePicker && (
+      <DevicePickerModal
+        open={pickerOpen}
+        devices={devices}
+        currentDeviceId={form.device_id}
+        busy={deviceBusy}
+        onPick={onPickDevice}
+        onCreate={() => void createDevice()}
+        onClose={() => setPickerOpen(false)}
+      />
+    )}
+    </>
   )
 }

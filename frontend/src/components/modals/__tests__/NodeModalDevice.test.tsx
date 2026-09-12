@@ -62,11 +62,13 @@ const BASE: Partial<NodeData> = {
   type: 'docker_container', label: 'gitea', ip: ':3001', check_method: 'ping', services: [],
 }
 
-/** The picker is the last <select> the modal renders. */
-const devicePicker = () => {
-  const all = screen.getAllByRole('combobox') as HTMLSelectElement[]
-  return all[all.length - 1]
-}
+/** Open the device picker from the node editor's Device field. */
+const openPicker = () =>
+  fireEvent.click(screen.getByRole('button', { name: 'Device inventory selector' }))
+
+/** The name the Device field currently shows. */
+const linkedName = () =>
+  screen.getByRole('button', { name: 'Device inventory selector' }).textContent
 
 function renderModal(props: Partial<Parameters<typeof NodeModal>[0]> = {}) {
   const onSubmit = vi.fn()
@@ -84,29 +86,49 @@ describe('NodeModal — device inventory link', () => {
     vi.clearAllMocks()
   })
 
-  it('lists the inventory and names the row this node draws', async () => {
+  it('names the row this node draws, and lists the inventory to change it', async () => {
     vi.mocked(scanApi.pending).mockResolvedValue({
       data: [makeDevice({ id: 'dev-1', label: 'NoteShare' }), makeDevice({ id: 'dev-2', label: 'NAS' })],
     } as never)
     renderModal({ initial: { ...BASE, device_id: 'dev-2' } })
+    await waitFor(() => expect(scanApi.pending).toHaveBeenCalled())
 
-    expect(await screen.findByRole('option', { name: /NoteShare/ })).toBeInTheDocument()
-    expect(devicePicker().value).toBe('dev-2')
+    expect(linkedName()).toContain('NAS')
+    openPicker()
+    expect(await screen.findByRole('button', { name: /NoteShare/ })).toBeInTheDocument()
   })
 
-  it('offers "not linked yet" only while the node has no row', async () => {
-    vi.mocked(scanApi.pending).mockResolvedValue({ data: [makeDevice()] } as never)
-    const { unmount } = render(
-      <NodeModal open onClose={vi.fn()} onSubmit={vi.fn()} initial={BASE} />,
-    )
-    expect(await screen.findByRole('option', { name: 'Not linked yet' })).toBeInTheDocument()
-    unmount()
+  it('says so when the node has no row yet', async () => {
+    renderModal()
+    await waitFor(() => expect(scanApi.pending).toHaveBeenCalled())
+    expect(linkedName()).toContain('Not linked yet')
+  })
 
-    render(
-      <NodeModal open onClose={vi.fn()} onSubmit={vi.fn()} initial={{ ...BASE, device_id: 'dev-1' }} />,
-    )
-    await waitFor(() => expect(scanApi.pending).toHaveBeenCalledTimes(2))
-    expect(screen.queryByRole('option', { name: 'Not linked yet' })).not.toBeInTheDocument()
+  it('searches the inventory by name and by address', async () => {
+    vi.mocked(scanApi.pending).mockResolvedValue({
+      data: [
+        makeDevice({ id: 'dev-1', label: 'proxmox-1', ip: '192.168.50.10' }),
+        makeDevice({ id: 'dev-2', label: 'proxmox-1', ip: '192.168.50.11' }),
+        makeDevice({ id: 'dev-3', label: 'pihole', ip: '192.168.50.20' }),
+      ],
+    } as never)
+    renderModal()
+    await waitFor(() => expect(scanApi.pending).toHaveBeenCalled())
+    openPicker()
+
+    // Two rows named the same are told apart by their address, and found by it.
+    fireEvent.change(await screen.findByLabelText('Search devices'), {
+      target: { value: '50.11' },
+    })
+    expect(screen.getByRole('button', { name: /192\.168\.50\.11/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /192\.168\.50\.10/ })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Search devices'), { target: { value: 'pih' } })
+    expect(screen.getByRole('button', { name: /pihole/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /proxmox/ })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Search devices'), { target: { value: 'nope' } })
+    expect(screen.getByText('No device matches "nope".')).toBeInTheDocument()
   })
 
   it('points the node at the device picked, and shows the facts it will display', async () => {
@@ -114,9 +136,10 @@ describe('NodeModal — device inventory link', () => {
       data: [makeDevice({ id: 'dev-2', label: 'NAS', ip: '192.168.1.50', hostname: 'nas.lan' })],
     } as never)
     const { onSubmit } = renderModal()
-    await screen.findByRole('option', { name: /NAS/ })
+    await waitFor(() => expect(scanApi.pending).toHaveBeenCalled())
+    openPicker()
 
-    fireEvent.change(devicePicker(), { target: { value: 'dev-2' } })
+    fireEvent.click(await screen.findByRole('button', { name: /NAS/ }))
 
     // The addresses on screen belong to the row now, not to what the node had:
     // saving a device you can see and reloading into another one is the bug.
@@ -136,10 +159,12 @@ describe('NodeModal — device inventory link', () => {
       ],
     } as never)
     renderModal()
+    await waitFor(() => expect(scanApi.pending).toHaveBeenCalled())
+    openPicker()
 
-    expect(await screen.findByRole('option', { name: /NAS/ })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: /Patch panel/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: /Shelf/ })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /NAS/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Patch panel/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Shelf/ })).not.toBeInTheDocument()
   })
 
   it('creates a separate row on demand, forcing past the address already taken', async () => {
@@ -148,8 +173,9 @@ describe('NodeModal — device inventory link', () => {
     } as never)
     const { onSubmit } = renderModal()
     await waitFor(() => expect(scanApi.pending).toHaveBeenCalled())
+    openPicker()
 
-    fireEvent.change(devicePicker(), { target: { value: '__new__' } })
+    fireEvent.click(await screen.findByRole('button', { name: /Create a separate device/ }))
 
     await waitFor(() => expect(scanApi.createPending).toHaveBeenCalled())
     // Without `force` the new row folds straight back into the one this node is
@@ -159,7 +185,7 @@ describe('NodeModal — device inventory link', () => {
       label: 'gitea',
       ip: ':3001',
     })
-    await waitFor(() => expect(devicePicker().value).toBe('dev-new'))
+    await waitFor(() => expect(linkedName()).toContain('gitea'))
 
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ device_id: 'dev-new' }))

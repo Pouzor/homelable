@@ -152,3 +152,13 @@ export function deviceFactsToNodeData(device: InventoryEntry): Partial<NodeData>
     ieee_address: device.ieee_address ?? undefined,
   }
 }
+
+/**
+ * Every address a device answers to, as one line.
+ *
+ * Two rows named `proxmox-1` are told apart by this and nothing else, so it is
+ * printed wherever a device is offered for the user to choose between.
+ */
+export function deviceAddresses(device: InventoryEntry): string {
+  return [device.ip, device.mac, device.ieee_address].filter(Boolean).join(' · ')
+}
