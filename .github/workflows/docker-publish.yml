@@ -15,19 +15,19 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: ghcr.io/pouzor/homelable-backend
+          - image: ghcr.io/${{ github.repository_owner }}/homelable-backend
             context: .
             dockerfile: Dockerfile.backend
             build_args: ""
-          - image: ghcr.io/pouzor/homelable-frontend
+          - image: ghcr.io/${{ github.repository_owner }}/homelable-frontend
             context: .
             dockerfile: Dockerfile.frontend
             build_args: ""
-          - image: ghcr.io/pouzor/homelable-frontend-standalone
+          - image: ghcr.io/${{ github.repository_owner }}/homelable-frontend-standalone
             context: .
             dockerfile: Dockerfile.frontend
             build_args: "VITE_STANDALONE=true"
-          - image: ghcr.io/pouzor/homelable-mcp
+          - image: ghcr.io/${{ github.repository_owner }}/homelable-mcp
             context: ./mcp
             dockerfile: Dockerfile.mcp
             build_args: ""
