@@ -10,6 +10,7 @@ import {
   deviceFactsToNodeData,
   factsBaselineOf,
   factsBaselines,
+  listArrangedForNode,
 } from '@/utils/deviceFacts'
 import type { InventoryEntry, NodeData } from '@/types'
 import type { Node } from '@xyflow/react'
@@ -92,6 +93,50 @@ describe('factsBaselines', () => {
     expect(Object.keys(baselines)).toEqual(['n1', 'n2'])
     expect(changedFactFields(nodes[1].data, baselines.n2)).toEqual([])
     expect(changedFactFields(nodes[1].data, baselines.n1)).toEqual(['notes'])
+  })
+})
+
+describe('listArrangedForNode', () => {
+  const ssh = { port: 22, protocol: 'tcp' as const, service_name: 'ssh' }
+  const guessed = { port: 8096, protocol: 'tcp' as const, service_name: 'TCP/8096' }
+  const renamed = { ...guessed, service_name: 'Jellyfin' }
+
+  it('follows a rename rather than hiding the service (#468)', () => {
+    // A service is its port, not its name. Keying on the name dropped the entry
+    // the node drew and appended the renamed one hidden, so correcting a
+    // scanner guess in the Device Inventory made it vanish from the canvas.
+    expect(listArrangedForNode([ssh, guessed], [ssh, renamed])).toEqual([ssh, renamed])
+  })
+
+  it('keeps the node\'s place and flag across a rename', () => {
+    const arranged = listArrangedForNode([{ ...guessed, visible: false }, ssh], [ssh, renamed])
+    expect(arranged).toEqual([{ ...renamed, visible: false }, ssh])
+  })
+
+  it('still tells two services on the same port apart by protocol', () => {
+    const udp = { ...guessed, protocol: 'udp' as const }
+    expect(listArrangedForNode([guessed], [guessed, udp])).toEqual([
+      guessed,
+      { ...udp, visible: false },
+    ])
+  })
+
+  it('keys a port-less service by name — nothing else identifies one', () => {
+    const proxied = { protocol: 'tcp' as const, service_name: 'Vaultwarden', host: 'vault.lan' }
+    const other = { protocol: 'tcp' as const, service_name: 'Gitea', host: 'git.lan' }
+    expect(listArrangedForNode([proxied], [proxied, other])).toEqual([
+      proxied,
+      { ...other, visible: false },
+    ])
+  })
+
+  it('is unchanged for properties, which carry their own key', () => {
+    const rack = { key: 'Rack', value: 'A1', icon: null, visible: true }
+    const owner = { key: 'Owner', value: 'me', icon: null, visible: true }
+    expect(listArrangedForNode([{ ...rack, visible: false }], [rack, owner])).toEqual([
+      { ...rack, visible: false },
+      { ...owner, visible: false },
+    ])
   })
 })
 
