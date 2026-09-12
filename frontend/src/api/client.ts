@@ -532,3 +532,33 @@ export const zwaveApi = {
     api.post<ZwaveConfigData>('/zwave/config', data),
   syncNow: () => api.post<ScanRunResult>('/zwave/sync-now'),
 }
+
+export interface OpnsenseConfigData {
+  url: string
+  verify_tls: boolean
+  sync_enabled: boolean
+  sync_interval: number
+  credentials_configured: boolean
+}
+
+export const opnsenseApi = {
+  getConfig: () => api.get<OpnsenseConfigData>('/opnsense/config'),
+  saveConfig: (data: { sync_enabled: boolean; sync_interval: number }) =>
+    api.post<OpnsenseConfigData>('/opnsense/config', data),
+  syncNow: () => api.post<ScanRunResult>('/opnsense/sync-now'),
+}
+
+export interface PfsenseConfigData {
+  url: string
+  verify_tls: boolean
+  sync_enabled: boolean
+  sync_interval: number
+  credentials_configured: boolean
+}
+
+export const pfsenseApi = {
+  getConfig: () => api.get<PfsenseConfigData>('/pfsense/config'),
+  saveConfig: (data: { sync_enabled: boolean; sync_interval: number }) =>
+    api.post<PfsenseConfigData>('/pfsense/config', data),
+  syncNow: () => api.post<ScanRunResult>('/pfsense/sync-now'),
+}
