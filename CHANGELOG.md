@@ -5,6 +5,27 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.4.2] - 2026-09-13
+
+### Features
+
+- Documentation can be exported. A document's viewer carries a **Download** button that writes the markdown it already holds, frontmatter included, and **Export all** builds a zip of the whole space server-side. The archive mirrors the sidebar: Library folders become directories with their own body as `index.md`, and device, node and design documents are placed by their link, each under a directory named for its kind. Colliding slugs are numbered rather than overwritten and every path segment is sanitised. (#437)
+- The MCP server can edit a canvas' connection points and style its edges. `create_node`/`update_node` take the per-side handle counts and `show_port_numbers`; `create_edge` and a new `update_edge` take `source_handle`/`target_handle` plus the styling the UI already had — `animated`, `custom_color`, `path_style`, `line_style`, `width_mult`, `marker_start`, `marker_end`, `vlan_id` and `speed`. A new `list_edges` exposes the handles an edge sits on, which `get_canvas` slims away. Handle counts are clamped to 0..64 on every write path. (#436)
+- The Getting Started tour walks through the Documentation section — the section itself, the template picker with wiki-links and history, and the device tree with its pivots — in three steps between the rack and styling ones. Backend-only, since a standalone build has nowhere to store a document. (#428)
+
+### Fixes
+
+- Renaming a service made the next scan append its own guess as a second entry on the same port, and the duplicate reached every canvas drawing the device. Service identity is now the port and protocol, not the name; a port-less service still keys on its name, because nothing else tells two of those apart. The client's `deviceFacts.keyOf` was keying the same service the old way, so a rename gave it a key the node had never seen and the corrected service was dropped from the canvas as hidden — the two now render the same identity. A merge collision keeps the survivor's curated name instead of letting a background scan's guess overwrite it. (#474, #478)
+- `check_node` timed ping's whole subprocess, and since ping paces its two probes a second apart, every ping-checked device reported ~1000ms whatever its real latency. The RTT is read out of ping's own stdout across platforms and locales, the wall-clock kept only as a fallback for unparseable output. (#477)
+- The `device_inventory` rebuild migration recreated the table with a `properties` column but left it out of the `INSERT...SELECT`, silently dropping every row's Zigbee/Z-Wave attributes. It now carries whatever columns the old table actually has. Thanks @NorthIsUp! (#471)
+- A device parented in a canvas text annotation had that annotation's content written as its `zone_label`, and the generated document printed it as the zone. The parent walk now stops at `group`/`groupRect` only. (#464)
+- One failed FTS5 probe — usually `database is locked`, from the boot reindex or a scanner thread holding a write — was cached as "this build has no FTS5" and cost the process every ranked search until a restart. A negative answer is now re-asked after a delay; a success is still final. (#463)
+- The scanner's shared-IP collapse could pick an IEEE-less survivor and destroy the addresses the other rows held, after which the next scan no longer found the device and minted a fresh duplicate. It now refuses such a group, the way `reconcile_duplicates` already did. (#462)
+- `POST /documents` with `kind='design'` accepted a nonexistent `design_id` with a 201 and stored a permanently orphaned row; `design_id` is now validated alongside `device_id` and `node_id` and answers 404. Thanks @slmingol! (#458)
+- A row with a null `discovered_at` raised `TypeError` and aborted the merge transaction, and `dedupe_nodes_by_device` ran a full node-table scan per merged group instead of once per reconcile batch. Thanks @slmingol! (#454)
+- An edge whose handle names a slot its node has no connection point for draws nothing and persists invisibly. `POST /edges` and `PATCH /edges/{id}` answer 422 for one, now that MCP can supply handles. MCP also carries the backend's error detail through to the client instead of a generic failure. (#436)
+- Bumped js-yaml to 4.3.2 for GHSA-2883-xcg3-v3hh. (#436)
+
 ## [3.4.1] - 2026-09-07
 
 ### Features
