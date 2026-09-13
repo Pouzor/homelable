@@ -246,6 +246,14 @@ class Settings(BaseSettings):
     # (the Z-Wave node dump today). Same rationale as the Zigbee twin above.
     mqtt_response_timeout: int = 300
 
+    # SNMP periodic polling of approved devices.
+    snmp_poll_enabled: bool = False
+    snmp_poll_interval: int = 300
+
+    # LLDP/CDP topology discovery via SNMP walk.
+    lldp_discovery_enabled: bool = False
+    lldp_discovery_interval: int = 3600
+
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"
 
@@ -293,6 +301,14 @@ class Settings(BaseSettings):
                 self.zwave_sync_enabled = bool(data["zwave_sync_enabled"])
             if "zwave_sync_interval" in data:
                 self.zwave_sync_interval = int(data["zwave_sync_interval"])
+            if "snmp_poll_enabled" in data:
+                self.snmp_poll_enabled = bool(data["snmp_poll_enabled"])
+            if "snmp_poll_interval" in data:
+                self.snmp_poll_interval = int(data["snmp_poll_interval"])
+            if "lldp_discovery_enabled" in data:
+                self.lldp_discovery_enabled = bool(data["lldp_discovery_enabled"])
+            if "lldp_discovery_interval" in data:
+                self.lldp_discovery_interval = int(data["lldp_discovery_interval"])
         except Exception:
             pass
 
@@ -318,6 +334,10 @@ class Settings(BaseSettings):
             "zigbee_sync_interval": self.zigbee_sync_interval,
             "zwave_sync_enabled": self.zwave_sync_enabled,
             "zwave_sync_interval": self.zwave_sync_interval,
+            "snmp_poll_enabled": self.snmp_poll_enabled,
+            "snmp_poll_interval": self.snmp_poll_interval,
+            "lldp_discovery_enabled": self.lldp_discovery_enabled,
+            "lldp_discovery_interval": self.lldp_discovery_interval,
         }))
 
 

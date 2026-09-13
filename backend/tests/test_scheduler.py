@@ -214,6 +214,8 @@ def test_scheduler_uses_settings_interval():
     with patch("app.core.scheduler.settings") as mock_settings, \
          patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
         mock_settings.status_checker_interval = 45
+        mock_settings.snmp_poll_enabled = False
+        mock_settings.lldp_discovery_enabled = False
         mock_settings.service_check_enabled = False
         mock_settings.proxmox_sync_enabled = False
         mock_settings.zigbee_sync_enabled = False
@@ -229,6 +231,8 @@ def test_start_and_stop_scheduler():
     with patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched), \
          patch("app.core.scheduler.settings") as mock_settings:
         mock_settings.status_checker_interval = 60
+        mock_settings.snmp_poll_enabled = False
+        mock_settings.lldp_discovery_enabled = False
         mock_settings.service_check_enabled = False
         mock_settings.proxmox_sync_enabled = False
         mock_settings.zigbee_sync_enabled = False

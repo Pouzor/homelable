@@ -275,6 +275,13 @@ class InventoryDevice(Base):
         DateTime(timezone=True), default=_now, onupdate=_now
     )
 
+    # SNMP polling configuration for this device.
+    snmp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    snmp_community: Mapped[str] = mapped_column(String, default="public")
+    snmp_version: Mapped[str] = mapped_column(String, default="2c")
+    snmp_port: Mapped[int] = mapped_column(Integer, default=161)
+    snmp_oids: Mapped[list[Any]] = mapped_column(JSON, default=list)
+
     # --- Rack modelisation (owned here, not by the mount) ------------------
     # A device wears the same front panel in every rack it is mounted in, so the
     # inventory row — not `rack_devices` — owns the faceplate, its size and its
@@ -316,6 +323,25 @@ class InventoryDeviceLink(Base):
     lqi: Mapped[int | None] = mapped_column(Integer, nullable=True)
     discovery_source: Mapped[str] = mapped_column(String, nullable=False, default="zigbee")
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class SnmpMetric(Base):
+    """Latest polled SNMP value for one OID on one device.
+
+    PRIMARY KEY (device_id, oid) means each OID has exactly one current value —
+    re-polling replaces the row rather than accumulating history.
+    """
+
+    __tablename__ = "snmp_metrics"
+
+    device_id: Mapped[str] = mapped_column(
+        String, ForeignKey("device_inventory.id", ondelete="CASCADE"), primary_key=True
+    )
+    oid: Mapped[str] = mapped_column(String, primary_key=True)
+    label: Mapped[str | None] = mapped_column(String, nullable=True)
+    value: Mapped[str | None] = mapped_column(String, nullable=True)
+    value_type: Mapped[str | None] = mapped_column(String, nullable=True)
+    polled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class ScanRun(Base):
