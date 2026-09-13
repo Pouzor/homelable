@@ -26,6 +26,7 @@
   <a href="#network-scanner">Network Scanner</a> ·
   <a href="#zigbee2mqtt-import">Zigbee / Z-Wave</a> ·
   <a href="#proxmox-ve-import">Proxmox</a> ·
+  <a href="#kubernetes-topology">Kubernetes</a> ·
   <a href="#live-view-read-only-public-canvas">Live View</a> ·
   <a href="#mcp-server-ai-integration-optional">MCP Server</a>
 </p>
@@ -60,7 +61,7 @@ If you are running  <img width="22" height="22" align="top" alt="New_Home_Assist
 
 ## Features
 
-From one-click **network scans** and **Proxmox / Zigbee / Z-Wave** imports to **live status monitoring**, floor plans, **rack canvases** with port-to-port patching, a **markdown documentation space** for the whole lab, multi-canvas layouts and an **MCP server** for AI assistants — Homelable maps, documents and watches your whole homelab.
+From one-click **network scans**, **Kubernetes topology**, and **Proxmox / Zigbee / Z-Wave** imports to **live status monitoring**, floor plans, **rack canvases** with port-to-port patching, a **markdown documentation space** for the whole lab, multi-canvas layouts and an **MCP server** for AI assistants — Homelable maps, documents and watches your whole homelab.
 
 Every feature, with how to turn it on and use it, is described in **[FEATURES.md](./FEATURES.md)**.
 
@@ -274,6 +275,24 @@ Each host is linked to its guests with a `virtual` edge. vCPU / RAM / disk are i
 
 ---
 
+## Kubernetes Topology
+
+Homelable can observe one Kubernetes cluster as a separate, read-only
+topology: **Ingress → Service → workload → Pod → Node**. It resolves
+EndpointSlices, so selectorless Services that target an address outside the
+cluster are represented accurately as external endpoints.
+
+Kubernetes observation is disabled by default and never modifies the cluster.
+The recommended deployment is in-cluster with a projected ServiceAccount
+limited to `list` for the topology resources. The graph is sanitized
+before it is stored or returned: it excludes Secrets, ConfigMaps, labels,
+annotations, container environment, logs, and credentials.
+
+> **Full setup, RBAC manifest, data boundaries, sync states, and advanced
+> read-only kubeconfig mode:** [docs/kubernetes-topology.md](./docs/kubernetes-topology.md)
+
+---
+
 ## Live View (read-only public canvas)
 
 Live View lets you share a read-only snapshot of your canvas with anyone on your network — no login required. It is disabled by default.
@@ -361,7 +380,7 @@ Homelable can exposes a [Model Context Protocol](https://modelcontextprotocol.io
 
 | | Action |
 |---|---|
-| **Read** | List all nodes, edges, full canvas, zones, designs, the device inventory and scan history — and the rack canvases: racks, mounted gear, patched cables |
+| **Read** | List all nodes, edges, full canvas, zones, designs, the device inventory and scan history, the sanitized Kubernetes topology snapshot — and the rack canvases: racks, mounted gear, patched cables |
 | **Write** | Add / update / delete nodes, edges and zones, trigger a network scan, approve / hide / restore discovered devices, create and edit inventory entries, build racks and mount, move and patch the gear in them |
 
 ### Setup
@@ -440,11 +459,14 @@ Or add it manually to `~/.claude.json`:
 - *"Show me the full canvas topology."*
 - *"How much free U is left in the garage rack?"*
 - *"Mount the NAS in rack 1 and patch its first port to port 12 of the patch panel."*
+- *"Show the Kubernetes ingress-to-service routes and their current endpoint relationships."*
 
 ### Security
 
 - The MCP server is **not** intended to be exposed to the internet — keep port 8001 firewalled to your LAN.
 - Rotate the key any time by updating `MCP_API_KEY` in `.env` and restarting: `docker compose restart mcp`.
 - The MCP server communicates with the backend over the internal Docker network — the backend API is never directly exposed to MCP clients.
+- `homelable://kubernetes/topology` is a read-only resource backed by the last complete Kubernetes sync. It does not add Kubernetes write tools; see [Kubernetes topology](./docs/kubernetes-topology.md) for its data and access boundaries.
+- For agents that must not receive canvas or scan tools, run a **separate** MCP listener with its own `MCP_API_KEY` and `MCP_READ_ONLY=true`. That listener exposes resources but registers no tools. Do not share its key with a full-access MCP listener.
 
 ---

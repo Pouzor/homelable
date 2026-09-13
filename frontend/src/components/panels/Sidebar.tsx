@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2, Rows3, BookOpen } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2, Rows3, BookOpen, Boxes } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -31,9 +31,12 @@ interface SidebarProps {
   onOpenSettings: () => void
   onOpenHistory: () => void
   onOpenInventory: (deviceId?: string, status?: 'pending' | 'hidden') => void
+  /** Opens the observed, non-editable Kubernetes topology view. */
+  onOpenKubernetes?: () => void
+  showKubernetes?: boolean
 }
 
-export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onZwaveImport, onProxmoxImport, onSave, onOpenSettings, onOpenHistory, onOpenInventory }: SidebarProps) {
+export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onZwaveImport, onProxmoxImport, onSave, onOpenSettings, onOpenHistory, onOpenInventory, onOpenKubernetes, showKubernetes = false }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const logout = useAuthStore((s) => s.logout)
   const { designs, activeDesignId, activeDesignType, setActiveDesign, addDesign, updateDesign, removeDesign } = useDesignStore()
@@ -241,9 +244,21 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
           icon={isRack ? Rows3 : LayoutDashboard}
           label={isRack ? 'Rack view' : 'Canvas'}
           collapsed={collapsed}
-          active={view === 'canvas'}
-          onClick={() => setView('canvas')}
+          active={view === 'canvas' && !showKubernetes}
+          onClick={() => { if (showKubernetes) onOpenKubernetes?.(); setView('canvas') }}
         />
+        {!STANDALONE && onOpenKubernetes && (
+          <SidebarItem
+            icon={Boxes}
+            label="Kubernetes"
+            collapsed={collapsed}
+            active={showKubernetes}
+            // App renders the documentation view ahead of the Kubernetes one,
+            // so leaving `view` on 'documentation' lights this row up while
+            // the docs stay on screen. Same pairing the Canvas item above uses.
+            onClick={() => { onOpenKubernetes?.(); setView('canvas') }}
+          />
+        )}
         {!STANDALONE && (
           <SidebarItem
             icon={BookOpen}

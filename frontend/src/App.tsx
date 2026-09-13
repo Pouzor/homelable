@@ -63,6 +63,7 @@ import { useUiStore } from '@/stores/uiStore'
 import { RackCanvas } from '@/rack/components/RackCanvas'
 import { RackCablePanel } from '@/rack/components/RackCablePanel'
 import { useRackStore } from '@/rack/store'
+import { KubernetesTopologyView } from '@/components/kubernetes/KubernetesTopologyView'
 import type { NodeData, EdgeData, CustomStyleDef, DesignType, FloorMapConfig, NodeType } from '@/types'
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 import type { ZwaveNode, ZwaveEdge } from '@/components/zwave/types'
@@ -158,6 +159,9 @@ export default function App() {
   const [zigbeeImportOpen, setZigbeeImportOpen] = useState(false)
   const [zwaveImportOpen, setZwaveImportOpen] = useState(false)
   const [proxmoxImportOpen, setProxmoxImportOpen] = useState(false)
+  // This is intentionally separate from designs: Kubernetes resources are
+  // observed state, never editable canvas data.
+  const [showKubernetes, setShowKubernetes] = useState(false)
 
   // Declare handleSave before the Ctrl+S effect so it is in scope.
   // Returns true on success, false on failure — the design-switch effect relies
@@ -1142,9 +1146,11 @@ export default function App() {
             onOpenSettings={() => setSettingsOpen(true)}
             onOpenHistory={() => setScanHistoryOpen(true)}
             onOpenInventory={openInventoryModal}
+            onOpenKubernetes={() => setShowKubernetes((current) => !current)}
+            showKubernetes={showKubernetes}
           />
           <div className="flex flex-col flex-1 min-w-0">
-            {loadError && (
+            {loadError && !showKubernetes && (
               <div
                 role="alert"
                 className="flex items-center justify-between gap-3 bg-[#3d1418] border-b border-[#f85149] px-4 py-2 text-sm text-[#ffa198]"
@@ -1165,6 +1171,8 @@ export default function App() {
               >
                 <DocumentationView />
               </Suspense>
+            ) : showKubernetes ? (
+              <KubernetesTopologyView />
             ) : (
             <>
             <Toolbar

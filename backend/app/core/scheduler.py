@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.database import AsyncSessionLocal
 from app.db.models import InventoryDevice, Node
+from app.services.kubernetes_sync import sync_kubernetes_topology
 from app.services.status_checker import check_node, check_services
 
 if TYPE_CHECKING:
@@ -244,6 +245,16 @@ async def _run_zwave_sync() -> None:
     await _run_mesh_sync("zwave")
 
 
+async def _run_kubernetes_sync() -> None:
+    """Refresh the observed graph; failures retain the last successful snapshot."""
+    # Strict opt-in avoids a MagicMock (or another non-boolean config adapter)
+    # unexpectedly scheduling API traffic in test and embedded deployments.
+    if settings.kubernetes_enabled is not True:
+        return
+    async with AsyncSessionLocal() as db:
+        await sync_kubernetes_topology(db)
+
+
 def _add_service_check_job() -> None:
     scheduler.add_job(
         _run_service_checks,
@@ -288,6 +299,17 @@ def _add_zwave_sync_job() -> None:
     )
 
 
+def _add_kubernetes_sync_job() -> None:
+    scheduler.add_job(
+        _run_kubernetes_sync,
+        "interval",
+        seconds=settings.kubernetes_sync_interval,
+        id="kubernetes_sync",
+        max_instances=1,
+        coalesce=True,
+    )
+
+
 def start_scheduler() -> None:
     global scheduler
     if scheduler.running:
@@ -312,6 +334,8 @@ def start_scheduler() -> None:
         _add_zigbee_sync_job()
     if settings.zwave_sync_enabled:
         _add_zwave_sync_job()
+    if settings.kubernetes_enabled is True:
+        _add_kubernetes_sync_job()
     scheduler.start()
     logger.info("Scheduler started — status checks every %ds", settings.status_checker_interval)
 
