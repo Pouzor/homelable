@@ -21,6 +21,17 @@ def _client_answering(response: httpx.Response) -> BackendClient:
 
 
 @pytest.mark.anyio
+async def test_request_reports_uninitialized_backend_client():
+    backend = BackendClient()
+
+    with pytest.raises(BackendError) as exc:
+        await backend.get("/api/v1/nodes")
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail == "Backend client not initialized — startup failed"
+
+
+@pytest.mark.anyio
 async def test_a_string_detail_reaches_the_caller():
     detail = "source_handle 'right-2' does not exist: node n1 has 0 connection point(s) on its right side."
     backend = _client_answering(httpx.Response(422, json={"detail": detail}))
