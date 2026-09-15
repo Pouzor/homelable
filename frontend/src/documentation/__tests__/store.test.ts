@@ -11,7 +11,7 @@ import {
   useDocsStore,
   writeDraft,
 } from '../store'
-import type { Doc, DocumentSummary } from '../types'
+import type { Doc, DocumentSummary, UpdatePreview } from '../types'
 
 vi.mock('@/api/client', () => ({
   documentsApi: {
@@ -28,6 +28,8 @@ vi.mock('@/api/client', () => ({
     block: vi.fn(),
     coverage: vi.fn(),
     scaffold: vi.fn(),
+    updatePreview: vi.fn(),
+    updateFromDevice: vi.fn(),
   },
 }))
 
@@ -53,6 +55,28 @@ function doc(overrides: Partial<Doc> = {}): Doc {
   return { ...summary(), body: 'original', ...overrides } as Doc
 }
 
+function preview(overrides: Partial<UpdatePreview> = {}): UpdatePreview {
+  return {
+    preview_id: 'p1',
+    changes: [],
+    proposed_body: 'body',
+    summary: [],
+    unresolved: [],
+    ...overrides,
+  }
+}
+
+/** A promise the test settles by hand, to race the store's requests. */
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 const INITIAL = useDocsStore.getState()
 
 beforeEach(() => {
@@ -69,6 +93,9 @@ beforeEach(() => {
     revisions: [],
     coverage: null,
     search: null,
+    preview: null,
+    previewLoading: false,
+    resolutions: {},
   })
 })
 
@@ -492,5 +519,343 @@ describe('openForDevice', () => {
 
     expect(await useDocsStore.getState().openForDevice('dev-1', 'bazarr')).toBe(false)
     expect(useDocsStore.getState().openDoc).toBeNull()
+  })
+})
+
+// ── update-from-device ────────────────────────────────────────────────────
+
+describe('openUpdatePreview', () => {
+  it('fetches the preview for the open document', async () => {
+    const previewResponse = {
+      preview_id: 'abc123',
+      changes: [],
+      proposed_body: 'updated body',
+      summary: [],
+      unresolved: [],
+    }
+    useDocsStore.setState({ openDoc: doc({ id: 'doc-1', device_id: 'dev-1' }) as Doc })
+    api.updatePreview.mockResolvedValue({ data: previewResponse } as never)
+
+    const result = await useDocsStore.getState().openUpdatePreview()
+
+    expect(result).toEqual(previewResponse)
+    expect(api.updatePreview).toHaveBeenCalledWith('doc-1', [])
+    expect(useDocsStore.getState().preview?.preview_id).toBe('abc123')
+  })
+
+  it('drops a superseded answer that resolves after the newest request', async () => {
+    const first = deferred<{ data: UpdatePreview }>()
+    const second = deferred<{ data: UpdatePreview }>()
+    api.updatePreview
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+    useDocsStore.setState({ openDoc: doc() })
+
+    // The first request answers with the resolutions of the moment it was
+    // issued; by the time it returns, a newer request owns the review.
+    const firstCall = useDocsStore.getState().openUpdatePreview()
+    useDocsStore.setState({ resolutions: { a: { id: 'a', choice: 'device' } } })
+    const secondCall = useDocsStore.getState().openUpdatePreview()
+
+    second.resolve({ data: preview({ preview_id: 'newest' }) })
+    first.resolve({ data: preview({ preview_id: 'stale' }) })
+
+    expect(await firstCall).toBeNull()
+    expect(await secondCall).toEqual(preview({ preview_id: 'newest' }))
+    expect(useDocsStore.getState().preview?.preview_id).toBe('newest')
+    expect(useDocsStore.getState().previewLoading).toBe(false)
+    expect(api.updatePreview).toHaveBeenNthCalledWith(1, 'doc-1', [])
+    expect(api.updatePreview).toHaveBeenNthCalledWith(2, 'doc-1', [{ id: 'a', choice: 'device' }])
+  })
+
+  it('does not clear the current preview when a superseded request fails', async () => {
+    const stale = deferred<{ data: UpdatePreview }>()
+    const newest = deferred<{ data: UpdatePreview }>()
+    api.updatePreview
+      .mockImplementationOnce(() => stale.promise)
+      .mockImplementationOnce(() => newest.promise)
+    useDocsStore.setState({ openDoc: doc() })
+
+    const staleCall = useDocsStore.getState().openUpdatePreview()
+    const newestCall = useDocsStore.getState().openUpdatePreview()
+
+    newest.resolve({ data: preview({ preview_id: 'newest' }) })
+    stale.reject(new Error('connection dropped'))
+
+    expect(await staleCall).toBeNull()
+    expect(await newestCall).toEqual(preview({ preview_id: 'newest' }))
+    expect(useDocsStore.getState().preview?.preview_id).toBe('newest')
+    expect(useDocsStore.getState().previewLoading).toBe(false)
+    // The superseded failure must not surface as if the review had failed.
+    expect(useDocsStore.getState().loadError).toBeNull()
+  })
+
+  it('ignores an answer for a document that was closed meanwhile', async () => {
+    const inFlight = deferred<{ data: UpdatePreview }>()
+    api.updatePreview.mockImplementationOnce(() => inFlight.promise)
+    useDocsStore.setState({ openDoc: doc() })
+
+    const call = useDocsStore.getState().openUpdatePreview()
+    useDocsStore.getState().close()
+    inFlight.resolve({ data: preview({ preview_id: 'ghost' }) })
+
+    expect(await call).toBeNull()
+    expect(useDocsStore.getState().preview).toBeNull()
+    expect(useDocsStore.getState().previewLoading).toBe(false)
+  })
+
+  it('ignores an answer for a document the user already switched away from', async () => {
+    const inFlight = deferred<{ data: UpdatePreview }>()
+    api.updatePreview.mockImplementationOnce(() => inFlight.promise)
+    api.get.mockResolvedValue({ data: doc({ id: 'doc-2' }) } as never)
+    useDocsStore.setState({ openDoc: doc({ id: 'doc-1' }) })
+
+    const call = useDocsStore.getState().openUpdatePreview()
+    const opening = useDocsStore.getState().open('doc-2')
+    inFlight.resolve({ data: preview({ preview_id: 'ghost' }) })
+
+    expect(await call).toBeNull()
+    await opening
+    expect(useDocsStore.getState().openDoc?.id).toBe('doc-2')
+    expect(useDocsStore.getState().preview).toBeNull()
+  })
+
+  it('ignores an answer when the review was cancelled during the request', async () => {
+    const inFlight = deferred<{ data: UpdatePreview }>()
+    api.updatePreview.mockImplementationOnce(() => inFlight.promise)
+    useDocsStore.setState({ openDoc: doc() })
+
+    const call = useDocsStore.getState().openUpdatePreview()
+    expect(useDocsStore.getState().previewLoading).toBe(true)
+    useDocsStore.getState().clearResolutions()
+    // The cancel stops the spinner itself: the in-flight request is now going
+    // to be ignored, so it can never be the one to clear the flag.
+    expect(useDocsStore.getState().previewLoading).toBe(false)
+    inFlight.resolve({ data: preview({ preview_id: 'ghost' }) })
+
+    expect(await call).toBeNull()
+    expect(useDocsStore.getState().preview).toBeNull()
+    expect(useDocsStore.getState().previewLoading).toBe(false)
+  })
+})
+
+describe('setResolution', () => {
+  it('stores the decision and re-previews', async () => {
+    const previewResponse = {
+      preview_id: 'xyz',
+      changes: [{ id: 'conflict-1', name: 'IP', status: 'conflict', documented: 'old', device: 'new' }],
+      proposed_body: 'body',
+      summary: [],
+      unresolved: ['conflict-1'],
+    }
+    useDocsStore.setState({ openDoc: doc({ id: 'doc-1' }) as Doc })
+    api.updatePreview.mockResolvedValue({ data: previewResponse } as never)
+
+    useDocsStore.getState().setResolution('conflict-1', { id: 'conflict-1', choice: 'device' })
+
+    expect(useDocsStore.getState().resolutions['conflict-1']?.choice).toBe('device')
+    expect(api.updatePreview).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the preview of the newest decision when two reviews race', async () => {
+    const first = deferred<{ data: UpdatePreview }>()
+    const second = deferred<{ data: UpdatePreview }>()
+    api.updatePreview
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise)
+    useDocsStore.setState({ openDoc: doc() })
+
+    // Two decisions land back to back; each fires its own preview, and the
+    // older one answers last — it must not undo the newer review.
+    useDocsStore.getState().setResolution('a', { id: 'a', choice: 'device' })
+    useDocsStore.getState().setResolution('b', { id: 'b', choice: 'custom', custom: '10.0.0.5' })
+
+    second.resolve({ data: preview({ preview_id: 'newest' }) })
+    first.resolve({ data: preview({ preview_id: 'stale' }) })
+    await Promise.resolve()
+
+    expect(useDocsStore.getState().preview?.preview_id).toBe('newest')
+    expect(useDocsStore.getState().resolutions).toEqual({
+      a: { id: 'a', choice: 'device' },
+      b: { id: 'b', choice: 'custom', custom: '10.0.0.5' },
+    })
+    expect(useDocsStore.getState().previewLoading).toBe(false)
+  })
+})
+
+describe('applyUpdate', () => {
+  it('applies the merge and refreshes the document', async () => {
+    const updatedDoc = doc({ id: 'doc-1', body: 'merged', device_id: 'dev-1' })
+    const previewResponse = {
+      preview_id: 'preview-1',
+      changes: [],
+      proposed_body: 'merged',
+      summary: ['Applied IP'],
+      unresolved: [],
+    }
+    useDocsStore.setState({
+      openDoc: doc({ id: 'doc-1', device_id: 'dev-1', body: 'old' }) as Doc,
+      resolutions: { 'conflict-1': { id: 'conflict-1', choice: 'device' } },
+    })
+    // The preview is installed the way the review installs it, so apply can
+    // verify the merge on screen was computed over these exact decisions.
+    api.updatePreview.mockResolvedValue({ data: previewResponse } as never)
+    await useDocsStore.getState().openUpdatePreview()
+
+    api.updateFromDevice.mockResolvedValue({ data: updatedDoc } as never)
+    api.get.mockResolvedValue({ data: updatedDoc } as never)
+
+    const result = await useDocsStore.getState().applyUpdate()
+
+    expect(result).toBe('applied')
+    expect(api.updateFromDevice).toHaveBeenCalledWith('doc-1', 'preview-1', [
+      { id: 'conflict-1', choice: 'device' },
+    ])
+    expect(useDocsStore.getState().preview).toBeNull()
+    expect(useDocsStore.getState().resolutions).toEqual({})
+  })
+
+  it('returns stale on 409 and resets the review', async () => {
+    const error = Object.assign(new Error('Conflict'), { response: { status: 409 } })
+    useDocsStore.setState({ openDoc: doc({ id: 'doc-1' }) as Doc })
+    api.updatePreview.mockResolvedValue({
+      data: { preview_id: 'p1', changes: [], proposed_body: '', summary: [], unresolved: [] },
+    } as never)
+    await useDocsStore.getState().openUpdatePreview()
+    api.updateFromDevice.mockRejectedValue(error)
+
+    const result = await useDocsStore.getState().applyUpdate()
+
+    expect(result).toBe('stale')
+    expect(useDocsStore.getState().loadError).toBeTruthy()
+    // The stale merge and the choices that went with it are void; the fresh
+    // review must start clean rather than carry decisions made on a baseline
+    // that no longer holds.
+    expect(useDocsStore.getState().preview).toBeNull()
+    expect(useDocsStore.getState().resolutions).toEqual({})
+    expect(useDocsStore.getState().previewLoading).toBe(false)
+  })
+
+  it('refuses to apply once the latest preview has failed', async () => {
+    useDocsStore.setState({ openDoc: doc() })
+    api.updatePreview.mockResolvedValueOnce({ data: preview({ preview_id: 'first' }) } as never)
+    await useDocsStore.getState().openUpdatePreview()
+    expect(useDocsStore.getState().preview?.preview_id).toBe('first')
+
+    // The re-preview that would supersede it fails. The merge on screen is no
+    // longer the one that would land, so it must not be applicable either.
+    api.updatePreview.mockRejectedValueOnce({ response: { data: { detail: 'device offline' } } })
+    expect(await useDocsStore.getState().openUpdatePreview()).toBeNull()
+    expect(useDocsStore.getState().preview).toBeNull()
+    expect(useDocsStore.getState().loadError).toBe('device offline')
+
+    expect(await useDocsStore.getState().applyUpdate()).toBe('failed')
+    expect(api.updateFromDevice).not.toHaveBeenCalled()
+  })
+
+  it('refuses to apply while a newer preview is still loading', async () => {
+    const inFlight = deferred<{ data: UpdatePreview }>()
+    api.updatePreview.mockImplementationOnce(() => inFlight.promise)
+    useDocsStore.setState({ openDoc: doc(), resolutions: {} })
+    const previewing = useDocsStore.getState().openUpdatePreview()
+
+    expect(await useDocsStore.getState().applyUpdate()).toBe('failed')
+    expect(api.updateFromDevice).not.toHaveBeenCalled()
+
+    inFlight.resolve({ data: preview({ preview_id: 'p' }) })
+    await previewing
+    expect(useDocsStore.getState().previewLoading).toBe(false)
+  })
+
+  it('refuses to apply while conflicts are still open', async () => {
+    api.updatePreview.mockResolvedValue({
+      data: preview({ preview_id: 'p1', unresolved: ['conflict-1'] }),
+    } as never)
+    useDocsStore.setState({ openDoc: doc(), resolutions: {} })
+    await useDocsStore.getState().openUpdatePreview()
+
+    expect(useDocsStore.getState().preview?.unresolved).toEqual(['conflict-1'])
+    expect(await useDocsStore.getState().applyUpdate()).toBe('failed')
+    expect(api.updateFromDevice).not.toHaveBeenCalled()
+  })
+
+  it('refuses to apply a preview computed before the latest decision', async () => {
+    api.updatePreview.mockResolvedValue({ data: preview({ preview_id: 'p1', unresolved: [] }) } as never)
+    useDocsStore.setState({
+      openDoc: doc(),
+      resolutions: { a: { id: 'a', choice: 'device' } },
+    })
+    await useDocsStore.getState().openUpdatePreview()
+
+    // A further decision lands after the preview was computed, and its
+    // re-preview has not answered yet: applying now would merge with decisions
+    // the user has never seen on top of this body.
+    useDocsStore.setState({
+      resolutions: { a: { id: 'a', choice: 'device' }, b: { id: 'b', choice: 'keep' } },
+    })
+    expect(await useDocsStore.getState().applyUpdate()).toBe('failed')
+    expect(api.updateFromDevice).not.toHaveBeenCalled()
+
+    // Once the matching preview for the fuller set of decisions has arrived,
+    // the same apply is accepted and lands exactly that set.
+    api.updatePreview.mockResolvedValue({ data: preview({ preview_id: 'p2', unresolved: [] }) } as never)
+    await useDocsStore.getState().openUpdatePreview()
+    api.updateFromDevice.mockResolvedValue({ data: doc({ id: 'doc-1', body: 'merged' }) } as never)
+
+    expect(await useDocsStore.getState().applyUpdate()).toBe('applied')
+    expect(api.updateFromDevice).toHaveBeenCalledWith('doc-1', 'p2', [
+      { id: 'a', choice: 'device' },
+      { id: 'b', choice: 'keep' },
+    ])
+  })
+
+  it('does not replace a newer document and review when an old apply succeeds late', async () => {
+    const applying = deferred<{ data: Doc }>()
+    useDocsStore.setState({ openDoc: doc({ id: 'doc-1' }) })
+    api.updatePreview.mockResolvedValueOnce({ data: preview({ preview_id: 'doc-1-preview' }) } as never)
+    await useDocsStore.getState().openUpdatePreview()
+    api.updateFromDevice.mockImplementationOnce(() => applying.promise)
+    const oldApply = useDocsStore.getState().applyUpdate()
+
+    api.get.mockResolvedValueOnce({ data: doc({ id: 'doc-2', body: 'second' }) } as never)
+    await useDocsStore.getState().open('doc-2')
+    useDocsStore.setState({ resolutions: { newer: { id: 'newer', choice: 'device' } } })
+    api.updatePreview.mockResolvedValueOnce({ data: preview({ preview_id: 'doc-2-preview' }) } as never)
+    await useDocsStore.getState().openUpdatePreview()
+
+    applying.resolve({ data: doc({ id: 'doc-1', body: 'applied late' }) })
+    expect(await oldApply).toBe('applied')
+    expect(useDocsStore.getState().openDoc?.id).toBe('doc-2')
+    expect(useDocsStore.getState().preview?.preview_id).toBe('doc-2-preview')
+    expect(useDocsStore.getState().resolutions).toEqual({
+      newer: { id: 'newer', choice: 'device' },
+    })
+
+    api.updateFromDevice.mockResolvedValueOnce({ data: doc({ id: 'doc-2', body: 'merged second' }) } as never)
+    expect(await useDocsStore.getState().applyUpdate()).toBe('applied')
+  })
+
+  it('does not clear a newer document review when an old apply rejects late', async () => {
+    const applying = deferred<{ data: Doc }>()
+    useDocsStore.setState({ openDoc: doc({ id: 'doc-1' }) })
+    api.updatePreview.mockResolvedValueOnce({ data: preview({ preview_id: 'doc-1-preview' }) } as never)
+    await useDocsStore.getState().openUpdatePreview()
+    api.updateFromDevice.mockImplementationOnce(() => applying.promise)
+    const oldApply = useDocsStore.getState().applyUpdate()
+
+    api.get.mockResolvedValueOnce({ data: doc({ id: 'doc-2', body: 'second' }) } as never)
+    await useDocsStore.getState().open('doc-2')
+    useDocsStore.setState({ resolutions: { newer: { id: 'newer', choice: 'device' } } })
+    api.updatePreview.mockResolvedValueOnce({ data: preview({ preview_id: 'doc-2-preview' }) } as never)
+    await useDocsStore.getState().openUpdatePreview()
+
+    applying.reject(Object.assign(new Error('stale'), { response: { status: 409 } }))
+    expect(await oldApply).toBe('stale')
+    expect(useDocsStore.getState().openDoc?.id).toBe('doc-2')
+    expect(useDocsStore.getState().preview?.preview_id).toBe('doc-2-preview')
+    expect(useDocsStore.getState().resolutions).toEqual({
+      newer: { id: 'newer', choice: 'device' },
+    })
+    expect(useDocsStore.getState().previewLoading).toBe(false)
   })
 })
