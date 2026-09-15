@@ -49,13 +49,14 @@ function viewer(overrides: Partial<React.ComponentProps<typeof DocViewer>> = {})
 describe('the regenerate button', () => {
   it('asks the view to confirm rather than regenerating on the spot', async () => {
     const { onRegenerate } = viewer()
-    await userEvent.click(screen.getByRole('button', { name: 'Regenerate this document' }))
+    await userEvent.click(screen.getByRole('button', { name: 'More document actions' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Replace entire document…' }))
     expect(onRegenerate).toHaveBeenCalledTimes(1)
   })
 
   it('is not offered on a folder, which has no generated body', () => {
     viewer({ doc: doc({ kind: 'folder', device_id: null }) })
-    expect(screen.queryByRole('button', { name: 'Regenerate this document' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'More document actions' })).toBeNull()
   })
 })
 

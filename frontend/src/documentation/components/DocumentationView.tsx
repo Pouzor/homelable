@@ -21,17 +21,30 @@ import {
   filterGroups,
   filterTree,
 } from '../tree'
-import { GROUP_BY_LABELS, type GroupBy, type TreeLeaf } from '../types'
+import { GROUP_BY_LABELS, type GroupBy, type TreeLeaf, type UpdatePreview } from '../types'
 import { DocEditor } from './DocEditor'
 import { DocTreeGroups, DocTreeItem, type TreeDnd } from './DocTree'
 import { DocViewer } from './DocViewer'
 import { MigrateNotesBanner } from './MigrateNotesBanner'
 import { NewDocMenu } from './NewDocMenu'
 import { RegenerateDocModal } from './RegenerateDocModal'
+import { UpdateFromDeviceModal } from './UpdateFromDeviceModal'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 const GROUP_OPTIONS = Object.keys(GROUP_BY_LABELS) as GroupBy[]
+
+function updateConfirmation(result: UpdatePreview): string {
+  const names = [...new Set(
+    result.changes
+      .filter((change) => change.status !== 'same')
+      .map((change) => change.name.trim())
+      .filter(Boolean),
+  )]
+  if (names.length === 0) return 'Documentation updated'
+  const shown = names.slice(0, 3).join(', ')
+  return `Documentation updated: ${shown}${names.length > 3 ? `, and ${names.length - 3} more` : ''}`
+}
 
 /**
  * The Documentation section.
@@ -76,6 +89,13 @@ export function DocumentationView() {
     coverage,
     loadCoverage,
     scaffold,
+    preview,
+    previewLoading,
+    resolutions,
+    openUpdatePreview,
+    setResolution,
+    clearResolutions,
+    applyUpdate,
     groupBy,
     setGroupBy,
     expanded,
@@ -96,7 +116,14 @@ export function DocumentationView() {
   const [regenerateOpen, setRegenerateOpen] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [updateOpen, setUpdateOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const updateFlow = useRef(0)
+
+  useEffect(() => {
+    updateFlow.current++
+    setUpdateOpen(false)
+  }, [openDoc?.id])
 
   useEffect(() => {
     void loadDocs()
@@ -262,6 +289,75 @@ export function DocumentationView() {
     setRegenerateOpen(false)
     toast.success('Document regenerated — the old body is in its history')
   }, [openDoc, regenerate])
+
+  const handleCancelUpdate = useCallback(() => {
+    updateFlow.current++
+    setUpdateOpen(false)
+    clearResolutions()
+  }, [clearResolutions])
+
+  const finishUpdate = useCallback(async (review: UpdatePreview, flow: number, docId: string) => {
+    const result = await applyUpdate()
+    const current = useDocsStore.getState()
+    if (
+      flow !== updateFlow.current ||
+      current.openDoc?.id !== docId ||
+      (current.preview !== null && current.preview.preview_id !== review.preview_id)
+    ) return
+    if (result === 'failed') {
+      toast.error('Could not apply the update')
+      return
+    }
+    if (result === 'stale') {
+      // The document moved under the preview; show it again and re-compare,
+      // so the user is never applying against a body they have not seen.
+      setUpdateOpen(true)
+      await open(docId)
+      if (flow !== updateFlow.current || useDocsStore.getState().openDoc?.id !== docId) return
+      toast.error('That preview was out of date — review the current document again')
+      await openUpdatePreview()
+      return
+    }
+    setUpdateOpen(false)
+    clearResolutions()
+    toast.success(updateConfirmation(review), {
+      action: { label: 'View history', onClick: () => setHistoryOpen(true) },
+    })
+  }, [applyUpdate, clearResolutions, open, openUpdatePreview])
+
+  const handleUpdatePreview = useCallback(async (applyIfSafe: boolean) => {
+    if (!openDoc) return
+    const flow = ++updateFlow.current
+    const docId = openDoc.id
+    setUpdateOpen(true)
+    const result = await openUpdatePreview()
+    if (flow !== updateFlow.current || useDocsStore.getState().openDoc?.id !== docId) return
+    if (result === null) {
+      toast.error('Could not compare this document with the device')
+      return
+    }
+    if (applyIfSafe && result.unresolved.length === 0) await finishUpdate(result, flow, docId)
+  }, [finishUpdate, openDoc, openUpdatePreview])
+
+  const handleOpenUpdatePreview = useCallback(
+    () => handleUpdatePreview(true),
+    [handleUpdatePreview],
+  )
+
+  const handleRetryUpdatePreview = useCallback(
+    () => handleUpdatePreview(false),
+    [handleUpdatePreview],
+  )
+
+  const handleApplyUpdate = useCallback(async () => {
+    if (!openDoc || !preview) return
+    const flow = ++updateFlow.current
+    await finishUpdate(preview, flow, openDoc.id)
+  }, [finishUpdate, openDoc, preview])
+
+  // Applying the merge on a doc with an edit in flight would silently destroy
+  // the draft text it replaced; the button is hidden while editing instead.
+  const showUpdate = openDoc !== null && draft === null
 
   // The rail is loaded when it is opened, and again whenever the document it is
   // showing changes underneath it — a save adds a revision to the list.
@@ -563,6 +659,7 @@ export function DocumentationView() {
             onToggleStar={() => void toggleStar(openDoc.id)}
             onMarkReviewed={() => void markReviewed(openDoc.id)}
             onSetTags={(tags) => void setTags(tags)}
+            onUpdateFromDevice={() => void handleOpenUpdatePreview()}
             onRegenerate={() => setRegenerateOpen(true)}
             onDownload={() => downloadDoc(openDoc)}
             onDelete={() => void handleDelete()}
@@ -602,6 +699,19 @@ export function DocumentationView() {
           busy={regenerating}
           onCancel={() => setRegenerateOpen(false)}
           onConfirm={() => void handleRegenerate()}
+        />
+        <UpdateFromDeviceModal
+          open={showUpdate && updateOpen}
+          docTitle={openDoc?.title ?? ''}
+          preview={preview}
+          loading={previewLoading}
+          resolutions={resolutions}
+          onPreview={() => void handleRetryUpdatePreview()}
+          onResolve={(id, item) => setResolution(id, item)}
+          onCancel={handleCancelUpdate}
+          onApply={() => void handleApplyUpdate()}
+          docs={docs}
+          devices={linkableDevices}
         />
       </div>
     </div>
