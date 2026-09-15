@@ -28,6 +28,8 @@ vi.mock('@/api/client', () => ({
     block: vi.fn(),
     coverage: vi.fn(),
     scaffold: vi.fn(),
+    updatePreview: vi.fn(),
+    updateFromDevice: vi.fn(),
   },
 }))
 
@@ -492,5 +494,90 @@ describe('openForDevice', () => {
 
     expect(await useDocsStore.getState().openForDevice('dev-1', 'bazarr')).toBe(false)
     expect(useDocsStore.getState().openDoc).toBeNull()
+  })
+})
+
+// ── update-from-device ────────────────────────────────────────────────────
+
+describe('openUpdatePreview', () => {
+  it('fetches the preview for the open document', async () => {
+    const previewResponse = {
+      preview_id: 'abc123',
+      changes: [],
+      proposed_body: 'updated body',
+      summary: [],
+      unresolved: [],
+    }
+    useDocsStore.setState({ openDoc: doc({ id: 'doc-1', device_id: 'dev-1' }) as Doc })
+    api.updatePreview.mockResolvedValue({ data: previewResponse } as never)
+
+    const result = await useDocsStore.getState().openUpdatePreview()
+
+    expect(result).toEqual(previewResponse)
+    expect(api.updatePreview).toHaveBeenCalledWith('doc-1', [])
+    expect(useDocsStore.getState().preview?.preview_id).toBe('abc123')
+  })
+})
+
+describe('setResolution', () => {
+  it('stores the decision and re-previews', async () => {
+    const previewResponse = {
+      preview_id: 'xyz',
+      changes: [{ id: 'conflict-1', name: 'IP', status: 'conflict', documented: 'old', device: 'new' }],
+      proposed_body: 'body',
+      summary: [],
+      unresolved: ['conflict-1'],
+    }
+    useDocsStore.setState({ openDoc: doc({ id: 'doc-1' }) as Doc })
+    api.updatePreview.mockResolvedValue({ data: previewResponse } as never)
+
+    useDocsStore.getState().setResolution('conflict-1', { id: 'conflict-1', choice: 'device' })
+
+    expect(useDocsStore.getState().resolutions['conflict-1']?.choice).toBe('device')
+    expect(api.updatePreview).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('applyUpdate', () => {
+  it('applies the merge and refreshes the document', async () => {
+    const updatedDoc = doc({ id: 'doc-1', body: 'merged', device_id: 'dev-1' })
+    const previewResponse = {
+      preview_id: 'preview-1',
+      changes: [],
+      proposed_body: 'merged',
+      summary: ['Applied IP'],
+      unresolved: [],
+    }
+    useDocsStore.setState({
+      openDoc: doc({ id: 'doc-1', device_id: 'dev-1', body: 'old' }) as Doc,
+      preview: previewResponse,
+      resolutions: { 'conflict-1': { id: 'conflict-1', choice: 'device' } },
+    })
+    api.updateFromDevice.mockResolvedValue({ data: updatedDoc } as never)
+    api.get.mockResolvedValue({ data: updatedDoc } as never)
+
+    const result = await useDocsStore.getState().applyUpdate()
+
+    expect(result).toBe('applied')
+    expect(api.updateFromDevice).toHaveBeenCalledWith('doc-1', 'preview-1', [
+      { id: 'conflict-1', choice: 'device' },
+    ])
+    expect(useDocsStore.getState().preview).toBeNull()
+    expect(useDocsStore.getState().resolutions).toEqual({})
+  })
+
+  it('returns stale on 409', async () => {
+    const error = Object.assign(new Error('Conflict'), { response: { status: 409 } })
+    useDocsStore.setState({
+      openDoc: doc({ id: 'doc-1' }) as Doc,
+      preview: { preview_id: 'p1', changes: [], proposed_body: '', summary: [], unresolved: [] },
+      resolutions: {},
+    })
+    api.updateFromDevice.mockRejectedValue(error)
+
+    const result = await useDocsStore.getState().applyUpdate()
+
+    expect(result).toBe('stale')
+    expect(useDocsStore.getState().loadError).toBeTruthy()
   })
 })

@@ -28,6 +28,7 @@ import { DocViewer } from './DocViewer'
 import { MigrateNotesBanner } from './MigrateNotesBanner'
 import { NewDocMenu } from './NewDocMenu'
 import { RegenerateDocModal } from './RegenerateDocModal'
+import { UpdateFromDeviceModal } from './UpdateFromDeviceModal'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -76,6 +77,13 @@ export function DocumentationView() {
     coverage,
     loadCoverage,
     scaffold,
+    preview,
+    previewLoading,
+    resolutions,
+    openUpdatePreview,
+    setResolution,
+    clearResolutions,
+    applyUpdate,
     groupBy,
     setGroupBy,
     expanded,
@@ -96,6 +104,7 @@ export function DocumentationView() {
   const [regenerateOpen, setRegenerateOpen] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [updateOpen, setUpdateOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
 
   useEffect(() => {
@@ -262,6 +271,41 @@ export function DocumentationView() {
     setRegenerateOpen(false)
     toast.success('Document regenerated — the old body is in its history')
   }, [openDoc, regenerate])
+
+  const handleOpenUpdatePreview = useCallback(async () => {
+    if (!openDoc) return
+    setUpdateOpen(true)
+    const result = await openUpdatePreview()
+    if (result === null) toast.error('Could not compare this document with the device')
+  }, [openDoc, openUpdatePreview])
+
+  const handleCancelUpdate = useCallback(() => {
+    setUpdateOpen(false)
+    clearResolutions()
+  }, [clearResolutions])
+
+  const handleApplyUpdate = useCallback(async () => {
+    const result = await applyUpdate()
+    if (result === 'failed') {
+      toast.error('Could not apply the update')
+      return
+    }
+    if (result === 'stale') {
+      // The document moved under the preview; show it again and re-compare,
+      // so the user is never applying against a body they have not seen.
+      if (openDoc) await open(openDoc.id)
+      toast.error('That preview was out of date — review the current document again')
+      await openUpdatePreview()
+      return
+    }
+    setUpdateOpen(false)
+    clearResolutions()
+    toast.success('Document updated from the device')
+  }, [applyUpdate, clearResolutions, open, openDoc, openUpdatePreview])
+
+  // Applying the merge on a doc with an edit in flight would silently destroy
+  // the draft text it replaced; the button is hidden while editing instead.
+  const showUpdate = openDoc !== null && draft === null
 
   // The rail is loaded when it is opened, and again whenever the document it is
   // showing changes underneath it — a save adds a revision to the list.
@@ -563,6 +607,7 @@ export function DocumentationView() {
             onToggleStar={() => void toggleStar(openDoc.id)}
             onMarkReviewed={() => void markReviewed(openDoc.id)}
             onSetTags={(tags) => void setTags(tags)}
+            onUpdateFromDevice={() => void handleOpenUpdatePreview()}
             onRegenerate={() => setRegenerateOpen(true)}
             onDownload={() => downloadDoc(openDoc)}
             onDelete={() => void handleDelete()}
@@ -602,6 +647,19 @@ export function DocumentationView() {
           busy={regenerating}
           onCancel={() => setRegenerateOpen(false)}
           onConfirm={() => void handleRegenerate()}
+        />
+        <UpdateFromDeviceModal
+          open={showUpdate && updateOpen}
+          docTitle={openDoc?.title ?? ''}
+          preview={preview}
+          loading={previewLoading}
+          resolutions={resolutions}
+          onPreview={() => void handleOpenUpdatePreview()}
+          onResolve={(id, item) => setResolution(id, item)}
+          onCancel={handleCancelUpdate}
+          onApply={() => void handleApplyUpdate()}
+          docs={docs}
+          devices={linkableDevices}
         />
       </div>
     </div>

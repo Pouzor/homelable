@@ -11,6 +11,8 @@ import type {
   DocSearchResult,
   DocumentSummary,
   GroupBy,
+  ResolutionItem,
+  UpdatePreview,
 } from './types'
 
 /**
@@ -102,6 +104,21 @@ export interface DocsState {
   openDoc: Doc | null
   openLoading: boolean
 
+  /** The update-from-device preview of the open document. Null when not comparing. */
+  preview: UpdatePreview | null
+  previewLoading: boolean
+  /** The conflicts the user has decided on so far, keyed by change id. */
+  resolutions: Record<string, ResolutionItem>
+  /** Re-run the merge against the device, folding any pending resolutions in. */
+  openUpdatePreview: () => Promise<UpdatePreview | null>
+  /** Record one decision and refresh the merged body to show its effect. */
+  setResolution: (id: string, item: ResolutionItem) => void
+  /** Drop every decision made so far (closing the review). */
+  clearResolutions: () => void
+  /** Apply the reviewed merge. 'stale' means the document moved since the
+   *  preview — the flow must re-open it rather than trusting the old one. */
+  applyUpdate: () => Promise<'applied' | 'stale' | 'failed'>
+
   /** The body being edited. Null when not in edit mode. */
   draft: string | null
   dirty: boolean
@@ -192,6 +209,10 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   openDoc: null,
   openLoading: false,
 
+  preview: null,
+  previewLoading: false,
+  resolutions: {},
+
   draft: null,
   dirty: false,
   saving: false,
@@ -232,6 +253,9 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   open: async (id) => {
     set({
       openLoading: true,
+      preview: null,
+      previewLoading: false,
+      resolutions: {},
       draft: null,
       dirty: false,
       pendingDraft: null,
@@ -286,6 +310,9 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   close: () =>
     set({
       openDoc: null,
+      preview: null,
+      previewLoading: false,
+      resolutions: {},
       draft: null,
       dirty: false,
       pendingDraft: null,
@@ -294,6 +321,62 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       revisionPreview: null,
       backlinks: [],
     }),
+
+  // Update-from-device keeps its merge on the server: the preview endpoint
+  // answers the same three bodies every time, with whatever the user has
+  // decided so far folded in, so the merged body they see is never a local
+  // guess — and the apply recomputes from scratch with the same resolutions,
+  // so what the modal showed last is exactly what lands.
+  openUpdatePreview: async () => {
+    const openDoc = get().openDoc
+    if (!openDoc) return null
+    set({ previewLoading: true })
+    try {
+      const { data } = await documentsApi.updatePreview(openDoc.id, Object.values(get().resolutions))
+      set({ preview: data, previewLoading: false })
+      return data
+    } catch (error) {
+      set({ previewLoading: false, loadError: message(error, 'Could not compare this document with the device') })
+      return null
+    }
+  },
+
+  setResolution: (id, item) => {
+    set((state) => ({ resolutions: { ...state.resolutions, [id]: item } }))
+    void get().openUpdatePreview()
+  },
+
+  clearResolutions: () => set({ resolutions: {}, preview: null }),
+
+  applyUpdate: async () => {
+    const { openDoc, preview, resolutions } = get()
+    if (!openDoc || !preview) return 'failed'
+    set({ previewLoading: true })
+    try {
+      const { data } = await documentsApi.updateFromDevice(
+        openDoc.id,
+        preview.preview_id,
+        Object.values(resolutions),
+      )
+      // The body a sync replaces is what the user was reading; any draft the
+      // editor held belonged to that older body, so it goes with it.
+      set((state) => ({
+        openDoc: data,
+        preview: null,
+        previewLoading: false,
+        resolutions: {},
+        draft: state.openDoc?.id === data.id ? null : state.draft,
+        dirty: false,
+        docs: state.docs.map((d) => (d.id === data.id ? { ...d, ...data } : d)),
+      }))
+      if (get().openDoc?.id === openDoc.id && get().revisions.length > 0) await get().loadRevisions(openDoc.id)
+      return 'applied'
+    } catch (error) {
+      const stale = (error as { response?: { status?: number } })?.response?.status === 409
+      set({ previewLoading: false, loadError: message(error, 'Could not apply the update') })
+      return stale ? 'stale' : 'failed'
+    }
+  },
 
   startEdit: () => {
     const doc = get().openDoc

@@ -349,6 +349,22 @@ export const documentsApi = {
     api.get<import('@/documentation/types').DocBacklink[]>(`/documents/${id}/backlinks`),
   regenerate: (id: string) =>
     api.post<import('@/documentation/types').Doc>(`/documents/${id}/regenerate`),
+  updatePreview: (
+    id: string,
+    resolutions: import('@/documentation/types').ResolutionItem[] = [],
+  ) =>
+    api.post<import('@/documentation/types').UpdatePreview>(`/documents/${id}/update-preview`, {
+      resolutions,
+    }),
+  updateFromDevice: (
+    id: string,
+    preview_id: string,
+    resolutions: import('@/documentation/types').ResolutionItem[] = [],
+  ) =>
+    api.post<import('@/documentation/types').Doc>(`/documents/${id}/update-from-device`, {
+      preview_id,
+      resolutions,
+    }),
   search: (q: string, limit = 25) =>
     api.get<import('@/documentation/types').DocSearchResult>('/documents/search', {
       params: { q, limit },

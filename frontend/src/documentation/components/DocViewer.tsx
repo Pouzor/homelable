@@ -38,6 +38,8 @@ interface Props {
   onEdit: () => void
   onToggleStar: () => void
   onMarkReviewed: () => void
+  /** Opens the update-from-device review for a drifted device document. */
+  onUpdateFromDevice?: () => void
   onRegenerate: () => void
   /** Saves this document to disk as the `.md` file its body already is. */
   onDownload: () => void
@@ -78,6 +80,7 @@ export function DocViewer({
   onEdit,
   onToggleStar,
   onMarkReviewed,
+  onUpdateFromDevice,
   onRegenerate,
   onDownload,
   onDelete,
@@ -155,6 +158,15 @@ export function DocViewer({
           <Button size="sm" variant="ghost" onClick={onEdit} className="cursor-pointer gap-1">
             <Pencil size={13} /> Edit
           </Button>
+          {doc.kind === 'device' && drifted && onUpdateFromDevice && (
+            <Button
+              size="sm"
+              onClick={onUpdateFromDevice}
+              className="cursor-pointer gap-1.5 bg-[var(--status-online,#39d353)] text-[#0d1117] hover:bg-[var(--status-online,#39d353)]/90"
+            >
+              <RefreshCw size={13} /> Update from device
+            </Button>
+          )}
           {history && (
             <Button
               size="icon-xs"

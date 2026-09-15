@@ -387,6 +387,13 @@ class Document(Base):
     facts_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     facts_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # The whole generated body as it read when this document was scaffolded or
+    # last reconciled. Together with `facts_snapshot` this is the baseline of a
+    # three-way update-from-device: `current <-> baseline <- fresh-generate`.
+    # It is *not* the merged body — only the freshly generated one, so a value
+    # the user deliberately kept is still noticed when the device moves again.
+    baseline_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Set the first time the body is edited by hand. NULL means the document is
     # still only what the template generated — which is what the coverage view
     # counts as "not really documented yet". A timestamp comparison cannot say

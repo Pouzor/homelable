@@ -28,6 +28,7 @@ const REASONS: Record<DocRevision['reason'], string> = {
   migrate: 'Migrated from notes',
   scaffold: 'Generated',
   regenerate: 'Regenerated',
+  sync: 'Updated from device',
 }
 
 function size(bytes: number): string {

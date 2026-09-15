@@ -7,10 +7,15 @@ here: device documents are pivoted client-side by zone, subnet, type and so on,
 because every one of those groupings is derivable from data the frontend already
 holds and re-pivoting must be instant.
 
-The generated header is written once, at creation. Nothing in this module ever
-rewrites a body the user owns; `GET /blocks` hands the editor a freshly generated
-section on request, and `facts_snapshot` is what lets the UI say the device has
-moved on since the document was written.
+The generated header is written once, at creation; `GET /blocks` hands the editor
+a freshly generated section on request, and `facts_snapshot` is what lets the UI
+say the device has moved on since the document was written. The one flow that
+rewrites a body is `POST /{id}/update-from-device`, and only through the guided
+three-way merge of `app.services.doc_reconcile`: nothing is overwritten unless
+the device simply moved on (automatic) or the user resolved the conflict
+explicitly. `baseline_body` records the body that was *generated* at the last
+sync — never the merged one — so a value the user deliberately kept is surfaced
+again when the device moves on once more.
 """
 
 import re
@@ -31,15 +36,26 @@ from app.schemas.documents import (
     DocumentResponse,
     DocumentSummary,
     DocumentUpdate,
+    ReconcileChange,
+    ResolutionItem,
     RevisionResponse,
     RevisionSummary,
     ScaffoldRequest,
     ScaffoldResponse,
     SearchHit,
     SearchResponse,
+    UpdateApplyRequest,
+    UpdatePreviewRequest,
+    UpdatePreviewResponse,
 )
 from app.services import doc_backlinks, doc_search
 from app.services.doc_export import ExportDoc, build_zip
+from app.services.doc_reconcile import (
+    Resolution,
+    Result,
+    preview_id,
+    reconcile,
+)
 from app.services.doc_template import (
     BLOCKS,
     TEMPLATE_DEVICE,
@@ -186,7 +202,9 @@ async def _scaffold_body(db: AsyncSession, doc: Document, template_id: str | Non
         device = await db.get(InventoryDevice, doc.device_id)
         if device is not None:
             context = await _device_context(db, doc.device_id)
-            _apply_body(doc, render_device_document(device, **context))
+            generated = render_device_document(device, **context)
+            _apply_body(doc, generated)
+            doc.baseline_body = generated
             doc.facts_snapshot = facts_snapshot(device)
             doc.facts_synced_at = _now()
             doc.template_id = TEMPLATE_DEVICE
@@ -230,6 +248,41 @@ async def _response(db: AsyncSession, doc: Document) -> DocumentResponse:
     payload = DocumentResponse.model_validate(doc)
     payload.drifted = _has_drifted(doc, await db.get(InventoryDevice, doc.device_id) if doc.device_id else None)
     return payload
+
+
+def _sync_snapshot(doc: Document) -> dict[str, Any] | None:
+    """The facts the document's baseline was computed against, if it has one."""
+    return doc.facts_snapshot if isinstance(doc.facts_snapshot, dict) else None
+
+
+async def _reconcile_document(
+    db: AsyncSession, doc: Document, device: InventoryDevice, resolutions: list[ResolutionItem]
+) -> Result:
+    """The three-way merge of the live body against a fresh generation."""
+    context = await _device_context(db, device.id)
+    return reconcile(
+        current=doc.body or "",
+        new=render_device_document(device, **context),
+        baseline_body=doc.baseline_body,
+        snapshot=_sync_snapshot(doc),
+        resolutions=[Resolution(r.id, r.choice, r.custom) for r in resolutions],
+    )
+
+
+def _preview_payload(doc: Document, result: Result) -> UpdatePreviewResponse:
+    """The wire shape of a merge result, the preview id included.
+
+    The id binds the very inputs the merge began from — the document's `updated_at`,
+    the snapshot and the body — so a save is only valid against the exact preview
+    it was computed from.
+    """
+    return UpdatePreviewResponse(
+        preview_id=preview_id(doc.updated_at.isoformat(), _sync_snapshot(doc), doc.body or ""),
+        changes=[ReconcileChange.model_validate(change) for change in result.changes],
+        proposed_body=result.proposed_body,
+        summary=result.summary,
+        unresolved=[change.id for change in result.unresolved],
+    )
 
 
 # ── list / read ─────────────────────────────────────────────────────────────
@@ -607,6 +660,12 @@ async def update_document(
     if sent.get("resync_facts") and doc.device_id:
         device = await db.get(InventoryDevice, doc.device_id)
         if device is not None:
+            context = await _device_context(db, doc.device_id)
+            # Accepting the current facts also moves the merge baseline onto the
+            # body those facts *would* generate, so the next device change is
+            # still compared from a truthful common ancestor — the banner is
+            # dismissed, the safety of the three-way merge is not.
+            doc.baseline_body = render_device_document(device, **context)
             doc.facts_snapshot = facts_snapshot(device)
             doc.facts_synced_at = _now()
 
@@ -673,6 +732,92 @@ async def regenerate_document(
     return await _response(db, doc)
 
 
+@router.post("/{document_id}/update-preview", response_model=UpdatePreviewResponse)
+async def preview_device_update(
+    document_id: str,
+    body: UpdatePreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> UpdatePreviewResponse:
+    """Preview an update-from-device without changing anything.
+
+    The device document is re-rendered from the live facts and merged against
+    the body the user owns. The response is read-only: a changed device value
+    the user never touched is offered for automatic application, a value both
+    sides changed is a conflict to resolve, and the user's prose is untouched.
+    The caller folds resolutions in as they are chosen, so the previewed body is
+    always the server's merge rather than a local approximation.
+    """
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if doc.kind == "folder":
+        raise HTTPException(400, "A folder has no body to update from a device")
+    device = await db.get(InventoryDevice, doc.device_id) if doc.device_id else None
+    if device is None:
+        raise HTTPException(400, "This document has no device to update from")
+    result = await _reconcile_document(db, doc, device, body.resolutions)
+    return _preview_payload(doc, result)
+
+
+@router.post("/{document_id}/update-from-device", response_model=DocumentResponse)
+async def apply_device_update(
+    document_id: str,
+    body: UpdateApplyRequest,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> DocumentResponse:
+    """Apply a preview the user has reviewed.
+
+    The merge is recomputed from the current state with the given resolutions,
+    so whatever the modal showed last is exactly what lands. The echoed
+    `preview_id` guards the flow: if the document was edited while the preview
+    was open, the id no longer matches and a 409 is returned instead of a
+    silent overwrite. Every conflict must be resolved first — the endpoint will
+    not guess. The previous body is snapshotted (reason `sync`) and the baseline
+    is replaced by the *freshly generated* body, so a deliberately kept value
+    surfaces again when the device moves on.
+    """
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if doc.kind == "folder":
+        raise HTTPException(400, "A folder has no body to update from a device")
+    device = await db.get(InventoryDevice, doc.device_id) if doc.device_id else None
+    if device is None:
+        raise HTTPException(400, "This document has no device to update from")
+
+    expected = preview_id(doc.updated_at.isoformat(), _sync_snapshot(doc), doc.body or "")
+    if body.preview_id != expected:
+        raise HTTPException(
+            409,
+            "The document changed while the preview was open — review it again",
+        )
+
+    result = await _reconcile_document(db, doc, device, body.resolutions)
+    if result.unresolved:
+        raise HTTPException(
+            400,
+            f"Resolve every conflict first: {', '.join(c.name for c in result.unresolved)}",
+        )
+
+    generated = render_device_document(device, **await _device_context(db, device.id))
+    await _record_revision(db, doc, "sync")
+    _apply_body(doc, result.proposed_body)
+    # The baseline is the body the device *actually* read, not the merged one:
+    # a decision the user made (a kept line, a custom value) must stay visible
+    # when the device moves again, and only a fresh generation records it.
+    doc.baseline_body = generated
+    doc.facts_snapshot = facts_snapshot(device)
+    doc.facts_synced_at = _now()
+    await _adopt_frontmatter_title(db, doc)
+    await db.flush()
+    await doc_search.index_document(db, doc)
+    await db.commit()
+    await db.refresh(doc)
+    return await _response(db, doc)
+
+
 @router.post("/scaffold", response_model=ScaffoldResponse)
 async def scaffold_documents(
     body: ScaffoldRequest,
@@ -706,17 +851,19 @@ async def scaffold_documents(
             skipped += 1
             continue
         context = await _device_context(db, device.id)
+        generated = render_device_document(device, **context)
         doc = Document(
             kind="device",
             title=device.label or device.friendly_name or device.hostname or device.ip or "device",
             slug="",
             device_id=device.id,
             template_id=TEMPLATE_DEVICE,
+            baseline_body=generated,
             facts_snapshot=facts_snapshot(device),
             facts_synced_at=_now(),
         )
         doc.slug = await unique_slug(db, doc.title, parent_id=None)
-        _apply_body(doc, render_device_document(device, **context))
+        _apply_body(doc, generated)
         db.add(doc)
         await db.flush()
         db.add(
