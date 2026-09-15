@@ -10,6 +10,7 @@ RESOURCE_LIST = [
     Resource(uri="homelable://edges",          name="Edges",           description="All network edges/links", mimeType="application/json"),
     Resource(uri="homelable://scan/pending",   name="Pending devices", description="Discovered devices awaiting approval", mimeType="application/json"),
     Resource(uri="homelable://scan/runs",      name="Scan history",    description="Recent scan run history", mimeType="application/json"),
+    Resource(uri="homelable://documents",      name="Documents",       description="All Markdown documents in the Documentation space (metadata only)", mimeType="application/json"),
 ]
 
 ROUTES = {
@@ -20,16 +21,18 @@ ROUTES = {
     "homelable://scan/runs":    "/api/v1/scan/runs",
 }
 
-# read_resource() also serves homelable://nodes/<id>, which is not in
-# RESOURCE_LIST because it is a template, not a concrete URI. Without a
-# list_resource_templates handler the SDK answers resources/templates/list with
-# "Method not found" and the template stays invisible to every client.
 RESOURCE_TEMPLATES = [
     ResourceTemplate(
         uriTemplate="homelable://nodes/{node_id}",
         name="Node",
         description="A single node by id",
         mimeType="application/json",
+    ),
+    ResourceTemplate(
+        uriTemplate="homelable://documents/{document_id}",
+        name="Document",
+        description="A single Markdown document by id — full body",
+        mimeType="text/markdown",
     ),
 ]
 
@@ -40,14 +43,17 @@ RESOURCE_TEMPLATES = [
 # "'TextContent' object has no attribute 'content'" — the handler runs, so the
 # error only surfaces to the client, never in the server log.
 async def read_resource(uri: str) -> list[ReadResourceContents]:
-    # The MCP framework hands us a pydantic AnyUrl, not a plain str, so string
-    # ops like .startswith / dict lookups blow up with
-    # "'AnyUrl' object has no attribute 'startswith'". Coerce to str first.
     uri = str(uri)
     if uri.startswith("homelable://nodes/") and uri != "homelable://nodes/":
         node_id = uri.split("/")[-1]
         data = await backend.get(f"/api/v1/nodes/{node_id}")
         return [_json_contents(data)]
+
+    if uri.startswith("homelable://documents/") and uri != "homelable://documents/":
+        doc_id = uri.split("/")[-1]
+        doc = await backend.get(f"/api/v1/documents/{doc_id}")
+        body = doc.get("body") if isinstance(doc, dict) else ""
+        return [ReadResourceContents(content=body or "", mime_type="text/markdown")]
 
     if uri not in ROUTES:
         raise ValueError(f"Unknown resource URI: {uri}")

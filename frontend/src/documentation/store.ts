@@ -108,6 +108,14 @@ export interface DocsState {
   saving: boolean
   /** A recovered draft awaiting the user's yes or no. */
   pendingDraft: string | null
+  /**
+   * A save was refused because the document moved underneath the edit — an
+   * assistant's apply landed first (409). Holds the server's newer body so the
+   * editor can offer to discard the stale draft and read it. The lock keeps
+   * bouncing further saves until the user resolves this, so the assistant's
+   * text cannot be overwritten unseen.
+   */
+  conflict: Doc | null
 
   revisions: DocRevision[]
   revisionsLoading: boolean
@@ -139,6 +147,10 @@ export interface DocsState {
   save: () => Promise<boolean>
   acceptPendingDraft: () => void
   discardPendingDraft: () => void
+  /** Discard the stale draft and read the newer body the server holds. */
+  reloadAfterConflict: () => void
+  /** Keep editing the draft; saves bounce 409 until the user reloads. */
+  dismissConflict: () => void
 
   create: (input: {
     title: string
@@ -181,6 +193,15 @@ function message(error: unknown, fallback: string): string {
   return typeof detail === 'string' ? detail : fallback
 }
 
+/**
+ * A save refused because the document moved after the draft was taken. The
+ * section-apply guards are also 409, but those are its own endpoints; on the
+ * PATCH this status means the optimistic lock tripped.
+ */
+function isStaleConflict(error: unknown): boolean {
+  return (error as { response?: { status?: number } })?.response?.status === 409
+}
+
 const initialUi = readUi()
 
 export const useDocsStore = create<DocsState>()((set, get) => ({
@@ -196,6 +217,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   dirty: false,
   saving: false,
   pendingDraft: null,
+  conflict: null,
 
   revisions: [],
   revisionsLoading: false,
@@ -235,6 +257,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       draft: null,
       dirty: false,
       pendingDraft: null,
+      conflict: null,
       revisions: [],
       revisionsLoading: false,
       revisionPreview: null,
@@ -289,6 +312,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       draft: null,
       dirty: false,
       pendingDraft: null,
+      conflict: null,
       revisions: [],
       revisionsLoading: false,
       revisionPreview: null,
@@ -309,7 +333,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   cancelEdit: () => {
     const doc = get().openDoc
     if (doc) clearDraft(doc.id)
-    set({ draft: null, dirty: false })
+    set({ draft: null, dirty: false, conflict: null })
   },
 
   save: async () => {
@@ -317,7 +341,13 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
     if (!openDoc || draft === null) return false
     set({ saving: true })
     try {
-      const { data } = await documentsApi.update(openDoc.id, { body: draft })
+      const { data } = await documentsApi.update(openDoc.id, {
+        body: draft,
+        // The optimistic-lock counter the editor was reading when the draft was
+        // taken. Without it a human save could silently overwrite an edit an
+        // assistant just made, which is exactly what issue #485 forbids.
+        expected_version: openDoc.version,
+      })
       clearDraft(openDoc.id)
       set((state) => ({
         openDoc: data,
@@ -329,14 +359,63 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       return true
     } catch (error) {
       set({ saving: false, loadError: message(error, 'Could not save') })
+      // A 409 means the document moved underneath this edit — an assistant's
+      // apply beat the human's save. The draft stays in the editor and the
+      // conflict is set, so the banner can offer to discard it and read the
+      // newer body. The lock keeps the version bump from being skipped, so a
+      // further save bounces again until the user decides: nothing overwrites
+      // the assistant's text unseen.
+      if (isStaleConflict(error)) {
+        const fresh = await documentsApi.get(openDoc.id).catch(() => null)
+        if (fresh) {
+          set({
+            conflict: fresh.data,
+            loadError: 'This document was edited by an assistant while you had it open.',
+          })
+          writeDraft(openDoc.id, {
+            body: draft,
+            savedAt: Date.now(),
+            // Re-based on the newer version so re-reading still offers the draft.
+            base: fresh.data.updated_at,
+          })
+        }
+      }
       return false
     }
+  },
+
+  /** The conflict banner's "discard my stale draft and read what the assistant
+      wrote". The user's unsaved edits vanish by this explicit choice. */
+  reloadAfterConflict: () => {
+    const conflict = get().conflict
+    if (!conflict) return
+    clearDraft(conflict.id)
+    set((state) => ({
+      openDoc: conflict,
+      draft: conflict.body,
+      dirty: false,
+      conflict: null,
+      docs: state.docs.map((d) => (d.id === conflict.id ? { ...d, ...conflict } : d)),
+    }))
+  },
+
+  /** The conflict banner's "keep my draft". The document is still newer than
+      the draft; the next save bounces 409 again until the user reloads. */
+  dismissConflict: () => {
+    set({
+      conflict: null,
+      loadError: 'The document changed elsewhere — your draft will not overwrite it until you reload.',
+    })
   },
 
   acceptPendingDraft: () => {
     const { pendingDraft, openDoc } = get()
     if (pendingDraft === null || !openDoc) return
-    set({ draft: pendingDraft, dirty: pendingDraft !== openDoc.body, pendingDraft: null })
+    set({
+      draft: pendingDraft,
+      dirty: pendingDraft !== openDoc.body,
+      pendingDraft: null,
+    })
   },
 
   discardPendingDraft: () => {
@@ -389,7 +468,12 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
     if (!openDoc) return false
     const body = withTags(openDoc.body, tags)
     try {
-      const { data } = await documentsApi.update(openDoc.id, { body })
+      const { data } = await documentsApi.update(openDoc.id, {
+        body,
+        // Tags are written through the body, so the same lock protects them:
+        // an assistant's edit must not be silently overwritten by a chip click.
+        expected_version: openDoc.version,
+      })
       set((state) => ({
         openDoc: data,
         docs: state.docs.map((d) => (d.id === data.id ? { ...d, ...data } : d)),

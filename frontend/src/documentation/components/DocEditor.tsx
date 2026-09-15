@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bold, Italic, Link2, List, ListChecks, Save, Table, X } from 'lucide-react'
+import { Bold, Italic, Link2, List, ListChecks, RefreshCw, Save, Table, X } from 'lucide-react'
 
 import { documentsApi } from '@/api/client'
 import { caretPoint, placeMenu, type CaretPoint, type Placement } from '@/documentation/caret'
@@ -39,6 +39,15 @@ interface Props {
   currentDocId?: string | null
   docs?: LinkableDoc[]
   devices?: LinkableDevice[]
+  /**
+   * A save was refused because the document moved underneath it (an assistant's
+   * edit landed first). The banner offers to load the newer body or to keep
+   * the draft the user was about to save.
+   */
+  conflict?: {
+    reload: () => void
+    keepDraft: () => void
+  }
 }
 
 const GENERATED_BLOCKS: { id: string; label: string; hint: string; block: string }[] = [
@@ -70,6 +79,7 @@ export function DocEditor({
   currentDocId,
   docs = [],
   devices = [],
+  conflict,
 }: Props) {
   const textarea = useRef<HTMLTextAreaElement>(null)
   const pane = useRef<HTMLDivElement>(null)
@@ -349,6 +359,20 @@ export function DocEditor({
 
   return (
     <div className="flex h-full flex-col">
+      {conflict && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--status-pending,#e3b341)]/40 bg-[var(--status-pending,#e3b341)]/10 px-4 py-1.5 text-xs">
+          <span className="text-[var(--status-pending,#e3b341)]">
+            This document was edited by an assistant while you had it open. Reload to see the newer
+            text, or keep your draft to merge it in by hand.
+          </span>
+          <Button size="xs" variant="ghost" className="cursor-pointer gap-1" onClick={conflict.reload}>
+            <RefreshCw size={11} /> Reload
+          </Button>
+          <Button size="xs" variant="secondary" className="cursor-pointer" onClick={conflict.keepDraft}>
+            Keep my draft
+          </Button>
+        </div>
+      )}
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5">
         <Button size="icon-xs" variant="ghost" title="Bold" onClick={() => wrapSelection('**')}>
           <Bold />

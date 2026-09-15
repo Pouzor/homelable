@@ -33,6 +33,8 @@ export interface DocumentSummary {
   reviewed_at?: string | null
   edited_at?: string | null
   facts_synced_at?: string | null
+  /** The optimistic-lock counter: every body change bumps it. */
+  version: number
   created_at: string
   updated_at: string
 }
@@ -46,7 +48,7 @@ export interface DocRevision {
   id: string
   document_id: string
   title: string
-  reason: 'edit' | 'restore' | 'import' | 'migrate' | 'scaffold' | 'regenerate'
+  reason: 'edit' | 'restore' | 'import' | 'migrate' | 'scaffold' | 'regenerate' | 'mcp'
   saved_at: string
   size: number
 }

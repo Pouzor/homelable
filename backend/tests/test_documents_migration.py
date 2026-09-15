@@ -60,8 +60,8 @@ async def test_two_documents_cannot_claim_the_same_device(tmp_path):
     async with engine.begin() as conn:
         insert = (
             "INSERT INTO documents (id, kind, title, slug, body, device_id, sort_order, "
-            "frontmatter, tags, starred, created_at, updated_at) "
-            "VALUES (?, 'device', 'nas', ?, '', 'dev-1', 0, '{}', '[]', 0, "
+            "frontmatter, tags, starred, version, created_at, updated_at) "
+            "VALUES (?, 'device', 'nas', ?, '', 'dev-1', 0, '{}', '[]', 0, 1, "
             "'2026-09-05', '2026-09-05')"
         )
         await conn.exec_driver_sql(insert, ("a", "nas"))
@@ -75,8 +75,8 @@ async def test_many_documents_may_have_no_device(tmp_path):
     async with engine.begin() as conn:
         insert = (
             "INSERT INTO documents (id, kind, title, slug, body, device_id, sort_order, "
-            "frontmatter, tags, starred, created_at, updated_at) "
-            "VALUES (?, 'page', 'p', ?, '', NULL, 0, '{}', '[]', 0, "
+            "frontmatter, tags, starred, version, created_at, updated_at) "
+            "VALUES (?, 'page', 'p', ?, '', NULL, 0, '{}', '[]', 0, 1, "
             "'2026-09-05', '2026-09-05')"
         )
         await conn.exec_driver_sql(insert, ("a", "p1"))

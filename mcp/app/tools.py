@@ -4,6 +4,7 @@ from mcp.server import Server
 from mcp.types import Tool, TextContent
 from .backend_client import backend
 from .devices import DEVICE_TOOL_NAMES, DEVICE_TOOLS, dispatch_device
+from .documents import DOCUMENT_TOOL_NAMES, DOCUMENT_TOOLS, dispatch_document
 from .racks import RACK_TOOL_NAMES, RACK_TOOLS, dispatch_rack
 
 
@@ -318,7 +319,7 @@ def _build_tools() -> list[Tool]:
 
 # The rack canvas and the inventory write routes live in their own modules —
 # both are big enough to bury the logical-canvas tools this file is about.
-TOOLS = _build_tools() + RACK_TOOLS + DEVICE_TOOLS
+TOOLS = _build_tools() + RACK_TOOLS + DEVICE_TOOLS + DOCUMENT_TOOLS
 
 
 def register_tools(server: Server):
@@ -410,6 +411,9 @@ async def _dispatch(name: str, args: dict) -> dict:
 
     if name in DEVICE_TOOL_NAMES:
         return await dispatch_device(name, args)
+
+    if name in DOCUMENT_TOOL_NAMES:
+        return await dispatch_document(name, args)
 
     if name == "create_node":
         return await backend.post("/api/v1/nodes", args)

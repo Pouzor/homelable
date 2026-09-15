@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.services.doc_template import TEMPLATE_IDS
 from app.services.doc_tree import DOCUMENT_KINDS
@@ -55,6 +55,12 @@ class DocumentUpdate(BaseModel):
     # Accept the device's current facts as documented, clearing the drift
     # banner without touching the body.
     resync_facts: bool | None = None
+    # Optimistic-lock guard for body writes: the version the caller's draft was
+    # based on. A whole-body save that does not name a version is allowed (a
+    # rename or a star is not a body edit), but a save that names a version
+    # newer than the current one is refused so an MCP edit cannot be silently
+    # overwritten by a GUI save made from a stale draft.
+    expected_version: int | None = Field(default=None, ge=1)
 
 
 class DocumentSummary(BaseModel):
@@ -76,6 +82,10 @@ class DocumentSummary(BaseModel):
     frontmatter: dict[str, Any] = {}
     starred: bool = False
     template_id: str | None = None
+    # The optimistic-lock counter: every body change bumps it, and a write that
+    # was prepared against an older version is refused. The section-outline and
+    # read endpoints return it so editors and MCP clients can land safely.
+    version: int = 1
     # Whether the device has moved on since the snapshot was taken. Computed by
     # the server because only the server knows the snapshot's shape: it holds
     # `label` and `type` through their fallbacks and `properties` as a flat
@@ -175,3 +185,86 @@ class CoverageResponse(BaseModel):
     overdue: int
     notes_unmigrated: int
     library_pages: int
+
+
+# ── bounded section edits (the MCP documentation workflow) ──────────────────
+
+
+class SectionItem(BaseModel):
+    """One ATX heading in a document, addressed by its outline index.
+
+    The index is stable only for the version it was read from; a section edit
+    always names the version it was prepared against, so an index cannot drift
+    onto a different section silently.
+    """
+
+    index: int
+    level: int
+    heading: str
+    parent_index: int | None = None
+    # A taste of the section's body — enough to tell two same-named headings
+    # apart without shipping the document.
+    excerpt: str = ""
+
+
+class SectionOutline(BaseModel):
+    document_id: str
+    title: str
+    version: int
+    sections: list[SectionItem]
+
+
+class SectionEditRequest(BaseModel):
+    """What one bounded edit must name.
+
+    `append` adds prose at the end of the named section (replacing the
+    template's empty prompt when the section is still a placeholder), `replace`
+    swaps the section's body for `content`, and `insert` adds a new subsection
+    — `heading` / `level` required — at the top of the named section's body.
+    """
+
+    operation: Literal["append", "replace", "insert"]
+    section_index: int = Field(ge=0)
+    content: str
+    heading: str | None = Field(
+        default=None, description="Heading text for `insert`, without the `#` markers."
+    )
+    level: int | None = Field(
+        default=None, ge=1, le=6, description="ATX level for `insert`; defaults to the target's level + 1."
+    )
+    # The version the caller's outline was read from. The preview and the apply
+    # both refuse to work against any other version.
+    expected_version: int = Field(ge=1)
+
+
+class SectionPreview(BaseModel):
+    """The bounded edit, without a single byte written."""
+
+    document_id: str
+    title: str
+    version: int
+    proposal_id: str
+    section: SectionItem
+    operation: str
+    # The section's body before and after the edit, so the caller can read
+    # exactly what an apply would change before approving it.
+    before: str
+    after: str
+
+
+class SectionApplyResponse(BaseModel):
+    """The document after an applied bounded edit.
+
+    `retried` is true when the apply was a replayed version of an edit that had
+    already been committed (a lost response, retried) — nothing was written a
+    second time, and the document is returned as it stands.
+    """
+
+    document_id: str
+    title: str
+    version: int
+    proposal_id: str
+    retried: bool = False
+    section: SectionItem
+    # The section's body as it reads after the edit.
+    body: str

@@ -57,6 +57,9 @@ export function DocumentationView() {
     save,
     acceptPendingDraft,
     discardPendingDraft,
+    conflict,
+    reloadAfterConflict,
+    dismissConflict,
     create,
     move,
     remove,
@@ -592,6 +595,11 @@ export function DocumentationView() {
             currentDocId={openDoc.id}
             docs={docs}
             devices={linkableDevices}
+            conflict={
+              conflict
+                ? { reload: reloadAfterConflict, keepDraft: dismissConflict }
+                : undefined
+            }
           />
         )}
 

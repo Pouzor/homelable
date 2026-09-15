@@ -858,3 +858,235 @@ async def test_coverage_counts_library_pages_separately(client: AsyncClient, hea
     await _create(client, headers, title="VLAN plan")
     await _create(client, headers, title="Runbooks", kind="folder")
     assert (await client.get("/api/v1/documents/coverage", headers=headers)).json()["library_pages"] == 2
+
+
+# ── bounded section edits (the MCP surface) ─────────────────────────────────
+
+
+async def test_sections_requires_auth(client: AsyncClient):
+    assert (await client.get("/api/v1/documents/x/sections")).status_code == 401
+
+
+async def test_sections_requires_auth_for_preview_and_apply(client: AsyncClient):
+    assert (await client.post("/api/v1/documents/x/sections/preview", json={})).status_code == 401
+    assert (await client.post("/api/v1/documents/x/sections/apply", json={})).status_code == 401
+
+
+async def test_outline_for_a_missing_document_is_404(client: AsyncClient, headers: dict):
+    assert (await client.get(f"/api/v1/documents/{uuid.uuid4()}/sections", headers=headers)).status_code == 404
+
+
+async def test_the_outline_names_sections_against_the_version(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# A\n\nfirst\n\n# B\n\nsecond\n")
+    outline = (await client.get(f"/api/v1/documents/{doc['id']}/sections", headers=headers)).json()
+    assert outline["document_id"] == doc["id"]
+    assert outline["version"] == 1
+    assert [s["heading"] for s in outline["sections"]] == ["A", "B"]
+    assert outline["sections"][0]["index"] == 0
+    assert outline["sections"][0]["parent_index"] is None
+
+
+async def test_an_outline_excerpt_rides_along(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\nBackup nightly.\n")
+    outline = (await client.get(f"/api/v1/documents/{doc['id']}/sections", headers=headers)).json()
+    assert outline["sections"][0]["excerpt"] == "Backup nightly."
+
+
+async def test_preview_shows_the_change_without_writing(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n\n# End\n\nfin\n")
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/preview",
+        json={"operation": "append", "section_index": 0, "content": "- backup nightly", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    preview = res.json()
+    assert preview["version"] == 1
+    assert "- backup nightly" in preview["after"]
+    assert "_…_" in preview["before"]
+    assert preview["section"]["heading"] == "Ops"
+    assert preview["proposal_id"]
+    # Previewing wrote nothing: no revision was recorded.
+    history = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
+    assert history == []
+
+
+async def test_preview_rejects_an_unclosed_code_fence(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/preview",
+        json={"operation": "append", "section_index": 0, "content": "```\nlet x = 1", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 400
+    assert "unclosed code fence" in res.json()["detail"]
+
+
+async def test_preview_rejects_a_heading_that_would_escape_the_section(
+    client: AsyncClient, headers: dict
+):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n## Sub\n\n_…_\n")
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/preview",
+        json={"operation": "append", "section_index": 1, "content": "## This breaks out", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 400
+    assert "level 2 heading" in res.json()["detail"]
+
+
+async def test_preview_rejects_a_stale_version(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "# Ops\n\nchanged\n"}, headers=headers)
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/preview",
+        json={"operation": "append", "section_index": 0, "content": "x", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 409
+
+
+async def test_apply_stores_the_edit_and_bumps_the_version(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n### Backup\n\n_…_\n")
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json={
+            "operation": "append",
+            "section_index": 1,
+            "content": "- **Retention** — 30 days",
+            "expected_version": 1,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    applied = res.json()
+    assert applied["retried"] is False
+    assert applied["version"] == 2
+    assert "- **Retention** — 30 days" in applied["body"]
+    # The edit is visible in later reads and recorded as an MCP revision.
+    body = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["body"]
+    assert "- **Retention** — 30 days" in body
+    history = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
+    assert history[0]["reason"] == "mcp"
+    assert "> _…_" in history[0]["title"] or history[0]["title"] == "Page"
+
+
+async def test_apply_rejects_a_stale_version(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "# Ops\n\nchanged\n"}, headers=headers)
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json={"operation": "append", "section_index": 0, "content": "x", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 409
+    # A rejected apply leaves no revision and no new body.
+    body = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["body"]
+    assert body == "# Ops\n\nchanged\n"
+
+
+async def test_apply_rejects_a_noop(client: AsyncClient, headers: dict):
+    """Replace with the exact same content produces the same body → 400."""
+    body = "# Ops\nAlready here.\n\n# End\nfin\n"
+    doc = await _create(client, headers, title="Page", body=body)
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json={"operation": "replace", "section_index": 0, "content": "Already here.", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 400
+    assert "would not change" in res.json()["detail"]
+
+
+async def test_apply_rejects_an_insert_into_an_unknown_section(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json={"operation": "append", "section_index": 9, "content": "x", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 400
+    assert "does not exist" in res.json()["detail"]
+
+
+async def test_apply_retries_an_earlier_lost_response_without_writing_twice(
+    client: AsyncClient, headers: dict
+):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n### Backup\n\n_…_\n")
+    payload = {
+        "operation": "append",
+        "section_index": 1,
+        "content": "- **Retention** — 30 days",
+        "expected_version": 1,
+    }
+    first = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply", json=payload, headers=headers
+    )
+    # The first response was lost; the caller retries the identical request.
+    second = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply", json=payload, headers=headers
+    )
+    assert second.status_code == 200, second.text
+    retried = second.json()
+    assert retried["retried"] is True
+    assert retried["proposal_id"] == first.json()["proposal_id"]
+    # The content appears exactly once, not twice.
+    body = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["body"]
+    assert body.count("- **Retention** — 30 days") == 1
+
+
+async def test_apply_does_not_retry_a_different_proposal_on_a_stale_version(
+    client: AsyncClient, headers: dict
+):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    payload = {"operation": "append", "section_index": 0, "content": "first", "expected_version": 1}
+    await client.post(f"/api/v1/documents/{doc['id']}/sections/apply", json=payload, headers=headers)
+    # Same version, different content: a new proposal on a stale version.
+    other = {"operation": "append", "section_index": 0, "content": "second", "expected_version": 1}
+    res = await client.post(f"/api/v1/documents/{doc['id']}/sections/apply", json=other, headers=headers)
+    assert res.status_code == 409
+
+
+async def test_apply_tracks_the_proposal_for_the_gui_to_see(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    result = (
+        await client.post(
+            f"/api/v1/documents/{doc['id']}/sections/apply",
+            json={"operation": "append", "section_index": 0, "content": "new words", "expected_version": 1},
+            headers=headers,
+        )
+    ).json()
+    assert result["version"] == 2
+    listing = (await client.get("/api/v1/documents", headers=headers)).json()
+    row = next(d for d in listing if d["id"] == doc["id"])
+    assert row["version"] == 2
+
+
+async def test_patch_rejects_a_stale_expected_version(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="first")
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "second"}, headers=headers)
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"body": "third", "expected_version": 1}, headers=headers
+    )
+    assert res.status_code == 409
+    # The newer body is left alone.
+    assert (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["body"] == "second"
+
+
+async def test_patch_bumps_the_version_for_body_writers(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="one")
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"body": "two", "expected_version": 1}, headers=headers
+    )
+    assert res.json()["version"] == 2
+    above = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"body": "three", "expected_version": 2}, headers=headers
+    )
+    assert above.json()["version"] == 3
+
+
+async def test_non_body_patch_does_not_bump_the_version(client: AsyncClient, headers: dict):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas", kind="device", device_id=device["id"])
+    res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"starred": True}, headers=headers)
+    assert res.json()["version"] == 1

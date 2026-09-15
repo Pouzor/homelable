@@ -334,6 +334,12 @@ export const documentsApi = {
       starred?: boolean
       reviewed?: boolean
       resync_facts?: boolean
+      /**
+       * The document version the caller's body was read from. A body write
+       * against a stale version is refused with 409, so a human saving over an
+       * MCP edit must see the newer text, not silently overwrite it.
+       */
+      expected_version?: number
     },
   ) => api.patch<import('@/documentation/types').Doc>(`/documents/${id}`, data),
   delete: (id: string) => api.delete(`/documents/${id}`),

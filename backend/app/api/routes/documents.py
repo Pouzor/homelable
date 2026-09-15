@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -37,9 +37,21 @@ from app.schemas.documents import (
     ScaffoldResponse,
     SearchHit,
     SearchResponse,
+    SectionApplyResponse,
+    SectionEditRequest,
+    SectionItem,
+    SectionOutline,
+    SectionPreview,
 )
 from app.services import doc_backlinks, doc_search
 from app.services.doc_export import ExportDoc, build_zip
+from app.services.doc_sections import (
+    SectionError,
+    apply_edit,
+    outline,
+    parse_sections,
+    proposal_id,
+)
 from app.services.doc_template import (
     BLOCKS,
     TEMPLATE_DEVICE,
@@ -230,6 +242,58 @@ async def _response(db: AsyncSession, doc: Document) -> DocumentResponse:
     payload = DocumentResponse.model_validate(doc)
     payload.drifted = _has_drifted(doc, await db.get(InventoryDevice, doc.device_id) if doc.device_id else None)
     return payload
+
+
+def _section_item(section: Any) -> SectionItem:
+    return SectionItem(
+        index=section.index,
+        level=section.level,
+        heading=section.heading,
+        parent_index=section.parent_index,
+    )
+
+
+async def _resolve_edit(
+    db: AsyncSession,
+    doc: Document,
+    request: SectionEditRequest,
+) -> tuple[str, SectionItem]:
+    """The body a bounded edit would write, and the affected section.
+
+    Shared sanity checks between preview and apply (version binding, section
+    resolution, content validation), so that *writing* never reinterprets what
+    *previewing* showed.
+    """
+    if request.expected_version != doc.version:
+        await db.rollback()
+        raise HTTPException(
+            409,
+            "This document changed after it was read — re-read it and prepare the edit again",
+        )
+    try:
+        new_body, section, _ = apply_edit(
+            doc.body,
+            request.operation,
+            request.section_index,
+            request.content,
+            heading=request.heading,
+            level=request.level,
+        )
+    except SectionError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return new_body, _section_item(section)
+
+
+def _edit_proposal(doc: Document, request: SectionEditRequest) -> str:
+    return proposal_id(
+        doc.id,
+        request.expected_version,
+        request.operation,
+        request.section_index,
+        request.heading,
+        request.level,
+        request.content,
+    )
 
 
 # ── list / read ─────────────────────────────────────────────────────────────
@@ -498,6 +562,194 @@ async def get_revision(
     )
 
 
+# ── bounded section edits ───────────────────────────────────────────────────
+#
+# These are the read-and-target surface for the MCP documentation tools: an
+# outline that names every section against the current version, a preview that
+# shows exactly what a bounded edit would change, and an apply that writes that
+# same proposal — and only that proposal — when the version still matches.
+
+
+@router.get("/{document_id}/sections", response_model=SectionOutline)
+async def document_sections(
+    document_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> SectionOutline:
+    """The document's section outline bound to its current version.
+
+    Read-only. Indices in the outline are only meaningful against the version
+    it came from; an edit names that version so the index cannot drift.
+    """
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    return SectionOutline(
+        document_id=doc.id,
+        title=doc.title,
+        version=doc.version,
+        sections=[SectionItem(**item) for item in outline(doc.body)],
+    )
+
+
+@router.post("/{document_id}/sections/preview", response_model=SectionPreview)
+async def preview_section_edit(
+    document_id: str,
+    request: SectionEditRequest,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> SectionPreview:
+    """Show the bounded edit without writing a byte.
+
+    Computes the same result an apply of these arguments would store, and
+    returns the affected section before and after, so the caller can read the
+    change before approving it. Never mutates persistent state.
+    """
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    new_body, section = await _resolve_edit(db, doc, request)
+    return _preview_payload(doc, request, new_body, section)
+
+
+def _preview_payload(
+    doc: Document, request: SectionEditRequest, new_body: str, section: SectionItem
+) -> SectionPreview:
+    """The before/after bodies callers read, and the token an apply echoes."""
+    before = _region(doc.body or "", request.section_index)
+    after = _region(new_body, request.section_index)
+    return SectionPreview(
+        document_id=doc.id,
+        title=doc.title,
+        version=doc.version,
+        proposal_id=_edit_proposal(doc, request),
+        operation=request.operation,
+        section=section,
+        before=before,
+        after=after,
+    )
+
+
+def _region(body: str, section_index: int) -> str:
+    """The selected section's body as one string, for previews."""
+    sections = parse_sections(body)
+    if section_index >= len(sections):
+        return ""
+    section = sections[section_index]
+    return body[section.body_start : section.body_end]
+
+
+
+@router.post("/{document_id}/sections/apply", response_model=SectionApplyResponse)
+async def apply_section_edit(
+    document_id: str,
+    request: SectionEditRequest,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> SectionApplyResponse:
+    """Store a bounded edit against the version it was prepared on.
+
+    Atomic: the expected version is checked and the body written in one guarded
+    update, so an intervening GUI save or second agent cannot be overwritten.
+    Replaying the same request after a lost response is recognised and answers
+    with the current state instead of appending twice.
+    """
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    proposal = _edit_proposal(doc, request)
+
+    # Lost response, retried: the same proposal already committed against the
+    # version the caller still names. Answer with what the commit produced.
+    if doc.version != request.expected_version:
+        if doc.version == request.expected_version + 1 and doc.last_mcp_proposal == proposal:
+            sections = outline(doc.body)
+            if request.section_index < len(sections):
+                item = SectionItem(**sections[request.section_index])
+                return SectionApplyResponse(
+                    document_id=doc.id,
+                    title=doc.title,
+                    version=doc.version,
+                    proposal_id=proposal,
+                    retried=True,
+                    section=item,
+                    body=_region(doc.body or "", request.section_index),
+                )
+        await db.rollback()
+        raise HTTPException(
+            409,
+            "This document changed after it was read — re-read it and prepare the edit again",
+        )
+
+    new_body, section = await _resolve_edit(db, doc, request)
+    if new_body == (doc.body or ""):
+        raise HTTPException(400, "That edit would not change the document")
+
+    # The adopted identity, computed before the guarded write so the write
+    # itself is one statement. The body stays the source of truth for the
+    # frontmatter cache and for the title, exactly as a human save behaves.
+    frontmatter = parse_frontmatter(new_body)
+    tags = tags_from(frontmatter)
+    title = doc.title
+    slug = doc.slug
+    front_title = frontmatter.get("title")
+    if isinstance(front_title, str) and front_title.strip() and front_title.strip() != doc.title:
+        title = front_title.strip()
+        slug = await unique_slug(db, title, parent_id=doc.parent_id, exclude_id=doc.id)
+
+    # The previous body becomes history first; a rejection below rolls the
+    # whole transaction back, so a refused apply never leaves a revision.
+    await _record_revision(db, doc, "mcp")
+
+    now = _now()
+    guarded = await db.execute(
+        update(Document)
+        .where(Document.id == document_id, Document.version == request.expected_version)
+        .values(
+            title=title,
+            slug=slug,
+            body=new_body,
+            frontmatter=frontmatter,
+            tags=tags,
+            version=Document.version + 1,
+            last_mcp_proposal=proposal,
+            edited_at=now,
+            updated_at=now,
+        )
+    )
+    if guarded.rowcount != 1:
+        await db.rollback()
+        raise HTTPException(
+            409,
+            "This document changed after it was read — re-read it and prepare the edit again",
+        )
+
+    # Mirror the guarded write into the ORM object so the rest of the request
+    # (search index, response) reads what the database now holds.
+    doc.title = title
+    doc.slug = slug
+    doc.body = new_body
+    doc.frontmatter = frontmatter
+    doc.tags = tags
+    doc.last_mcp_proposal = proposal
+    doc.version = request.expected_version + 1
+    doc.edited_at = now
+
+    await doc_search.index_document(db, doc)
+    await db.commit()
+    await db.refresh(doc)
+    return SectionApplyResponse(
+        document_id=doc.id,
+        title=doc.title,
+        version=doc.version,
+        proposal_id=proposal,
+        retried=False,
+        section=section,
+        body=_region(new_body, request.section_index),
+    )
+
+
 # ── write ───────────────────────────────────────────────────────────────────
 
 
@@ -587,8 +839,17 @@ async def update_document(
         doc.slug = await unique_slug(db, doc.title, parent_id=parent_id, exclude_id=doc.id)
 
     if "body" in sent and sent["body"] is not None and sent["body"] != doc.body:
+        expected = sent.get("expected_version")
+        if expected is not None and expected != doc.version:
+            await db.rollback()
+            raise HTTPException(
+                409,
+                "This document was changed elsewhere — reload it to see the newer "
+                "version instead of overwriting it",
+            )
         await _record_revision(db, doc, "edit")
         _apply_body(doc, sent["body"])
+        doc.version += 1
         doc.edited_at = _now()
         # An explicit title in the same request still wins: it is applied below.
         await _adopt_frontmatter_title(db, doc)
@@ -633,6 +894,7 @@ async def restore_revision(
     # The body being replaced becomes history too, so a restore is undoable.
     await _record_revision(db, doc, "restore")
     _apply_body(doc, revision.body or "")
+    doc.version += 1
     # A restored body brings its own title back with it.
     await _adopt_frontmatter_title(db, doc)
     await db.flush()
@@ -664,6 +926,7 @@ async def regenerate_document(
 
     await _record_revision(db, doc, "regenerate")
     await _scaffold_body(db, doc, doc.template_id)
+    doc.version += 1
     # Back to a freshly generated document: nothing of the user's is left in it.
     doc.edited_at = None
     await db.flush()

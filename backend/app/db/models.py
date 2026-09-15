@@ -393,6 +393,18 @@ class Document(Base):
     # this: created_at and updated_at are two separate clock reads on insert.
     edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Monotonic optimistic-lock counter for the body, bumped by every change to
+    # it. `updated_at` cannot serve: it is second-granular on some SQLite builds
+    # and moves on metadata-only saves (star, rename), so it can neither detect
+    # two edits landing in the same second nor distinguish a real conflict from
+    # a cosmetic one. Reads hand the version to the editor and the MCP client;
+    # writes name the version they were made against and the server refuses to
+    # apply to a newer one.
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # The proposal token of the last applied MCP section edit, so retrying the
+    # same request after a lost response is recognized instead of applied twice.
+    last_mcp_proposal: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 

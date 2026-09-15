@@ -110,4 +110,7 @@ async def test_resource_templates_are_registered():
     result = await handler(None)
 
     templates = result.root.resourceTemplates
-    assert [t.uriTemplate for t in templates] == ["homelable://nodes/{node_id}"]
+    assert [t.uriTemplate for t in templates] == [
+        "homelable://nodes/{node_id}",
+        "homelable://documents/{document_id}",
+    ]
