@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Clock, Download, History, Link2, Pencil, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react'
+import { Menu } from '@base-ui/react/menu'
+import { Clock, Download, Ellipsis, History, Link2, Pencil, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -182,16 +183,27 @@ export function DocViewer({
           )}
           {/* A folder holds children, not a generated body — nothing to rebuild. */}
           {doc.kind !== 'folder' && (
-            <Button
-              size="icon-xs"
-              variant="ghost"
-              title="Regenerate this document from the database"
-              aria-label="Regenerate this document"
-              onClick={onRegenerate}
-              className="cursor-pointer"
-            >
-              <RefreshCw />
-            </Button>
+            <Menu.Root>
+              <Menu.Trigger
+                title="More document actions"
+                aria-label="More document actions"
+                className="flex size-6 cursor-pointer items-center justify-center rounded-[min(var(--radius-md),10px)] text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <Ellipsis size={14} />
+              </Menu.Trigger>
+              <Menu.Portal>
+                <Menu.Positioner align="end" sideOffset={4} className="isolate z-50">
+                  <Menu.Popup className="min-w-52 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10">
+                    <Menu.Item
+                      onClick={onRegenerate}
+                      className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-sm outline-none hover:bg-muted focus:bg-muted"
+                    >
+                      <RefreshCw size={13} /> Replace entire document…
+                    </Menu.Item>
+                  </Menu.Popup>
+                </Menu.Positioner>
+              </Menu.Portal>
+            </Menu.Root>
           )}
           <Button
             size="icon-xs"

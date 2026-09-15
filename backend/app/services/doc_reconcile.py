@@ -32,6 +32,10 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
+
+import yaml
 
 from app.services.doc_template import _hardware_property, cell
 
@@ -44,6 +48,13 @@ CONFLICT = "conflict"  # user edited it *and* the device changed it — ask
 KEEP = "keep"      # keep the user's text
 DEVICE = "device"  # take the device's value
 CUSTOM = "custom"  # the user's own replacement text
+
+
+class _SectionAction(Enum):
+    """Internal outcomes that cannot collide with user-provided text."""
+
+    SKIP = "skip"
+    REMOVE = "remove"
 
 # The rows of the generated Device Information table, mapped to the words a
 # decision surface should use for them ("IP" is not an IP *address*).
@@ -81,9 +92,7 @@ _ALL_SECTION_NAMES = _SECTION_NAMES | _USER_SECTION_NAMES
 
 _HEADING = re.compile(r"^(#{1,3})\s+(.*?)\s*$")
 _ROW = re.compile(r"^\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|$")
-_TITLE_IN_FRONTMATTER = re.compile(r"^title:.*$", re.MULTILINE)
-
-
+_TABLE_SEPARATOR = re.compile(r"^\|\s*:?-{3,}:?\s*\|\s*:?-{3,}:?\s*\|$")
 @dataclass
 class Block:
     """A run of contiguous lines: the preamble, or one heading and its body."""
@@ -233,19 +242,39 @@ def _row_from_line(line: str) -> tuple[str, str] | None:
 
 
 def _table_rows(text: str) -> list[tuple[str, str]]:
-    """The data rows of a markdown table, in order, labels and cells as-is."""
+    """The data rows after a markdown table separator, in order."""
     pairs: list[tuple[str, str]] = []
+    in_table = False
     for line in text.splitlines():
+        if _TABLE_SEPARATOR.match(line):
+            in_table = True
+            continue
+        if not in_table:
+            continue
         row = _row_from_line(line)
         if row is not None:
             pairs.append(row)
     return pairs
 
 
+def _first_cells(rows: list[tuple[str, str]]) -> dict[str, str]:
+    """Label → cell for the first (representational) row of the table.
+
+    The first copy of a duplicated label provides the ``documented`` cell of
+    the change surfaced for it; it is *not* treated as "the generated row".
+    Duplicates are ambiguous and therefore require an explicit decision — the
+    proposed body never guesses which copy is which (see ``_rebuild_info_table``).
+    """
+    cells: dict[str, str] = {}
+    for label, value in rows:
+        cells.setdefault(label, value)
+    return cells
+
+
 # ── baseline reconstruction from the old device facts ──────────────────────
 
 
-def _info_old_cell(snapshot: dict | None, label: str) -> str | None:
+def _info_old_cell(snapshot: dict[str, Any] | None, label: str) -> str | None:
     """What a Device Information cell read at snapshot time, if reconstructable.
 
     ``None`` means the snapshot cannot say — the reconcile then treats the fact
@@ -280,7 +309,7 @@ def _info_old_cell(snapshot: dict | None, label: str) -> str | None:
     return None
 
 
-def _info_old_table(snapshot: dict | None, baseline: Block | None) -> str | None:
+def _info_old_table(snapshot: dict[str, Any] | None, baseline: Block | None) -> str | None:
     """The full Device Information table as of the last sync, if known."""
     if baseline is not None:
         return _content_text(baseline)
@@ -299,7 +328,7 @@ def _render_info_rows(rows: list[tuple[str, str]]) -> list[str]:
     return [f"| {label} | {value} |" for label, value in rows]
 
 
-def _hardware_old_content(snapshot: dict | None) -> str | None:
+def _hardware_old_content(snapshot: dict[str, Any] | None) -> str | None:
     """The Hardware table at snapshot time, generator-shape, or None."""
     if not snapshot:
         return None
@@ -317,7 +346,7 @@ def _hardware_old_content(snapshot: dict | None) -> str | None:
     return "| CPU | RAM | Disk |\n|---|---|---|\n" + row
 
 
-def _properties_old_content(snapshot: dict | None) -> str | None:
+def _properties_old_content(snapshot: dict[str, Any] | None) -> str | None:
     """The Properties table at snapshot time, generator-shape, or None."""
     if not snapshot:
         return None
@@ -338,8 +367,8 @@ def decide(cur: str | None, old: str | None, new: str | None) -> str:
 
     * the user already has the device's value → nothing to do;
     * the device is unchanged → nothing to do, whatever the user wrote;
-    * the device's value is gone while the user still has text → ask before
-      removing anything (even untouched);
+    * an untouched, baseline-backed value follows a device removal;
+    * a device removal whose current value differs from the baseline → ask;
     * no baseline for it and nothing in the document → safe to add;
     * no baseline for it and the document differs → ask (conservative);
     * the user left the baseline value → safe to apply;
@@ -349,12 +378,12 @@ def decide(cur: str | None, old: str | None, new: str | None) -> str:
         return SAME
     if old == new:
         return SAME
+    if old is not None and cur == old:
+        return AUTO
     if not new:
         return CONFLICT  # device dropped the value the user still shows
     if old is None:
         return AUTO if not cur else CONFLICT
-    if cur == old:
-        return AUTO
     return CONFLICT
 
 
@@ -372,7 +401,7 @@ def reconcile(
     current: str,
     new: str,
     baseline_body: str | None = None,
-    snapshot: dict | None = None,
+    snapshot: dict[str, Any] | None = None,
     resolutions: list[Resolution] | None = None,
 ) -> Result:
     """Merge ``current`` up to the device's current facts.
@@ -408,8 +437,26 @@ def reconcile(
         )
     )
 
-    # ── Device Information rows ─────────────────────────────────────────────
+    # ── Document title in frontmatter — decided independently of the H1 ────
     current_blocks = split_blocks(current)
+    cur_title = _frontmatter_title(next((b for b in current_blocks if b.level == 0), None))
+    old_title = _frontmatter_title(next((b for b in baseline_blocks if b.level == 0), None))
+    new_title = _frontmatter_title(next((b for b in new_blocks if b.level == 0), None))
+    title_change = add(
+        Change(
+            id="title",
+            name="Document title",
+            kind="field",
+            status=decide(
+                _or_none(cur_title), _or_none(old_title), _or_none(new_title) or None
+            ),
+            documented=cur_title or "",
+            device=new_title or "",
+            previous=old_title or "",
+        )
+    )
+
+    # ── Device Information rows ─────────────────────────────────────────────
     cur_info = _find(current_blocks, "Device Information")
     new_info = _find(new_blocks, "Device Information")
     baseline_info = _find(baseline_blocks, "Device Information")
@@ -417,27 +464,38 @@ def reconcile(
 
     new_rows = _table_rows(_content_text(new_info)) if new_info else []
     new_by_label = {label: value for label, value in new_rows}
-    base_cells = (
-        dict(_table_rows(_content_text(baseline_info))) if baseline_info is not None else {}
-    )
+    base_cells = dict(_table_rows(_content_text(baseline_info))) if baseline_info else {}
 
     if new_rows:
         cur_rows = _table_rows(_content_text(cur_info)) if cur_info else []
-        cur_cells = {label: value for label, value in cur_rows}
+        cur_cells = _first_cells(cur_rows)
+        row_counts: dict[str, int] = {}
+        for label, _ in cur_rows:
+            row_counts[label] = row_counts.get(label, 0) + 1
+        info_heading_count = sum(
+            1 for b in current_blocks if b.heading == _DEVICE_INFO_HEADING
+        )
         for label, new_cell in new_rows:
             old_cell = base_cells.get(label)
-            if old_cell is None:
+            if label not in base_cells:
                 old_cell = _info_old_cell(snapshot, label)
+            status = _decide_cell(
+                cur_cells.get(label) if label in cur_cells else None,
+                old_cell,
+                new_cell,
+            )
+            if (row_counts.get(label, 0) > 1 or info_heading_count > 1) and status == AUTO:
+                # A duplicated label or duplicate Device Information heading is
+                # ambiguous: which row or table is the generator's own copy is
+                # unknowable, so never auto-apply to a guess; surface an
+                # explicit decision instead.
+                status = CONFLICT
             change = add(
                 Change(
                     id=f"device-info.{label}",
                     name=_INFO_NAME_BY_LABEL.get(label, label),
                     kind="field",
-                    status=decide(
-                        _or_none(cur_cells.get(label)),
-                        _or_none(old_cell),
-                        _or_none(new_cell) or None,
-                    ),
+                    status=status,
                     documented=cur_cells.get(label, ""),
                     device=new_cell,
                     previous=old_cell or "",
@@ -460,6 +518,11 @@ def reconcile(
                 )
 
     # ── generated sections ──────────────────────────────────────────────────
+    section_counts: dict[str, int] = {}
+    for block in current_blocks:
+        if block.heading is not None and block.heading in _DEVICE_SECTIONS:
+            section_counts[block.heading] = section_counts.get(block.heading, 0) + 1
+
     section_changes: dict[str, Change] = {}
     for name in _DEVICE_SECTIONS:
         cur_section = _find(current_blocks, name)
@@ -470,22 +533,39 @@ def reconcile(
         new_text = _content_text(new_section) if new_section else ""
         baseline_section = _find(baseline_blocks, name)
         if baseline_section is not None:
-            old_text = _content_text(baseline_section)
+            old_text: str | None = _content_text(baseline_section)
         elif name == "Hardware":
             old_text = _hardware_old_content(snapshot)
         elif name == "Properties":
             old_text = _properties_old_content(snapshot)
         else:
             old_text = None  # snapshot cannot say → conservative
+        has_known_history = baseline_body is not None or (
+            snapshot is not None and name in ("Hardware", "Properties")
+        )
+        status = (
+            CONFLICT
+            if (
+                cur_section is None
+                and new_section is not None
+                and not has_known_history
+            )
+            else decide(
+                _or_none(cur_text), _or_none(old_text) if old_text is not None else None,
+                _or_none(new_text) or None,
+            )
+        )
+        if section_counts.get(name, 0) > 1 and status == AUTO:
+            # A duplicated heading is ambiguous: the generator's own copy is
+            # unknowable, so never overwrite a guessed first block; surface an
+            # explicit decision instead.
+            status = CONFLICT
         section_changes[name] = add(
             Change(
                 id=f"section.{name}",
                 name=name,
                 kind="section",
-                status=decide(
-                    _or_none(cur_text), _or_none(old_text) if old_text is not None else None,
-                    _or_none(new_text) or None,
-                ),
+                status=status,
                 documented=cur_text,
                 device=new_text,
                 previous=_or_none(old_text) or "",
@@ -495,17 +575,29 @@ def reconcile(
     # ── Device Information handled sectionally when the user dropped the table ─
     info_table_change: Change | None = None
     if new_info is not None and cur_info is None:
-        old_text = _info_old_table(snapshot, baseline_info)
+        # A recorded baseline that lacks this block proves it was absent.  An
+        # absent baseline, though, is not proof that this is a newly added
+        # section: a legacy document may have deleted the table deliberately.
+        old_text = (
+            None
+            if baseline_body is not None and baseline_info is None
+            else _info_old_table(snapshot, baseline_info)
+        )
+        status = (
+            CONFLICT
+            if baseline_body is None and old_text is None
+            else decide(
+                None,
+                _or_none(old_text) if old_text is not None else None,
+                _or_none(_content_text(new_info)) or None,
+            )
+        )
         info_table_change = add(
             Change(
                 id="device-info",
                 name="Device Information",
                 kind="section",
-                status=decide(
-                    None,
-                    _or_none(old_text) if old_text is not None else None,
-                    _or_none(_content_text(new_info)) or None,
-                ),
+                status=status,
                 documented="",
                 device=_content_text(new_info),
                 previous=_or_none(old_text) or "",
@@ -516,6 +608,7 @@ def reconcile(
         current_blocks,
         new_blocks,
         name_change=name_change,
+        title_change=title_change,
         info_changes=info_changes,
         section_changes=section_changes,
         info_table_change=info_table_change,
@@ -533,6 +626,7 @@ def _assemble(
     new_blocks: list[Block],
     *,
     name_change: Change,
+    title_change: Change,
     info_changes: dict[str, Change],
     section_changes: dict[str, Change],
     info_table_change: Change | None,
@@ -540,19 +634,32 @@ def _assemble(
     blocks = [Block(level=b.level, heading=b.heading, lines=list(b.lines)) for b in current_blocks]
 
     if name_change.status == AUTO:
-        _apply_name(blocks, name_change.device)
+        _apply_h1(blocks, name_change.device)
     elif name_change.status == CONFLICT:
         if name_change.resolution == DEVICE:
-            _apply_name(blocks, name_change.device)
+            _apply_h1(blocks, name_change.device)
         elif name_change.resolution == CUSTOM and name_change.custom:
-            _apply_name(blocks, name_change.custom)
+            _apply_h1(blocks, name_change.custom)
 
+    if title_change.status == AUTO:
+        _apply_frontmatter_title(blocks, title_change.device)
+    elif title_change.status == CONFLICT:
+        if title_change.resolution == DEVICE:
+            _apply_frontmatter_title(blocks, title_change.device)
+        elif title_change.resolution == CUSTOM and title_change.custom is not None:
+            _apply_frontmatter_title(blocks, title_change.custom)
+
+    handled_sections: set[str] = set()
     for block in blocks:
         if block.heading is None:
             continue
-        if block.heading == "Device Information" and info_changes:
-            _rebuild_info_table(block, info_changes)
-        elif block.heading in section_changes:
+        if block.heading == "Device Information":
+            if info_changes and block.heading not in handled_sections:
+                handled_sections.add(block.heading)
+                _rebuild_info_table(block, info_changes)
+            continue
+        if block.heading in section_changes and block.heading not in handled_sections:
+            handled_sections.add(block.heading)
             change = section_changes[block.heading]
             new_section = _find(new_blocks, block.heading)
             _apply_section(block, change, new_section)
@@ -563,12 +670,12 @@ def _assemble(
     for name in _DEVICE_SECTIONS:
         if any(b.heading == name for b in current_blocks):
             continue
-        change = section_changes.get(name)
+        pending_change = section_changes.get(name)
         new_section = _find(new_blocks, name)
-        if change is None or new_section is None:
+        if pending_change is None or new_section is None:
             continue
-        content = _section_result(change)
-        if content == "skip" or content == "remove":
+        content = _section_result(pending_change)
+        if content is _SectionAction.SKIP or content is _SectionAction.REMOVE:
             continue
         heading = new_section.lines[0]
         body_lines = ([""] + content.splitlines() + [""]) if content else []
@@ -586,14 +693,17 @@ def _apply_section(block: Block, change: Change, new_section: Block | None) -> N
     if change.status == SAME:
         return
     if change.status == AUTO:
+        if new_section is None:
+            block.removed = True
+            return
         replacement = _content(new_section) if new_section else []
         block.lines = [heading, *replacement]
         return
     # CONFLICT
     result = _section_result(change)
-    if result == "remove":
+    if result is _SectionAction.REMOVE:
         block.removed = True
-    elif result != "skip":
+    elif result is not _SectionAction.SKIP:
         body_lines = ([""] + result.splitlines() + [""]) if result else [""]
         block.lines = [heading, *body_lines]
 
@@ -601,7 +711,7 @@ def _apply_section(block: Block, change: Change, new_section: Block | None) -> N
 def _apply_added_table(blocks: list[Block], new_blocks: list[Block], change: Change) -> None:
     """Re-introduce a Device Information table the user had removed."""
     result = _section_result(change)
-    if result == "skip" or result == "remove":
+    if result is _SectionAction.SKIP or result is _SectionAction.REMOVE:
         return
     new_section = _find(new_blocks, "Device Information")
     if new_section is None:
@@ -618,24 +728,29 @@ def _apply_added_table(blocks: list[Block], new_blocks: list[Block], change: Cha
     )
 
 
-def _section_result(change: Change) -> str:
-    """The replacement content for a section: literal text, or a sentinel.
-
-    ``"skip"`` keeps the current block as-is (same / keep-user / undecided);
-    ``"remove"`` drops it (device value gone and the user accepted that).
-    """
+def _section_result(change: Change) -> str | _SectionAction:
+    """The replacement content for a section, or an internal action."""
     if change.status == SAME:
-        return "skip"
+        return _SectionAction.SKIP
     if change.status == AUTO:
         return change.device
     # CONFLICT
     if change.resolution is None or change.resolution == KEEP:
-        return "skip"
+        return _SectionAction.SKIP
     if change.resolution == DEVICE:
-        return change.device if change.device else "remove"
+        return change.device if change.device else _SectionAction.REMOVE
     if change.resolution == CUSTOM:
-        return change.custom or "remove"
-    return "skip"
+        return change.custom if change.custom is not None else _SectionAction.REMOVE
+    return _SectionAction.SKIP
+
+
+def _explicit_row_resolution(change: Change | None) -> bool:
+    """Whether the user has settled an ambiguous duplicate row's fate explicitly."""
+    if change is None or change.status != CONFLICT:
+        return False
+    return change.resolution == DEVICE or (
+        change.resolution == CUSTOM and change.custom is not None
+    )
 
 
 def _rebuild_info_table(block: Block, info_changes: dict[str, Change]) -> None:
@@ -645,35 +760,47 @@ def _rebuild_info_table(block: Block, info_changes: dict[str, Change]) -> None:
     lines around them) stay exactly where they are; the data rows are replaced
     in place, and a label the device has but the document does not is appended
     at the end of the table when its decision calls for it.
+
+    A duplicated label is ambiguous — which row is the generator's own copy is
+    unknowable. Every copy is kept byte for byte, silently, and only an
+    explicit device/custom decision writes the first copy; nothing ever guesses
+    which duplicate is "the" row.
     """
-    head: list[str] = []
-    cur_rows: list[tuple[str, str]] = []
-    trailing: list[str] = []
-    in_data = False
-    for line in _content(block):
+    counts: dict[str, int] = {}
+    content = _content(block)
+    in_table = False
+    rows: list[tuple[int, str, str]] = []
+    for index, line in enumerate(content):
+        if _TABLE_SEPARATOR.match(line):
+            in_table = True
+            continue
+        if not in_table:
+            continue
         row = _row_from_line(line)
         if row is not None:
-            cur_rows.append(row)
-            in_data = True
-        elif in_data:
-            trailing.append(line)
-        else:
-            head.append(line)
+            label, value = row
+            rows.append((index, label, value))
+            counts[label] = counts.get(label, 0) + 1
 
-    rebuilt = [*head]
+    rebuilt = list(content)
     seen: set[str] = set()
-    for label, cur_cell in cur_rows:
+    for index, label, cur_cell in rows:
+        if label in seen:
+            continue
         seen.add(label)
-        value = _value_for(info_changes.get(label), cur_cell)
-        if value is not None:
-            rebuilt.append(f"| {label} | {value} |")
+        if counts[label] > 1 and not _explicit_row_resolution(info_changes.get(label)):
+            continue
+        replacement = _value_for(info_changes.get(label), cur_cell)
+        if replacement is not None and replacement != cur_cell:
+            rebuilt[index] = _replace_cell(content[index], replacement)
     for label, change in info_changes.items():
         if label in seen:
             continue
-        value = _value_for(change, "")
-        if value is not None:
-            rebuilt.append(f"| {label} | {value} |")
-    rebuilt.extend(trailing)
+        if not _adds_missing_row(change):
+            continue
+        replacement = _value_for(change, "")
+        if replacement is not None:
+            rebuilt.append(f"| {label} | {replacement} |")
 
     block.lines = [block.lines[0] if block.lines else "## Device Information", *rebuilt]
 
@@ -683,17 +810,49 @@ def _value_for(change: Change | None, cur_cell: str) -> str | None:
     if change is None:
         return cur_cell
     if change.status == SAME:
-        return change.documented if change.documented else None
+        return cur_cell
     if change.status == AUTO:
         return change.device
     # CONFLICT
     if change.resolution is None or change.resolution == KEEP:
-        return change.documented if change.documented else None
+        return cur_cell
     if change.resolution == DEVICE:
         return change.device
     if change.resolution == CUSTOM:
         return cell(change.custom) if change.custom is not None else None
     return None
+
+
+def _adds_missing_row(change: Change) -> bool:
+    """Only a device addition or an accepted decision restores an absent row."""
+    return change.status == AUTO or (
+        change.status == CONFLICT and change.resolution in (DEVICE, CUSTOM)
+    )
+
+
+def _decide_cell(cur: str | None, old: str | None, new: str | None) -> str:
+    """Three-way decision for table cells, where an empty cell is still a row."""
+    if cur == new or old == new:
+        return SAME
+    if new is None:
+        return CONFLICT
+    if old is None:
+        return AUTO if cur is None else CONFLICT
+    return AUTO if cur == old else CONFLICT
+
+
+def _replace_cell(line: str, value: str) -> str:
+    """Replace only a row's second cell, retaining its user formatting."""
+    if _row_from_line(line) is None:
+        return line
+    separator = line.find("|", 1)
+    end = line.rfind("|")
+    if separator < 0 or separator == end:
+        return line
+    cell_text = line[separator + 1:end]
+    leading = cell_text[: len(cell_text) - len(cell_text.lstrip())]
+    trailing = cell_text[len(cell_text.rstrip()):]
+    return f"{line[:separator + 1]}{leading}{value}{trailing}{line[end:]}"
 
 
 def _insert_before_user_sections(blocks: list[Block], block: Block) -> None:
@@ -704,19 +863,43 @@ def _insert_before_user_sections(blocks: list[Block], block: Block) -> None:
     blocks.append(block)
 
 
-def _apply_name(blocks: list[Block], name: str) -> None:
-    """Rename the document in its first H1 and in the frontmatter title."""
+def _frontmatter_title(block: Block | None) -> str | None:
+    """The semantic YAML title in the frontmatter block, if it is a string."""
+    if block is None:
+        return None
+    lines = block.lines
+    open_index = next((i for i, line in enumerate(lines) if line.strip() == "---"), None)
+    if open_index is None:
+        return None
+    close_index = next(
+        (i for i in range(open_index + 1, len(lines)) if lines[i].strip() == "---"), None
+    )
+    if close_index is None:
+        return None
+    try:
+        parsed = yaml.safe_load("\n".join(lines[open_index + 1:close_index]))
+    except yaml.YAMLError:
+        return None
+    return parsed.get("title") if isinstance(parsed, dict) and isinstance(parsed.get("title"), str) else None
+
+
+def _apply_h1(blocks: list[Block], name: str) -> None:
+    """Rename the document in its first H1 only."""
     for block in blocks:
         if block.level == 1 and block.heading is not None:
             block.lines[0] = f"# {name}"
             break
+
+
+def _apply_frontmatter_title(blocks: list[Block], title: str) -> None:
+    """Set the frontmatter `title:` only, independent of the H1 decision."""
     for block in blocks:
         if block.level == 0:
-            _set_frontmatter_title(block, name)
+            _set_frontmatter_title(block, title)
 
 
 def _set_frontmatter_title(block: Block, title: str) -> None:
-    """Write the `title:` line inside the opening YAML block, if there is one."""
+    """Replace the complete YAML title scalar without touching other entries."""
     lines = block.lines
     open_index = next((i for i, line in enumerate(lines) if line.strip() == "---"), None)
     if open_index is None:
@@ -724,11 +907,25 @@ def _set_frontmatter_title(block: Block, title: str) -> None:
     close_index = next((i for i in range(open_index + 1, len(lines)) if lines[i].strip() == "---"), None)
     if close_index is None:
         return
-    for i in range(open_index + 1, close_index):
-        if re.match(r"^title:", lines[i]):
-            lines[i] = f"title: {title}"
+    start = open_index + 1
+    try:
+        document = yaml.compose("\n".join(lines[start:close_index]))
+    except yaml.YAMLError:
+        return
+    if not isinstance(document, yaml.MappingNode):
+        return
+    rendered = f"title: {json.dumps(title, ensure_ascii=False)}"
+    for key, value in document.value:
+        if isinstance(key, yaml.ScalarNode) and key.value == "title":
+            # A block scalar ends at column zero on the next line; quoted
+            # multi-line scalars end inside their final line.
+            end = max(
+                key.start_mark.line + 1,
+                value.end_mark.line + bool(value.end_mark.column),
+            )
+            lines[start + key.start_mark.line:start + end] = [rendered]
             return
-    lines.insert(close_index, f"title: {title}")
+    lines.insert(close_index, rendered)
 
 
 # ── summary & fingerprint ───────────────────────────────────────────────────
@@ -750,17 +947,27 @@ def _summarise(changes: list[Change]) -> list[str]:
     return [re.sub(r"\s+", " ", line).strip() for line in lines]
 
 
-def preview_id(updated_at: str, snapshot: dict | None, body: str) -> str:
+def preview_id(
+    updated_at: str,
+    snapshot: dict[str, Any] | None,
+    body: str,
+    baseline_body: str | None = None,
+    live: dict[str, Any] | None = None,
+) -> str:
     """Stable id for a preview, so a stale save is rejected instead of overwriting.
 
-    Binds the latest ``updated_at``, the facts the preview was computed against
-    and the body it began from: any of the three moving since the modal opened
-    means a new preview is needed before the resolution can be saved.
+    Binds the latest ``updated_at``, the facts the preview was computed against,
+    the body it began from, the generation baseline and the live device facts,
+    render context and generated body the proposal was computed from: any of
+    them moving since the modal opened means a new preview is needed before the
+    resolution can be saved.
     """
     material = {
         "updated_at": updated_at,
         "snapshot": snapshot,
         "body": body,
+        "baseline_body": baseline_body,
+        "live": live,
     }
     payload = json.dumps(material, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()[:16]

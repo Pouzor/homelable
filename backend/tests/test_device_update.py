@@ -213,6 +213,63 @@ async def test_a_kept_value_is_surfaced_again_on_the_next_change(client: AsyncCl
     assert later["unresolved"] == ["device-info.IP"]
 
 
+async def test_kept_hostname_is_acknowledged_once_per_ip_change(client: AsyncClient, headers: dict):
+    """Each Keep records the current IP as baseline without losing the hostname."""
+    device = await _device(
+        client,
+        headers,
+        label="homelabcluster",
+        hostname="homelabcluster.example.lan",
+        ip="192.168.10.10",
+    )
+    doc = await _doc(client, headers, device)
+    hostname = "homelabcluster.example.lan"
+    edited_body = doc["body"].replace("| IP | 192.168.10.10 |", f"| IP | {hostname} |")
+    edit = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"body": edited_body}, headers=headers
+    )
+    assert edit.status_code == 200, edit.text
+
+    # The original baseline was .10, so the reviewed .20 needs an initial Keep.
+    await _set_ip(client, headers, device, "192.168.10.20")
+    first = await _preview(client, headers, doc["id"])
+    assert first["unresolved"] == ["device-info.IP"]
+    applied = await client.post(
+        f"/api/v1/documents/{doc['id']}/update-from-device",
+        json={"preview_id": first["preview_id"], "resolutions": [{"id": "device-info.IP", "choice": "keep"}]},
+        headers=headers,
+    )
+    assert applied.status_code == 200, applied.text
+    assert f"| IP | {hostname} |" in applied.json()["body"]
+
+    # The prior body is recoverable through the global revision URL, not a
+    # document-nested lookalike route.
+    revisions = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
+    sync = next(revision for revision in revisions if revision["reason"] == "sync")
+    previous = await client.get(f"/api/v1/documents/revisions/{sync['id']}", headers=headers)
+    assert previous.status_code == 200, previous.text
+    assert previous.json()["body"] == edited_body
+
+    quiet = await _preview(client, headers, doc["id"])
+    assert quiet["unresolved"] == []
+
+    await _set_ip(client, headers, device, "192.168.10.25")
+    second = await _preview(client, headers, doc["id"])
+    assert second["unresolved"] == ["device-info.IP"]
+    applied = await client.post(
+        f"/api/v1/documents/{doc['id']}/update-from-device",
+        json={"preview_id": second["preview_id"], "resolutions": [{"id": "device-info.IP", "choice": "keep"}]},
+        headers=headers,
+    )
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["facts_snapshot"]["ip"] == "192.168.10.25"
+    assert (await _preview(client, headers, doc["id"]))["unresolved"] == []
+
+    await _set_ip(client, headers, device, "192.168.10.30")
+    later = await _preview(client, headers, doc["id"])
+    assert later["unresolved"] == ["device-info.IP"]
+
+
 async def test_apply_rejects_a_stale_preview(client: AsyncClient, headers: dict):
     device = await _device(client, headers)
     doc = await _doc(client, headers, device)
@@ -247,3 +304,87 @@ async def test_apply_rejects_unresolved_conflicts(client: AsyncClient, headers: 
     )
     assert res.status_code == 400
     assert "IP address" in res.json()["detail"]
+
+
+async def test_apply_rejects_a_device_change_made_while_the_preview_was_open(
+    client: AsyncClient, headers: dict
+):
+    """A device that moves on during review is a different review thread.
+
+    The preview id binds the live device facts and generated context the
+    proposal was computed from — not just the document state — so applying an
+    old resolution to a device that changed must fail with 409 and save
+    nothing: no body change and no history entry.
+    """
+    device = await _device(client, headers)
+    doc = await _doc(client, headers, device)
+    doc = await _edit_ip(client, headers, doc, "nas.example.lan")
+    await _set_ip(client, headers, device, "192.168.1.30")
+
+    preview = await _preview(
+        client, headers, doc["id"], resolutions=[{"id": "device-info.IP", "choice": "device"}]
+    )
+    await _set_ip(client, headers, device, "192.168.1.40")
+    # The device moved on, so a fresh preview is a different id now.
+    fresh = await _preview(client, headers, doc["id"])
+    assert preview["preview_id"] != fresh["preview_id"]
+
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/update-from-device",
+        json={
+            "preview_id": preview["preview_id"],
+            "resolutions": [{"id": "device-info.IP", "choice": "device"}],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 409
+    # Nothing landed: the un-reviewed .40 is not in the body, the user edit
+    # survives, drift is untouched and no sync history was written.
+    current = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()
+    assert "| IP | 192.168.1.40 |" not in current["body"]
+    assert "| IP | nas.example.lan |" in current["body"]
+    assert current["drifted"] is True
+    # No sync history was written — the rejected apply recorded nothing, only
+    # the user's own earlier body edit exists.
+    revisions = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
+    assert [r["reason"] for r in revisions] == ["edit"]
+
+
+async def test_apply_rejects_a_generated_content_only_device_change(
+    client: AsyncClient, headers: dict
+):
+    """A device edit that only changes the *rendered* document binds too.
+
+    The device notes print into the generated body but are deliberately absent
+    from `facts_snapshot`, so changing them between preview and apply is a
+    rendered-content-only change: only a preview id that binds the generated
+    body itself can reject it.
+    """
+    device = await _device(client, headers)
+    doc = await _doc(client, headers, device)
+    res = await client.patch(
+        f"/api/v1/scan/pending/{device['id']}", json={"notes": "serve the home media"}, headers=headers
+    )
+    assert res.status_code == 200, res.text
+
+    preview = await _preview(client, headers, doc["id"])
+    res = await client.patch(
+        f"/api/v1/scan/pending/{device['id']}",
+        json={"notes": "serve the home media — NFS too"},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    # Same facts, same context — only the rendered body differs.
+    fresh = await _preview(client, headers, doc["id"])
+    assert preview["preview_id"] != fresh["preview_id"]
+
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/update-from-device",
+        json={"preview_id": preview["preview_id"], "resolutions": []},
+        headers=headers,
+    )
+    assert res.status_code == 409
+    # Nothing landed: the body is untouched and no sync history was written.
+    assert (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["body"] == doc["body"]
+    revisions = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
+    assert [r["reason"] for r in revisions] == []

@@ -21,7 +21,7 @@ import {
   filterGroups,
   filterTree,
 } from '../tree'
-import { GROUP_BY_LABELS, type GroupBy, type TreeLeaf } from '../types'
+import { GROUP_BY_LABELS, type GroupBy, type TreeLeaf, type UpdatePreview } from '../types'
 import { DocEditor } from './DocEditor'
 import { DocTreeGroups, DocTreeItem, type TreeDnd } from './DocTree'
 import { DocViewer } from './DocViewer'
@@ -33,6 +33,18 @@ import { UpdateFromDeviceModal } from './UpdateFromDeviceModal'
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 const GROUP_OPTIONS = Object.keys(GROUP_BY_LABELS) as GroupBy[]
+
+function updateConfirmation(result: UpdatePreview): string {
+  const names = [...new Set(
+    result.changes
+      .filter((change) => change.status !== 'same')
+      .map((change) => change.name.trim())
+      .filter(Boolean),
+  )]
+  if (names.length === 0) return 'Documentation updated'
+  const shown = names.slice(0, 3).join(', ')
+  return `Documentation updated: ${shown}${names.length > 3 ? `, and ${names.length - 3} more` : ''}`
+}
 
 /**
  * The Documentation section.
@@ -106,6 +118,12 @@ export function DocumentationView() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [updateOpen, setUpdateOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const updateFlow = useRef(0)
+
+  useEffect(() => {
+    updateFlow.current++
+    setUpdateOpen(false)
+  }, [openDoc?.id])
 
   useEffect(() => {
     void loadDocs()
@@ -272,20 +290,20 @@ export function DocumentationView() {
     toast.success('Document regenerated — the old body is in its history')
   }, [openDoc, regenerate])
 
-  const handleOpenUpdatePreview = useCallback(async () => {
-    if (!openDoc) return
-    setUpdateOpen(true)
-    const result = await openUpdatePreview()
-    if (result === null) toast.error('Could not compare this document with the device')
-  }, [openDoc, openUpdatePreview])
-
   const handleCancelUpdate = useCallback(() => {
+    updateFlow.current++
     setUpdateOpen(false)
     clearResolutions()
   }, [clearResolutions])
 
-  const handleApplyUpdate = useCallback(async () => {
+  const finishUpdate = useCallback(async (review: UpdatePreview, flow: number, docId: string) => {
     const result = await applyUpdate()
+    const current = useDocsStore.getState()
+    if (
+      flow !== updateFlow.current ||
+      current.openDoc?.id !== docId ||
+      (current.preview !== null && current.preview.preview_id !== review.preview_id)
+    ) return
     if (result === 'failed') {
       toast.error('Could not apply the update')
       return
@@ -293,15 +311,49 @@ export function DocumentationView() {
     if (result === 'stale') {
       // The document moved under the preview; show it again and re-compare,
       // so the user is never applying against a body they have not seen.
-      if (openDoc) await open(openDoc.id)
+      setUpdateOpen(true)
+      await open(docId)
+      if (flow !== updateFlow.current || useDocsStore.getState().openDoc?.id !== docId) return
       toast.error('That preview was out of date — review the current document again')
       await openUpdatePreview()
       return
     }
     setUpdateOpen(false)
     clearResolutions()
-    toast.success('Document updated from the device')
-  }, [applyUpdate, clearResolutions, open, openDoc, openUpdatePreview])
+    toast.success(updateConfirmation(review), {
+      action: { label: 'View history', onClick: () => setHistoryOpen(true) },
+    })
+  }, [applyUpdate, clearResolutions, open, openUpdatePreview])
+
+  const handleUpdatePreview = useCallback(async (applyIfSafe: boolean) => {
+    if (!openDoc) return
+    const flow = ++updateFlow.current
+    const docId = openDoc.id
+    setUpdateOpen(true)
+    const result = await openUpdatePreview()
+    if (flow !== updateFlow.current || useDocsStore.getState().openDoc?.id !== docId) return
+    if (result === null) {
+      toast.error('Could not compare this document with the device')
+      return
+    }
+    if (applyIfSafe && result.unresolved.length === 0) await finishUpdate(result, flow, docId)
+  }, [finishUpdate, openDoc, openUpdatePreview])
+
+  const handleOpenUpdatePreview = useCallback(
+    () => handleUpdatePreview(true),
+    [handleUpdatePreview],
+  )
+
+  const handleRetryUpdatePreview = useCallback(
+    () => handleUpdatePreview(false),
+    [handleUpdatePreview],
+  )
+
+  const handleApplyUpdate = useCallback(async () => {
+    if (!openDoc || !preview) return
+    const flow = ++updateFlow.current
+    await finishUpdate(preview, flow, openDoc.id)
+  }, [finishUpdate, openDoc, preview])
 
   // Applying the merge on a doc with an edit in flight would silently destroy
   // the draft text it replaced; the button is hidden while editing instead.
@@ -654,7 +706,7 @@ export function DocumentationView() {
           preview={preview}
           loading={previewLoading}
           resolutions={resolutions}
-          onPreview={() => void handleOpenUpdatePreview()}
+          onPreview={() => void handleRetryUpdatePreview()}
           onResolve={(id, item) => setResolution(id, item)}
           onCancel={handleCancelUpdate}
           onApply={() => void handleApplyUpdate()}

@@ -256,28 +256,64 @@ def _sync_snapshot(doc: Document) -> dict[str, Any] | None:
 
 
 async def _reconcile_document(
-    db: AsyncSession, doc: Document, device: InventoryDevice, resolutions: list[ResolutionItem]
+    doc: Document,
+    resolutions: list[ResolutionItem],
+    *,
+    generated: str,
+    snapshot: dict[str, Any] | None,
 ) -> Result:
-    """The three-way merge of the live body against a fresh generation."""
-    context = await _device_context(db, device.id)
+    """The three-way merge of the live body against a fresh generation.
+
+    ``generated`` is the body the proposal is computed from — the caller has
+    already fetched the device context once and must pass the same body it will
+    record as the new baseline, so the merge never straddles two context reads.
+    """
     return reconcile(
         current=doc.body or "",
-        new=render_device_document(device, **context),
+        new=generated,
         baseline_body=doc.baseline_body,
-        snapshot=_sync_snapshot(doc),
+        snapshot=snapshot,
         resolutions=[Resolution(r.id, r.choice, r.custom) for r in resolutions],
     )
 
 
-def _preview_payload(doc: Document, result: Result) -> UpdatePreviewResponse:
+async def _generated_body(db: AsyncSession, device: InventoryDevice) -> tuple[dict[str, Any], str]:
+    """The render context for a device and the body it generates, fetched once.
+
+    Both the preview token and the saved baseline are derived from this single
+    snapshot, so the proposal and the recorded baseline can never come from two
+    different device contexts.
+    """
+    context = await _device_context(db, device.id)
+    return context, render_device_document(device, **context)
+
+
+def _live_binding(device: InventoryDevice, context: dict[str, Any], generated: str) -> dict[str, Any]:
+    """The live inputs a proposal was computed from.
+
+    Binds the facts, the render context and the generated body itself — a
+    rendered-only change such as a service URL override or the migrated notes
+    would otherwise slip the fact-level bindings.
+    """
+    return {"facts": facts_snapshot(device), "context": context, "generated": generated}
+
+
+def _preview_payload(doc: Document, result: Result, live: dict[str, Any]) -> UpdatePreviewResponse:
     """The wire shape of a merge result, the preview id included.
 
     The id binds the very inputs the merge began from — the document's `updated_at`,
-    the snapshot and the body — so a save is only valid against the exact preview
-    it was computed from.
+    the snapshot, the baseline, the body and the live device facts, context and
+    generated body the proposal was computed from — so a save is only valid
+    against the exact preview it was computed from.
     """
     return UpdatePreviewResponse(
-        preview_id=preview_id(doc.updated_at.isoformat(), _sync_snapshot(doc), doc.body or ""),
+        preview_id=preview_id(
+            doc.updated_at.isoformat(),
+            _sync_snapshot(doc),
+            doc.body or "",
+            baseline_body=doc.baseline_body,
+            live=live,
+        ),
         changes=[ReconcileChange.model_validate(change) for change in result.changes],
         proposed_body=result.proposed_body,
         summary=result.summary,
@@ -756,8 +792,11 @@ async def preview_device_update(
     device = await db.get(InventoryDevice, doc.device_id) if doc.device_id else None
     if device is None:
         raise HTTPException(400, "This document has no device to update from")
-    result = await _reconcile_document(db, doc, device, body.resolutions)
-    return _preview_payload(doc, result)
+    context, generated = await _generated_body(db, device)
+    result = await _reconcile_document(
+        doc, body.resolutions, generated=generated, snapshot=_sync_snapshot(doc)
+    )
+    return _preview_payload(doc, result, _live_binding(device, context, generated))
 
 
 @router.post("/{document_id}/update-from-device", response_model=DocumentResponse)
@@ -771,12 +810,14 @@ async def apply_device_update(
 
     The merge is recomputed from the current state with the given resolutions,
     so whatever the modal showed last is exactly what lands. The echoed
-    `preview_id` guards the flow: if the document was edited while the preview
-    was open, the id no longer matches and a 409 is returned instead of a
-    silent overwrite. Every conflict must be resolved first — the endpoint will
-    not guess. The previous body is snapshotted (reason `sync`) and the baseline
-    is replaced by the *freshly generated* body, so a deliberately kept value
-    surfaces again when the device moves on.
+    `preview_id` guards the flow: if the document or the device changed while
+    the preview was open — a device value the proposal was made against moved
+    on, or the body/baseline was edited — the id no longer matches and a 409 is
+    returned instead of a silent overwrite; nothing is saved and no history is
+    written. Every conflict must be resolved first — the endpoint will not
+    guess. The previous body is snapshotted (reason `sync`) and the baseline
+    is replaced by the *freshly generated* body the proposal was computed from,
+    so a deliberately kept value surfaces again when the device moves on.
     """
     doc = await db.get(Document, document_id)
     if not doc:
@@ -787,26 +828,37 @@ async def apply_device_update(
     if device is None:
         raise HTTPException(400, "This document has no device to update from")
 
-    expected = preview_id(doc.updated_at.isoformat(), _sync_snapshot(doc), doc.body or "")
+    context, generated = await _generated_body(db, device)
+    expected = preview_id(
+        doc.updated_at.isoformat(),
+        _sync_snapshot(doc),
+        doc.body or "",
+        baseline_body=doc.baseline_body,
+        live=_live_binding(device, context, generated),
+    )
     if body.preview_id != expected:
         raise HTTPException(
             409,
-            "The document changed while the preview was open — review it again",
+            "The document or device changed while the preview was open — review it again",
         )
 
-    result = await _reconcile_document(db, doc, device, body.resolutions)
+    result = await _reconcile_document(
+        doc, body.resolutions, generated=generated, snapshot=_sync_snapshot(doc)
+    )
     if result.unresolved:
         raise HTTPException(
             400,
             f"Resolve every conflict first: {', '.join(c.name for c in result.unresolved)}",
         )
 
-    generated = render_device_document(device, **await _device_context(db, device.id))
     await _record_revision(db, doc, "sync")
     _apply_body(doc, result.proposed_body)
-    # The baseline is the body the device *actually* read, not the merged one:
-    # a decision the user made (a kept line, a custom value) must stay visible
-    # when the device moves again, and only a fresh generation records it.
+    # The baseline is the body the device *actually* read — the very generated
+    # body the proposal above was merged from, fetched once — not the merged
+    # one: a decision the user made (a kept line, a custom value) must stay
+    # visible when the device moves again, and only a fresh generation records
+    # it. The proposal and the saved baseline therefore never come from two
+    # different context snapshots.
     doc.baseline_body = generated
     doc.facts_snapshot = facts_snapshot(device)
     doc.facts_synced_at = _now()

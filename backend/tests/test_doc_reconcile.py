@@ -15,6 +15,8 @@ user has now) / new (freshly generated from the live device). The contract:
 from datetime import date
 from types import SimpleNamespace
 
+import yaml
+
 from app.services import doc_template as t
 from app.services.doc_reconcile import (
     AUTO,
@@ -129,6 +131,59 @@ def test_untouched_ip_is_applied_automatically():
     assert _after(result.proposed_body, "## Configuration") == _after(_body(_device()), "## Configuration")
 
 
+def test_device_info_ip_update_preserves_table_layout_and_empty_cells():
+    """A device-only update must not re-render its user's table."""
+    baseline = _body(_device())
+    current = (
+        baseline.replace("| | |\n|---|---|", "| Field | Value |\n|:------|-----:|")
+        .replace("| IP | 192.168.10.20 |", "| IP     | 192.168.10.20     |")
+        .replace("| OS | Debian 12 |", "| OS | |")
+        .replace("| Status check | `ping` → `-` |", "| Status check | `ping` → `-` |\n\n_table note_")
+    )
+    result = reconcile(
+        current,
+        _body(_device(ip="192.168.10.25")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+    )
+
+    expected = current.replace("192.168.10.20", "192.168.10.25", 1)
+    assert _after(result.proposed_body, "## Device Information").split("### Hardware", 1)[0] == (
+        _after(expected, "## Device Information").split("### Hardware", 1)[0]
+    )
+    assert "| Field | Value |\n|:------|-----:|" in result.proposed_body
+    assert "| OS | |" in result.proposed_body
+
+
+def test_deleted_os_row_stays_absent_until_device_restore_is_approved():
+    baseline = _body(_device())
+    current = baseline.replace("| OS | Debian 12 |\n", "")
+
+    unchanged = reconcile(
+        current, baseline, baseline_body=baseline, snapshot=t.facts_snapshot(_device())
+    )
+    assert _by_id(unchanged.changes)["device-info.OS"].status == SAME
+    assert unchanged.proposed_body == current
+
+    changed = reconcile(
+        current,
+        _body(_device(os="Debian 13")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+    )
+    assert _by_id(changed.changes)["device-info.OS"].status == "conflict"
+    assert changed.proposed_body == current
+
+    restored = reconcile(
+        current,
+        _body(_device(os="Debian 13")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+        resolutions=[Resolution(id="device-info.OS", choice=DEVICE)],
+    )
+    assert "| OS | Debian 13 |" in restored.proposed_body
+
+
 def test_user_edit_is_kept_when_device_unchanged():
     current = _body(_device()).replace("| OS | Debian 12 |", "| OS | Debian 12 (tuned) |")
     snapshot = t.facts_snapshot(_device())
@@ -175,6 +230,32 @@ def test_device_resolution_takes_device_value():
     current = _body(_device()).replace("| IP | 192.168.10.20 |", "| IP | 10.0.0.9 |")
     result = reconcile(current, _body(_device(ip="192.168.10.25")), baseline_body=_body(_device()), snapshot=t.facts_snapshot(_device()), resolutions=[Resolution(id="device-info.IP", choice=DEVICE)])
     assert "| IP | 192.168.10.25 |" in result.proposed_body
+
+
+def test_escaped_pipe_ip_row_keeps_its_shape_for_device_and_custom_resolution():
+    baseline = _body(_device())
+    current = baseline.replace(
+        "| IP | 192.168.10.20 |", "| IP   | nas.example \\| backup  |"
+    )
+    new = _body(_device(ip="192.168.10.25"))
+
+    device = reconcile(
+        current,
+        new,
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+        resolutions=[Resolution(id="device-info.IP", choice=DEVICE)],
+    )
+    assert "| IP   | 192.168.10.25  |" in device.proposed_body
+
+    custom = reconcile(
+        current,
+        new,
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+        resolutions=[Resolution(id="device-info.IP", choice=CUSTOM, custom="manual | route")],
+    )
+    assert "| IP   | manual \\| route  |" in custom.proposed_body
 
 
 def test_custom_resolution_uses_user_text_and_escapes_it():
@@ -255,6 +336,34 @@ def test_section_conflict_resolves_three_ways():
     assert "| A | B | C |" in custom.proposed_body
 
 
+def test_custom_section_text_never_collides_with_internal_actions():
+    baseline = _body(_device())
+    current = baseline.replace("| CPU | RAM | Disk |", "manual hardware notes")
+    new = _body(_device(cpu_model="N200"))
+
+    for custom in ("remove", "skip"):
+        result = reconcile(
+            current,
+            new,
+            baseline_body=baseline,
+            snapshot=t.facts_snapshot(_device()),
+            resolutions=[Resolution(id="section.Hardware", choice=CUSTOM, custom=custom)],
+        )
+        section = _after(result.proposed_body, "### Hardware").split("### Properties", 1)[0]
+        assert custom in section
+        assert "N200" not in section
+
+    empty = reconcile(
+        current,
+        new,
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+        resolutions=[Resolution(id="section.Hardware", choice=CUSTOM, custom="")],
+    )
+    section = _after(empty.proposed_body, "### Hardware").split("### Properties", 1)[0]
+    assert section.strip() == "### Hardware"
+
+
 def test_user_sections_never_touched():
     current = _body(_device())
     edited = current.replace("## Notes", "## Notes\n\n_Every byte here is the user's._")
@@ -269,6 +378,264 @@ def test_user_sections_never_touched():
     assert "## Operations" in result.proposed_body and "### Backup" in result.proposed_body
 
 
+def test_unknown_baseline_never_recreates_deleted_device_info_table():
+    """Legacy documents need an explicit review before restoring a missing table."""
+    generated = _body(_device())
+    start = generated.index("## Device Information")
+    end = generated.index("### Hardware")
+    current = generated[:start] + generated[end:]
+
+    preview = reconcile(current, generated, baseline_body=None, snapshot=None)
+    table_change = _by_id(preview.changes)["device-info"]
+    assert table_change.status == "conflict"
+    assert preview.unresolved == [table_change]
+    assert "## Device Information" not in preview.proposed_body
+
+    reviewed = reconcile(
+        current,
+        generated,
+        baseline_body=None,
+        snapshot=None,
+        resolutions=[Resolution(id="device-info", choice=DEVICE)],
+    )
+    assert "## Device Information" in reviewed.proposed_body
+
+
+# ── ambiguous duplicates ────────────────────────────────────────────────
+
+
+def test_duplicate_ip_row_no_device_change_preserves_both():
+    baseline = _body(_device())
+    current = baseline.replace(
+        "| IP | 192.168.10.20 |",
+        "| IP | 192.168.10.20 |\n| IP | manual-secondary |",
+    )
+    result = reconcile(
+        current,
+        _body(_device()),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+    )
+    assert result.conflicts == []
+    assert result.proposed_body.count("| IP |") == 2
+    assert "| IP | 192.168.10.20 |" in result.proposed_body
+    assert "| IP | manual-secondary |" in result.proposed_body
+
+
+def test_duplicate_ip_row_prepended_no_device_change_preserves_both():
+    baseline = _body(_device())
+    current = baseline.replace(
+        "| IP | 192.168.10.20 |",
+        "| IP | manual-first |\n| IP | 192.168.10.20 |",
+    )
+    result = reconcile(
+        current,
+        _body(_device()),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+    )
+    assert result.conflicts == []
+    assert result.proposed_body.count("| IP |") == 2
+    assert "| IP | manual-first |" in result.proposed_body
+    assert "| IP | 192.168.10.20 |" in result.proposed_body
+
+
+def test_duplicate_ip_row_device_change_surfaces_conflict():
+    baseline = _body(_device())
+    current = baseline.replace(
+        "| IP | 192.168.10.20 |",
+        "| IP | 192.168.10.20 |\n| IP | manual-secondary |",
+    )
+    result = reconcile(
+        current,
+        _body(_device(ip="192.168.10.25")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+    )
+    assert "device-info.IP" in [c.id for c in result.conflicts]
+    # Neither row is touched silently; both are preserved verbatim.
+    info_rows = [line for line in result.proposed_body.splitlines() if line.startswith("| IP |")]
+    assert info_rows == ["| IP | 192.168.10.20 |", "| IP | manual-secondary |"]
+
+
+def test_duplicate_ip_row_device_resolution_updates_first_only():
+    baseline = _body(_device())
+    current = baseline.replace(
+        "| IP | 192.168.10.20 |",
+        "| IP | 192.168.10.20 |\n| IP | manual-secondary |",
+    )
+    result = reconcile(
+        current,
+        _body(_device(ip="192.168.10.25")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+        resolutions=[Resolution(id="device-info.IP", choice=DEVICE)],
+    )
+    rows = [line for line in result.proposed_body.splitlines() if line.startswith("| IP |")]
+    assert rows == ["| IP | 192.168.10.25 |", "| IP | manual-secondary |"]
+
+
+def test_duplicate_hardware_no_device_change_preserves_both():
+    baseline = _body(_device())
+    current = baseline + "\n### Hardware\n\nMANUAL DISK RECOVERY PROCEDURE\n"
+    result = reconcile(
+        current,
+        _body(_device()),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+    )
+    assert result.conflicts == []
+    assert result.proposed_body.count("### Hardware") == 2
+    assert "MANUAL DISK RECOVERY PROCEDURE" in result.proposed_body
+
+
+def test_duplicate_hardware_prepended_no_device_change_preserves_both():
+    baseline = _body(_device())
+    hw_offset = baseline.index("### Hardware")
+    current = (
+        baseline[:hw_offset]
+        + "### Hardware\n\nMANUAL DISK RECOVERY PROCEDURE\n\n"
+        + baseline[hw_offset:]
+    )
+    result = reconcile(
+        current,
+        _body(_device()),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+    )
+    assert result.conflicts == []
+    assert result.proposed_body.count("### Hardware") == 2
+    assert "MANUAL DISK RECOVERY PROCEDURE" in result.proposed_body
+
+
+def test_duplicate_hardware_device_change_surfaces_conflict():
+    baseline = _body(_device())
+    current = baseline + "\n### Hardware\n\nMANUAL DISK RECOVERY PROCEDURE\n"
+    result = reconcile(
+        current,
+        _body(_device(cpu_model="N200")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+    )
+    assert "section.Hardware" in [c.id for c in result.conflicts]
+    # No auto-edit to the guessed-first block; both are preserved untouched.
+    assert "MANUAL DISK RECOVERY PROCEDURE" in result.proposed_body
+    assert "N200" not in result.proposed_body
+
+
+def test_duplicate_hardware_resolution_updates_generated_block_only():
+    baseline = _body(_device())
+    current = baseline + "\n### Hardware\n\nMANUAL DISK RECOVERY PROCEDURE\n"
+    result = reconcile(
+        current,
+        _body(_device(cpu_model="N200")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+        resolutions=[Resolution(id="section.Hardware", choice=DEVICE)],
+    )
+    assert result.proposed_body.count("### Hardware") == 2
+    assert "N200" in result.proposed_body
+    assert "MANUAL DISK RECOVERY PROCEDURE" in result.proposed_body
+
+
+def test_duplicate_hardware_custom_resolution_updates_generated_block_only():
+    baseline = _body(_device())
+    current = baseline + "\n### Hardware\n\nMANUAL DISK RECOVERY PROCEDURE\n"
+    result = reconcile(
+        current,
+        _body(_device(cpu_model="N200")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+        resolutions=[Resolution(id="section.Hardware", choice=CUSTOM, custom="| A | B | C |")],
+    )
+    assert result.proposed_body.count("### Hardware") == 2
+    assert "| A | B | C |" in result.proposed_body
+    assert "MANUAL DISK RECOVERY PROCEDURE" in result.proposed_body
+
+
+def test_duplicate_hardware_prepended_device_change_surfaces_conflict():
+    baseline = _body(_device())
+    hw_offset = baseline.index("### Hardware")
+    current = (
+        baseline[:hw_offset]
+        + "### Hardware\n\nMANUAL DISK RECOVERY PROCEDURE\n\n"
+        + baseline[hw_offset:]
+    )
+    result = reconcile(
+        current,
+        _body(_device(cpu_model="N200")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+    )
+    assert "section.Hardware" in [c.id for c in result.conflicts]
+    assert "N200" not in result.proposed_body
+    assert "MANUAL DISK RECOVERY PROCEDURE" in result.proposed_body
+
+
+def _duplicate_device_info(current, manual_os=None):
+    """Duplicate the whole generated Device Information block in the body.
+
+    The copy goes BEFORE the original; ``manual_os`` marks it as the user's own
+    table so a fix that edits the guessed-first copy on its own is testable.
+    """
+    heading = "## Device Information"
+    start = current.index(heading)
+    end = current.index("### Hardware")
+    info_block = current[start:end]
+    if manual_os is not None:
+        info_block = info_block.replace("| OS | Debian 12 |", f"| OS | {manual_os} |")
+    return current[:start] + info_block + info_block + current[end:]
+
+
+def test_duplicate_device_info_heading_ip_change_surfaces_conflict():
+    baseline = _body(_device())
+    current = _duplicate_device_info(baseline)
+    result = reconcile(
+        current,
+        _body(_device(ip="192.168.10.25")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+    )
+    assert "device-info.IP" in [c.id for c in result.conflicts]
+    # No silent auto-edit of the guessed-first table; both keep their value.
+    assert result.proposed_body.count("## Device Information") == 2
+    assert result.proposed_body.count("| IP | 192.168.10.20 |") == 2
+    assert "| IP | 192.168.10.25 |" not in result.proposed_body
+
+
+def test_duplicate_device_info_heading_ip_resolution_updates_first_only():
+    baseline = _body(_device())
+    current = _duplicate_device_info(baseline)
+    result = reconcile(
+        current,
+        _body(_device(ip="192.168.10.25")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+        resolutions=[Resolution(id="device-info.IP", choice=KEEP)],
+    )
+    assert result.proposed_body.count("## Device Information") == 2
+    assert result.proposed_body.count("| IP | 192.168.10.20 |") == 2
+
+
+def test_duplicate_device_info_prepended_ip_change_surfaces_conflict():
+    baseline = _body(_device())
+    current = _duplicate_device_info(baseline, manual_os="Debian 12 (manual)")
+    result = reconcile(
+        current,
+        _body(_device(ip="192.168.10.25")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device()),
+    )
+    assert "device-info.IP" in [c.id for c in result.conflicts]
+    assert result.proposed_body.count("## Device Information") == 2
+    # The user-owned copy is the first one; it must not be silently edited.
+    assert "| OS | Debian 12 (manual) |" in result.proposed_body
+    assert "| IP | 192.168.10.25 |" not in result.proposed_body
+
+
+# ── device name ─────────────────────────────────────────────────────────
+
+
 def test_device_name_auto_and_conflict():
     baseline = _body(_device(label="nas-01"))
     snapshot = t.facts_snapshot(_device(label="nas-01"))
@@ -277,13 +644,133 @@ def test_device_name_auto_and_conflict():
 
     auto = reconcile(current, new, baseline_body=baseline, snapshot=snapshot)
     assert _by_id(auto.changes)["name"].status == AUTO
-    assert "title: nas-02" in auto.proposed_body
+    assert 'title: "nas-02"' in auto.proposed_body
     assert "# nas-02\n" in auto.proposed_body
 
     renamed = current.replace("# nas-01", "# my-nas")
     conflict = reconcile(renamed, new, baseline_body=baseline, snapshot=snapshot, resolutions=[Resolution(id="name", choice=KEEP)])
     assert _by_id(conflict.changes)["name"].status == "conflict"
     assert "# my-nas" in conflict.proposed_body and "# nas-02" not in conflict.proposed_body
+
+
+def test_ordinary_rename_follows_in_h1_and_title():
+    baseline = _body(_device(label="nas-01"))
+    result = reconcile(
+        baseline,
+        _body(_device(label="nas-02")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device(label="nas-01")),
+    )
+    by_id = _by_id(result.changes)
+    assert by_id["name"].status == AUTO
+    assert by_id["title"].status == AUTO
+    assert 'title: "nas-02"' in result.proposed_body
+    assert "# nas-02\n" in result.proposed_body
+
+
+def test_independently_edited_title_survives_device_rename():
+    """Finding 3: a manual frontmatter title must not be copied from the H1
+    decision; the untouched H1 may follow the device while the manual title
+    stays, surfaced as an explicit title conflict."""
+    baseline = _body(_device(label="homelabcluster"))
+    current = baseline.replace("title: homelabcluster", "title: Recovery Runbook")
+    result = reconcile(
+        current,
+        _body(_device(label="new-name")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device(label="homelabcluster")),
+    )
+    by_id = _by_id(result.changes)
+    # The untouched H1 follows the rename, the manual title does not.
+    assert by_id["name"].status == AUTO
+    assert by_id["title"].status == "conflict"
+    assert "title" in [c.id for c in result.conflicts]
+    assert "title: Recovery Runbook" in result.proposed_body
+    assert "title: new-name" not in result.proposed_body
+    assert "# new-name\n" in result.proposed_body
+
+
+def test_title_conflict_resolves_keep_and_device():
+    baseline = _body(_device(label="homelabcluster"))
+    current = baseline.replace("title: homelabcluster", "title: Recovery Runbook")
+    new = _body(_device(label="new-name"))
+    snapshot = t.facts_snapshot(_device(label="homelabcluster"))
+
+    keep = reconcile(current, new, baseline_body=baseline, snapshot=snapshot, resolutions=[Resolution(id="title", choice=KEEP)])
+    assert "title: Recovery Runbook" in keep.proposed_body
+
+    take = reconcile(current, new, baseline_body=baseline, snapshot=snapshot, resolutions=[Resolution(id="title", choice=DEVICE)])
+    assert 'title: "new-name"' in take.proposed_body
+
+
+def test_custom_title_with_yaml_syntax_is_serialized_semantically():
+    baseline = _body(_device(label="homelabcluster"))
+    current = baseline.replace(
+        "title: homelabcluster", "title: Recovery Runbook\ncustom_frontmatter: 'keep: exact'"
+    )
+    new = _body(_device(label="new-name"))
+
+    for title in ("Recovery: primary", "Recovery #1"):
+        result = reconcile(
+            current,
+            new,
+            baseline_body=baseline,
+            snapshot=t.facts_snapshot(_device(label="homelabcluster")),
+            resolutions=[Resolution(id="title", choice=CUSTOM, custom=title)],
+        )
+        frontmatter = result.proposed_body.split("---", 2)[1]
+        assert yaml.safe_load(frontmatter)["title"] == title
+        assert "custom_frontmatter: 'keep: exact'" in frontmatter
+
+
+def test_title_scalar_replacement_removes_continuation_and_keep_preserves_frontmatter():
+    baseline = _body(_device(label="homelabcluster"))
+    current = baseline.replace(
+        "title: homelabcluster",
+        "title: |\n  Recovery Runbook\ncustom_frontmatter: 'keep: exact'",
+    )
+    new = _body(_device(label="new-name"))
+    snapshot = t.facts_snapshot(_device(label="homelabcluster"))
+
+    device = reconcile(
+        current,
+        new,
+        baseline_body=baseline,
+        snapshot=snapshot,
+        resolutions=[Resolution(id="title", choice=DEVICE)],
+    )
+    frontmatter = device.proposed_body.split("---", 2)[1]
+    assert yaml.safe_load(frontmatter)["title"] == "new-name"
+    assert "Recovery Runbook" not in frontmatter
+    assert "custom_frontmatter: 'keep: exact'" in frontmatter
+
+    kept = reconcile(
+        current,
+        new,
+        baseline_body=baseline,
+        snapshot=snapshot,
+        resolutions=[Resolution(id="title", choice=KEEP)],
+    )
+    assert kept.proposed_body.split("---", 2)[1] == current.split("---", 2)[1]
+
+
+def test_title_replacement_removes_multiline_quoted_scalar():
+    baseline = _body(_device(label="homelabcluster"))
+    current = baseline.replace(
+        "title: homelabcluster",
+        'title: "Recovery\n  Runbook"\ncustom_frontmatter: \'keep: exact\'',
+    )
+    result = reconcile(
+        current,
+        _body(_device(label="new-name")),
+        baseline_body=baseline,
+        snapshot=t.facts_snapshot(_device(label="homelabcluster")),
+        resolutions=[Resolution(id="title", choice=DEVICE)],
+    )
+    frontmatter = result.proposed_body.split("---", 2)[1]
+    assert yaml.safe_load(frontmatter)["title"] == "new-name"
+    assert "Recovery" not in frontmatter and "Runbook" not in frontmatter
+    assert "custom_frontmatter: 'keep: exact'" in frontmatter
 
 
 def test_new_properties_section_is_added_before_user_sections():
@@ -297,17 +784,103 @@ def test_new_properties_section_is_added_before_user_sections():
     assert "| Serial | ABC123 |" in result.proposed_body
 
 
-def test_removed_properties_need_a_decision_and_can_be_dropped():
-    # Device still carries them in the snapshot; the live row dropped its props.
+def test_unknown_history_never_recreates_deleted_generated_sections():
+    generated = _body(_device())
+    sections = (
+        ("Hardware", "### Hardware", "### Properties"),
+        ("Properties", "### Properties", "## Services"),
+        ("Services", "## Services", "## Network"),
+        ("Network", "## Network", "## Configuration"),
+    )
+
+    for name, heading, next_heading in sections:
+        start = generated.index(heading)
+        end = generated.index(next_heading, start)
+        current = generated[:start] + generated[end:]
+        result = reconcile(current, generated, baseline_body=None, snapshot=None)
+
+        assert _by_id(result.changes)[f"section.{name}"].status == "conflict"
+        assert heading not in result.proposed_body
+
+
+def test_complete_baseline_can_add_a_new_generated_section():
+    generated = _body(_device())
+    start = generated.index("### Properties")
+    end = generated.index("## Services", start)
+    baseline = generated[:start] + generated[end:]
+    result = reconcile(baseline, generated, baseline_body=baseline, snapshot=None)
+
+    assert _by_id(result.changes)["section.Properties"].status == AUTO
+    assert "### Properties" in result.proposed_body
+
+
+def test_snapshot_proves_a_new_properties_section_can_be_added():
+    generated = _body(_device())
+    start = generated.index("### Properties")
+    end = generated.index("## Services", start)
+    current = generated[:start] + generated[end:]
+    result = reconcile(
+        current,
+        generated,
+        baseline_body=None,
+        snapshot=t.facts_snapshot(_device(properties=[])),
+    )
+
+    assert _by_id(result.changes)["section.Properties"].status == AUTO
+    assert "### Properties" in result.proposed_body
+
+
+def test_snapshot_does_not_restore_deleted_services_without_a_baseline():
+    generated = _body(_device())
+    start = generated.index("## Services")
+    end = generated.index("## Network", start)
+    current = generated[:start] + generated[end:]
+    result = reconcile(
+        current,
+        _body(_device(ip="192.168.10.25")),
+        baseline_body=None,
+        snapshot=t.facts_snapshot(_device()),
+    )
+
+    assert _by_id(result.changes)["section.Services"].status == "conflict"
+    assert "## Services" not in result.proposed_body
+
+
+def test_snapshot_does_not_restore_deleted_network_without_a_baseline():
+    generated = _body(_device())
+    start = generated.index("## Network")
+    end = generated.index("## Configuration", start)
+    current = generated[:start] + generated[end:]
+    result = reconcile(
+        current,
+        _body(_device(ip="192.168.10.25")),
+        baseline_body=None,
+        snapshot=t.facts_snapshot(_device()),
+    )
+
+    assert _by_id(result.changes)["section.Network"].status == "conflict"
+    assert "## Network" not in result.proposed_body
+
+
+def test_untouched_removed_properties_are_dropped_automatically():
+    # The complete baseline proves the section was device-owned and untouched.
     baseline = _body(_device())
     current = _body(_device())
     new = _body(_device(properties=[]))
     result = reconcile(current, new, baseline_body=baseline, snapshot=t.facts_snapshot(_device()))
+    assert _by_id(result.changes)["section.Properties"].status == AUTO
+    assert "### Properties" not in result.proposed_body
+
+
+def test_edited_removed_properties_require_a_decision():
+    baseline = _body(_device())
+    current = baseline.replace("| Serial | ABC123 |", "| Serial | manual recovery token |")
+    new = _body(_device(properties=[]))
+    result = reconcile(current, new, baseline_body=baseline, snapshot=t.facts_snapshot(_device()))
+
     assert _by_id(result.changes)["section.Properties"].status == "conflict"
-    # Undecided → draft keeps the section.
     assert "### Properties" in result.proposed_body
-    dropped = reconcile(current, new, baseline_body=baseline, snapshot=t.facts_snapshot(_device()), resolutions=[Resolution(id="section.Properties", choice=DEVICE)])
-    assert "### Properties" not in dropped.proposed_body
+    assert "manual recovery token" in result.proposed_body
 
 
 # ── conservatism and fingerprints ───────────────────────────────────────────
@@ -331,6 +904,50 @@ def test_preview_id_binds_body_facts_and_timestamp():
     assert a != preview_id("2026-03-04T10:00:01Z", {"ip": "192.168.10.20"}, "# body")
     assert a != preview_id("2026-03-04T10:00:00Z", {"ip": "192.168.10.25"}, "# body")
     assert a != preview_id("2026-03-04T10:00:00Z", {"ip": "192.168.10.20"}, "# other")
+
+
+def test_preview_id_binds_baseline_and_live_device():
+    base = preview_id("2026-03-04T10:00:00Z", {"ip": "192.168.10.20"}, "# body")
+    baseline = preview_id(
+        "2026-03-04T10:00:00Z", {"ip": "192.168.10.20"}, "# body", baseline_body="# generated"
+    )
+    live = preview_id(
+        "2026-03-04T10:00:00Z",
+        {"ip": "192.168.10.20"},
+        "# body",
+        baseline_body="# generated",
+        live={"facts": {"ip": "192.168.10.30"}, "context": {"zone_label": "lan"}, "generated": "# …"},
+    )
+    assert base != baseline
+    assert baseline != live
+    # A device that moved on between preview and apply changes the id.
+    assert live != preview_id(
+        "2026-03-04T10:00:00Z",
+        {"ip": "192.168.10.20"},
+        "# body",
+        baseline_body="# generated",
+        live={"facts": {"ip": "192.168.10.40"}, "context": {"zone_label": "lan"}, "generated": "# …"},
+    )
+    # A rendered-only change — same facts and context, different generated body.
+    assert live != preview_id(
+        "2026-03-04T10:00:00Z",
+        {"ip": "192.168.10.20"},
+        "# body",
+        baseline_body="# generated",
+        live={
+            "facts": {"ip": "192.168.10.30"},
+            "context": {"zone_label": "lan"},
+            "generated": "# changed rendering",
+        },
+    )
+    # Same device, context and generated body keep it stable.
+    assert live == preview_id(
+        "2026-03-04T10:00:00Z",
+        {"ip": "192.168.10.20"},
+        "# body",
+        baseline_body="# generated",
+        live={"facts": {"ip": "192.168.10.30"}, "context": {"zone_label": "lan"}, "generated": "# …"},
+    )
 
 
 def test_document_drift_clears_after_apply_style_refresh():
