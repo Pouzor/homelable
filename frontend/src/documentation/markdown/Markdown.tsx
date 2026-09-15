@@ -3,6 +3,8 @@ import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeSlug from 'rehype-slug'
 import remarkGfm from 'remark-gfm'
 
+import { cn } from '@/lib/utils'
+
 import { parseFrontmatter } from '../frontmatter'
 import { toggleTaskAtLine } from './tasks'
 import { WikiText } from './WikiText'
@@ -25,6 +27,9 @@ export interface MarkdownProps {
   onCreateFromLink?: (label: string) => void
   /** Called when a task checkbox is toggled, with the rewritten body. */
   onToggleTask?: (nextBody: string) => void
+  /** Source lines whose rendered block should be called out, for comparisons. */
+  highlightedLines?: readonly number[]
+  highlightClassName?: string
   className?: string
 }
 
@@ -35,46 +40,62 @@ export function Markdown({
   onOpenDoc,
   onCreateFromLink,
   onToggleTask,
+  highlightedLines,
+  highlightClassName,
   className,
 }: MarkdownProps) {
   const { content } = useMemo(() => parseFrontmatter(body), [body])
 
   const components = useMemo<Components>(() => {
+    const highlighted = (
+      node?: { position?: { start?: { line?: number }; end?: { line?: number } } },
+      base?: string,
+      highlightedBase?: string,
+    ) => {
+      const start = node?.position?.start?.line
+      const end = node?.position?.end?.line ?? start
+      const intersects = start !== undefined && end !== undefined && highlightedLines?.some((line) => line >= start && line <= end)
+      return cn(base, intersects && highlightedBase, intersects && highlightClassName)
+    }
+
     return {
       // Every text node passes through the wiki-link splitter.
-      p: ({ children }) => (
-        <p className="my-3 leading-relaxed">
+      p: ({ children, node }) => (
+        <p className={highlighted(node, 'my-3 leading-relaxed', 'rounded px-1')}>
           <WikiText docs={docs} devices={devices} onOpenDoc={onOpenDoc} onCreate={onCreateFromLink}>
             {children}
           </WikiText>
         </p>
       ),
-      li: ({ children }) => (
-        <li className="my-1">
+      li: ({ children, node }) => (
+        <li className={highlighted(node, 'my-1', 'rounded px-1')}>
           <WikiText docs={docs} devices={devices} onOpenDoc={onOpenDoc} onCreate={onCreateFromLink}>
             {children}
           </WikiText>
         </li>
       ),
-      td: ({ children }) => (
-        <td className="border border-border px-3 py-1.5 align-top">
+      td: ({ children, node }) => (
+        <td className={highlighted(node, 'border border-border px-3 py-1.5 align-top')}>
           <WikiText docs={docs} devices={devices} onOpenDoc={onOpenDoc} onCreate={onCreateFromLink}>
             {children}
           </WikiText>
         </td>
       ),
-      h1: ({ children, ...props }) => (
-        <h1 {...props} className="mt-8 mb-3 scroll-mt-20 text-2xl font-semibold first:mt-0">
+      tr: ({ children, node }) => (
+        <tr className={highlighted(node)}>{children}</tr>
+      ),
+      h1: ({ children, node, ...props }) => (
+        <h1 {...props} className={highlighted(node, 'mt-8 mb-3 scroll-mt-20 text-2xl font-semibold first:mt-0', 'rounded px-1')}>
           {children}
         </h1>
       ),
-      h2: ({ children, ...props }) => (
-        <h2 {...props} className="mt-8 mb-3 scroll-mt-20 border-b border-border pb-1.5 text-lg font-semibold">
+      h2: ({ children, node, ...props }) => (
+        <h2 {...props} className={highlighted(node, 'mt-8 mb-3 scroll-mt-20 border-b border-border pb-1.5 text-lg font-semibold', 'rounded px-1')}>
           {children}
         </h2>
       ),
-      h3: ({ children, ...props }) => (
-        <h3 {...props} className="mt-6 mb-2 scroll-mt-20 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+      h3: ({ children, node, ...props }) => (
+        <h3 {...props} className={highlighted(node, 'mt-6 mb-2 scroll-mt-20 text-sm font-semibold uppercase tracking-wide text-muted-foreground', 'rounded px-1')}>
           {children}
         </h3>
       ),
@@ -97,8 +118,8 @@ export function Markdown({
       th: ({ children }) => (
         <th className="border border-border bg-muted/40 px-3 py-1.5 text-left font-medium">{children}</th>
       ),
-      blockquote: ({ children }) => (
-        <blockquote className="my-4 border-l-2 border-primary/50 bg-muted/30 py-1 pl-4 text-muted-foreground">
+      blockquote: ({ children, node }) => (
+        <blockquote className={highlighted(node, 'my-4 border-l-2 border-primary/50 bg-muted/30 py-1 pl-4 text-muted-foreground')}>
           {children}
         </blockquote>
       ),
@@ -108,12 +129,12 @@ export function Markdown({
         ) : (
           <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
         ),
-      pre: ({ children }) => (
-        <pre className="my-4 overflow-x-auto rounded-lg border border-border bg-muted/40 p-3">{children}</pre>
+      pre: ({ children, node }) => (
+        <pre className={highlighted(node, 'my-4 overflow-x-auto rounded-lg border border-border bg-muted/40 p-3')}>{children}</pre>
       ),
       hr: () => <hr className="my-6 border-border" />,
-      ul: ({ children }) => <ul className="my-3 list-disc pl-5">{children}</ul>,
-      ol: ({ children }) => <ol className="my-3 list-decimal pl-5">{children}</ol>,
+      ul: ({ children, node }) => <ul className={highlighted(node, 'my-3 list-disc pl-5')}>{children}</ul>,
+      ol: ({ children, node }) => <ol className={highlighted(node, 'my-3 list-decimal pl-5')}>{children}</ol>,
       img: ({ src, alt }) => (
         <img src={typeof src === 'string' ? src : undefined} alt={alt ?? ''} className="my-4 max-w-full rounded-lg border border-border" />
       ),
@@ -133,7 +154,7 @@ export function Markdown({
         )
       },
     }
-  }, [body, devices, docs, onCreateFromLink, onOpenDoc, onToggleTask])
+  }, [body, devices, docs, highlightClassName, highlightedLines, onCreateFromLink, onOpenDoc, onToggleTask])
 
   return (
     <div className={className}>

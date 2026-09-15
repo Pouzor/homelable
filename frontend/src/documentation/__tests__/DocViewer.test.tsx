@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { DocViewer } from '../components/DocViewer'
 import type { Doc } from '../types'
@@ -112,5 +113,30 @@ describe('DocViewer — download', () => {
     expect(screen.queryByLabelText('Regenerate this document')).not.toBeInTheDocument()
     fireEvent.click(screen.getByLabelText('Download this document'))
     expect(onDownload).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('DocViewer — destructive replacement', () => {
+  it('keeps update prominent and puts full replacement in the overflow menu', async () => {
+    const user = userEvent.setup()
+    const onUpdateFromDevice = vi.fn()
+    const onRegenerate = vi.fn()
+    render(
+      <DocViewer
+        {...noop}
+        doc={makeDoc({ kind: 'device', device_id: 'device-1' })}
+        drifted
+        onUpdateFromDevice={onUpdateFromDevice}
+        onRegenerate={onRegenerate}
+        onSetTags={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Update from device' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Regenerate this document' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'More document actions' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Replace entire document…' }))
+    expect(onRegenerate).toHaveBeenCalledTimes(1)
+    expect(onUpdateFromDevice).not.toHaveBeenCalled()
   })
 })
