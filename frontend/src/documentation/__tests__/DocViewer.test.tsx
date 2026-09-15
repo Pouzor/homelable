@@ -132,7 +132,7 @@ describe('DocViewer — destructive replacement', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: 'Update from device' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Update device' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Regenerate this document' })).toBeNull()
     await user.click(screen.getByRole('button', { name: 'More document actions' }))
     await user.click(await screen.findByRole('menuitem', { name: 'Replace entire document…' }))

@@ -165,7 +165,7 @@ export function DocViewer({
               onClick={onUpdateFromDevice}
               className="cursor-pointer gap-1.5 bg-[var(--status-online,#39d353)] text-[#0d1117] hover:bg-[var(--status-online,#39d353)]/90"
             >
-              <RefreshCw size={13} /> Update from device
+              <RefreshCw size={13} /> Update device
             </Button>
           )}
           {history && (
@@ -278,7 +278,7 @@ export function DocViewer({
           )}
           {drifted && (
             <span className="flex items-center gap-1 rounded bg-[var(--status-pending,#e3b341)]/15 px-1.5 py-0.5 text-[var(--status-pending,#e3b341)]">
-              <RefreshCw size={10} /> The device has changed
+              <RefreshCw size={10} /> Update available
             </span>
           )}
         </div>

@@ -15,7 +15,7 @@ const STATE_TITLE: Record<DocState, string> = {
   none: 'No document yet',
   'header-only': 'Only the generated header — nothing written yet',
   written: 'Documented',
-  drifted: 'The device changed since this was written',
+  drifted: 'Update available',
   overdue: 'Due for review',
 }
 

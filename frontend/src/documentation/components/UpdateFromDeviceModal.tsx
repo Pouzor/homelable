@@ -110,7 +110,7 @@ export function UpdateFromDeviceModal({
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2 text-foreground">
             <RefreshCw size={16} className="text-[var(--status-online,#39d353)]" />
-            Update "{docTitle}" from the device
+            Update "{docTitle}"
           </DialogTitle>
           <DialogDescription className="text-xs">
             The document is compared against the device's current facts. Nothing is saved until

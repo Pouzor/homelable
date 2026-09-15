@@ -80,7 +80,7 @@ function renderView(openDoc = doc()) {
     resolutions: {},
   })
   render(<DocumentationView />)
-  return screen.getByRole('button', { name: 'Update from device' })
+  return screen.getByRole('button', { name: 'Update device' })
 }
 
 beforeEach(() => {
