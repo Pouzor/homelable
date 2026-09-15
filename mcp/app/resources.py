@@ -19,6 +19,7 @@ ROUTES = {
     "homelable://edges":        "/api/v1/edges",
     "homelable://scan/pending": "/api/v1/scan/pending",
     "homelable://scan/runs":    "/api/v1/scan/runs",
+    "homelable://documents":    "/api/v1/documents",
 }
 
 RESOURCE_TEMPLATES = [

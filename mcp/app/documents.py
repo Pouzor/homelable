@@ -39,15 +39,20 @@ _SHARED_EDIT_FIELDS: dict[str, Any] = {
         "type": "integer",
         "description": "The document version the outline was read from. Stale versions are refused; re-read and re-preview.",
     },
+    "proposal_token": {
+        "type": "string",
+        "description": "The token returned by document_edit_preview for this edit. Required by apply; it is the server's signature over the exact previewed edit, so an apply can never carry content the assistant did not preview.",
+    },
 }
 
 DOCUMENT_TOOLS: list[Tool] = [
-    Tool(name="list_documents", description="List documents in the Documentation space with their metadata (id, kind, title, version) — never the bodies. Filter by kind, or by the persistent inventory device id to find a device's document. Reading bodies is a deliberate separate step: call read_document.", inputSchema={
+    Tool(name="list_documents", description="List documents in the Documentation space with their metadata (id, kind, title, version) — never the bodies. Filter by kind, by the persistent inventory device id, or by tag. Reading bodies is a deliberate separate step: call read_document. The answer is bounded — pass limit when you need more.", inputSchema={
         "type": "object",
         "properties": {
             "kind": {"type": "string", "enum": _DOC_KINDS, "description": "Filter to one document kind: device, node, design, page or folder."},
             "device_id": {"type": "string", "description": "The persistent inventory device id whose document to list (at most one match)."},
             "tag": {"type": "string", "description": "Filter to documents carrying this frontmatter tag."},
+            "limit": {"type": "integer", "description": "Maximum rows to return (default 100)."},
         },
     }),
     Tool(name="search_documents", description="Full-text search over the Documentation space. Returns bounded hits with a snippet — call read_document for the full text.", inputSchema={
@@ -70,9 +75,9 @@ DOCUMENT_TOOLS: list[Tool] = [
         "required": ["document_id", "operation", "section_index", "content", "expected_version"],
         "properties": _SHARED_EDIT_FIELDS,
     }),
-    Tool(name="document_edit_apply", description="Store a bounded edit that was previewed, against the exact version it was prepared on. Applying the same proposal twice (e.g. a retried lost response) is answered with the stored result instead of writing twice. The new version and the affected section are returned.", inputSchema={
+    Tool(name="document_edit_apply", description="Store a bounded edit that was previewed, against the exact version it was prepared on. The proposal_token returned by document_edit_preview for this edit is required. Applying the same proposal twice (e.g. a retried lost response) is answered with the stored result instead of writing twice. The new version and the affected section are returned.", inputSchema={
         "type": "object",
-        "required": ["document_id", "operation", "section_index", "content", "expected_version"],
+        "required": ["document_id", "operation", "section_index", "content", "expected_version", "proposal_token"],
         "properties": _SHARED_EDIT_FIELDS,
     }),
 ]
@@ -91,7 +96,16 @@ def _slim_doc(doc: dict) -> dict:
 
 async def dispatch_document(name: str, args: dict[str, Any]) -> Any:
     if name == "list_documents":
-        docs = await backend.get("/api/v1/documents")
+        # Filters go to the backend so the listing is narrowed there, not pulled
+        # whole and truncated here. A client-side limit keeps the answer bounded
+        # regardless of how many documents exist.
+        params = [
+            f"{key}={quote(str(args[key]))}"
+            for key in ("kind", "device_id", "tag")
+            if args.get(key)
+        ]
+        qs = f"?{'&'.join(params)}" if params else ""
+        docs = await backend.get(f"/api/v1/documents{qs}")
         rows: list[dict] = docs if isinstance(docs, list) else []
         if args.get("kind"):
             rows = [d for d in rows if d.get("kind") == args["kind"]]
@@ -100,7 +114,7 @@ async def dispatch_document(name: str, args: dict[str, Any]) -> Any:
         if args.get("tag"):
             wanted = args["tag"].lower()
             rows = [d for d in rows if any(str(t).lower() == wanted for t in (d.get("tags") or []))]
-        return [_slim_doc(d) for d in rows]
+        return [_slim_doc(d) for d in rows[: int(args.get("limit") or 100)]]
 
     if name == "search_documents":
         limit = args.get("limit", 25)
@@ -135,7 +149,16 @@ async def _read(args: dict[str, Any]) -> dict[str, Any]:
     if not document_id:
         raise ValueError("read_document: provide document_id or device_id")
     doc: dict[str, Any] = await backend.get(f"/api/v1/documents/{document_id}")  # type: ignore[assignment]
+    # The body and outline are fetched in two requests. If the document is edited
+    # between them the outline may be from a different version than the body,
+    # mixing content from two states. Retry once when the versions don't match.
+    # Skip the check when the doc carries no version (device-id resolved listings).
     outline: dict[str, Any] = await backend.get(f"/api/v1/documents/{document_id}/sections")  # type: ignore[assignment]
+    if doc.get("version") is not None:
+        for _attempt in range(2):
+            if doc.get("version") == outline.get("version"):
+                break
+            outline = await backend.get(f"/api/v1/documents/{document_id}/sections")  # type: ignore[assignment]
     return {
         "document": {
             "id": doc.get("id"),
@@ -157,11 +180,10 @@ async def _read(args: dict[str, Any]) -> dict[str, Any]:
 
 async def _edit(name: str, args: dict[str, Any]) -> dict[str, Any]:
     document_id: str = args["document_id"]
-    body = {
-        k: v
-        for k, v in args.items()
-        if k in ("operation", "section_index", "content", "heading", "level", "expected_version")
-        and v is not None
-    }
+    allowed = ("operation", "section_index", "content", "heading", "level", "expected_version", "proposal_token")
+    body = {k: v for k, v in args.items() if k in allowed and v is not None}
+    if name == "document_edit_apply":
+        if not body.get("proposal_token"):
+            raise ValueError("document_edit_apply: proposal_token from document_edit_preview is required")
     endpoint = "preview" if name == "document_edit_preview" else "apply"
     return await backend.post(f"/api/v1/documents/{document_id}/sections/{endpoint}", body)  # type: ignore[return-value]

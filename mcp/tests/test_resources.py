@@ -44,6 +44,15 @@ async def test_read_scan_pending(mock_backend):
 
 
 @pytest.mark.anyio
+async def test_read_documents_listing(mock_backend):
+    # Regression: homelable://documents was advertised in the resource list
+    # but absent from ROUTES, so a read answered "Unknown resource URI".
+    result = await read_resource("homelable://documents")
+    mock_backend.get.assert_called_once_with("/api/v1/documents")
+    assert json.loads(result[0].content) == {"data": "ok"}
+
+
+@pytest.mark.anyio
 async def test_read_unknown_uri(mock_backend):
     with pytest.raises(ValueError, match="Unknown resource URI"):
         await read_resource("homelable://unknown")

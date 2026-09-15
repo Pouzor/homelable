@@ -112,6 +112,37 @@ def test_parse_sections_body_end_of_last_child_at_document_end():
     assert troub.body_end == len(BODY)
 
 
+def test_parent_always_contains_its_children_at_eof():
+    """A parent's editable area must not depend on a trailing sibling.
+
+    Regression for issue #485 review finding 5: without the closing sibling the
+    old code ended the parent *before* its first child, but with one it ended at
+    the sibling's heading — so whether `replace` removed the children depended
+    on a section that came after them.
+    """
+    without_sibling = "# A\n\nHello\n\n## B\n\nchild\n"
+    with_sibling = "# A\n\nHello\n\n## B\n\nchild\n\n# C\n\nother\n"
+
+    a_without = parse_sections(without_sibling)[0]
+    b_without = parse_sections(without_sibling)[1]
+    a_with, b_with, c_with = parse_sections(with_sibling)
+
+    # Both documents hold B inside A's editable area, whatever follows it.
+    for a, b in ((a_without, b_without), (a_with, b_with)):
+        assert a.body_start <= b.heading_offset < a.body_end
+
+    # Replacing A removes its children either way, and only its own editable
+    # area — the trailing sibling C survives in the second document.
+    replaced_without, _, _ = apply_edit(without_sibling, "replace", 0, "only this")
+    assert "only this" in replaced_without
+    assert "## B" not in replaced_without
+    replaced_with, _, _ = apply_edit(with_sibling, "replace", 0, "only this")
+    assert "only this" in replaced_with
+    assert "## B" not in replaced_with
+    assert "# C" in replaced_with
+    assert c_with.heading == "C"
+
+
 def test_parse_sections_empty_body():
     assert parse_sections("") == []
     assert parse_sections(None) == []
@@ -430,3 +461,109 @@ def test_append_to_flat_section():
     new_body, _, sectxt = apply_edit(FLAT, "append", 0, "extra")
     assert "extra" in sectxt
     assert "# B" in new_body
+
+
+# ── markdown safety (issue #485 review finding 3) ────────────────────────────
+
+
+def test_parse_sections_ignores_yaml_comments_in_frontmatter():
+    """A `# comment` inside the frontmatter is YAML, not a section heading.
+
+    The GUI offers every section's heading as an editable slot; a frontmatter
+    comment offered the same way would let an edit rewrite the document's own
+    metadata block.
+    """
+    body = "---\ntitle: nas-01\n# not a heading, just yaml\n---\n\n# nas-01\n\n## Services\n"
+    secs = parse_sections(body)
+    headings = [s.heading for s in secs]
+    assert headings == ["nas-01", "Services"]
+    assert secs[0].heading_offset >= 0
+    assert "title: nas-01" not in headings
+
+
+def test_parse_sections_frontmatter_offsets_stay_byte_aligned():
+    new_body, _, sectxt = apply_edit(BODY, "append", 0, "extra line")
+    assert sectxt.rstrip().endswith("extra line")
+    assert "# Services" in new_body
+    # The truncated headings proof the replacement never clobbered structure.
+    rebuilt = parse_sections(new_body)
+    assert [s.heading for s in rebuilt] == [
+        "nas-01",
+        "Services",
+        "Operations",
+        "Start / stop",
+        "Backup",
+        "Update procedure",
+        "Troubleshooting",
+    ]
+
+
+def test_parse_sections_closing_fence_with_trailing_text_stays_open():
+    """A closer that carries trailing text never closes the fence.
+
+    Some fence-lookalike lines end with metadata (`` ```bash extra ``); per
+    CommonMark only a run followed by spaces or tabs closes. If such a line were
+    accepted as a closer, everything after it — up to and including later
+    sections — would render inside the code block while still being parsed as
+    headings, so the edit targets and the rendered output would disagree.
+    """
+    body = "# H\n\n```\nfirst\n```still open\n\n# After\n\nstill code\n"
+    secs = parse_sections(body)
+    assert [s.heading for s in secs] == ["H"]
+    assert secs[0].body_end == len(body)
+
+
+def test_validate_accepts_headings_inside_closed_fence():
+    """`#` inside a *properly closed* fence is code, not an escape.
+
+    The old validation scanned every line for shallow headings without tracking
+    fences, so an innocent code block caused a false "would escape the section"
+    rejection.
+    """
+    content = "```sh\n# a shell comment\n```\n\nreal note"
+    new_body, _, sectxt = apply_edit(BODY, "append", 4, content)
+    assert "real note" in sectxt
+
+
+def test_validate_rejects_unclosed_fence_even_with_hash_lines():
+    content = "```\n# comment\nnever closed"
+    with pytest.raises(SectionError, match="unclosed code fence"):
+        apply_edit(BODY, "append", 4, content)
+
+
+def test_insert_rejects_multiline_heading():
+    """`Backup\n# Außerhalb` in the heading slot is two headings, not one.
+
+    The newline would turn the trailing `# Außerhalb` into a top-level heading
+    outside the target section — the exact escape the bound is meant to stop.
+    """
+    with pytest.raises(SectionError, match="single line"):
+        apply_edit(BODY, "insert", 4, "body", heading="Backup\n# Außerhalb", level=4)
+
+
+def test_parse_sections_setext_headings():
+    """Setext headings (`Text` over `=`/`-`) count like ATX ones."""
+    body = "Title\n=====\n\nintro\n\nSub title\n--------\n\nbody\n\n## Real\n"
+    secs = parse_sections(body)
+    assert [(s.heading, s.level) for s in secs] == [
+        ("Title", 1),
+        ("Sub title", 2),
+        ("Real", 2),
+    ]
+    # The setext heading's body starts after its underline, not after the text.
+    assert body[secs[0].body_start:].lstrip().startswith("intro")
+
+
+def test_parse_sections_thematic_break_is_not_a_heading():
+    """`---` between paragraphs is a break, never a level-2 heading."""
+    body = "# A\n\nbefore\n\n---\n\nafter\n\n# B\n"
+    secs = parse_sections(body)
+    assert [s.heading for s in secs] == ["A", "B"]
+
+
+def test_validate_rejects_setext_heading_escape():
+    """A paragraph plus `---` smuggles a level-2 heading into the content."""
+    with pytest.raises(SectionError, match="setext level 2 heading"):
+        apply_edit(BODY, "replace", 4, "hidden heading\n---")
+    # A `---` separated from text by a blank line is a break, not an escape.
+    apply_edit(BODY, "replace", 4, "line\n\n---\n\nanother")

@@ -109,6 +109,12 @@ export interface DocsState {
   /** A recovered draft awaiting the user's yes or no. */
   pendingDraft: string | null
   /**
+   * The offered draft was written against an older version of the document
+   * than the one just opened. Restoring it replaces text that changed since —
+   * the banner says so, because adopting a stale draft is a conscious choice.
+   */
+  pendingDraftStale: boolean
+  /**
    * A save was refused because the document moved underneath the edit — an
    * assistant's apply landed first (409). Holds the server's newer body so the
    * editor can offer to discard the stale draft and read it. The lock keeps
@@ -217,6 +223,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   dirty: false,
   saving: false,
   pendingDraft: null,
+  pendingDraftStale: false,
   conflict: null,
 
   revisions: [],
@@ -257,6 +264,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       draft: null,
       dirty: false,
       pendingDraft: null,
+      pendingDraftStale: false,
       conflict: null,
       revisions: [],
       revisionsLoading: false,
@@ -265,16 +273,18 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
     })
     try {
       const { data } = await documentsApi.get(id)
-      // A draft newer than the stored document is unsaved work from a previous
-      // session; offer it rather than silently applying or dropping it.
+      // A draft differing from the stored body is unsaved work from a previous
+      // session; offer it rather than silently applying or dropping it. A draft
+      // taken against an older version is offered too — never silently cleared —
+      // so restoring it is a conscious choice to replace text that changed since.
       const draft = readDraft(id)
-      const stale = draft !== null && draft.base !== data.updated_at
       set({
         openDoc: data,
         openLoading: false,
-        pendingDraft: draft && !stale && draft.body !== data.body ? draft.body : null,
+        pendingDraft: draft && draft.body !== data.body ? draft.body : null,
+        pendingDraftStale:
+          draft !== null && draft.body !== data.body && draft.base !== data.updated_at,
       })
-      if (draft && stale) clearDraft(id)
       writeUi({ ...readUi(), lastDocId: id })
       // Not awaited: the document renders now, the "Linked from" block fills in.
       void get().loadBacklinks(id)
@@ -312,6 +322,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       draft: null,
       dirty: false,
       pendingDraft: null,
+      pendingDraftStale: false,
       conflict: null,
       revisions: [],
       revisionsLoading: false,
@@ -372,11 +383,14 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
             conflict: fresh.data,
             loadError: 'This document was edited by an assistant while you had it open.',
           })
+          // The draft keeps the base it was taken against. Re-basing it on the
+          // fresher timestamp would make the old draft look current, so a later
+          // reopen would replay it over the assistant's text without a conflict
+          // — the very overwrite the version guard exists to stop.
           writeDraft(openDoc.id, {
             body: draft,
             savedAt: Date.now(),
-            // Re-based on the newer version so re-reading still offers the draft.
-            base: fresh.data.updated_at,
+            base: readDraft(openDoc.id)?.base ?? openDoc.updated_at,
           })
         }
       }
@@ -415,7 +429,12 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       draft: pendingDraft,
       dirty: pendingDraft !== openDoc.body,
       pendingDraft: null,
+      pendingDraftStale: false,
     })
+    // Adopting the draft is the conscious moment the base moves: from here on
+    // the draft is being edited against the version just opened, not the one it
+    // was originally taken against.
+    writeDraft(openDoc.id, { body: pendingDraft, savedAt: Date.now(), base: openDoc.updated_at })
   },
 
   discardPendingDraft: () => {

@@ -40,6 +40,7 @@ function summary(overrides: Partial<DocumentSummary> = {}): DocumentSummary {
     title: 'Page',
     slug: 'page',
     sort_order: 0,
+    version: 1,
     tags: [],
     frontmatter: {},
     starred: false,
@@ -132,7 +133,7 @@ describe('editing', () => {
     useDocsStore.getState().setDraft('changed')
 
     expect(await useDocsStore.getState().save()).toBe(true)
-    expect(api.update).toHaveBeenCalledWith('doc-1', { body: 'changed' })
+    expect(api.update).toHaveBeenCalledWith('doc-1', { body: 'changed', expected_version: 1 })
     expect(readDraft('doc-1')).toBeNull()
     expect(useDocsStore.getState().dirty).toBe(false)
     expect(useDocsStore.getState().docs[0].updated_at).toBe('later')
@@ -146,6 +147,23 @@ describe('editing', () => {
     expect(await useDocsStore.getState().save()).toBe(false)
     expect(readDraft('doc-1')?.body).toBe('changed')
     expect(useDocsStore.getState().loadError).toBe('server said no')
+  })
+
+  it('keeps the original base when a 409 bounces the save', async () => {
+    // The review repro: re-basing the draft on the fresh timestamp made the old
+    // draft look current, so a reopen replayed it over the assistant's text
+    // without a conflict. The base must stay the one the draft was written on.
+    api.update.mockRejectedValue({ response: { status: 409 } } as never)
+    api.get.mockResolvedValue({
+      data: doc({ body: 'assistant text', version: 2, updated_at: '2026-01-02T00:00:00Z' }),
+    } as never)
+    useDocsStore.setState({ docs: [summary()] })
+    useDocsStore.getState().startEdit()
+    useDocsStore.getState().setDraft('my words')
+
+    expect(await useDocsStore.getState().save()).toBe(false)
+    expect(useDocsStore.getState().conflict?.body).toBe('assistant text')
+    expect(readDraft('doc-1')?.base).toBe('2026-01-01T00:00:00Z')
   })
 
   it('does nothing when there is no draft to save', async () => {
@@ -165,14 +183,17 @@ describe('opening a document with a draft on disk', () => {
     expect(useDocsStore.getState().pendingDraft).toBe('unsaved')
   })
 
-  it('throws away a draft taken against an older version', async () => {
-    // The document changed elsewhere; replaying the old draft would revert it.
+  it('offers a draft taken against an older version instead of throwing it away', async () => {
+    // The document changed elsewhere; replaying the old draft would revert it,
+    // so it must be offered as a *conscious* choice, never applied or silently
+    // cleared.
     writeDraft('doc-1', { body: 'unsaved', savedAt: Date.now(), base: 'an-older-version' })
     api.get.mockResolvedValue({ data: doc() } as never)
 
     await useDocsStore.getState().open('doc-1')
-    expect(useDocsStore.getState().pendingDraft).toBeNull()
-    expect(readDraft('doc-1')).toBeNull()
+    expect(useDocsStore.getState().pendingDraft).toBe('unsaved')
+    expect(useDocsStore.getState().pendingDraftStale).toBe(true)
+    expect(readDraft('doc-1')?.body).toBe('unsaved')
   })
 
   it('offers nothing when the draft matches what was saved', async () => {
@@ -191,6 +212,30 @@ describe('opening a document with a draft on disk', () => {
     useDocsStore.getState().acceptPendingDraft()
     expect(useDocsStore.getState().draft).toBe('unsaved')
     expect(useDocsStore.getState().dirty).toBe(true)
+  })
+
+  it('re-bases a recovered draft on adoption, so a later reopen finds it current', async () => {
+    writeDraft('doc-1', { body: 'old human draft', savedAt: Date.now(), base: '2026-01-01T00:00:00Z' })
+    api.get.mockResolvedValue({ data: doc({ updated_at: '2026-01-02T00:00:00Z' }) } as never)
+    await useDocsStore.getState().open('doc-1')
+
+    useDocsStore.getState().acceptPendingDraft()
+    expect(useDocsStore.getState().pendingDraftStale).toBe(false)
+    expect(readDraft('doc-1')?.base).toBe('2026-01-02T00:00:00Z')
+  })
+
+  it('offers a conflict-bounced draft as stale on reopen instead of replaying it', async () => {
+    // The full repro: a 409 save leaves the draft with its original base, so a
+    // reopen must flag it stale and hand the user the decision — never a silent
+    // replay over the assistant's text, and never a silent discard of the
+    // human's work.
+    writeDraft('doc-1', { body: 'old human draft', savedAt: Date.now(), base: '2026-01-01T00:00:00Z' })
+    api.get.mockResolvedValue({ data: doc({ updated_at: '2026-01-02T00:00:00Z' }) } as never)
+
+    await useDocsStore.getState().open('doc-1')
+    expect(useDocsStore.getState().pendingDraft).toBe('old human draft')
+    expect(useDocsStore.getState().pendingDraftStale).toBe(true)
+    expect(readDraft('doc-1')).not.toBeNull()
   })
 
   it('discards the offered draft on request', async () => {
@@ -268,7 +313,10 @@ describe('mutations', () => {
     api.update.mockResolvedValue({ data: doc({ tags: ['prod'] }) } as never)
     useDocsStore.setState({ docs: [summary()], openDoc: doc({ body: '---\ntitle: NAS\n---\n\n# NAS\n' }) })
     await useDocsStore.getState().setTags(['prod'])
-    expect(api.update).toHaveBeenCalledWith('doc-1', { body: '---\ntitle: NAS\ntags: [prod]\n---\n\n# NAS\n' })
+    expect(api.update).toHaveBeenCalledWith('doc-1', {
+      body: '---\ntitle: NAS\ntags: [prod]\n---\n\n# NAS\n',
+      expected_version: 1,
+    })
     expect(useDocsStore.getState().docs[0].tags).toEqual(['prod'])
   })
 

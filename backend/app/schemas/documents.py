@@ -55,11 +55,11 @@ class DocumentUpdate(BaseModel):
     # Accept the device's current facts as documented, clearing the drift
     # banner without touching the body.
     resync_facts: bool | None = None
-    # Optimistic-lock guard for body writes: the version the caller's draft was
-    # based on. A whole-body save that does not name a version is allowed (a
-    # rename or a star is not a body edit), but a save that names a version
-    # newer than the current one is refused so an MCP edit cannot be silently
-    # overwritten by a GUI save made from a stale draft.
+    # Optimistic-lock guard for body writes, and it is *required* for them: a
+    # body save must name the version it was based on, so a save made from a
+    # stale draft cannot silently overwrite an MCP edit (or another writer) made
+    # since the draft was read. Non-body fields (a rename, a star, a reviewed
+    # flag) have no version guard — they do not rewrite anyone's text.
     expected_version: int | None = Field(default=None, ge=1)
 
 
@@ -237,6 +237,23 @@ class SectionEditRequest(BaseModel):
     expected_version: int = Field(ge=1)
 
 
+class SectionApplyRequest(SectionEditRequest):
+    """An edit the caller swears it previewed.
+
+    Adds the `proposal_token` minted by `/sections/preview`. The token is a
+    server-signed digest of the document, version, operation, target and content
+    of exactly that preview; the apply recomputes it and refuses any request whose
+    fields do not match their own token — so an apply can never carry an edit that
+    differs from the one the caller saw.
+    """
+
+    proposal_token: str = Field(
+        min_length=16,
+        max_length=64,
+        description="The `proposal_token` returned by `/sections/preview` for this exact edit.",
+    )
+
+
 class SectionPreview(BaseModel):
     """The bounded edit, without a single byte written."""
 
@@ -244,6 +261,7 @@ class SectionPreview(BaseModel):
     title: str
     version: int
     proposal_id: str
+    proposal_token: str
     section: SectionItem
     operation: str
     # The section's body before and after the edit, so the caller can read

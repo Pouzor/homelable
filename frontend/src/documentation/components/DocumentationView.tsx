@@ -51,6 +51,7 @@ export function DocumentationView() {
     dirty,
     saving,
     pendingDraft,
+    pendingDraftStale,
     startEdit,
     setDraft,
     cancelEdit,
@@ -518,7 +519,9 @@ export function DocumentationView() {
         {pendingDraft !== null && (
           <div className="flex items-center gap-2 border-b border-border bg-[var(--status-pending,#e3b341)]/10 px-4 py-1.5 text-xs">
             <span className="text-[var(--status-pending,#e3b341)]">
-              Unsaved changes from a previous session were found.
+              {pendingDraftStale
+                ? 'Unsaved changes from an older version of this document were found — restoring them replaces the newer text.'
+                : 'Unsaved changes from a previous session were found.'}
             </span>
             <Button size="xs" variant="secondary" className="cursor-pointer" onClick={acceptPendingDraft}>
               Restore them
