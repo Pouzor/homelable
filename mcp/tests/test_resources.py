@@ -48,8 +48,20 @@ async def test_read_documents_listing(mock_backend):
     # Regression: homelable://documents was advertised in the resource list
     # but absent from ROUTES, so a read answered "Unknown resource URI".
     result = await read_resource("homelable://documents")
-    mock_backend.get.assert_called_once_with("/api/v1/documents")
+    mock_backend.get.assert_called_once_with("/api/v1/documents?limit=100&offset=0")
     assert json.loads(result[0].content) == {"data": "ok"}
+
+
+@pytest.mark.anyio
+async def test_read_documents_listing_through_mcp_client_session(mock_backend):
+    from app.main import mcp_server
+    from mcp.shared.memory import create_connected_server_and_client_session
+
+    mock_backend.get = AsyncMock(return_value={"documents": [{"id": "doc-1"}]})
+    with patch("app.resources.backend", mock_backend):
+        async with create_connected_server_and_client_session(mcp_server) as session:
+            result = await session.read_resource("homelable://documents")
+    assert json.loads(result.contents[0].text) == {"documents": [{"id": "doc-1"}]}
 
 
 @pytest.mark.anyio

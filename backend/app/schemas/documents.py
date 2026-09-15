@@ -63,6 +63,12 @@ class DocumentUpdate(BaseModel):
     expected_version: int | None = Field(default=None, ge=1)
 
 
+class ExpectedVersionRequest(BaseModel):
+    """The document version a destructive whole-body action was prepared on."""
+
+    expected_version: int = Field(ge=1)
+
+
 class DocumentSummary(BaseModel):
     """Everything the tree needs. Never carries a body — listings stay small."""
 
@@ -217,10 +223,10 @@ class SectionOutline(BaseModel):
 class SectionEditRequest(BaseModel):
     """What one bounded edit must name.
 
-    `append` adds prose at the end of the named section (replacing the
-    template's empty prompt when the section is still a placeholder), `replace`
-    swaps the section's body for `content`, and `insert` adds a new subsection
-    — `heading` / `level` required — at the top of the named section's body.
+    `append` adds prose after the section's introduction, before existing child
+    sections (replacing an empty template prompt). `replace` replaces the whole
+    selected subtree, including descendants. `insert` adds a first child after
+    the introduction; `heading` is required and `level` is optional.
     """
 
     operation: Literal["append", "replace", "insert"]

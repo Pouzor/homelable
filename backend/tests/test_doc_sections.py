@@ -13,6 +13,7 @@ from app.services.doc_sections import (
     outline,
     parse_sections,
     proposal_id,
+    sign_proposal,
 )
 
 BODY = """\
@@ -483,7 +484,7 @@ def test_parse_sections_ignores_yaml_comments_in_frontmatter():
 
 def test_parse_sections_frontmatter_offsets_stay_byte_aligned():
     new_body, _, sectxt = apply_edit(BODY, "append", 0, "extra line")
-    assert sectxt.rstrip().endswith("extra line")
+    assert sectxt.index("extra line") < sectxt.index("## Services")
     assert "# Services" in new_body
     # The truncated headings proof the replacement never clobbered structure.
     rebuilt = parse_sections(new_body)
@@ -551,7 +552,7 @@ def test_parse_sections_setext_headings():
         ("Real", 2),
     ]
     # The setext heading's body starts after its underline, not after the text.
-    assert body[secs[0].body_start:].lstrip().startswith("intro")
+    assert body[secs[0].body_start :].lstrip().startswith("intro")
 
 
 def test_parse_sections_thematic_break_is_not_a_heading():
@@ -567,3 +568,228 @@ def test_validate_rejects_setext_heading_escape():
         apply_edit(BODY, "replace", 4, "hidden heading\n---")
     # A `---` separated from text by a blank line is a break, not an escape.
     apply_edit(BODY, "replace", 4, "line\n\n---\n\nanother")
+
+
+def test_parse_sections_html_comment_and_block_do_not_leak_headings():
+    """`# …` inside an HTML comment or block is HTML text, not a heading.
+
+    Issue #485 repro: the old line scanner saw the `# hidden` line inside
+    `<!-- … -->` / `<div>…</div>` and offered it as an editable section, so an
+    edit could push content into what is really raw HTML.
+    """
+    for markdown in ("# A\n\n<!--\n# hidden\n-->\n\n# B\n", "# A\n\n<div>\n# hidden\n</div>\n\n# B\n"):
+        assert [s.heading for s in parse_sections(markdown)] == ["A", "B"]
+
+
+def test_parse_sections_backtick_in_info_string_is_not_a_fence():
+    """`` ``` bad`info `` carries a backtick in its info string: not an opener.
+
+    Issue #485 repro: the old opener regex allowed any info string, so this
+    line opened a fence that swallowed the rest of the document as code and the
+    later `# B` heading was never offered as a section. CommonMark rejects the
+    line as an opener, and B must survive.
+    """
+    markdown = "# A\n\n``` bad`info\n# B\n```\n\n# C\n"
+    assert [s.heading for s in parse_sections(markdown)] == ["A", "B"]
+
+
+def test_parse_sections_multiline_setext_keeps_full_text():
+    """A setext heading is the whole paragraph above the underline.
+
+    Issue #485 repro: the old scanner kept only the *last* line as the heading
+    text, so `line one\nline two\n===` came back as "line two" even though the
+    rendered heading reads both lines.
+    """
+    markdown = "# A\n\nline one\nline two\n===\n\n# B\n"
+    secs = parse_sections(markdown)
+    assert [s.heading for s in secs] == ["A", "line one\nline two", "B"]
+    heading = secs[1]
+    assert heading.level == 1
+    # Body starts after the underline, not after the last text line.
+    assert markdown[heading.body_start :].lstrip().startswith("# B") or heading.body_start == markdown.index("\n\n# B")
+
+
+def test_parse_sections_crlf_body_stays_byte_aligned():
+    """CRLF line endings survive and keep the offsets byte-exact.
+
+    Only CR/LF are line endings here; a edit of one section must not rewrite or
+    renumber the rest of the document's `\r\n` pairs.
+    """
+    markdown = "# A\r\n\r\nintro\r\n\r\n## B\r\n\r\nchild\r\n\r\n# C\r\n"
+    secs = parse_sections(markdown)
+    assert [s.heading for s in secs] == ["A", "B", "C"]
+    a, b, c = secs
+    assert markdown[a.heading_offset] == "#"
+    assert b.heading_offset == markdown.index("## B")
+    assert "child" in markdown[b.body_start : b.body_end]
+    assert c.heading_offset == markdown.index("# C")
+    new_body, _, _ = apply_edit(markdown, "replace", 1, "new")
+    assert new_body[: b.body_start] == markdown[: b.body_start]
+    assert new_body[new_body.index("# C") :] == markdown[c.heading_offset :]
+    assert "## B\r\nnew\r\n\r\n# C" in new_body
+
+
+def test_parse_sections_eof_heading_without_newline_is_editable():
+    markdown = "# Parent\n\nbody\n\n# Empty"
+    sections = parse_sections(markdown)
+    assert [(section.heading, section.body_start) for section in sections] == [
+        ("Parent", len("# Parent\n")),
+        ("Empty", len(markdown)),
+    ]
+    new_body, _, preview = apply_edit(markdown, "append", 1, "now filled")
+    assert new_body == markdown + "\n\nnow filled\n"
+    assert preview == "\nnow filled\n"
+
+    replaced, _, _ = apply_edit("# Empty", "replace", 0, "now filled")
+    assert replaced == "# Empty\nnow filled\n"
+    inserted, _, _ = apply_edit("# Empty", "insert", 0, "now filled", heading="Child")
+    assert inserted == "# Empty\n\n## Child\nnow filled\n"
+
+    setext = "line one\nline two\n==="
+    [section] = parse_sections(setext)
+    assert section.heading == "line one\nline two"
+    assert section.body_start == len(setext)
+
+
+def test_parse_sections_lone_cr_is_an_ending_but_u2028_is_not():
+    cr = "# A\r\r## B\rtext"
+    sections = parse_sections(cr)
+    assert [section.heading for section in sections] == ["A", "B"]
+    assert sections[1].heading_offset == cr.index("## B")
+
+    unicode_separator = "# A\u2028## not another heading\n# B"
+    sections = parse_sections(unicode_separator)
+    assert [section.heading for section in sections] == ["A\u2028## not another heading", "B"]
+    assert sections[1].heading_offset == unicode_separator.index("# B")
+
+
+@pytest.mark.parametrize("newline", ["\r\n", "\r"])
+def test_edit_preserves_frontmatter_and_suffix_with_non_lf_endings(newline: str):
+    frontmatter = newline.join(("---", "title: NAS", "tags: [a, b]", "---", ""))
+    markdown = frontmatter + newline.join(("# A", "", "old", "", "# B", "", "keep"))
+    [first, second] = parse_sections(markdown)
+    suffix = markdown[second.heading_offset :]
+    new_body, _, _ = apply_edit(markdown, "replace", first.index, "new")
+    assert new_body.startswith(frontmatter)
+    assert new_body[new_body.index("# B") :] == suffix
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_frontmatter_is_masked_before_markdown_parsing(newline: str):
+    """An unclosed Markdown construct in YAML cannot hide the real body."""
+    for yaml_value in ("  ```", "  <!--", "  <script>"):
+        markdown = newline.join(("---", "note: |", yaml_value, "---", "# Real"))
+        sections = parse_sections(markdown)
+        assert [section.heading for section in sections] == ["Real"]
+        assert sections[0].heading_offset == markdown.index("# Real")
+
+
+def test_nested_container_headings_are_not_editable_sections():
+    markdown = "# A\n\n> ## Quoted\n\n- ## Listed\n\n  text\n\n# B\n"
+    sections = parse_sections(markdown)
+    assert [section.heading for section in sections] == ["A", "B"]
+    assert sections[0].body_end == sections[1].heading_offset
+
+
+def test_insert_places_subsection_after_intro_before_children():
+    """Insert lands as the *first child*: after the intro, before the children.
+
+    Issue #485 review guidance: the parent's introductory prose must stay the
+    parent's; the new subsection goes between that intro and the first existing
+    child, and the children keep their relative order.
+    """
+    markdown = "# Parent\n\nintro prose\n\n## Child\n\nkeep me\n\n# Sibling\n\nend\n"
+    new_body, _, sectxt = apply_edit(markdown, "insert", 0, "nested content", heading="New", level=2)
+    assert sectxt.index("intro prose") < sectxt.index("## New") < sectxt.index("## Child")
+    assert "## Child" in sectxt
+    assert "# Sibling" in new_body
+
+
+def test_append_to_parent_stays_before_children_and_preserves_them_exactly():
+    markdown = "# Parent\r\n\r\nintro\r\n\r\n## Child\r\n\r\nkeep *exactly*\r\n\r\n# Sibling\r\n"
+    parent, child, sibling = parse_sections(markdown)
+    child_source = markdown[child.heading_offset : sibling.heading_offset]
+    new_body, _, preview = apply_edit(markdown, "append", parent.index, "added")
+    assert preview.index("intro") < preview.index("added") < preview.index("## Child")
+    child_at = new_body.index("## Child")
+    assert new_body[child_at : new_body.index("# Sibling")] == child_source
+
+
+@pytest.mark.parametrize("operation", ["append", "insert"])
+def test_unclosed_html_cannot_swallow_an_existing_child(operation: str):
+    markdown = "# Parent\n\nintro\n\n## Child\n\nkeep\n\n# Sibling\n\nend\n"
+    kwargs = {"heading": "New", "level": 2} if operation == "insert" else {}
+    with pytest.raises(SectionError, match="hide an existing section"):
+        apply_edit(markdown, operation, 0, "<script>never closed", **kwargs)
+
+
+def test_unclosed_comment_cannot_swallow_an_untouched_suffix():
+    markdown = "# A\n\ntext\n\n# B\n\nkeep\n"
+    with pytest.raises(SectionError, match="hide an existing section"):
+        apply_edit(markdown, "append", 0, "<!-- never closed")
+
+
+def test_insert_cannot_silently_reparent_a_skipped_level_child():
+    markdown = "# Parent\n\nintro\n\n### Existing child\n\nkeep\n"
+    with pytest.raises(SectionError, match="change an existing section's parent"):
+        apply_edit(markdown, "insert", 0, "new", heading="New child")
+
+
+def test_append_heading_cannot_silently_reparent_an_existing_child():
+    markdown = "# Parent\n\nintro\n\n### Existing child\n\nkeep\n"
+    with pytest.raises(SectionError, match="change an existing section's parent"):
+        apply_edit(markdown, "append", 0, "## Added child\n\nnew")
+
+
+def test_replace_returns_exact_selected_subtree_preview():
+    markdown = "# Parent\n\nintro\n\n## Child\n\nremove\n\n# Sibling\n\nkeep\n"
+    sibling = markdown[markdown.index("# Sibling") :]
+    new_body, section, preview = apply_edit(markdown, "replace", 0, "replacement")
+    assert new_body == "# Parent\nreplacement\n\n" + sibling
+    assert preview == "replacement\n\n"
+    assert section.heading == "Parent"
+    assert "## Child" not in new_body
+
+
+def test_insert_replaces_placeholder_and_can_fill_empty_section():
+    """Into an empty or `_…_` parent the new subsection follows the heading."""
+    empty = "# Parent\n\n## Sibling\n\nend\n"
+    new_body, _, _ = apply_edit(empty, "insert", 0, "nested content", heading="New", level=2)
+    assert "# Parent\n\n## New\nnested content\n\n## Sibling" in new_body
+    placeholder = "# Parent\n\n_…_\n\n## Sibling\n\nend\n"
+    new_body, _, sectxt = apply_edit(placeholder, "insert", 0, "nested content", heading="New", level=2)
+    assert "_…_" not in sectxt
+    assert "# Parent\n\n## New\nnested content\n" in new_body
+
+
+def test_proposal_id_is_delimiter_safe():
+    """Field boundaries cannot be smuggled inside a field's own text.
+
+    Issue #485 repro: `(heading="x|2", level=None, content="y")` and
+    `(heading="x", level=2, content="|y")` are two different edits that produce
+    different bodies, but a `|`-joined payload collided. Canonical JSON keeps
+    them apart, so a preview token can never mask the other edit.
+    """
+    request_a = ("doc", 1, "insert", 0, "x|2", None, "y")
+    request_b = ("doc", 1, "insert", 0, "x", 2, "|y")
+    proposal_a = proposal_id(*request_a)
+    proposal_b = proposal_id(*request_b)
+    assert proposal_a != proposal_b
+    assert sign_proposal(proposal_a, secret="s") != sign_proposal(proposal_b, secret="s")
+    assert (
+        apply_edit("# Root\n\nold\n", "insert", 0, "y", heading="x|2", level=None)[0]
+        != apply_edit("# Root\n\nold\n", "insert", 0, "|y", heading="x", level=2)[0]
+    )
+
+
+def test_validate_accepts_html_block_with_hash_lines():
+    """`# like this` inside an HTML block is not an escape the bound must fight.
+
+    The token-based validation only sees renderable headings, so raw HTML that
+    contains a markdown-lookalike heading inserts cleanly instead of being
+    rejected like a real structural change.
+    """
+    content = "<div>\n# one\n</div>\n\nthen text"
+    new_body, _, sectxt = apply_edit(BODY, "append", 4, content)
+    assert "<div>" in sectxt
+    assert "then text" in sectxt

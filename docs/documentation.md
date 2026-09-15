@@ -102,8 +102,9 @@ the file holds.
 rule that nothing persists on a timer. An unsaved body is mirrored to
 `localStorage` under `homelable_docdraft:<id>` on every keystroke and cleared on
 save. On reopening, a draft taken against the version being opened is *offered*;
-a draft taken against an older version is discarded, because replaying it would
-revert a change made elsewhere.
+a draft taken against an older version is flagged instead of silently replayed.
+The UI keeps the current body available for a manual side-by-side comparison,
+so the user decides what to carry forward without reverting another writer.
 
 `/` at the start of a line opens the insert menu: the generated blocks above,
 plus table, checklist, callout, wiki-link and date.
@@ -116,6 +117,35 @@ resolves by title and an ambiguous one would silently pick the first. The second
 bracket is held back while the menu is open (opening it moves focus, and a
 keystroke landing mid-move belongs to neither box) and given back if you cancel,
 so what you typed survives either way.
+
+### Bounded section edits for agents
+
+The agent-facing API edits Markdown by section instead of accepting a blind
+whole-document rewrite. Its outline follows CommonMark ATX and Setext headings.
+YAML frontmatter, fenced code, raw HTML contents, and headings nested inside a
+blockquote or list are not editable section boundaries: slicing those container
+contents independently would not be safe.
+
+An outline index is valid only with the document version returned alongside it.
+The three operations have deliberately distinct bounds:
+
+- **Append** adds content after the selected section's own introductory text and
+  before its first existing child section. Existing children remain byte-exact.
+- **Insert** creates a new first child after that same introduction and before
+  existing children. Its heading must be deeper than the selected section.
+- **Replace** replaces the selected section's complete subtree: its introduction
+  and every descendant section, but not a following sibling. This destructive
+  subtree boundary is shown in full by the preview.
+
+Preview returns the exact selected subtree before and after the proposed edit
+without writing. Apply accepts only the server-signed token for those exact
+fields and that exact base version; a concurrent save requires a fresh outline
+and preview. Content cannot introduce a heading at the edited section's level or
+above, and an unclosed fence or HTML block (including a comment or script) is
+refused whenever it would hide an untouched child or suffix. Editing is done
+with source slices; every preserved heading must also retain its parent, so
+unrelated Markdown — including CRLF line endings — is not reserialized or
+silently reparented.
 
 ---
 
@@ -158,6 +188,10 @@ actually carries a `[[device:…]]`.
 Every explicit save that changes the body snapshots the previous one, capped at
 `REVISION_LIMIT` (50) per document; so do restore, regenerate, scaffold and the
 notes migration, each recording why.
+
+Restore and regenerate are destructive whole-body writes, so both require an
+`expected_version` JSON field. If another writer saved first, the API returns
+409 and leaves the newer body untouched.
 
 The clock-arrow button in the header opens the history rail: what each version
 was (Saved, Regenerated, Restored, Migrated from notes…), when, and how big.
@@ -216,15 +250,18 @@ Non-destructive and repeatable.
 
 | Method | Path |
 |---|---|
-| `GET` | `/api/v1/documents` — metadata only, filterable by `kind`, `parent_id`, `device_id`, `tag` |
+| `GET` | `/api/v1/documents` — metadata only; filters plus optional `limit` (1–100) / `offset` (≥0); omitting pagination returns the complete GUI tree, while MCP defaults to 100 |
 | `GET` | `/api/v1/documents/{id}` |
 | `POST` | `/api/v1/documents` |
 | `PATCH` | `/api/v1/documents/{id}` |
 | `DELETE` | `/api/v1/documents/{id}` — a folder takes its subtree |
 | `GET` | `/api/v1/documents/{id}/revisions`, `/revisions/{rev_id}` |
 | `GET` | `/api/v1/documents/{id}/backlinks` — the documents linking here |
-| `POST` | `/api/v1/documents/{id}/revisions/{rev_id}/restore` |
-| `POST` | `/api/v1/documents/{id}/regenerate` — erase the body and scaffold it again |
+| `GET` | `/api/v1/documents/{id}/sections` — CommonMark outline bound to the current version |
+| `POST` | `/api/v1/documents/{id}/sections/preview` — exact, read-only section edit preview |
+| `POST` | `/api/v1/documents/{id}/sections/apply` — apply the signed preview against its base version |
+| `POST` | `/api/v1/documents/{id}/revisions/{rev_id}/restore` — JSON `{ "expected_version": number }`; 409 on conflict |
+| `POST` | `/api/v1/documents/{id}/regenerate` — same required version guard; erase the body and scaffold it again |
 | `GET` | `/api/v1/documents/search?q=&limit=` |
 | `GET` | `/api/v1/documents/blocks?block=&device_id=` |
 | `GET` | `/api/v1/documents/coverage` |
@@ -245,5 +282,4 @@ into `localStorage` with no search and no history.
 
 Export/import of the tree as `.md` files, a print/handbook view, an aggregated
 open-tasks view, image upload inside a document (would reuse
-`api/routes/media.py`, full-mode only), and the MCP tools — those are the
-planned second lot.
+`api/routes/media.py`, full-mode only) are planned for a later iteration.

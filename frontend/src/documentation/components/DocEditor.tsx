@@ -41,12 +41,13 @@ interface Props {
   devices?: LinkableDevice[]
   /**
    * A save was refused because the document moved underneath it (an assistant's
-   * edit landed first). The banner offers to load the newer body or to keep
-   * the draft the user was about to save.
+   * edit landed first). Both bodies stay visible until the user discards the
+   * draft or explicitly confirms that the editable text is reconciled.
    */
   conflict?: {
-    reload: () => void
-    keepDraft: () => void
+    currentBody: string
+    useServer: () => void
+    confirmMerge: () => void
   }
 }
 
@@ -248,7 +249,7 @@ export function DocEditor({
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
       event.preventDefault()
-      onSave()
+      if (!conflict) onSave()
       return
     }
     // The editor's own history, not the browser's: a controlled textarea loses
@@ -360,16 +361,19 @@ export function DocEditor({
   return (
     <div className="flex h-full flex-col">
       {conflict && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--status-pending,#e3b341)]/40 bg-[var(--status-pending,#e3b341)]/10 px-4 py-1.5 text-xs">
+        <div
+          role="region"
+          aria-label="Resolve document conflict"
+          className="flex flex-wrap items-center gap-2 border-b border-[var(--status-pending,#e3b341)]/40 bg-[var(--status-pending,#e3b341)]/10 px-4 py-1.5 text-xs"
+        >
           <span className="text-[var(--status-pending,#e3b341)]">
-            This document was edited by an assistant while you had it open. Reload to see the newer
-            text, or keep your draft to merge it in by hand.
+            The server text changed. Merge it into your editable draft, then confirm before saving.
           </span>
-          <Button size="xs" variant="ghost" className="cursor-pointer gap-1" onClick={conflict.reload}>
-            <RefreshCw size={11} /> Reload
+          <Button size="xs" variant="ghost" className="cursor-pointer gap-1" onClick={conflict.useServer}>
+            <RefreshCw size={11} /> Use server text
           </Button>
-          <Button size="xs" variant="secondary" className="cursor-pointer" onClick={conflict.keepDraft}>
-            Keep my draft
+          <Button size="xs" variant="secondary" className="cursor-pointer" onClick={conflict.confirmMerge}>
+            Use merged draft
           </Button>
         </div>
       )}
@@ -401,7 +405,12 @@ export function DocEditor({
           <Button size="sm" variant="ghost" onClick={onCancel} className="cursor-pointer gap-1">
             <X size={13} /> Cancel
           </Button>
-          <Button size="sm" onClick={onSave} disabled={!dirty || saving} className="cursor-pointer gap-1">
+          <Button
+            size="sm"
+            onClick={onSave}
+            disabled={!dirty || saving || Boolean(conflict)}
+            className="cursor-pointer gap-1"
+          >
             <Save size={13} /> {saving ? 'Saving…' : 'Save'}
           </Button>
         </div>
@@ -457,8 +466,22 @@ export function DocEditor({
             <span className="absolute bottom-2 right-3 text-[10px] text-muted-foreground">Inserting…</span>
           )}
         </div>
-        <div className={cn('min-h-0 overflow-y-auto p-4 text-sm', 'hidden lg:block')}>
-          <Markdown body={body} docs={docs} devices={devices} className="max-w-[72ch]" />
+        <div className={cn('min-h-0 overflow-y-auto p-4 text-sm', conflict ? 'block' : 'hidden lg:block')}>
+          {conflict ? (
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Current server text
+              </p>
+              <pre
+                aria-label="Current server document"
+                className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed"
+              >
+                {conflict.currentBody}
+              </pre>
+            </div>
+          ) : (
+            <Markdown body={body} docs={docs} devices={devices} className="max-w-[72ch]" />
+          )}
         </div>
       </div>
     </div>

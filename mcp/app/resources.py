@@ -19,7 +19,9 @@ ROUTES = {
     "homelable://edges":        "/api/v1/edges",
     "homelable://scan/pending": "/api/v1/scan/pending",
     "homelable://scan/runs":    "/api/v1/scan/runs",
-    "homelable://documents":    "/api/v1/documents",
+    # Resource reads have no caller-supplied pagination arguments, so keep the
+    # advertised listing bounded at the backend boundary.
+    "homelable://documents":    "/api/v1/documents?limit=100&offset=0",
 }
 
 RESOURCE_TEMPLATES = [

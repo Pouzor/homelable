@@ -30,6 +30,14 @@ vi.mock('@/api/client', () => ({
 
 const api = vi.mocked(documentsApi)
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
 function doc(overrides: Partial<Doc> = {}): Doc {
   return {
     id: 'doc-1',
@@ -37,6 +45,7 @@ function doc(overrides: Partial<Doc> = {}): Doc {
     title: 'Page',
     slug: 'page',
     sort_order: 0,
+    version: 1,
     tags: [],
     frontmatter: {},
     starred: false,
@@ -174,6 +183,7 @@ describe('restore', () => {
 
     await useDocsStore.getState().restore('doc-1', 'rev-1')
 
+    expect(api.restore).toHaveBeenCalledWith('doc-1', 'rev-1', 1)
     expect(useDocsStore.getState().openDoc?.body).toBe('old body')
     expect(useDocsStore.getState().revisionPreview).toBeNull()
     // The restore itself became a revision, so the list is re-read.
@@ -189,6 +199,63 @@ describe('restore', () => {
 
     expect(useDocsStore.getState().draft).toBe('old body')
     expect(useDocsStore.getState().dirty).toBe(false)
+  })
+
+  it('leaves both the current body and draft intact when a stale restore is refused', async () => {
+    useDocsStore.setState({
+      openDoc: doc({ version: 2 }),
+      docs: [doc({ version: 2 })],
+      draft: 'half-typed',
+      draftBaseVersion: 2,
+      dirty: true,
+    })
+    api.restore.mockRejectedValue({ response: { status: 409, data: { detail: 'stale' } } })
+
+    expect(await useDocsStore.getState().restore('doc-1', 'rev-1')).toBe(false)
+
+    expect(api.restore).toHaveBeenCalledWith('doc-1', 'rev-1', 2)
+    expect(useDocsStore.getState().openDoc?.body).toBe('current body')
+    expect(useDocsStore.getState().draft).toBe('half-typed')
+    expect(useDocsStore.getState().loadError).toBe('stale')
+  })
+
+  it('does not let a delayed restore replace a document opened meanwhile', async () => {
+    const response = deferred<{ data: Doc }>()
+    useDocsStore.setState({ openDoc: doc(), docs: [doc(), doc({ id: 'doc-2', version: 3 })] })
+    api.restore.mockReturnValue(response.promise as never)
+    api.get.mockResolvedValue({ data: doc({ id: 'doc-2', body: 'second', version: 3 }) } as never)
+
+    const restoring = useDocsStore.getState().restore('doc-1', 'rev-1')
+    await useDocsStore.getState().open('doc-2')
+    response.resolve({ data: doc({ body: 'restored', version: 2 }) })
+
+    expect(await restoring).toBe(true)
+    expect(useDocsStore.getState().openDoc?.id).toBe('doc-2')
+    expect(useDocsStore.getState().openDoc?.body).toBe('second')
+  })
+
+  it('preserves input made during restore and requires reconciliation with the restored body', async () => {
+    const response = deferred<{ data: Doc }>()
+    useDocsStore.setState({
+      openDoc: doc(),
+      docs: [doc()],
+      draft: 'half-typed',
+      draftBaseVersion: 1,
+      dirty: true,
+    })
+    api.restore.mockReturnValue(response.promise as never)
+
+    const restoring = useDocsStore.getState().restore('doc-1', 'rev-1')
+    useDocsStore.getState().setDraft('half-typed plus more')
+    response.resolve({ data: doc({ body: 'restored', version: 2 }) })
+
+    expect(await restoring).toBe(true)
+    expect(useDocsStore.getState().openDoc?.body).toBe('restored')
+    expect(useDocsStore.getState().draft).toBe('half-typed plus more')
+    expect(useDocsStore.getState().draftBaseVersion).toBe(1)
+    expect(useDocsStore.getState().conflict?.body).toBe('restored')
+    expect(await useDocsStore.getState().save()).toBe(false)
+    expect(api.update).not.toHaveBeenCalled()
   })
 })
 
@@ -236,6 +303,21 @@ describe('loadBacklinks', () => {
 })
 
 describe('open', () => {
+  it('ignores a slower response for a document superseded by another open', async () => {
+    const first = deferred<{ data: Doc }>()
+    api.get
+      .mockReturnValueOnce(first.promise as never)
+      .mockResolvedValueOnce({ data: doc({ id: 'doc-2', body: 'second' }) } as never)
+
+    const openingFirst = useDocsStore.getState().open('doc-1')
+    await useDocsStore.getState().open('doc-2')
+    first.resolve({ data: doc({ body: 'late first' }) })
+    await openingFirst
+
+    expect(useDocsStore.getState().openDoc?.id).toBe('doc-2')
+    expect(useDocsStore.getState().openDoc?.body).toBe('second')
+  })
+
   it('asks for the backlinks of the document it opened', async () => {
     api.get.mockResolvedValue({ data: doc() } as never)
     api.backlinks.mockResolvedValue({ data: [backlink()] } as never)

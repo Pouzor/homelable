@@ -40,7 +40,7 @@ _DOC = {
 async def test_list_documents(mock_backend):
     mock_backend.get = AsyncMock(return_value=[dict(_DOC)])
     result = await dispatch_document("list_documents", {})
-    mock_backend.get.assert_called_once_with("/api/v1/documents")
+    mock_backend.get.assert_called_once_with("/api/v1/documents?limit=100&offset=0")
     assert result == [{
         "id": "doc-1", "kind": "device", "title": "NAS", "slug": "nas",
         "version": 3, "device_id": "dev-1", "node_id": None, "design_id": None,
@@ -93,18 +93,35 @@ async def test_list_documents_filters_by_tag_case_insensitive(mock_backend):
 async def test_list_documents_forwards_filters_to_the_backend(mock_backend):
     mock_backend.get = AsyncMock(return_value=[])
     await dispatch_document("list_documents", {"kind": "page", "device_id": "dev-1", "tag": "ops"})
-    mock_backend.get.assert_called_once_with("/api/v1/documents?kind=page&device_id=dev-1&tag=ops")
+    mock_backend.get.assert_called_once_with("/api/v1/documents?kind=page&device_id=dev-1&tag=ops&limit=100&offset=0")
 
 
 @pytest.mark.anyio
 async def test_list_documents_is_bounded_by_the_limit(mock_backend):
     rows = [{"id": f"d{i}", "kind": "page", "title": f"Page {i}", "slug": f"p{i}", "tags": [], "created_at": "", "updated_at": ""}
             for i in range(200)]
-    mock_backend.get = AsyncMock(return_value=rows)
-    result = await dispatch_document("list_documents", {"limit": 10})
+    mock_backend.get = AsyncMock(return_value=rows[5:15])
+    result = await dispatch_document("list_documents", {"limit": 10, "offset": 5})
     assert len(result) == 10
-    assert result[0]["id"] == "d0"
-    assert result[-1]["id"] == "d9"
+    assert result[0]["id"] == "d5"
+    assert result[-1]["id"] == "d14"
+    mock_backend.get.assert_called_once_with("/api/v1/documents?limit=10&offset=5")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("field,value", [("limit", 0), ("limit", 101), ("limit", -1), ("offset", -1)])
+async def test_list_documents_rejects_invalid_pagination(mock_backend, field, value):
+    with pytest.raises(ValueError, match=field):
+        await dispatch_document("list_documents", {field: value})
+
+
+def test_list_documents_schema_bounds_pagination():
+    tool = next(t for t in DOCUMENT_TOOLS if t.name == "list_documents")
+    assert tool.inputSchema["properties"]["limit"] == {
+        "type": "integer", "minimum": 1, "maximum": 100, "default": 100,
+        "description": "Maximum rows to return (default 100).",
+    }
+    assert tool.inputSchema["properties"]["offset"]["minimum"] == 0
 
 
 # ── search_documents ─────────────────────────────────────────────────────────
@@ -163,12 +180,16 @@ async def test_read_document_reruns_the_sections_until_the_versions_match(mock_b
     mock_backend.get = AsyncMock(side_effect=[
         {"id": "doc-1", "kind": "device", "title": "NAS", "slug": "nas", "version": 3,
          "device_id": "dev-1", "body": "# NAS\nBackup host.\n"},
-        {"version": 2, "sections": [{"heading": "NAS"}]},   # stale — edited between the requests
-        {"version": 3, "sections": [{"heading": "NAS"}]},   # refetched, now consistent
+        {"version": 2, "sections": [{"heading": "NAS"}]},
+        {"id": "doc-1", "kind": "device", "title": "NAS", "slug": "nas", "version": 3,
+         "device_id": "dev-1", "body": "# NAS\nBackup host.\n"},
+        {"version": 3, "sections": [{"heading": "NAS"}]},
     ])
     result = await dispatch_document("read_document", {"document_id": "doc-1"})
-    assert mock_backend.get.call_args_list[1:] == [
+    assert mock_backend.get.call_args_list == [
+        (("/api/v1/documents/doc-1",), {}),
         (("/api/v1/documents/doc-1/sections",), {}),
+        (("/api/v1/documents/doc-1",), {}),
         (("/api/v1/documents/doc-1/sections",), {}),
     ]
     assert result["document"]["sections"][0]["heading"] == "NAS"
@@ -178,11 +199,11 @@ async def test_read_document_reruns_the_sections_until_the_versions_match(mock_b
 async def test_read_document_by_device_id_resolves_through_the_tree(mock_backend):
     mock_backend.get = AsyncMock(side_effect=[
         [{"id": "doc-1", "kind": "device", "title": "NAS", "slug": "nas", "device_id": "dev-1"}],
-        {"id": "doc-1", "kind": "device", "title": "NAS", "slug": "nas", "device_id": "dev-1", "body": "# NAS"},
+        {"id": "doc-1", "kind": "device", "title": "NAS", "slug": "nas", "device_id": "dev-1", "version": 1, "body": "# NAS"},
         {"version": 1, "sections": []},
     ])
     result = await dispatch_document("read_document", {"device_id": "dev-1"})
-    assert mock_backend.get.call_args_list[0] == (("/api/v1/documents?device_id=dev-1",), {})
+    assert mock_backend.get.call_args_list[0] == (("/api/v1/documents?device_id=dev-1&limit=1&offset=0",), {})
     assert result["document"]["id"] == "doc-1"
 
 
@@ -192,7 +213,7 @@ async def test_read_document_by_device_id_url_encodes(mock_backend):
         [],  # no docs → answered as such
     ])
     result = await dispatch_document("read_document", {"device_id": "rack a"})
-    mock_backend.get.assert_called_once_with("/api/v1/documents?device_id=rack%20a")
+    mock_backend.get.assert_called_once_with("/api/v1/documents?device_id=rack%20a&limit=1&offset=0")
     assert result["document"] is None
 
 
@@ -205,6 +226,28 @@ async def test_read_document_answers_a_device_without_one_without_creating(mock_
     assert result["document"] is None
     assert "no document exists" in result["message"].lower()
     mock_backend.post.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_read_document_fails_after_bounded_mixed_version_retries(mock_backend):
+    mock_backend.get = AsyncMock(side_effect=[
+        {"id": "doc-1", "version": 3, "body": "v3"},
+        {"version": 4, "sections": []},
+    ] * 3)
+    with pytest.raises(ValueError, match="after 3 attempts"):
+        await dispatch_document("read_document", {"document_id": "doc-1"})
+    assert mock_backend.get.await_count == 6
+
+
+@pytest.mark.anyio
+async def test_read_document_rejects_missing_versions(mock_backend):
+    mock_backend.get = AsyncMock(side_effect=[
+        {"id": "doc-1", "body": "body"},
+        {"sections": []},
+    ] * 3)
+    with pytest.raises(ValueError, match="after 3 attempts"):
+        await dispatch_document("read_document", {"document_id": "doc-1"})
+    assert mock_backend.get.await_count == 6
 
 
 @pytest.mark.anyio
@@ -311,3 +354,19 @@ def test_read_document_advertises_a_device_id_selector():
 async def test_unknown_document_tool():
     with pytest.raises(ValueError, match="Unknown documentation tool"):
         await dispatch_document("no_such_tool", {})
+
+
+@pytest.mark.anyio
+async def test_document_tools_work_through_mcp_client_session(mock_backend):
+    """Exercise the registered tool over MCP protocol, not just its dispatcher."""
+    from app.main import mcp_server
+    from mcp.shared.memory import create_connected_server_and_client_session
+
+    mock_backend.get = AsyncMock(return_value=[dict(_DOC)])
+    with patch("app.documents.backend", mock_backend):
+        async with create_connected_server_and_client_session(mcp_server) as session:
+            tools = await session.list_tools()
+            assert any(tool.name == "list_documents" for tool in tools.tools)
+            result = await session.call_tool("list_documents", {"limit": 1, "offset": 0})
+    assert result.isError is not True
+    assert '"id": "doc-1"' in result.content[0].text

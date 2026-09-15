@@ -26,7 +26,7 @@ _SHARED_EDIT_FIELDS: dict[str, Any] = {
     "operation": {
         "type": "string",
         "enum": ["append", "replace", "insert"],
-        "description": "append adds prose at the end of the section; replace swaps its body; insert adds a new subsection (heading + level required).",
+        "description": "append adds prose after the section's introduction, before existing child sections; replace replaces its entire subtree including descendants; insert adds a first child after the introduction (heading required, level optional). Preview shows the full affected subtree.",
     },
     "section_index": {
         "type": "integer",
@@ -46,13 +46,14 @@ _SHARED_EDIT_FIELDS: dict[str, Any] = {
 }
 
 DOCUMENT_TOOLS: list[Tool] = [
-    Tool(name="list_documents", description="List documents in the Documentation space with their metadata (id, kind, title, version) — never the bodies. Filter by kind, by the persistent inventory device id, or by tag. Reading bodies is a deliberate separate step: call read_document. The answer is bounded — pass limit when you need more.", inputSchema={
+    Tool(name="list_documents", description="List documents in the Documentation space with their metadata (id, kind, title, version) — never the bodies. Filter by kind, by the persistent inventory device id, or by tag. Reading bodies is a deliberate separate step: call read_document. Each page contains at most 100 rows; increase offset to read the next page.", inputSchema={
         "type": "object",
         "properties": {
             "kind": {"type": "string", "enum": _DOC_KINDS, "description": "Filter to one document kind: device, node, design, page or folder."},
             "device_id": {"type": "string", "description": "The persistent inventory device id whose document to list (at most one match)."},
             "tag": {"type": "string", "description": "Filter to documents carrying this frontmatter tag."},
-            "limit": {"type": "integer", "description": "Maximum rows to return (default 100)."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100, "description": "Maximum rows to return (default 100)."},
+            "offset": {"type": "integer", "minimum": 0, "default": 0, "description": "Number of matching rows to skip (default 0)."},
         },
     }),
     Tool(name="search_documents", description="Full-text search over the Documentation space. Returns bounded hits with a snippet — call read_document for the full text.", inputSchema={
@@ -85,6 +86,16 @@ DOCUMENT_TOOLS: list[Tool] = [
 DOCUMENT_TOOL_NAMES: set[str] = {tool.name for tool in DOCUMENT_TOOLS}
 
 
+def _document_pagination(args: dict[str, Any]) -> tuple[int, int]:
+    limit = args.get("limit", 100)
+    offset = args.get("offset", 0)
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise ValueError("list_documents: limit must be an integer from 1 to 100")
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        raise ValueError("list_documents: offset must be a non-negative integer")
+    return limit, offset
+
+
 def _slim_doc(doc: dict) -> dict:
     keep = (
         "id", "kind", "title", "slug", "version", "device_id", "node_id",
@@ -96,15 +107,14 @@ def _slim_doc(doc: dict) -> dict:
 
 async def dispatch_document(name: str, args: dict[str, Any]) -> Any:
     if name == "list_documents":
-        # Filters go to the backend so the listing is narrowed there, not pulled
-        # whole and truncated here. A client-side limit keeps the answer bounded
-        # regardless of how many documents exist.
+        limit, offset = _document_pagination(args)
         params = [
             f"{key}={quote(str(args[key]))}"
             for key in ("kind", "device_id", "tag")
             if args.get(key)
         ]
-        qs = f"?{'&'.join(params)}" if params else ""
+        params.extend((f"limit={limit}", f"offset={offset}"))
+        qs = f"?{'&'.join(params)}"
         docs = await backend.get(f"/api/v1/documents{qs}")
         rows: list[dict] = docs if isinstance(docs, list) else []
         if args.get("kind"):
@@ -114,7 +124,7 @@ async def dispatch_document(name: str, args: dict[str, Any]) -> Any:
         if args.get("tag"):
             wanted = args["tag"].lower()
             rows = [d for d in rows if any(str(t).lower() == wanted for t in (d.get("tags") or []))]
-        return [_slim_doc(d) for d in rows[: int(args.get("limit") or 100)]]
+        return [_slim_doc(d) for d in rows]
 
     if name == "search_documents":
         limit = args.get("limit", 25)
@@ -135,7 +145,7 @@ async def _read(args: dict[str, Any]) -> dict[str, Any]:
     if document_id and device_id:
         raise ValueError("read_document: provide exactly one of document_id or device_id")
     if device_id:
-        docs = await backend.get(f"/api/v1/documents?device_id={quote(device_id)}")
+        docs = await backend.get(f"/api/v1/documents?device_id={quote(device_id)}&limit=1&offset=0")
         rows: list[dict] = docs if isinstance(docs, list) else []
         if not rows:
             return {
@@ -148,17 +158,20 @@ async def _read(args: dict[str, Any]) -> dict[str, Any]:
         document_id = str(rows[0]["id"])
     if not document_id:
         raise ValueError("read_document: provide document_id or device_id")
-    doc: dict[str, Any] = await backend.get(f"/api/v1/documents/{document_id}")  # type: ignore[assignment]
-    # The body and outline are fetched in two requests. If the document is edited
-    # between them the outline may be from a different version than the body,
-    # mixing content from two states. Retry once when the versions don't match.
-    # Skip the check when the doc carries no version (device-id resolved listings).
-    outline: dict[str, Any] = await backend.get(f"/api/v1/documents/{document_id}/sections")  # type: ignore[assignment]
-    if doc.get("version") is not None:
-        for _attempt in range(2):
-            if doc.get("version") == outline.get("version"):
-                break
-            outline = await backend.get(f"/api/v1/documents/{document_id}/sections")  # type: ignore[assignment]
+    max_attempts = 3
+    doc: dict[str, Any]
+    outline: dict[str, Any]
+    for _attempt in range(max_attempts):
+        doc = await backend.get(f"/api/v1/documents/{document_id}")  # type: ignore[assignment]
+        outline = await backend.get(f"/api/v1/documents/{document_id}/sections")  # type: ignore[assignment]
+        if doc.get("version") is not None and outline.get("version") is not None and doc.get("version") == outline.get("version"):
+            break
+    else:
+        raise ValueError(
+            f"read_document: could not read document {document_id} consistently "
+            f"after {max_attempts} attempts (body version {doc.get('version')}, "
+            f"outline version {outline.get('version')}); retry"
+        )
     return {
         "document": {
             "id": doc.get("id"),

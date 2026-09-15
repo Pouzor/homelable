@@ -171,6 +171,18 @@ describe('api/client', () => {
     expect(api.post).toHaveBeenCalledWith('/canvas/save', payload)
   })
 
+  it('documentsApi guards restore and regenerate with the expected version', () => {
+    mod.documentsApi.restore('doc-1', 'rev-1', 7)
+    expect(api.post).toHaveBeenCalledWith('/documents/doc-1/revisions/rev-1/restore', {
+      expected_version: 7,
+    })
+
+    mod.documentsApi.regenerate('doc-1', 8)
+    expect(api.post).toHaveBeenCalledWith('/documents/doc-1/regenerate', {
+      expected_version: 8,
+    })
+  })
+
   it('nodesApi CRUD calls correct endpoints', () => {
     mod.nodesApi.create({ a: 1 })
     expect(api.post).toHaveBeenCalledWith('/nodes', { a: 1 })
