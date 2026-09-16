@@ -46,7 +46,7 @@ export interface DocRevision {
   id: string
   document_id: string
   title: string
-  reason: 'edit' | 'restore' | 'import' | 'migrate' | 'scaffold' | 'regenerate'
+  reason: 'edit' | 'restore' | 'import' | 'migrate' | 'scaffold' | 'regenerate' | 'mcp'
   saved_at: string
   size: number
 }

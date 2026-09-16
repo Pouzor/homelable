@@ -232,6 +232,36 @@ Non-destructive and repeatable.
 
 ---
 
+## MCP tools
+
+An AI client reads and writes documents through the MCP server
+(`mcp/app/documents.py`). Every tool is a call to the API above — the server
+never touches the database itself.
+
+| Tool | What |
+|---|---|
+| `search_documentation` | Full-text search, one snippet per hit. The entry point. |
+| `list_documentation` | Summaries, filterable by `kind` / `parent_id` / `device_id` / `tag`. Never a body. |
+| `read_document` | One document in full. |
+| `list_document_revisions`, `read_document_revision` | The history, and the body one revision holds. |
+| `document_backlinks` | What links here. |
+| `create_document` | A new document, from a body or a template. |
+| `update_document` | An edit. The full replacement body, not a patch. |
+| `restore_document_revision` | Put an earlier body back. |
+
+Resources: `homelable://documents` (summaries) and
+`homelable://documents/<id>` (one document, body included).
+
+**Every AI edit is historized.** `update_document` sends
+`revision_reason: "mcp"` whatever the client asks for — `DocumentUpdate` only
+accepts `edit`, `mcp` or `import`, so no caller can dress an edit up as a
+restore either. The replaced body is snapshotted like any other edit and the
+rail says *Saved by an AI client*; restoring it is one click, and that restore is
+itself undoable. There is no delete tool: destroying documentation stays a human
+action.
+
+---
+
 ## Standalone mode
 
 Documents are **full-mode only**. Standalone has no backend to store or search
@@ -244,6 +274,5 @@ into `localStorage` with no search and no history.
 ## Not built yet
 
 Export/import of the tree as `.md` files, a print/handbook view, an aggregated
-open-tasks view, image upload inside a document (would reuse
-`api/routes/media.py`, full-mode only), and the MCP tools — those are the
-planned second lot.
+open-tasks view, and image upload inside a document (would reuse
+`api/routes/media.py`, full-mode only) — the planned second lot.

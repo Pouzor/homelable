@@ -28,6 +28,7 @@ const REASONS: Record<DocRevision['reason'], string> = {
   migrate: 'Migrated from notes',
   scaffold: 'Generated',
   regenerate: 'Regenerated',
+  mcp: 'Saved by an AI client',
 }
 
 function size(bytes: number): string {

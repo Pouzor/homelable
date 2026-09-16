@@ -587,7 +587,7 @@ async def update_document(
         doc.slug = await unique_slug(db, doc.title, parent_id=parent_id, exclude_id=doc.id)
 
     if "body" in sent and sent["body"] is not None and sent["body"] != doc.body:
-        await _record_revision(db, doc, "edit")
+        await _record_revision(db, doc, sent.get("revision_reason") or "edit")
         _apply_body(doc, sent["body"])
         doc.edited_at = _now()
         # An explicit title in the same request still wins: it is applied below.

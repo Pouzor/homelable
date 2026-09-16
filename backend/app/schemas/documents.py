@@ -13,6 +13,11 @@ from app.services.doc_tree import DOCUMENT_KINDS
 # user asks (by zone, subnet, type…) without the server storing a tree.
 DOC_KINDS = set(DOCUMENT_KINDS)
 
+# The reasons a caller may put its own name to. Everything else a revision can
+# say — "restore", "regenerate", "scaffold", "migrate" — belongs to the action
+# that takes it, so no client can dress a plain edit up as one of those.
+CLIENT_REVISION_REASONS = frozenset({"edit", "mcp", "import"})
+
 
 class DocumentCreate(BaseModel):
     kind: str = "page"
@@ -55,6 +60,17 @@ class DocumentUpdate(BaseModel):
     # Accept the device's current facts as documented, clearing the drift
     # banner without touching the body.
     resync_facts: bool | None = None
+    # What the history should say caused this edit. Only read when the body
+    # actually changes — a starred flag or a rename snapshots nothing, so there
+    # is no revision to attribute. Defaults to "edit", the human in the editor.
+    revision_reason: str | None = None
+
+    @field_validator("revision_reason")
+    @classmethod
+    def _known_reason(cls, v: str | None) -> str | None:
+        if v is not None and v not in CLIENT_REVISION_REASONS:
+            raise ValueError(f"revision_reason must be one of {sorted(CLIENT_REVISION_REASONS)}")
+        return v
 
 
 class DocumentSummary(BaseModel):

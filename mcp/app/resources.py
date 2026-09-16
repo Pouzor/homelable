@@ -10,6 +10,7 @@ RESOURCE_LIST = [
     Resource(uri="homelable://edges",          name="Edges",           description="All network edges/links", mimeType="application/json"),
     Resource(uri="homelable://scan/pending",   name="Pending devices", description="Discovered devices awaiting approval", mimeType="application/json"),
     Resource(uri="homelable://scan/runs",      name="Scan history",    description="Recent scan run history", mimeType="application/json"),
+    Resource(uri="homelable://documents",      name="Documentation",   description="Every document as a summary — no bodies; read homelable://documents/<id> for one", mimeType="application/json"),
 ]
 
 ROUTES = {
@@ -18,6 +19,7 @@ ROUTES = {
     "homelable://edges":        "/api/v1/edges",
     "homelable://scan/pending": "/api/v1/scan/pending",
     "homelable://scan/runs":    "/api/v1/scan/runs",
+    "homelable://documents":    "/api/v1/documents",
 }
 
 # read_resource() also serves homelable://nodes/<id>, which is not in
@@ -29,6 +31,12 @@ RESOURCE_TEMPLATES = [
         uriTemplate="homelable://nodes/{node_id}",
         name="Node",
         description="A single node by id",
+        mimeType="application/json",
+    ),
+    ResourceTemplate(
+        uriTemplate="homelable://documents/{document_id}",
+        name="Document",
+        description="One document in full, body included",
         mimeType="application/json",
     ),
 ]
@@ -47,6 +55,11 @@ async def read_resource(uri: str) -> list[ReadResourceContents]:
     if uri.startswith("homelable://nodes/") and uri != "homelable://nodes/":
         node_id = uri.split("/")[-1]
         data = await backend.get(f"/api/v1/nodes/{node_id}")
+        return [_json_contents(data)]
+
+    if uri.startswith("homelable://documents/") and uri != "homelable://documents/":
+        document_id = uri.split("/")[-1]
+        data = await backend.get(f"/api/v1/documents/{document_id}")
         return [_json_contents(data)]
 
     if uri not in ROUTES:
