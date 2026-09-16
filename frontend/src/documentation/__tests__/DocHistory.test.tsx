@@ -109,6 +109,13 @@ describe('DocViewer — history', () => {
     expect(screen.getByText(/2 kB/)).toBeTruthy()
   })
 
+  it('names an AI client as the author of the revision it took', () => {
+    const history = controls({ open: true, revisions: [revision({ reason: 'mcp' })] })
+    render(<DocViewer {...base} doc={makeDoc()} history={history} />)
+
+    expect(screen.getByText('Saved by an AI client')).toBeTruthy()
+  })
+
   it('explains an empty history rather than showing an empty list', () => {
     render(<DocViewer {...base} doc={makeDoc()} history={controls({ open: true })} />)
     expect(screen.getByText(/No earlier version yet/)).toBeTruthy()

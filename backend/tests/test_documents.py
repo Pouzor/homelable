@@ -573,6 +573,38 @@ async def test_saving_an_unchanged_body_records_nothing(client: AsyncClient, hea
     assert (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json() == []
 
 
+async def test_an_edit_can_say_it_came_from_an_ai_client(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="first")
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}",
+        json={"body": "second", "revision_reason": "mcp"},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    revisions = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
+    assert [r["reason"] for r in revisions] == ["mcp"]
+
+
+async def test_an_unknown_revision_reason_is_rejected(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="first")
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}",
+        json={"body": "second", "revision_reason": "restore"},
+        headers=headers,
+    )
+    assert res.status_code == 422
+
+
+async def test_a_revision_reason_without_a_body_change_records_nothing(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="same")
+    await client.patch(
+        f"/api/v1/documents/{doc['id']}",
+        json={"starred": True, "revision_reason": "mcp"},
+        headers=headers,
+    )
+    assert (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json() == []
+
+
 async def test_restoring_brings_back_an_old_body_and_is_itself_undoable(client: AsyncClient, headers: dict):
     doc = await _create(client, headers, title="Page", body="first")
     await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "second"}, headers=headers)

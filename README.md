@@ -440,6 +440,9 @@ Or add it manually to `~/.claude.json`:
 - *"Show me the full canvas topology."*
 - *"How much free U is left in the garage rack?"*
 - *"Mount the NAS in rack 1 and patch its first port to port 12 of the patch panel."*
+- *"Search the documentation for what we wrote about the backup schedule."*
+- *"Write a runbook page for restoring a Proxmox backup, then link it from the NAS document."*
+- *"Show me what changed in the firewall document, and restore the version before the last edit."*
 
 ### Security
 

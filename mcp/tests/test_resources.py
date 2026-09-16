@@ -38,6 +38,24 @@ async def test_read_single_node(mock_backend):
 
 
 @pytest.mark.anyio
+async def test_read_documents(mock_backend):
+    await read_resource("homelable://documents")
+    mock_backend.get.assert_called_once_with("/api/v1/documents")
+
+
+@pytest.mark.anyio
+async def test_read_single_document(mock_backend):
+    await read_resource("homelable://documents/doc-1")
+    mock_backend.get.assert_called_once_with("/api/v1/documents/doc-1")
+
+
+@pytest.mark.anyio
+async def test_read_single_document_anyurl(mock_backend):
+    await read_resource(AnyUrl("homelable://documents/doc-1"))
+    mock_backend.get.assert_called_once_with("/api/v1/documents/doc-1")
+
+
+@pytest.mark.anyio
 async def test_read_scan_pending(mock_backend):
     await read_resource("homelable://scan/pending")
     mock_backend.get.assert_called_once_with("/api/v1/scan/pending")
@@ -110,4 +128,7 @@ async def test_resource_templates_are_registered():
     result = await handler(None)
 
     templates = result.root.resourceTemplates
-    assert [t.uriTemplate for t in templates] == ["homelable://nodes/{node_id}"]
+    assert [t.uriTemplate for t in templates] == [
+        "homelable://nodes/{node_id}",
+        "homelable://documents/{document_id}",
+    ]
