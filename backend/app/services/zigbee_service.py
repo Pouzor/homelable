@@ -120,6 +120,7 @@ def _node_from_z2m(raw: dict[str, Any]) -> dict[str, Any] | None:
 
 def parse_networkmap(
     payload: dict[str, Any],
+    include_mesh_links: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Parse a Z2M ``bridge/response/networkmap`` payload into node + edge lists.
 
@@ -170,13 +171,13 @@ def parse_networkmap(
             coordinator_id = node["id"]
 
     # Z2M `links` is bidirectional/mesh: every pair appears twice and routers
-    # carry sibling-mesh paths. Walk it only to extract LQI per device and to
+    # carry sibling-mesh paths. Walk it only to extract LQI per link and to
     # resolve which router an end device hangs off; do NOT emit edges directly
     # from links. The final edge set is the strict parent→child tree built
     # from parent_id below — that avoids duplicate edges and keeps the visual
     # flow consistent (parent bottom → child top).
     raw_edges: list[dict[str, Any]] = []
-    lqi_by_id: dict[str, int] = {}
+    lqi_by_pair: dict[tuple[str, str], int] = {}
 
     for link in raw_links:
         if not isinstance(link, dict):
@@ -190,13 +191,20 @@ def parse_networkmap(
         if src not in seen_ids or tgt not in seen_ids:
             continue
         raw_edges.append({"source": src, "target": tgt})
-        lqi = link.get("lqi") or link.get("linkquality")
-        if isinstance(lqi, int) and tgt not in lqi_by_id:
-            lqi_by_id[tgt] = lqi
-
-    for node in nodes_list:
-        if node["id"] in lqi_by_id:
-            node["lqi"] = lqi_by_id[node["id"]]
+        # LQI belongs to the *link*, never to one endpoint. Z2M emits
+        # neighbour -> reporting device, so keying it by either side attributes
+        # a neighbour's measurement to a device — and leaves every EndDevice at
+        # None, since a sleepy device keeps no neighbour table and is therefore
+        # never a target. Keep it per ordered pair; project it below.
+        # A falsy `or` would swallow a legitimate lqi == 0 (a dead link, and the
+        # most interesting value of all), so test for None explicitly.
+        lqi = link.get("lqi")
+        if lqi is None:
+            lqi = link.get("linkquality")
+        if isinstance(lqi, int):
+            pair = (src, tgt)
+            previous = lqi_by_pair.get(pair)
+            lqi_by_pair[pair] = lqi if previous is None else max(previous, lqi)
 
     # Build parent_id hierarchy: coordinator → routers → end devices
     if coordinator_id:
@@ -208,12 +216,52 @@ def parse_networkmap(
                 parent = _find_parent_router(node["id"], router_ids, raw_edges)
                 node["parent_id"] = parent or coordinator_id
 
+    # A device's LQI is a *projection* of the link to its parent, reported in
+    # whichever direction Z2M measured it. Deterministic, unlike "whichever
+    # neighbour happened to be listed first".
+    for node in nodes_list:
+        parent = node.get("parent_id")
+        if not parent:
+            continue
+        lqi = _link_lqi(lqi_by_pair, node["id"], parent)
+        if lqi is not None:
+            node["lqi"] = lqi
+
     # Final edges = strict parent → child tree (one edge per non-coordinator)
     edges_list: list[dict[str, Any]] = [
-        {"source": node["parent_id"], "target": node["id"]}
+        {
+            "source": node["parent_id"],
+            "target": node["id"],
+            "lqi": node.get("lqi"),
+            "kind": "tree",
+        }
         for node in nodes_list
         if node.get("parent_id")
     ]
+
+    # Opt-in: also emit the neighbour links the tree drops. Off by default —
+    # a 37-device mesh turns ~36 tree edges into 115, which is unreadable
+    # unless the user asked for it.
+    if include_mesh_links:
+        tree_pairs = {_pair_key(e["source"], e["target"]) for e in edges_list}
+        seen_mesh: set[tuple[str, str]] = set()
+        for edge in raw_edges:
+            src, tgt = edge["source"], edge["target"]
+            pair = _pair_key(src, tgt)
+            # Z2M reports each link once per endpoint that measured it, so the
+            # same pair arrives twice — collapse it to one undirected edge, and
+            # never duplicate one the parent tree already draws.
+            if src == tgt or pair in tree_pairs or pair in seen_mesh:
+                continue
+            seen_mesh.add(pair)
+            edges_list.append(
+                {
+                    "source": src,
+                    "target": tgt,
+                    "lqi": _link_lqi(lqi_by_pair, src, tgt),
+                    "kind": "mesh",
+                }
+            )
 
     return nodes_list, edges_list
 
@@ -234,6 +282,30 @@ def _find_parent_router(
     return None
 
 
+def _link_lqi(
+    lqi_by_pair: dict[tuple[str, str], int],
+    a: str,
+    b: str,
+) -> int | None:
+    """Best LQI reported for the a<->b link, in either direction.
+
+    Z2M reports a link once per endpoint that keeps a neighbour table, so the
+    same physical link can carry two different measurements. Keep the better
+    one rather than whichever was parsed first.
+    """
+    measured = [
+        value
+        for value in (lqi_by_pair.get((a, b)), lqi_by_pair.get((b, a)))
+        if value is not None
+    ]
+    return max(measured) if measured else None
+
+
+def _pair_key(a: str, b: str) -> tuple[str, str]:
+    """Undirected key for a link, so A->B and B->A collapse to one edge."""
+    return (a, b) if a <= b else (b, a)
+
+
 async def fetch_networkmap(
     mqtt_host: str,
     mqtt_port: int,
@@ -243,8 +315,12 @@ async def fetch_networkmap(
     tls: bool = False,
     tls_insecure: bool = False,
     response_timeout: float | None = None,
+    include_mesh_links: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Connect to the MQTT broker, request the Z2M networkmap, and return (nodes, edges).
+
+    ``include_mesh_links`` also emits the neighbour links the parent tree drops;
+    see :func:`parse_networkmap`.
 
     ``response_timeout`` defaults to ``settings.zigbee_networkmap_timeout``
     (env ``ZIGBEE_NETWORKMAP_TIMEOUT``, 300 s) — a 200+ device mesh can take
@@ -325,7 +401,7 @@ async def fetch_networkmap(
     if not response_payload:
         raise ValueError("Empty networkmap response received")
 
-    return parse_networkmap(response_payload)
+    return parse_networkmap(response_payload, include_mesh_links)
 
 
 async def test_mqtt_connection(

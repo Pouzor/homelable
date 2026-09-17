@@ -19,6 +19,11 @@ export interface ZigbeeNode {
 export interface ZigbeeEdge {
   source: string
   target: string
+  /** Link quality measured for this link, when the map reported one. */
+  lqi?: number | null
+  /** `tree` = parent attachment (always imported); `mesh` = neighbour link,
+   *  only present when the import opted into mesh links. */
+  kind?: 'tree' | 'mesh'
 }
 
 export interface ZigbeeImportResponse {

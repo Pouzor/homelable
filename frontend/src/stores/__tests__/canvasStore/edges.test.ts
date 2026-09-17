@@ -104,6 +104,16 @@ describe('canvasStore — edges', () => {
     expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
   })
 
+  it('updateEdge merges, so a manual edit keeps the measured lqi', () => {
+    useCanvasStore.setState((s) => ({
+      edges: [...s.edges, { ...makeEdge('e1', 'n1', 'n2'), data: { type: 'iot' as const, lqi: 150 } }],
+    }))
+    useCanvasStore.getState().updateEdge('e1', { label: 'hallway sensor' })
+    const edge = useCanvasStore.getState().edges.find((e) => e.id === 'e1')
+    expect(edge?.data?.lqi).toBe(150)
+    expect(edge?.data?.label).toBe('hallway sensor')
+  })
+
   it('reconnectEdge swaps source/target and normalizes handles', () => {
     useCanvasStore.setState((s) => ({
       edges: [...s.edges, { ...makeEdge('e1', 'n1', 'n2'), sourceHandle: 'bottom', targetHandle: 'top' }],

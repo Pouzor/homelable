@@ -13,6 +13,14 @@ class ZigbeeImportRequest(BaseModel):
     mqtt_tls_insecure: bool = Field(
         False, description="Skip TLS certificate verification (self-signed only)"
     )
+    include_mesh_links: bool = Field(
+        False,
+        description=(
+            "Also import neighbour-to-neighbour mesh links, not just the "
+            "parent tree. Off by default: it turns a ~36-edge map into ~115 "
+            "on a 37-device network."
+        ),
+    )
 
     @model_validator(mode="after")
     def _insecure_requires_tls(self) -> "ZigbeeImportRequest":
@@ -69,6 +77,12 @@ class ZigbeeNodeOut(BaseModel):
 class ZigbeeEdgeOut(BaseModel):
     source: str
     target: str
+    # Link quality for this link. It lives on the edge because that is what it
+    # measures — a radio link between two devices, not a property of either.
+    lqi: int | None = None
+    # "tree" = the parent attachment drawn by default; "mesh" = a neighbour
+    # link, only emitted when the import asked for them.
+    kind: str = "tree"
 
 
 class ZigbeeImportResponse(BaseModel):

@@ -28,6 +28,7 @@ interface ConnectionForm {
   base_topic: string
   mqtt_tls: boolean
   mqtt_tls_insecure: boolean
+  include_mesh_links: boolean
   port_user_edited: boolean
 }
 
@@ -39,6 +40,7 @@ const DEFAULT_FORM: ConnectionForm = {
   base_topic: 'zigbee2mqtt',
   mqtt_tls: false,
   mqtt_tls_insecure: false,
+  include_mesh_links: false,
   port_user_edited: false,
 }
 
@@ -104,6 +106,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
     base_topic: form.base_topic.trim() || 'zigbee2mqtt',
     mqtt_tls: form.mqtt_tls,
     mqtt_tls_insecure: form.mqtt_tls_insecure,
+    include_mesh_links: form.include_mesh_links,
   })
 
   const handleTestConnection = async () => {
@@ -300,6 +303,18 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                     className="w-3 h-3 accent-[#f85149] cursor-pointer disabled:cursor-not-allowed"
                   />
                   Skip cert verify (self-signed only)
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.include_mesh_links}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, include_mesh_links: e.target.checked }))
+                    }
+                    className="w-3 h-3 accent-[#a855f7] cursor-pointer"
+                  />
+                  Import mesh links
+                  <span className="text-muted-foreground/50">(neighbour links — many more edges)</span>
                 </label>
               </div>
             </div>

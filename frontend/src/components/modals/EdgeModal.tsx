@@ -265,6 +265,22 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
             </label>
           </div>
 
+          {/* Read-only on purpose: LQI is a measurement written by the Zigbee
+              import, not a setting. An editable copy would be silently
+              overwritten by the next import — `EdgeUpdate` omits it too. */}
+          {initial?.lqi != null && (
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Link Quality (LQI)</Label>
+              <div
+                className="flex items-center gap-2 px-2.5 h-8 rounded-md border"
+                style={{ borderColor: '#30363d', background: '#21262d' }}
+              >
+                <span className="font-mono text-xs" style={{ color: '#8b949e' }}>{initial.lqi}</span>
+                <span className="text-[10px] text-muted-foreground/50 ml-auto">measured</span>
+              </div>
+            </div>
+          )}
+
           {onClearWaypoints && initial?.waypoints && initial.waypoints.length > 0 && (
             <button
               type="button"

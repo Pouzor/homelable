@@ -23,7 +23,7 @@ NODE_TYPES = [
 # Kept in sync manually with frontend/src/types/index.ts EdgeType.
 # Sync is enforced automatically by test_edge_types_in_sync_with_frontend (mcp/tests/test_edge_types_sync.py).
 EDGE_TYPES = [
-    "ethernet", "wifi", "iot", "vlan", "virtual", "cluster", "fibre", "electrical",
+    "ethernet", "wifi", "iot", "zigbee_mesh", "vlan", "virtual", "cluster", "fibre", "electrical",
 ]
 
 # Shared field schemas mirroring backend NodeBase / NodeUpdate (backend/app/schemas/nodes.py).

@@ -1081,6 +1081,10 @@ async def _resolve_pending_links_for_ieee(
             edge_type, src_handle, tgt_handle = "virtual", "bottom", "top"
         elif link.discovery_source == "proxmox_cluster":
             edge_type, src_handle, tgt_handle = "cluster", "right", "left"
+        elif link.discovery_source == "zigbee_mesh":
+            # Neighbour link, not a parent attachment: sideways, like the
+            # cluster edges, so it reads apart from the tree.
+            edge_type, src_handle, tgt_handle = "zigbee_mesh", "right", "left"
         else:
             edge_type, src_handle, tgt_handle = "iot", "bottom", "top"
         edge = Edge(

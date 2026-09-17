@@ -108,6 +108,30 @@ describe('EdgeModal', () => {
     expect(onSubmit.mock.calls[0][0].vlan_id).toBeUndefined()
   })
 
+  // ── LQI (a measurement, never a setting) ──────────────────────────────────
+
+  it('shows a measured LQI', () => {
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={vi.fn()} initial={{ type: 'iot', lqi: 150 }} />)
+    expect(screen.getByText('Link Quality (LQI)')).toBeTruthy()
+    expect(screen.getByText('150')).toBeTruthy()
+  })
+
+  it('shows an LQI of 0 — a dead link is a reading, not a missing value', () => {
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={vi.fn()} initial={{ type: 'iot', lqi: 0 }} />)
+    expect(screen.getByText('Link Quality (LQI)')).toBeTruthy()
+  })
+
+  it('hides the LQI row when the edge carries none', () => {
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={vi.fn()} initial={{ type: 'ethernet' }} />)
+    expect(screen.queryByText('Link Quality (LQI)')).toBeNull()
+  })
+
+  it('offers no LQI input — it is written by the import, not edited', () => {
+    render(<EdgeModal open onClose={vi.fn()} onSubmit={vi.fn()} initial={{ type: 'iot', lqi: 150 }} />)
+    const inputs = document.querySelectorAll('input[type="number"], input[type="text"]')
+    expect(Array.from(inputs).some((i) => (i as HTMLInputElement).value === '150')).toBe(false)
+  })
+
   // ── Path style ────────────────────────────────────────────────────────────
 
   it('defaults to bezier path style', () => {
