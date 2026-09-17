@@ -125,6 +125,7 @@ async def _background_canvas_import(job_id: str, payload: ZigbeeImportRequest) -
             password=payload.mqtt_password,
             tls=payload.mqtt_tls,
             tls_insecure=payload.mqtt_tls_insecure,
+            include_mesh_links=payload.include_mesh_links,
         )
     except Exception as exc:
         status, detail = _import_error(exc)
@@ -192,6 +193,9 @@ def env_import_request() -> ZigbeeImportRequest:
         base_topic=settings.zigbee_base_topic,
         mqtt_tls=settings.zigbee_mqtt_tls,
         mqtt_tls_insecure=settings.zigbee_mqtt_tls_insecure,
+        # The scheduled auto-sync keeps the readable parent tree. Importing the
+        # full mesh is a deliberate, per-import choice made in the UI.
+        include_mesh_links=False,
     )
 
 
@@ -236,6 +240,7 @@ async def _background_zigbee_import(run_id: str, payload: ZigbeeImportRequest) -
                 password=payload.mqtt_password,
                 tls=payload.mqtt_tls,
                 tls_insecure=payload.mqtt_tls_insecure,
+                include_mesh_links=payload.include_mesh_links,
             )
             result = await _persist_pending_import(db, nodes_raw, edges_raw)
             run = await db.get(ScanRun, run_id)
@@ -334,7 +339,11 @@ async def _persist_pending_import(
 
     # Replace all zigbee-source links with the freshly discovered set.
     await db.execute(
-        sa_delete(InventoryDeviceLink).where(InventoryDeviceLink.discovery_source == "zigbee")
+        sa_delete(InventoryDeviceLink).where(
+            # Both sources, or mesh links would pile up import after import:
+            # the wipe below is what keeps this a replace, not an append.
+            InventoryDeviceLink.discovery_source.in_(["zigbee", "zigbee_mesh"])
+        )
     )
 
     links_recorded = 0
@@ -349,7 +358,12 @@ async def _persist_pending_import(
             InventoryDeviceLink(
                 source_ieee=src,
                 target_ieee=tgt,
-                discovery_source="zigbee",
+                lqi=e.get("lqi"),
+                # A neighbour link is tagged apart from the parent tree so the
+                # canvas can draw it in its own edge type on approval.
+                discovery_source=(
+                    "zigbee_mesh" if e.get("kind") == "mesh" else "zigbee"
+                ),
             )
         )
         links_recorded += 1

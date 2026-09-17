@@ -260,6 +260,14 @@ describe('serializeEdge', () => {
     expect(result.animated).toBe(true)
   })
 
+  it('re-sends a measured LQI so a canvas save cannot wipe it', () => {
+    // save_canvas setattrs every field of the payload, so dropping lqi here
+    // would overwrite the imported measurement with NULL on the next save.
+    // 0 is a real reading (a dead link) and must survive the `?? null`.
+    const edge = makeRfEdge({ data: { type: 'iot', lqi: 0 } })
+    expect(serializeEdge(edge).lqi).toBe(0)
+  })
+
   it('serializes endpoint marker shapes', () => {
     const edge = makeRfEdge({ data: { type: 'ethernet', marker_start: 'diamond', marker_end: 'arrow' } })
     const result = serializeEdge(edge)
@@ -299,6 +307,7 @@ describe('serializeEdge', () => {
     expect(result.target_handle).toBeNull()
     expect(result.label).toBeNull()
     expect(result.vlan_id).toBeNull()
+    expect(result.lqi).toBeNull()
     expect(result.custom_color).toBeNull()
     expect(result.path_style).toBeNull()
   })

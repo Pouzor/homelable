@@ -206,6 +206,7 @@ async def test_import_with_credentials(client: AsyncClient, headers: dict) -> No
         password="secret",
         tls=False,
         tls_insecure=False,
+        include_mesh_links=False,
     )
 
 
@@ -446,6 +447,85 @@ async def test_persist_pending_import_replaces_links(db_session) -> None:
     rows = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
     assert len(rows) == 1
     assert (rows[0].source_ieee, rows[0].target_ieee) == ("0xCOORD", "0xR1")
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_records_link_lqi(db_session) -> None:
+    """LQI measures the link, so it is stored on the link row (#496)."""
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import InventoryDeviceLink
+
+    edges = [
+        {"source": "0xCOORD", "target": "0xR1", "lqi": 220},
+        {"source": "0xR1", "target": "0xE1", "lqi": 0},
+    ]
+    await _persist_pending_import(db_session, _PENDING_NODES, edges)
+
+    rows = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
+    by_pair = {(r.source_ieee, r.target_ieee): r.lqi for r in rows}
+    assert by_pair[("0xCOORD", "0xR1")] == 220
+    # A dead link reads 0 — it must survive as 0, not collapse to NULL.
+    assert by_pair[("0xR1", "0xE1")] == 0
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_link_lqi_defaults_to_none(db_session) -> None:
+    """A map that reported no LQI leaves the column NULL rather than guessing."""
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import InventoryDeviceLink
+
+    await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+
+    rows = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
+    assert rows
+    assert all(r.lqi is None for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_tags_mesh_links_apart(db_session) -> None:
+    """Mesh links carry their own discovery_source so the canvas can style them."""
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import InventoryDeviceLink
+
+    edges = [
+        {"source": "0xCOORD", "target": "0xR1", "lqi": 200, "kind": "tree"},
+        {"source": "0xR1", "target": "0xE1", "lqi": 150, "kind": "mesh"},
+    ]
+    await _persist_pending_import(db_session, _PENDING_NODES, edges)
+
+    rows = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
+    by_pair = {(r.source_ieee, r.target_ieee): r.discovery_source for r in rows}
+    assert by_pair[("0xCOORD", "0xR1")] == "zigbee"
+    assert by_pair[("0xR1", "0xE1")] == "zigbee_mesh"
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_wipes_mesh_links_too(db_session) -> None:
+    """The wipe must cover both sources, or mesh links pile up import on import."""
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import InventoryDeviceLink
+
+    with_mesh = [
+        {"source": "0xCOORD", "target": "0xR1", "kind": "tree"},
+        {"source": "0xR1", "target": "0xE1", "kind": "mesh"},
+    ]
+    await _persist_pending_import(db_session, _PENDING_NODES, with_mesh)
+    # Re-import with the option off: the stale mesh row must be gone, not kept.
+    await _persist_pending_import(
+        db_session, _PENDING_NODES, [{"source": "0xCOORD", "target": "0xR1", "kind": "tree"}]
+    )
+
+    rows = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].discovery_source == "zigbee"
 
 
 @pytest.mark.asyncio

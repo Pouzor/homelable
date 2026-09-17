@@ -12,6 +12,10 @@ class EdgeBase(BaseModel):
     label: str | None = None
     vlan_id: int | None = None
     speed: str | None = None
+    # Measured link quality, written by the Zigbee import. Absent from
+    # `EdgeUpdate` on purpose: it is an observation, not a user setting, and an
+    # editable copy would be silently overwritten by the next import.
+    lqi: int | None = None
     custom_color: str | None = None
     path_style: str | None = None
     line_style: str | None = None

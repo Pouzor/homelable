@@ -433,6 +433,7 @@ export const zigbeeApi = {
     base_topic?: string
     mqtt_tls?: boolean
     mqtt_tls_insecure?: boolean
+    include_mesh_links?: boolean
   }) =>
     api.post<{ job_id: string; status: ZigbeeImportJobStatus }>('/zigbee/import', data),
 
@@ -457,6 +458,7 @@ export const zigbeeApi = {
     base_topic?: string
     mqtt_tls?: boolean
     mqtt_tls_insecure?: boolean
+    include_mesh_links?: boolean
   }) =>
     api.post<{
       id: string

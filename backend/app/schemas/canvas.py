@@ -89,6 +89,10 @@ class EdgeSave(BaseModel):
     label: str | None = None
     vlan_id: int | None = None
     speed: str | None = None
+    # Measured link quality (#496). The canvas save path has its own edge
+    # schema, so a field added to `EdgeBase` alone would be dropped here and
+    # the save would overwrite the stored LQI with NULL.
+    lqi: int | None = None
     custom_color: str | None = None
     path_style: str | None = None
     line_style: str | None = None

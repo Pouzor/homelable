@@ -83,6 +83,30 @@ async def test_save_canvas_round_trips_line_style_and_width(client: AsyncClient,
     assert edge["width_mult"] == 3
 
 
+async def test_save_canvas_round_trips_lqi(client: AsyncClient, headers: dict):
+    """LQI rides on the edge (#496) and must survive a save + reload.
+
+    0 is a real reading — a dead link — not a missing one.
+    """
+    n1 = node_payload(label="Router", type="router")
+    n2 = node_payload(label="Switch", type="switch")
+    e1 = edge_payload(n1["id"], n2["id"], type="iot", lqi=0)
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    edge = (await client.get("/api/v1/canvas", headers=headers)).json()["edges"][0]
+    assert edge["lqi"] == 0
+
+
+async def test_save_canvas_lqi_defaults_to_none(client: AsyncClient, headers: dict):
+    n1 = node_payload(label="Router", type="router")
+    n2 = node_payload(label="Switch", type="switch")
+    e1 = edge_payload(n1["id"], n2["id"])
+    await client.post("/api/v1/canvas/save", json={"nodes": [n1, n2], "edges": [e1], "viewport": {}}, headers=headers)
+
+    edge = (await client.get("/api/v1/canvas", headers=headers)).json()["edges"][0]
+    assert edge["lqi"] is None
+
+
 async def test_save_canvas_coerces_legacy_boolean_marker(client: AsyncClient, headers: dict):
     n1 = node_payload(label="Router", type="router")
     n2 = node_payload(label="Switch", type="switch")

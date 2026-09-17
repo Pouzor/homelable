@@ -375,6 +375,13 @@ async def init_db() -> None:
             "UPDATE edges SET design_id = ? WHERE design_id IS NULL", (_default_design_id,),
         )
 
+        # Measured Zigbee link quality. It rides on the edge because that is
+        # what it measures — a link, not an endpoint (issue #496).
+        await _try_migrate(
+            conn, "ALTER TABLE edges ADD COLUMN lqi INTEGER",
+            label="edges.lqi",
+        )
+
         # Migrate canvas_state from id=1 to design_id PK (SQLite rebuild)
         try:
             info = await conn.exec_driver_sql("PRAGMA table_info(canvas_state)")

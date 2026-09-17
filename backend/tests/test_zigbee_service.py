@@ -187,6 +187,160 @@ class TestParseNetworkmap:
         end_node = next(n for n in nodes if n["id"] == end)
         assert end_node["lqi"] == 180
 
+    def test_lqi_attributed_to_enddevice_that_is_never_a_target(self) -> None:
+        """Regression for #496.
+
+        Z2M emits links as neighbour -> reporting device. A sleepy EndDevice
+        keeps no neighbour table, so it never appears as a ``target`` — keying
+        the LQI by the target left every EndDevice at None forever.
+        """
+        coord = "0x0000"
+        end = "0x0001"
+        payload = _wrap(
+            nodes=[_make_node(coord, "Coordinator"), _make_node(end, "EndDevice")],
+            links=[_make_link(end, coord, lqi=110)],
+        )
+        nodes, _ = parse_networkmap(payload)
+        end_node = next(n for n in nodes if n["id"] == end)
+        assert end_node["lqi"] == 110
+
+    def test_lqi_zero_is_not_swallowed_by_linkquality(self) -> None:
+        """A dead link reads 0 — the most telling value, not a missing one."""
+        coord = "0x0000"
+        end = "0x0001"
+        payload = _wrap(
+            nodes=[_make_node(coord, "Coordinator"), _make_node(end, "EndDevice")],
+            links=[
+                {
+                    "source": {"ieeeAddr": end},
+                    "target": {"ieeeAddr": coord},
+                    "lqi": 0,
+                    "linkquality": 99,
+                }
+            ],
+        )
+        nodes, _ = parse_networkmap(payload)
+        end_node = next(n for n in nodes if n["id"] == end)
+        assert end_node["lqi"] == 0
+
+    def test_lqi_falls_back_to_linkquality_when_absent(self) -> None:
+        coord = "0x0000"
+        end = "0x0001"
+        payload = _wrap(
+            nodes=[_make_node(coord, "Coordinator"), _make_node(end, "EndDevice")],
+            links=[
+                {
+                    "source": {"ieeeAddr": end},
+                    "target": {"ieeeAddr": coord},
+                    "linkquality": 77,
+                }
+            ],
+        )
+        nodes, _ = parse_networkmap(payload)
+        end_node = next(n for n in nodes if n["id"] == end)
+        assert end_node["lqi"] == 77
+
+    def test_best_of_both_reported_directions_wins(self) -> None:
+        """Each endpoint keeping a neighbour table reports the link separately."""
+        coord = "0x0000"
+        router = "0x0001"
+        payload = _wrap(
+            nodes=[_make_node(coord, "Coordinator"), _make_node(router, "Router")],
+            links=[
+                _make_link(coord, router, lqi=120),
+                _make_link(router, coord, lqi=200),
+            ],
+        )
+        nodes, _ = parse_networkmap(payload)
+        router_node = next(n for n in nodes if n["id"] == router)
+        assert router_node["lqi"] == 200
+
+    def test_edges_carry_lqi(self) -> None:
+        """LQI rides on the edge: it measures the link, not either endpoint."""
+        coord = "0x0000"
+        router = "0x0001"
+        payload = _wrap(
+            nodes=[_make_node(coord, "Coordinator"), _make_node(router, "Router")],
+            links=[_make_link(router, coord, lqi=150)],
+        )
+        _, edges = parse_networkmap(payload)
+        assert len(edges) == 1
+        assert edges[0]["source"] == coord
+        assert edges[0]["target"] == router
+        assert edges[0]["lqi"] == 150
+
+    def test_edge_lqi_is_none_when_the_link_was_never_reported(self) -> None:
+        coord = "0x0000"
+        end = "0x0001"
+        payload = _wrap([_make_node(coord, "Coordinator"), _make_node(end, "EndDevice")])
+        _, edges = parse_networkmap(payload)
+        assert len(edges) == 1
+        assert edges[0]["lqi"] is None
+
+    # ── Mesh links (opt-in) ───────────────────────────────────────────────
+
+    def test_mesh_links_are_dropped_by_default(self) -> None:
+        """The parent tree stays the default: sibling links are not emitted."""
+        coord, r1, r2 = "0x0000", "0x0001", "0x0002"
+        payload = _wrap(
+            nodes=[
+                _make_node(coord, "Coordinator"),
+                _make_node(r1, "Router"),
+                _make_node(r2, "Router"),
+            ],
+            links=[_make_link(r1, coord), _make_link(r2, coord), _make_link(r1, r2, lqi=90)],
+        )
+        _, edges = parse_networkmap(payload)
+        assert {(e["source"], e["target"]) for e in edges} == {(coord, r1), (coord, r2)}
+        assert all(e["kind"] == "tree" for e in edges)
+
+    def test_mesh_links_emitted_when_requested(self) -> None:
+        coord, r1, r2 = "0x0000", "0x0001", "0x0002"
+        payload = _wrap(
+            nodes=[
+                _make_node(coord, "Coordinator"),
+                _make_node(r1, "Router"),
+                _make_node(r2, "Router"),
+            ],
+            links=[_make_link(r1, coord), _make_link(r2, coord), _make_link(r1, r2, lqi=90)],
+        )
+        _, edges = parse_networkmap(payload, include_mesh_links=True)
+        mesh = [e for e in edges if e["kind"] == "mesh"]
+        assert len(mesh) == 1
+        assert frozenset((mesh[0]["source"], mesh[0]["target"])) == frozenset((r1, r2))
+        assert mesh[0]["lqi"] == 90
+
+    def test_mesh_links_collapse_both_reported_directions(self) -> None:
+        """Z2M reports the pair twice; keep one edge carrying the better LQI."""
+        coord, r1, r2 = "0x0000", "0x0001", "0x0002"
+        payload = _wrap(
+            nodes=[
+                _make_node(coord, "Coordinator"),
+                _make_node(r1, "Router"),
+                _make_node(r2, "Router"),
+            ],
+            links=[
+                _make_link(r1, coord),
+                _make_link(r2, coord),
+                _make_link(r1, r2, lqi=90),
+                _make_link(r2, r1, lqi=140),
+            ],
+        )
+        _, edges = parse_networkmap(payload, include_mesh_links=True)
+        mesh = [e for e in edges if e["kind"] == "mesh"]
+        assert len(mesh) == 1
+        assert mesh[0]["lqi"] == 140
+
+    def test_mesh_links_never_duplicate_a_tree_edge(self) -> None:
+        coord, r1 = "0x0000", "0x0001"
+        payload = _wrap(
+            nodes=[_make_node(coord, "Coordinator"), _make_node(r1, "Router")],
+            links=[_make_link(r1, coord), _make_link(coord, r1)],
+        )
+        _, edges = parse_networkmap(payload, include_mesh_links=True)
+        assert len(edges) == 1
+        assert edges[0]["kind"] == "tree"
+
     def test_definition_model_and_vendor_extracted(self) -> None:
         payload = _wrap([
             _make_node("0xAA", "EndDevice", "Sensor", model="WSDCGQ11LM", vendor="Aqara"),
@@ -234,7 +388,7 @@ class TestParseNetworkmap:
             ],
         )
         _, edges = parse_networkmap(payload)
-        assert edges == [{"source": coord, "target": router}]
+        assert edges == [{"source": coord, "target": router, "lqi": 200, "kind": "tree"}]
 
     def test_router_mesh_siblings_dropped(self) -> None:
         """Router↔router mesh paths in `links` must NOT produce sibling edges
@@ -269,7 +423,8 @@ class TestParseNetworkmap:
         _, edges = parse_networkmap(payload)
         # No edge should target the coordinator
         assert all(e["target"] != coord for e in edges)
-        assert edges == [{"source": coord, "target": end}]
+        # The back-edge's LQI still lands on the edge that is kept.
+        assert edges == [{"source": coord, "target": end, "lqi": 200, "kind": "tree"}]
 
 
 # ---------------------------------------------------------------------------

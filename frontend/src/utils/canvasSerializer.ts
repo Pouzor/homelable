@@ -51,6 +51,7 @@ export interface ApiEdge {
   label?: string | null
   vlan_id?: number | null
   speed?: string | null
+  lqi?: number | null
   custom_color?: string | null
   path_style?: string | null
   line_style?: string | null
@@ -180,6 +181,9 @@ export function serializeEdge(e: Edge<EdgeData>): Record<string, unknown> {
     label: e.data?.label ?? null,
     vlan_id: e.data?.vlan_id ?? null,
     speed: e.data?.speed ?? null,
+    // Must be re-sent: `save_canvas` setattrs every field of the payload, so
+    // omitting it here would overwrite a measured LQI with NULL on every save.
+    lqi: e.data?.lqi ?? null,
     custom_color: e.data?.custom_color ?? null,
     path_style: e.data?.path_style ?? null,
     line_style: e.data?.line_style ?? null,

@@ -239,6 +239,31 @@ describe('ZigbeeImportModal', () => {
     expect(zigbeeApi.importNetwork).not.toHaveBeenCalled()
   })
 
+  it('does not ask for mesh links unless the box is ticked', async () => {
+    vi.mocked(zigbeeApi.importToPending).mockResolvedValue({ data: {} } as never)
+    render(<ZigbeeImportModal {...defaultProps} />)
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.x or mqtt.local'), {
+      target: { value: '192.168.1.100' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
+
+    await waitFor(() => expect(zigbeeApi.importToPending).toHaveBeenCalled())
+    expect(vi.mocked(zigbeeApi.importToPending).mock.calls[0][0].include_mesh_links).toBe(false)
+  })
+
+  it('sends include_mesh_links when the box is ticked', async () => {
+    vi.mocked(zigbeeApi.importToPending).mockResolvedValue({ data: {} } as never)
+    render(<ZigbeeImportModal {...defaultProps} />)
+    fireEvent.change(screen.getByPlaceholderText('192.168.1.x or mqtt.local'), {
+      target: { value: '192.168.1.100' },
+    })
+    fireEvent.click(screen.getByLabelText(/import mesh links/i))
+    fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
+
+    await waitFor(() => expect(zigbeeApi.importToPending).toHaveBeenCalled())
+    expect(vi.mocked(zigbeeApi.importToPending).mock.calls[0][0].include_mesh_links).toBe(true)
+  })
+
   it('switching to canvas mode calls importNetwork and not importToPending', async () => {
     mockCanvasImport({ nodes: sampleNodes, edges: [], device_count: 2 })
 

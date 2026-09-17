@@ -93,6 +93,10 @@ class Edge(Base):
     label: Mapped[str | None] = mapped_column(String)
     vlan_id: Mapped[int | None] = mapped_column(Integer)
     speed: Mapped[str | None] = mapped_column(String)
+    # Link quality (Zigbee mesh). Measured per link, so it belongs to the edge
+    # rather than to either endpoint — see issue #496. Read-only: it is written
+    # by the import, never edited by hand, so `EdgeUpdate` deliberately omits it.
+    lqi: Mapped[int | None] = mapped_column(Integer, nullable=True)
     custom_color: Mapped[str | None] = mapped_column(String)
     path_style: Mapped[str | None] = mapped_column(String)
     line_style: Mapped[str | None] = mapped_column(String)

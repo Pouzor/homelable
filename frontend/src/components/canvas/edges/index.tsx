@@ -338,6 +338,9 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
     ethernet: { stroke: edgeColors.ethernet, strokeWidth: 2 },
     wifi:     { stroke: edgeColors.wifi,     strokeWidth: 1.5, strokeDasharray: '6 3' },
     iot:      { stroke: edgeColors.iot,      strokeWidth: 1.5, strokeDasharray: '2 4' },
+    // Neighbour link, not a parent attachment: thinner, sparser and slightly
+    // faded so a full mesh import stays readable behind the tree.
+    zigbee_mesh: { stroke: edgeColors.zigbee_mesh, strokeWidth: 1, strokeDasharray: '1 5', opacity: 0.75 },
     vlan:     { strokeWidth: 2.5 },
     virtual:  { stroke: edgeColors.virtual,  strokeWidth: 1,   strokeDasharray: '4 4' },
     cluster:  { stroke: edgeColors.cluster,  strokeWidth: 2.5, strokeDasharray: '8 3' },

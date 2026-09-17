@@ -879,12 +879,16 @@ export default function App() {
     })
     // Add IoT edges between Zigbee devices: parent bottom -> child top
     zigbeeEdges.forEach((ze) => {
+      // A neighbour link is not a parent attachment: own type, own colour, and
+      // drawn sideways so it reads apart from the tree.
+      const isMesh = ze.kind === 'mesh'
       onConnect({
         source: ze.source,
-        sourceHandle: 'bottom',
+        sourceHandle: isMesh ? 'right' : 'bottom',
         target: ze.target,
-        targetHandle: 'top-t',
-        type: 'iot',
+        targetHandle: isMesh ? 'left' : 'top-t',
+        type: isMesh ? 'zigbee_mesh' : 'iot',
+        lqi: ze.lqi ?? undefined,
       } as unknown as import('@xyflow/react').Connection)
     })
     // Auto-select only the freshly imported nodes so the user can drag the

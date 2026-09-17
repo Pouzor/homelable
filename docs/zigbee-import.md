@@ -12,8 +12,15 @@ This feature lets you connect Homelable to your MQTT broker, fetch the Zigbee2MQ
   - `zigbee_router` — Mains-powered router devices
   - `zigbee_enddevice` — Battery-powered end devices (sensors, bulbs, etc.)
 - **Hierarchy** — `parent_id` is set automatically: coordinator → routers → end devices
-- **LQI display** — Link Quality Indicator is stored as a node property
+- **LQI** — Link Quality Indicator is measured per *link*, so it is stored on the
+  edge (and mirrored onto the device as the quality of its link to its parent).
+  It is read-only: the import writes it, the edge modal only displays it.
 - **IoT edges** — Links between devices are added as `IoT / Zigbee` edge type
+- **Mesh links (optional)** — By default only the parent tree is imported: one
+  edge per device. Tick **Import mesh links** to also draw neighbour-to-neighbour
+  links, as a distinct `Zigbee Mesh` edge type in its own colour. Expect far more
+  edges — a 37-device network goes from ~36 to ~115 — which is why it is off by
+  default and excluded from the scheduled auto-sync.
 
 ---
 
