@@ -35,7 +35,7 @@ const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
   { label: 'Generic',        types: ['generic'] },
 ]
 
-const EDITABLE_EDGE_TYPES: EdgeType[] = ['ethernet', 'wifi', 'iot', 'vlan', 'virtual', 'cluster', 'fibre', 'electrical']
+const EDITABLE_EDGE_TYPES: EdgeType[] = ['ethernet', 'wifi', 'iot', 'vlan', 'virtual', 'cluster', 'fibre', 'electrical', 'zigbee_mesh']
 
 const NODE_ICONS: Record<string, LucideIcon> = {
   isp: Globe, router: Router, firewall: Flame, switch: Network, server: Server, proxmox: Layers,
@@ -73,8 +73,13 @@ function defaultEdgeStyle(edgeType: EdgeType): EdgeTypeStyle {
     animated: 'none',
     arrowStart: 'none',
     arrowEnd: 'none',
+    showLqi: false,
   }
 }
+
+/** Edge types the Zigbee import writes an LQI onto — the only ones worth
+ *  offering the "show LQI" toggle for. */
+const LQI_EDGE_TYPES: EdgeType[] = ['iot', 'zigbee_mesh']
 
 // ── Edge line preview (renders the actual dash pattern + width) ────────────────
 
@@ -369,6 +374,21 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
             <MarkerShapePicker label="End" value={style.arrowEnd} onChange={(s) => set('arrowEnd', s)} />
           </div>
         </div>
+
+        {/* Only the Zigbee-imported types carry an LQI; a link without one
+            prints nothing either way, so the toggle stays where it means
+            something. Applies live — no "Apply to existing" round-trip. */}
+        {LQI_EDGE_TYPES.includes(edgeType) && (
+          <label className="flex items-center gap-2 text-xs text-[#8b949e] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={style.showLqi ?? false}
+              onChange={(e) => set('showLqi', e.target.checked)}
+              className="accent-[#00d4ff] cursor-pointer"
+            />
+            Show LQI on the link
+          </label>
+        )}
       </div>
 
       <Button
