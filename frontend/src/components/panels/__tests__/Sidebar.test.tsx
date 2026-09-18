@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { Sidebar } from '../Sidebar'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
+import { scanApi } from '@/api/client'
 import type { Node } from '@xyflow/react'
 import type { NodeData, Design } from '@/types'
 import * as standaloneStorage from '@/utils/standaloneStorage'
@@ -105,6 +106,20 @@ describe('Sidebar', () => {
     expect(screen.getByText('Canvas')).toBeInTheDocument()
     expect(screen.getByText('Device Inventory')).toBeInTheDocument()
     expect(screen.getByText('Scan History')).toBeInTheDocument()
+  })
+
+  it('spins the Scan History icon while a scan runs, and not otherwise', async () => {
+    const icon = () => screen.getByText('Scan History').closest('button')!.querySelector('svg')!
+
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [{ status: 'done' }] } as never)
+    render(<Sidebar {...defaultProps} />)
+    await waitFor(() => expect(scanApi.runs).toHaveBeenCalled())
+    expect(icon().getAttribute('class')).not.toContain('animate-spin')
+
+    cleanup()
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [{ status: 'running' }] } as never)
+    render(<Sidebar {...defaultProps} />)
+    await waitFor(() => expect(icon().getAttribute('class')).toContain('animate-spin'))
   })
 
   // ── Stats ──────────────────────────────────────────────────────────────────
