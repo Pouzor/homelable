@@ -336,6 +336,38 @@ describe('mutations', () => {
     expect(pending).toContain('tags: [prod]')
   })
 
+  it('leaves the document now on screen alone when a tag write lands late', async () => {
+    // The user clicked a chip on doc-1, then opened doc-2 before the call came
+    // back. The answer belongs to doc-1: it may refresh doc-1's row and re-base
+    // doc-1's stored draft, but it must not paint doc-1 over doc-2.
+    let settle: (value: unknown) => void = () => {}
+    api.update.mockReturnValue(new Promise((resolve) => (settle = resolve)) as never)
+    useDocsStore.setState({
+      docs: [summary(), summary({ id: 'doc-2', title: 'Switch' })],
+      openDoc: doc({ body: '---\ntitle: NAS\n---\n\n# NAS\n', updated_at: '2026-01-01T00:00:00Z' }),
+    })
+    writeDraft('doc-1', {
+      body: '---\ntitle: NAS\n---\n\nwords the user never saved\n',
+      savedAt: 1,
+      base: '2026-01-01T00:00:00Z',
+    })
+
+    const inFlight = useDocsStore.getState().setTags(['prod'])
+    useDocsStore.setState({
+      openDoc: doc({ id: 'doc-2', title: 'Switch', body: 'the other document' }),
+      draft: 'the other draft',
+    })
+    settle({ data: doc({ tags: ['prod'], updated_at: '2026-02-02T00:00:00Z' }) })
+    await inFlight
+
+    expect(useDocsStore.getState().openDoc?.id).toBe('doc-2')
+    expect(useDocsStore.getState().draft).toBe('the other draft')
+    // doc-1's row still takes the new tags, and its draft is still carried
+    // forward — leaving it behind is the data loss this whole change is about.
+    expect(useDocsStore.getState().docs.find((d) => d.id === 'doc-1')?.tags).toEqual(['prod'])
+    expect(readDraft('doc-1')?.base).toBe('2026-02-02T00:00:00Z')
+  })
+
   it('reports a failed tag write rather than pretending it landed', async () => {
     api.update.mockRejectedValue({ response: { data: { detail: 'nope' } } })
     useDocsStore.setState({ openDoc: doc() })
