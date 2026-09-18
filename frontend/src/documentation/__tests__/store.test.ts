@@ -33,6 +33,14 @@ vi.mock('@/api/client', () => ({
 
 const api = vi.mocked(documentsApi)
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
 function summary(overrides: Partial<DocumentSummary> = {}): DocumentSummary {
   return {
     id: 'doc-1',
@@ -40,6 +48,7 @@ function summary(overrides: Partial<DocumentSummary> = {}): DocumentSummary {
     title: 'Page',
     slug: 'page',
     sort_order: 0,
+    version: 1,
     tags: [],
     frontmatter: {},
     starred: false,
@@ -63,8 +72,11 @@ beforeEach(() => {
     docs: [],
     openDoc: null,
     draft: null,
+    draftBaseVersion: null,
     dirty: false,
     pendingDraft: null,
+    pendingDraftStale: false,
+    conflict: null,
     loadError: null,
     revisions: [],
     coverage: null,
@@ -100,6 +112,7 @@ describe('editing', () => {
   it('starts clean, from the stored body', () => {
     useDocsStore.getState().startEdit()
     expect(useDocsStore.getState().draft).toBe('original')
+    expect(useDocsStore.getState().draftBaseVersion).toBe(1)
     expect(useDocsStore.getState().dirty).toBe(false)
   })
 
@@ -132,7 +145,7 @@ describe('editing', () => {
     useDocsStore.getState().setDraft('changed')
 
     expect(await useDocsStore.getState().save()).toBe(true)
-    expect(api.update).toHaveBeenCalledWith('doc-1', { body: 'changed' })
+    expect(api.update).toHaveBeenCalledWith('doc-1', { body: 'changed', expected_version: 1 })
     expect(readDraft('doc-1')).toBeNull()
     expect(useDocsStore.getState().dirty).toBe(false)
     expect(useDocsStore.getState().docs[0].updated_at).toBe('later')
@@ -148,6 +161,104 @@ describe('editing', () => {
     expect(useDocsStore.getState().loadError).toBe('server said no')
   })
 
+  it('keeps the original base when a 409 bounces the save', async () => {
+    // The review repro: re-basing the draft on the fresh timestamp made the old
+    // draft look current, so a reopen replayed it over the assistant's text
+    // without a conflict. The base must stay the one the draft was written on.
+    api.update.mockRejectedValue({ response: { status: 409 } } as never)
+    api.get.mockResolvedValue({
+      data: doc({ body: 'assistant text', version: 2, updated_at: '2026-01-02T00:00:00Z' }),
+    } as never)
+    useDocsStore.setState({ docs: [summary()] })
+    useDocsStore.getState().startEdit()
+    useDocsStore.getState().setDraft('my words')
+
+    expect(await useDocsStore.getState().save()).toBe(false)
+    expect(useDocsStore.getState().conflict?.body).toBe('assistant text')
+    expect(readDraft('doc-1')?.baseVersion).toBe(1)
+  })
+
+  it('keeps input typed while a save is in flight and rebases only that continuation', async () => {
+    const update = deferred<{ data: Doc }>()
+    api.update.mockReturnValue(update.promise as never)
+    useDocsStore.setState({ docs: [summary()] })
+    useDocsStore.getState().startEdit()
+    useDocsStore.getState().setDraft('sent body')
+
+    const saving = useDocsStore.getState().save()
+    useDocsStore.getState().setDraft('sent body plus more')
+    update.resolve({ data: doc({ body: 'sent body', version: 2 }) })
+
+    expect(await saving).toBe(true)
+    expect(useDocsStore.getState().openDoc?.body).toBe('sent body')
+    expect(useDocsStore.getState().draft).toBe('sent body plus more')
+    expect(useDocsStore.getState().draftBaseVersion).toBe(2)
+    expect(useDocsStore.getState().dirty).toBe(true)
+    expect(readDraft('doc-1')).toMatchObject({
+      body: 'sent body plus more',
+      baseVersion: 2,
+    })
+  })
+
+  it('does not let a delayed save response replace a document opened meanwhile', async () => {
+    const update = deferred<{ data: Doc }>()
+    api.update.mockReturnValue(update.promise as never)
+    useDocsStore.setState({ docs: [summary(), summary({ id: 'doc-2', version: 4 })] })
+    useDocsStore.getState().startEdit()
+    useDocsStore.getState().setDraft('sent body')
+
+    const saving = useDocsStore.getState().save()
+    api.get.mockResolvedValueOnce({ data: doc({ id: 'doc-2', body: 'second', version: 4 }) } as never)
+    await useDocsStore.getState().open('doc-2')
+    useDocsStore.getState().startEdit()
+    useDocsStore.getState().setDraft('second draft')
+    update.resolve({ data: doc({ body: 'sent body', version: 2 }) })
+
+    expect(await saving).toBe(true)
+    expect(useDocsStore.getState().openDoc?.id).toBe('doc-2')
+    expect(useDocsStore.getState().draft).toBe('second draft')
+    expect(useDocsStore.getState().draftBaseVersion).toBe(4)
+  })
+
+  it('does not attach a delayed 409 fetch to a document opened meanwhile', async () => {
+    const fresh = deferred<{ data: Doc }>()
+    api.update.mockRejectedValue({ response: { status: 409 } })
+    api.get
+      .mockReturnValueOnce(fresh.promise as never)
+      .mockResolvedValueOnce({ data: doc({ id: 'doc-2', body: 'second', version: 4 }) } as never)
+    useDocsStore.setState({ docs: [summary(), summary({ id: 'doc-2', version: 4 })] })
+    useDocsStore.getState().startEdit()
+    useDocsStore.getState().setDraft('human draft')
+
+    const saving = useDocsStore.getState().save()
+    await vi.waitFor(() => expect(api.get).toHaveBeenCalledWith('doc-1'))
+    await useDocsStore.getState().open('doc-2')
+    fresh.resolve({ data: doc({ body: 'assistant text', version: 2 }) })
+
+    expect(await saving).toBe(false)
+    expect(useDocsStore.getState().openDoc?.id).toBe('doc-2')
+    expect(useDocsStore.getState().conflict).toBeNull()
+  })
+
+  it('keeps input typed while the current server body is fetched after a 409', async () => {
+    const fresh = deferred<{ data: Doc }>()
+    api.update.mockRejectedValue({ response: { status: 409 } })
+    api.get.mockReturnValue(fresh.promise as never)
+    useDocsStore.setState({ docs: [summary()] })
+    useDocsStore.getState().startEdit()
+    useDocsStore.getState().setDraft('human draft')
+
+    const saving = useDocsStore.getState().save()
+    await vi.waitFor(() => expect(api.get).toHaveBeenCalledWith('doc-1'))
+    useDocsStore.getState().setDraft('human draft plus more')
+    fresh.resolve({ data: doc({ body: 'assistant text', version: 2 }) })
+
+    expect(await saving).toBe(false)
+    expect(useDocsStore.getState().draft).toBe('human draft plus more')
+    expect(useDocsStore.getState().conflict?.body).toBe('assistant text')
+    expect(readDraft('doc-1')).toMatchObject({ body: 'human draft plus more', baseVersion: 1 })
+  })
+
   it('does nothing when there is no draft to save', async () => {
     expect(await useDocsStore.getState().save()).toBe(false)
     expect(api.update).not.toHaveBeenCalled()
@@ -158,25 +269,29 @@ describe('editing', () => {
 
 describe('opening a document with a draft on disk', () => {
   it('offers a draft taken against the version being opened', async () => {
-    writeDraft('doc-1', { body: 'unsaved', savedAt: Date.now(), base: '2026-01-01T00:00:00Z' })
+    writeDraft('doc-1', { body: 'unsaved', savedAt: Date.now(), baseVersion: 1 })
     api.get.mockResolvedValue({ data: doc() } as never)
 
     await useDocsStore.getState().open('doc-1')
-    expect(useDocsStore.getState().pendingDraft).toBe('unsaved')
+    expect(useDocsStore.getState().pendingDraft?.body).toBe('unsaved')
+    expect(useDocsStore.getState().pendingDraftStale).toBe(false)
   })
 
-  it('throws away a draft taken against an older version', async () => {
-    // The document changed elsewhere; replaying the old draft would revert it.
-    writeDraft('doc-1', { body: 'unsaved', savedAt: Date.now(), base: 'an-older-version' })
-    api.get.mockResolvedValue({ data: doc() } as never)
+  it('offers a draft taken against an older version instead of throwing it away', async () => {
+    // The document changed elsewhere; replaying the old draft would revert it,
+    // so it must be offered as a *conscious* choice, never applied or silently
+    // cleared.
+    writeDraft('doc-1', { body: 'unsaved', savedAt: Date.now(), baseVersion: 1 })
+    api.get.mockResolvedValue({ data: doc({ version: 2 }) } as never)
 
     await useDocsStore.getState().open('doc-1')
-    expect(useDocsStore.getState().pendingDraft).toBeNull()
-    expect(readDraft('doc-1')).toBeNull()
+    expect(useDocsStore.getState().pendingDraft?.body).toBe('unsaved')
+    expect(useDocsStore.getState().pendingDraftStale).toBe(true)
+    expect(readDraft('doc-1')?.body).toBe('unsaved')
   })
 
   it('offers nothing when the draft matches what was saved', async () => {
-    writeDraft('doc-1', { body: 'original', savedAt: Date.now(), base: '2026-01-01T00:00:00Z' })
+    writeDraft('doc-1', { body: 'original', savedAt: Date.now(), baseVersion: 1 })
     api.get.mockResolvedValue({ data: doc() } as never)
 
     await useDocsStore.getState().open('doc-1')
@@ -184,23 +299,92 @@ describe('opening a document with a draft on disk', () => {
   })
 
   it('restores the offered draft into the editor', async () => {
-    writeDraft('doc-1', { body: 'unsaved', savedAt: Date.now(), base: '2026-01-01T00:00:00Z' })
+    writeDraft('doc-1', { body: 'unsaved', savedAt: Date.now(), baseVersion: 1 })
     api.get.mockResolvedValue({ data: doc() } as never)
     await useDocsStore.getState().open('doc-1')
 
     useDocsStore.getState().acceptPendingDraft()
     expect(useDocsStore.getState().draft).toBe('unsaved')
     expect(useDocsStore.getState().dirty).toBe(true)
+    expect(useDocsStore.getState().draftBaseVersion).toBe(1)
+    expect(useDocsStore.getState().conflict).toBeNull()
+  })
+
+  it('preserves a legacy timestamp-based draft without treating it as current', async () => {
+    localStorage.setItem(
+      draftKey('doc-1'),
+      JSON.stringify({
+        body: 'legacy human draft',
+        savedAt: Date.now(),
+        base: '2026-01-01T00:00:00Z',
+      }),
+    )
+    api.get.mockResolvedValue({ data: doc() } as never)
+    await useDocsStore.getState().open('doc-1')
+
+    expect(useDocsStore.getState().pendingDraft?.body).toBe('legacy human draft')
+    expect(useDocsStore.getState().pendingDraftStale).toBe(true)
+    useDocsStore.getState().acceptPendingDraft()
+    expect(useDocsStore.getState().draftBaseVersion).toBeNull()
+    expect(useDocsStore.getState().conflict?.body).toBe('original')
+    expect(readDraft('doc-1')?.body).toBe('legacy human draft')
+  })
+
+  it('offers a conflict-bounced draft as stale on reopen instead of replaying it', async () => {
+    // The full repro: a 409 save leaves the draft with its original base, so a
+    // reopen must flag it stale and hand the user the decision — never a silent
+    // replay over the assistant's text, and never a silent discard of the
+    // human's work.
+    writeDraft('doc-1', { body: 'old human draft', savedAt: Date.now(), baseVersion: 1 })
+    api.get.mockResolvedValue({ data: doc({ version: 2 }) } as never)
+
+    await useDocsStore.getState().open('doc-1')
+    expect(useDocsStore.getState().pendingDraft?.body).toBe('old human draft')
+    expect(useDocsStore.getState().pendingDraftStale).toBe(true)
+    expect(readDraft('doc-1')).not.toBeNull()
   })
 
   it('discards the offered draft on request', async () => {
-    writeDraft('doc-1', { body: 'unsaved', savedAt: Date.now(), base: '2026-01-01T00:00:00Z' })
+    writeDraft('doc-1', { body: 'unsaved', savedAt: Date.now(), baseVersion: 1 })
     api.get.mockResolvedValue({ data: doc() } as never)
     await useDocsStore.getState().open('doc-1')
 
     useDocsStore.getState().discardPendingDraft()
     expect(useDocsStore.getState().pendingDraft).toBeNull()
     expect(readDraft('doc-1')).toBeNull()
+  })
+
+  it('rejects a 409 draft after reopen until explicit reconciliation, even when updated_at is unchanged', async () => {
+    const serverV2 = doc({ body: 'assistant text', version: 2 })
+    const mergedV3 = doc({ body: 'merged text', version: 3 })
+    api.update
+      .mockRejectedValueOnce({ response: { status: 409 } })
+      .mockResolvedValueOnce({ data: mergedV3 } as never)
+    api.get.mockResolvedValue({ data: serverV2 } as never)
+    useDocsStore.setState({ docs: [summary()], openDoc: doc() })
+    useDocsStore.getState().startEdit()
+    useDocsStore.getState().setDraft('human draft')
+
+    expect(await useDocsStore.getState().save()).toBe(false)
+    expect(readDraft('doc-1')?.baseVersion).toBe(1)
+
+    useDocsStore.getState().close()
+    await useDocsStore.getState().open('doc-1')
+    expect(useDocsStore.getState().pendingDraftStale).toBe(true)
+    useDocsStore.getState().acceptPendingDraft()
+
+    expect(useDocsStore.getState().conflict?.body).toBe('assistant text')
+    expect(await useDocsStore.getState().save()).toBe(false)
+    expect(api.update).toHaveBeenCalledTimes(1)
+
+    useDocsStore.getState().setDraft('merged text')
+    useDocsStore.getState().confirmDraftReconciled()
+    expect(useDocsStore.getState().draftBaseVersion).toBe(2)
+    expect(await useDocsStore.getState().save()).toBe(true)
+    expect(api.update).toHaveBeenLastCalledWith('doc-1', {
+      body: 'merged text',
+      expected_version: 2,
+    })
   })
 })
 
@@ -212,6 +396,14 @@ describe('draft storage', () => {
   it('reads nothing back from a corrupt entry rather than throwing', () => {
     localStorage.setItem(draftKey('doc-1'), 'not json')
     expect(readDraft('doc-1')).toBeNull()
+  })
+
+  it('does not infer authority from a legacy timestamp', () => {
+    localStorage.setItem(
+      draftKey('doc-1'),
+      JSON.stringify({ body: 'legacy', savedAt: 1, base: '2026-01-01T00:00:00Z' }),
+    )
+    expect(readDraft('doc-1')).toEqual({ body: 'legacy', savedAt: 1, baseVersion: null })
   })
 
   it('clears cleanly when there is nothing to clear', () => {
@@ -268,7 +460,10 @@ describe('mutations', () => {
     api.update.mockResolvedValue({ data: doc({ tags: ['prod'] }) } as never)
     useDocsStore.setState({ docs: [summary()], openDoc: doc({ body: '---\ntitle: NAS\n---\n\n# NAS\n' }) })
     await useDocsStore.getState().setTags(['prod'])
-    expect(api.update).toHaveBeenCalledWith('doc-1', { body: '---\ntitle: NAS\ntags: [prod]\n---\n\n# NAS\n' })
+    expect(api.update).toHaveBeenCalledWith('doc-1', {
+      body: '---\ntitle: NAS\ntags: [prod]\n---\n\n# NAS\n',
+      expected_version: 1,
+    })
     expect(useDocsStore.getState().docs[0].tags).toEqual(['prod'])
   })
 
@@ -295,7 +490,8 @@ describe('mutations', () => {
     api.restore.mockResolvedValue({ data: doc({ body: 'old' }) } as never)
     api.revisions.mockResolvedValue({ data: [] } as never)
     useDocsStore.setState({ docs: [summary()], openDoc: doc() })
-    await useDocsStore.getState().restore('doc-1', 'rev-1')
+    expect(await useDocsStore.getState().restore('doc-1', 'rev-1')).toBe(true)
+    expect(api.restore).toHaveBeenCalledWith('doc-1', 'rev-1', 1)
     expect(useDocsStore.getState().openDoc?.body).toBe('old')
     expect(api.revisions).toHaveBeenCalledWith('doc-1')
   })
@@ -303,12 +499,12 @@ describe('mutations', () => {
   it('regenerates the open document and drops the draft with it', async () => {
     api.regenerate.mockResolvedValue({ data: doc({ body: 'generated' }) } as never)
     useDocsStore.setState({ docs: [summary()], openDoc: doc(), draft: 'half written', dirty: true })
-    writeDraft('doc-1', { body: 'half written', savedAt: 1, base: '2026-01-01T00:00:00Z' })
+    writeDraft('doc-1', { body: 'half written', savedAt: 1, baseVersion: 1 })
 
     expect(await useDocsStore.getState().regenerate('doc-1')).toBe(true)
 
     const state = useDocsStore.getState()
-    expect(api.regenerate).toHaveBeenCalledWith('doc-1')
+    expect(api.regenerate).toHaveBeenCalledWith('doc-1', 1)
     expect(state.openDoc?.body).toBe('generated')
     expect(state.draft).toBeNull()
     expect(state.dirty).toBe(false)
@@ -351,6 +547,21 @@ describe('mutations', () => {
     expect(state.openDoc?.id).toBe('doc-1')
     expect(state.draft).toBe('mine')
     expect((state.docs.find((d) => d.id === 'doc-2') as Doc).body).toBe('generated')
+  })
+
+  it('does not let a delayed regenerate response replace a document opened meanwhile', async () => {
+    const response = deferred<{ data: Doc }>()
+    api.regenerate.mockReturnValue(response.promise as never)
+    api.get.mockResolvedValue({ data: doc({ id: 'doc-2', body: 'second', version: 4 }) } as never)
+    useDocsStore.setState({ docs: [summary(), summary({ id: 'doc-2', version: 4 })], openDoc: doc() })
+
+    const regenerating = useDocsStore.getState().regenerate('doc-1')
+    await useDocsStore.getState().open('doc-2')
+    response.resolve({ data: doc({ body: 'generated', version: 2 }) })
+
+    expect(await regenerating).toBe(true)
+    expect(useDocsStore.getState().openDoc?.id).toBe('doc-2')
+    expect(useDocsStore.getState().openDoc?.body).toBe('second')
   })
 })
 

@@ -51,12 +51,16 @@ export function DocumentationView() {
     dirty,
     saving,
     pendingDraft,
+    pendingDraftStale,
     startEdit,
     setDraft,
     cancelEdit,
     save,
     acceptPendingDraft,
     discardPendingDraft,
+    conflict,
+    reloadAfterConflict,
+    confirmDraftReconciled,
     create,
     move,
     remove,
@@ -256,7 +260,7 @@ export function DocumentationView() {
     const ok = await regenerate(openDoc.id)
     setRegenerating(false)
     if (!ok) {
-      toast.error('Could not regenerate that document')
+      toast.error('Could not regenerate — the document may have changed. Reload and try again.')
       return
     }
     setRegenerateOpen(false)
@@ -289,7 +293,11 @@ export function DocumentationView() {
       if (!window.confirm(`Restore the version from ${when}? The current body is saved to the history first.`)) {
         return
       }
-      await restore(openDoc.id, revisionId)
+      const ok = await restore(openDoc.id, revisionId)
+      if (!ok) {
+        toast.error('Could not restore — the document may have changed. Reload and try again.')
+        return
+      }
       toast.success('Version restored — the body it replaced is in the history')
     },
     [openDoc, restore, revisions],
@@ -515,7 +523,9 @@ export function DocumentationView() {
         {pendingDraft !== null && (
           <div className="flex items-center gap-2 border-b border-border bg-[var(--status-pending,#e3b341)]/10 px-4 py-1.5 text-xs">
             <span className="text-[var(--status-pending,#e3b341)]">
-              Unsaved changes from a previous session were found.
+              {pendingDraftStale
+                ? 'Unsaved changes from an older or unknown version were found — restore them to compare and merge before saving.'
+                : 'Unsaved changes from a previous session were found.'}
             </span>
             <Button size="xs" variant="secondary" className="cursor-pointer" onClick={acceptPendingDraft}>
               Restore them
@@ -592,6 +602,15 @@ export function DocumentationView() {
             currentDocId={openDoc.id}
             docs={docs}
             devices={linkableDevices}
+            conflict={
+              conflict
+                ? {
+                    currentBody: conflict.body,
+                    useServer: reloadAfterConflict,
+                    confirmMerge: confirmDraftReconciled,
+                  }
+                : undefined
+            }
           />
         )}
 

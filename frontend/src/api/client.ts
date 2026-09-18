@@ -334,6 +334,12 @@ export const documentsApi = {
       starred?: boolean
       reviewed?: boolean
       resync_facts?: boolean
+      /**
+       * The document version the caller's body was read from. A body write
+       * against a stale version is refused with 409, so a human saving over an
+       * MCP edit must see the newer text, not silently overwrite it.
+       */
+      expected_version?: number
     },
   ) => api.patch<import('@/documentation/types').Doc>(`/documents/${id}`, data),
   delete: (id: string) => api.delete(`/documents/${id}`),
@@ -343,12 +349,17 @@ export const documentsApi = {
     api.get<import('@/documentation/types').DocRevision & { body: string }>(
       `/documents/revisions/${revisionId}`,
     ),
-  restore: (id: string, revisionId: string) =>
-    api.post<import('@/documentation/types').Doc>(`/documents/${id}/revisions/${revisionId}/restore`),
+  restore: (id: string, revisionId: string, expectedVersion: number) =>
+    api.post<import('@/documentation/types').Doc>(
+      `/documents/${id}/revisions/${revisionId}/restore`,
+      { expected_version: expectedVersion },
+    ),
   backlinks: (id: string) =>
     api.get<import('@/documentation/types').DocBacklink[]>(`/documents/${id}/backlinks`),
-  regenerate: (id: string) =>
-    api.post<import('@/documentation/types').Doc>(`/documents/${id}/regenerate`),
+  regenerate: (id: string, expectedVersion: number) =>
+    api.post<import('@/documentation/types').Doc>(`/documents/${id}/regenerate`, {
+      expected_version: expectedVersion,
+    }),
   search: (q: string, limit = 25) =>
     api.get<import('@/documentation/types').DocSearchResult>('/documents/search', {
       params: { q, limit },

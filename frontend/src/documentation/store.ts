@@ -31,11 +31,11 @@ const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const UI_KEY = 'homelable_docs_ui'
 const DRAFT_PREFIX = 'homelable_docdraft:'
 
-interface DraftRecord {
+export interface DraftRecord {
   body: string
   savedAt: number
-  /** The document's `updated_at` when the draft was taken, to detect staleness. */
-  base: string
+  /** The monotonic document version the draft was taken from. Null for legacy drafts. */
+  baseVersion: number | null
 }
 
 export function draftKey(docId: string): string {
@@ -45,7 +45,16 @@ export function draftKey(docId: string): string {
 export function readDraft(docId: string): DraftRecord | null {
   try {
     const raw = localStorage.getItem(draftKey(docId))
-    return raw ? (JSON.parse(raw) as DraftRecord) : null
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<DraftRecord>
+    if (typeof parsed.body !== 'string' || typeof parsed.savedAt !== 'number') return null
+    return {
+      body: parsed.body,
+      savedAt: parsed.savedAt,
+      // Older clients stored an `updated_at` string as `base`. Preserve their
+      // text, but never treat that timestamp as proof that the draft is current.
+      baseVersion: typeof parsed.baseVersion === 'number' ? parsed.baseVersion : null,
+    }
   } catch {
     return null
   }
@@ -65,6 +74,27 @@ export function clearDraft(docId: string): void {
   } catch {
     // Ignored for the same reason.
   }
+}
+
+function sameDraft(left: DraftRecord | null, right: DraftRecord | null): boolean {
+  return (
+    left === right ||
+    (left !== null &&
+      right !== null &&
+      left.body === right.body &&
+      left.savedAt === right.savedAt &&
+      left.baseVersion === right.baseVersion)
+  )
+}
+
+function clearDraftIfUnchanged(docId: string, before: DraftRecord | null): void {
+  if (sameDraft(readDraft(docId), before)) clearDraft(docId)
+}
+
+function mergeDocument(docs: DocumentSummary[], data: Doc): DocumentSummary[] {
+  return docs.map((doc) =>
+    doc.id === data.id && doc.version <= data.version ? { ...doc, ...data } : doc,
+  )
 }
 
 interface UiPrefs {
@@ -101,13 +131,30 @@ export interface DocsState {
 
   openDoc: Doc | null
   openLoading: boolean
+  /** Changes whenever the selected document changes, invalidating late responses. */
+  documentEpoch: number
 
   /** The body being edited. Null when not in edit mode. */
   draft: string | null
+  /** The monotonic server version the active draft was taken from. */
+  draftBaseVersion: number | null
   dirty: boolean
   saving: boolean
   /** A recovered draft awaiting the user's yes or no. */
-  pendingDraft: string | null
+  pendingDraft: DraftRecord | null
+  /**
+   * The offered draft was written against an older version of the document
+   * than the one just opened. Restoring it enters reconciliation mode; it does
+   * not authorize a save against the newer version.
+   */
+  pendingDraftStale: boolean
+  /**
+   * A save was refused because the document moved underneath the edit — an
+   * assistant's apply landed first (409). Holds the server's newer body so the
+   * editor can show both bodies. The lock blocks further saves until the user
+   * resolves this, so the assistant's text cannot be overwritten unseen.
+   */
+  conflict: Doc | null
 
   revisions: DocRevision[]
   revisionsLoading: boolean
@@ -139,6 +186,10 @@ export interface DocsState {
   save: () => Promise<boolean>
   acceptPendingDraft: () => void
   discardPendingDraft: () => void
+  /** Discard the stale draft and read the newer body the server holds. */
+  reloadAfterConflict: () => void
+  /** Confirm the visible draft has been reconciled with the visible server body. */
+  confirmDraftReconciled: () => void
 
   create: (input: {
     title: string
@@ -160,7 +211,7 @@ export interface DocsState {
   loadRevisions: (id: string) => Promise<void>
   previewRevision: (revisionId: string) => Promise<void>
   closeRevisionPreview: () => void
-  restore: (id: string, revisionId: string) => Promise<void>
+  restore: (id: string, revisionId: string) => Promise<boolean>
   regenerate: (id: string) => Promise<boolean>
 
   loadBacklinks: (id: string) => Promise<void>
@@ -181,6 +232,15 @@ function message(error: unknown, fallback: string): string {
   return typeof detail === 'string' ? detail : fallback
 }
 
+/**
+ * A save refused because the document moved after the draft was taken. The
+ * section-apply guards are also 409, but those are its own endpoints; on the
+ * PATCH this status means the optimistic lock tripped.
+ */
+function isStaleConflict(error: unknown): boolean {
+  return (error as { response?: { status?: number } })?.response?.status === 409
+}
+
 const initialUi = readUi()
 
 export const useDocsStore = create<DocsState>()((set, get) => ({
@@ -191,11 +251,15 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
 
   openDoc: null,
   openLoading: false,
+  documentEpoch: 0,
 
   draft: null,
+  draftBaseVersion: null,
   dirty: false,
   saving: false,
   pendingDraft: null,
+  pendingDraftStale: false,
+  conflict: null,
 
   revisions: [],
   revisionsLoading: false,
@@ -230,11 +294,16 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   },
 
   open: async (id) => {
+    const documentEpoch = get().documentEpoch + 1
     set({
+      documentEpoch,
       openLoading: true,
       draft: null,
+      draftBaseVersion: null,
       dirty: false,
       pendingDraft: null,
+      pendingDraftStale: false,
+      conflict: null,
       revisions: [],
       revisionsLoading: false,
       revisionPreview: null,
@@ -242,20 +311,26 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
     })
     try {
       const { data } = await documentsApi.get(id)
-      // A draft newer than the stored document is unsaved work from a previous
-      // session; offer it rather than silently applying or dropping it.
+      if (get().documentEpoch !== documentEpoch) return
+      // A draft differing from the stored body is unsaved work from a previous
+      // session; offer it rather than silently applying or dropping it. A draft
+      // taken against an older version is offered too — never silently cleared —
+      // so restoring it is a conscious choice to replace text that changed since.
       const draft = readDraft(id)
-      const stale = draft !== null && draft.base !== data.updated_at
       set({
         openDoc: data,
         openLoading: false,
-        pendingDraft: draft && !stale && draft.body !== data.body ? draft.body : null,
+        pendingDraft: draft && draft.body !== data.body ? draft : null,
+        pendingDraftStale:
+          draft !== null &&
+          draft.body !== data.body &&
+          (draft.baseVersion === null || draft.baseVersion !== data.version),
       })
-      if (draft && stale) clearDraft(id)
       writeUi({ ...readUi(), lastDocId: id })
       // Not awaited: the document renders now, the "Linked from" block fills in.
       void get().loadBacklinks(id)
     } catch (error) {
+      if (get().documentEpoch !== documentEpoch) return
       set({ openLoading: false, loadError: message(error, 'Could not open that document') })
     }
   },
@@ -284,65 +359,196 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   },
 
   close: () =>
-    set({
+    set((state) => ({
+      documentEpoch: state.documentEpoch + 1,
       openDoc: null,
       draft: null,
+      draftBaseVersion: null,
       dirty: false,
       pendingDraft: null,
+      pendingDraftStale: false,
+      conflict: null,
       revisions: [],
       revisionsLoading: false,
       revisionPreview: null,
       backlinks: [],
-    }),
+    })),
 
   startEdit: () => {
     const doc = get().openDoc
-    if (doc) set({ draft: doc.body, dirty: false })
+    if (doc) set({ draft: doc.body, draftBaseVersion: doc.version, dirty: false })
   },
 
   setDraft: (body) => {
-    const doc = get().openDoc
+    const { openDoc: doc, draftBaseVersion } = get()
     set({ draft: body, dirty: doc ? body !== doc.body : false })
-    if (doc) writeDraft(doc.id, { body, savedAt: Date.now(), base: doc.updated_at })
+    if (doc) writeDraft(doc.id, { body, savedAt: Date.now(), baseVersion: draftBaseVersion })
   },
 
   cancelEdit: () => {
     const doc = get().openDoc
     if (doc) clearDraft(doc.id)
-    set({ draft: null, dirty: false })
+    set({ draft: null, draftBaseVersion: null, dirty: false, conflict: null })
   },
 
   save: async () => {
-    const { openDoc, draft } = get()
+    const { openDoc, draft, draftBaseVersion, conflict, documentEpoch, saving } = get()
     if (!openDoc || draft === null) return false
+    if (saving) return false
+    if (conflict || draftBaseVersion === null || draftBaseVersion !== openDoc.version) {
+      set({
+        loadError: 'Reconcile this draft with the current server text before saving it.',
+      })
+      return false
+    }
+    const persistedBefore = readDraft(openDoc.id)
     set({ saving: true })
     try {
-      const { data } = await documentsApi.update(openDoc.id, { body: draft })
-      clearDraft(openDoc.id)
+      const { data } = await documentsApi.update(openDoc.id, {
+        body: draft,
+        // The optimistic-lock counter the editor was reading when the draft was
+        // taken. Without it a human save could silently overwrite an edit an
+        // assistant just made, which is exactly what issue #485 forbids.
+        expected_version: draftBaseVersion,
+      })
+      const current = get()
+      const sameSession =
+        current.documentEpoch === documentEpoch && current.openDoc?.id === openDoc.id
+      const continuedBody =
+        sameSession &&
+        current.draft !== null &&
+        current.draftBaseVersion === draftBaseVersion &&
+        current.draft !== draft
+          ? current.draft
+          : null
+
+      if (continuedBody !== null) {
+        writeDraft(openDoc.id, {
+          body: continuedBody,
+          savedAt: Date.now(),
+          baseVersion: data.version,
+        })
+      } else {
+        clearDraftIfUnchanged(openDoc.id, persistedBefore)
+      }
       set((state) => ({
-        openDoc: data,
-        draft: data.body,
-        dirty: false,
         saving: false,
-        docs: state.docs.map((d) => (d.id === data.id ? { ...d, ...data } : d)),
+        docs: mergeDocument(state.docs, data),
+        ...(sameSession && state.openDoc && state.openDoc.version <= data.version
+          ? continuedBody !== null
+            ? {
+                openDoc: data,
+                draftBaseVersion: data.version,
+                dirty: state.draft !== data.body,
+                conflict: null,
+              }
+            : state.draft === draft && state.draftBaseVersion === draftBaseVersion
+              ? {
+                  openDoc: data,
+                  draft: data.body,
+                  draftBaseVersion: data.version,
+                  dirty: false,
+                  conflict: null,
+                }
+              : state.draft === null
+                ? { openDoc: data }
+                : {}
+          : {}),
       }))
       return true
     } catch (error) {
-      set({ saving: false, loadError: message(error, 'Could not save') })
+      const stale = isStaleConflict(error)
+      set((state) => ({
+        saving: stale,
+        ...(state.documentEpoch === documentEpoch && state.openDoc?.id === openDoc.id
+          ? { loadError: message(error, 'Could not save') }
+          : {}),
+      }))
+      // A 409 means the document moved underneath this edit — an assistant's
+      // apply beat the human's save. The draft stays in the editor and the
+      // conflict is set, so both bodies remain visible. The lock keeps the
+      // version bump from being skipped: nothing overwrites newer text unseen.
+      if (stale) {
+        const fresh = await documentsApi.get(openDoc.id).catch(() => null)
+        if (fresh) {
+          set((state) =>
+            state.documentEpoch === documentEpoch &&
+            state.openDoc?.id === openDoc.id &&
+            state.openDoc.version <= fresh.data.version &&
+            state.draft !== null &&
+            state.draftBaseVersion === draftBaseVersion
+              ? {
+                  conflict: fresh.data,
+                  loadError: 'This document changed while you had it open.',
+                  docs: mergeDocument(state.docs, fresh.data),
+                }
+              : {},
+          )
+        }
+      }
+      set({ saving: false })
       return false
     }
+  },
+
+  /** The conflict banner's "discard my stale draft and read what the assistant
+      wrote". The user's unsaved edits vanish by this explicit choice. */
+  reloadAfterConflict: () => {
+    const conflict = get().conflict
+    if (!conflict) return
+    clearDraft(conflict.id)
+    set((state) => ({
+      openDoc: conflict,
+      draft: conflict.body,
+      draftBaseVersion: conflict.version,
+      dirty: false,
+      conflict: null,
+      docs: state.docs.map((d) => (d.id === conflict.id ? { ...d, ...conflict } : d)),
+    }))
+  },
+
+  /** Advance the draft's base only after the user has compared both visible
+      bodies and explicitly says the editable text is the reconciled result. */
+  confirmDraftReconciled: () => {
+    const { conflict, draft } = get()
+    if (!conflict || draft === null) return
+    writeDraft(conflict.id, {
+      body: draft,
+      savedAt: Date.now(),
+      baseVersion: conflict.version,
+    })
+    set((state) => ({
+      openDoc: conflict,
+      draftBaseVersion: conflict.version,
+      dirty: draft !== conflict.body,
+      conflict: null,
+      loadError: null,
+      docs: state.docs.map((doc) =>
+        doc.id === conflict.id ? { ...doc, ...conflict } : doc,
+      ),
+    }))
   },
 
   acceptPendingDraft: () => {
     const { pendingDraft, openDoc } = get()
     if (pendingDraft === null || !openDoc) return
-    set({ draft: pendingDraft, dirty: pendingDraft !== openDoc.body, pendingDraft: null })
+    const stale = pendingDraft.baseVersion === null || pendingDraft.baseVersion !== openDoc.version
+    set({
+      draft: pendingDraft.body,
+      draftBaseVersion: pendingDraft.baseVersion,
+      dirty: pendingDraft.body !== openDoc.body,
+      pendingDraft: null,
+      pendingDraftStale: false,
+      // A stale (or legacy) draft is editable, but the current server body stays
+      // beside it until the user explicitly confirms a manual reconciliation.
+      conflict: stale ? openDoc : null,
+    })
   },
 
   discardPendingDraft: () => {
     const doc = get().openDoc
     if (doc) clearDraft(doc.id)
-    set({ pendingDraft: null })
+    set({ pendingDraft: null, pendingDraftStale: false })
   },
 
   create: async (input) => {
@@ -355,7 +561,11 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
         node_id: input.nodeId ?? null,
         template_id: input.templateId ?? null,
       })
-      set((state) => ({ docs: [...state.docs, data], openDoc: data }))
+      set((state) => ({
+        docs: [...state.docs, data],
+        openDoc: data,
+        documentEpoch: state.documentEpoch + 1,
+      }))
       return data
     } catch (error) {
       set({ loadError: message(error, 'Could not create that document') })
@@ -389,7 +599,12 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
     if (!openDoc) return false
     const body = withTags(openDoc.body, tags)
     try {
-      const { data } = await documentsApi.update(openDoc.id, { body })
+      const { data } = await documentsApi.update(openDoc.id, {
+        body,
+        // Tags are written through the body, so the same lock protects them:
+        // an assistant's edit must not be silently overwritten by a chip click.
+        expected_version: openDoc.version,
+      })
       set((state) => ({
         openDoc: data,
         docs: state.docs.map((d) => (d.id === data.id ? { ...d, ...data } : d)),
@@ -435,6 +650,9 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       docs: state.docs.filter((d) => d.id !== id && !isDescendant(state.docs, d, id)),
       openDoc: state.openDoc?.id === id ? null : state.openDoc,
       draft: state.openDoc?.id === id ? null : state.draft,
+      draftBaseVersion: state.openDoc?.id === id ? null : state.draftBaseVersion,
+      documentEpoch:
+        state.openDoc?.id === id ? state.documentEpoch + 1 : state.documentEpoch,
     }))
   },
 
@@ -467,37 +685,104 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   closeRevisionPreview: () => set({ revisionPreview: null }),
 
   restore: async (id, revisionId) => {
-    const { data } = await documentsApi.restore(id, revisionId)
-    clearDraft(id)
-    set((state) => ({
-      openDoc: data,
-      draft: state.draft === null ? null : data.body,
-      dirty: false,
-      // The restored body is now the current one; there is nothing left to
-      // compare it against, so the preview closes rather than showing itself.
-      revisionPreview: null,
-      docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : d)),
-    }))
-    await get().loadRevisions(id)
+    const before = get()
+    const current = before.openDoc?.id === id ? before.openDoc : before.docs.find((doc) => doc.id === id)
+    if (!current) return false
+    const { documentEpoch, draft, draftBaseVersion } = before
+    const persistedBefore = readDraft(id)
+    try {
+      const { data } = await documentsApi.restore(id, revisionId, current.version)
+      const after = get()
+      const sameSession = after.documentEpoch === documentEpoch && after.openDoc?.id === id
+      const draftChanged =
+        sameSession &&
+        (after.draft !== draft || after.draftBaseVersion !== draftBaseVersion)
+      if (!draftChanged) clearDraftIfUnchanged(id, persistedBefore)
+      set((state) => ({
+        docs: mergeDocument(state.docs, data),
+        ...(sameSession && state.openDoc && state.openDoc.version <= data.version
+          ? draftChanged && state.draft !== null
+            ? {
+                openDoc: data,
+                conflict: data,
+                dirty: state.draft !== data.body,
+                revisionPreview: null,
+              }
+            : {
+                openDoc: data,
+                draft: state.draft === null ? null : data.body,
+                draftBaseVersion: state.draft === null ? null : data.version,
+                dirty: false,
+                pendingDraft: null,
+                pendingDraftStale: false,
+                conflict: null,
+                // The restored body is now current, so its preview closes.
+                revisionPreview: null,
+              }
+          : {}),
+      }))
+      if (get().documentEpoch === documentEpoch && get().openDoc?.id === id) {
+        await get().loadRevisions(id)
+      }
+      return true
+    } catch (error) {
+      set((state) =>
+        state.documentEpoch === documentEpoch && state.openDoc?.id === id
+          ? { loadError: message(error, 'Could not restore that version') }
+          : {},
+      )
+      return false
+    }
   },
 
   regenerate: async (id) => {
+    const before = get()
+    const current = before.openDoc?.id === id ? before.openDoc : before.docs.find((doc) => doc.id === id)
+    if (!current) return false
+    const { documentEpoch, draft, draftBaseVersion } = before
+    const persistedBefore = readDraft(id)
     try {
-      const { data } = await documentsApi.regenerate(id)
-      // The body the user was editing no longer exists; drop the draft with it
-      // rather than letting a stale edit be saved back over the new one.
-      clearDraft(id)
+      const { data } = await documentsApi.regenerate(id, current.version)
+      const after = get()
+      const sameSession = after.documentEpoch === documentEpoch && after.openDoc?.id === id
+      const draftChanged =
+        sameSession &&
+        (after.draft !== draft || after.draftBaseVersion !== draftBaseVersion)
+      if (!draftChanged) clearDraftIfUnchanged(id, persistedBefore)
       set((state) => ({
-        openDoc: state.openDoc?.id === id ? data : state.openDoc,
-        draft: state.openDoc?.id === id ? null : state.draft,
-        dirty: state.openDoc?.id === id ? false : state.dirty,
-        pendingDraft: state.openDoc?.id === id ? null : state.pendingDraft,
-        docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : d)),
+        docs: mergeDocument(state.docs, data),
+        ...(sameSession && state.openDoc && state.openDoc.version <= data.version
+          ? draftChanged && state.draft !== null
+            ? {
+                openDoc: data,
+                conflict: data,
+                dirty: state.draft !== data.body,
+              }
+            : {
+                openDoc: data,
+                draft: null,
+                draftBaseVersion: null,
+                dirty: false,
+                pendingDraft: null,
+                pendingDraftStale: false,
+                conflict: null,
+              }
+          : {}),
       }))
-      if (get().openDoc?.id === id && get().revisions.length > 0) await get().loadRevisions(id)
+      if (
+        get().documentEpoch === documentEpoch &&
+        get().openDoc?.id === id &&
+        get().revisions.length > 0
+      ) {
+        await get().loadRevisions(id)
+      }
       return true
     } catch (error) {
-      set({ loadError: message(error, 'Could not regenerate that document') })
+      set((state) =>
+        state.documentEpoch === documentEpoch && state.openDoc?.id === id
+          ? { loadError: message(error, 'Could not regenerate that document') }
+          : {},
+      )
       return false
     }
   },

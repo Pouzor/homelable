@@ -33,6 +33,8 @@ export interface DocumentSummary {
   reviewed_at?: string | null
   edited_at?: string | null
   facts_synced_at?: string | null
+  /** The optimistic-lock counter: every body change bumps it. */
+  version: number
   created_at: string
   updated_at: string
 }

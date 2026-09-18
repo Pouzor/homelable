@@ -179,6 +179,30 @@ describe('DocEditor', () => {
     expect(screen.getByRole('button', { name: /saving/i })).toBeDisabled()
   })
 
+  it('shows the current server body beside the editable stale draft until reconciliation', async () => {
+    const user = userEvent.setup()
+    const useServer = vi.fn()
+    const confirmMerge = vi.fn()
+    const props = setup({
+      body: 'my stale draft',
+      dirty: true,
+      conflict: { currentBody: 'new server body', useServer, confirmMerge },
+    })
+
+    expect(screen.getByLabelText('Document source')).toHaveValue('my stale draft')
+    expect(screen.getByLabelText('Current server document')).toHaveTextContent('new server body')
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: /use merged draft/i }))
+    expect(confirmMerge).toHaveBeenCalledOnce()
+    await user.click(screen.getByRole('button', { name: /use server text/i }))
+    expect(useServer).toHaveBeenCalledOnce()
+
+    await user.click(screen.getByLabelText('Document source'))
+    await user.keyboard('{Control>}s{/Control}')
+    expect(props.onSave).not.toHaveBeenCalled()
+  })
+
   it('leaves edit mode on Escape', async () => {
     const user = userEvent.setup()
     const props = setup()
