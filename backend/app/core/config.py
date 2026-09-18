@@ -246,6 +246,14 @@ class Settings(BaseSettings):
     # (the Z-Wave node dump today). Same rationale as the Zigbee twin above.
     mqtt_response_timeout: int = 300
 
+    # XCP-ng (Xen Orchestra) import.
+    xcpng_host: str = ""
+    xcpng_username: str = ""
+    xcpng_password: str = ""
+    xcpng_verify_tls: bool = True
+    xcpng_sync_enabled: bool = False
+    xcpng_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"
 
