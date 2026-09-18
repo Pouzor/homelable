@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2, Rows3, BookOpen } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2, Rows3, BookOpen, Loader2 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -16,6 +16,7 @@ import { freeUnits } from '@/rack/layout'
 import type { Design } from '@/types'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
+import { useScanRunning } from '@/hooks/useScanRunning'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -49,6 +50,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
   const { nodes, hasUnsavedChanges: canvasDirty, floorMap, setFloorMap } = useCanvasStore()
   const floorMapEditNonce = useCanvasStore((s) => s.floorMapEditNonce)
   const rackDirty = useRackStore((s) => s.hasUnsavedChanges)
+  // Drives the Scan History spinner: a run is visible without opening the modal.
+  const scanRunning = useScanRunning()
   const openDeviceEditor = useRackStore((s) => s.openDeviceEditor)
   const hasUnsavedChanges = isRack ? rackDirty : canvasDirty
 
@@ -266,7 +269,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
         )}
         {!STANDALONE && (
           <SidebarItem
-            icon={Clock}
+            icon={scanRunning ? Loader2 : Clock}
+            iconClassName={scanRunning ? 'animate-spin text-[#e3b341]' : undefined}
             label="Scan History"
             collapsed={collapsed}
             onClick={onOpenHistory}
@@ -433,6 +437,8 @@ function VersionBadge() {
 
 interface SidebarItemProps {
   icon: React.ElementType
+  /** Extra classes on the icon only (e.g. a spin while a scan runs). */
+  iconClassName?: string
   label: string
   collapsed: boolean
   active?: boolean
@@ -443,7 +449,7 @@ interface SidebarItemProps {
   dataTour?: string
 }
 
-function SidebarItem({ icon: Icon, label, collapsed, active, badge, accent, onClick, dataTour }: SidebarItemProps) {
+function SidebarItem({ icon: Icon, iconClassName, label, collapsed, active, badge, accent, onClick, dataTour }: SidebarItemProps) {
   const btn = (
     <button
       onClick={onClick}
@@ -456,7 +462,7 @@ function SidebarItem({ icon: Icon, label, collapsed, active, badge, accent, onCl
           : 'text-muted-foreground hover:text-foreground hover:bg-[#21262d]'
       }`}
     >
-      <Icon size={16} className="shrink-0" />
+      <Icon size={16} className={`shrink-0${iconClassName ? ` ${iconClassName}` : ''}`} />
       {!collapsed && <span className="truncate">{label}</span>}
       {badge && (
         <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#e3b341]" />
