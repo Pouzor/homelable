@@ -265,6 +265,25 @@ server {
         proxy_set_header Host \$host;
     }
 
+    # Interactive API docs — Swagger UI, ReDoc, OpenAPI schema. See docs/api.md.
+    location /docs {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    location /redoc {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    location = /openapi.json {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
     # SPA fallback
     location / {
         try_files \$uri \$uri/ /index.html;
@@ -350,6 +369,45 @@ server {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
+    }
+
+    # Interactive API docs — see docs/api.md. Swagger UI asks for the schema at
+    # the origin root (/openapi.json), served by the stripped-prefix block here,
+    # so the page works under the prefix too.
+    location ${BASE_PATH}docs {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/docs;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    location ${BASE_PATH}redoc {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/redoc;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    location = ${BASE_PATH}openapi.json {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/openapi.json;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    location /docs {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    location /redoc {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+
+    location = /openapi.json {
+        proxy_pass http://127.0.0.1:$BACKEND_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
     }
 
     location / {
