@@ -66,13 +66,31 @@ describe('useDocsUrlSync', () => {
   // `?view=docs&doc=` with the default view, so a refresh lost the document.
   it('restores the document the URL asks for instead of wiping it', async () => {
     window.history.replaceState(null, '', '/?design=abc&view=docs&doc=doc-9')
-    const onRestore = vi.fn()
-    setup({ onRestore })
+    // What the URL held when the restore ran is the whole question, and it has
+    // to be captured there. A caller answers a restore by switching section and
+    // opening the document; until it does, the writer clears the params by
+    // design, so reading `window.location` after the fact raced that write.
+    let urlAtRestore = ''
+    const onRestore = vi.fn(() => {
+      urlAtRestore = search()
+    })
+    const { rerender } = setup({ onRestore })
 
     await waitFor(() => expect(onRestore).toHaveBeenCalledWith('doc-9'))
-    const params = new URLSearchParams(search())
-    expect(params.get('view')).toBe('docs')
-    expect(params.get('doc')).toBe('doc-9')
+    const asked = new URLSearchParams(urlAtRestore)
+    expect(asked.get('view')).toBe('docs')
+    expect(asked.get('doc')).toBe('doc-9')
+
+    // And once the caller has answered the way `restoreDocsUrl` does — section
+    // switched, document opened — the params are written back rather than
+    // dropped. That round trip is what a refresh rides on.
+    rerender({ view: 'documentation', openDocId: 'doc-9', ready: true, enabled: true, onRestore })
+    await waitFor(() => {
+      const params = new URLSearchParams(search())
+      expect(params.get('view')).toBe('docs')
+      expect(params.get('doc')).toBe('doc-9')
+      expect(params.get('design')).toBe('abc')
+    })
   })
 
   it('restores the section when the URL names no document', async () => {
