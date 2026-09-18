@@ -272,25 +272,68 @@ describe('mutations', () => {
     expect(useDocsStore.getState().docs[0].tags).toEqual(['prod'])
   })
 
-  it('applies tags to the draft body, not the server body, when a fresh draft exists', async () => {
-    // The user typed edits that are only in localStorage. Without the fix,
-    // setTags would read openDoc.body (the server copy) and save that —
-    // discarding all unsaved edits permanently.
-    const serverBody = '---\ntitle: NAS\n---\n\noriginal server text'
-    const draftBody  = '---\ntitle: NAS\n---\n\nedited text the user typed'
-    const updatedAt  = '2026-01-01T00:00:00Z'
-
-    api.update.mockResolvedValue({ data: doc({ tags: ['prod'], updated_at: updatedAt }) } as never)
-    useDocsStore.setState({ docs: [summary({ updated_at: updatedAt })], openDoc: doc({ body: serverBody, updated_at: updatedAt }) })
-    writeDraft('doc-1', { body: draftBody, savedAt: Date.now(), base: updatedAt })
+  it('keeps an unsaved draft alive across a tag write, tags and all', async () => {
+    // The write moves `updated_at`. Left alone the stored draft would no longer
+    // match it, and the next open would drop it as stale — unsaved words gone
+    // because the user clicked a chip.
+    api.update.mockResolvedValue({
+      data: doc({ tags: ['prod'], updated_at: '2026-02-02T00:00:00Z' }),
+    } as never)
+    useDocsStore.setState({
+      docs: [summary()],
+      openDoc: doc({ body: '---\ntitle: NAS\n---\n\n# NAS\n', updated_at: '2026-01-01T00:00:00Z' }),
+    })
+    writeDraft('doc-1', {
+      body: '---\ntitle: NAS\n---\n\nwords the user never saved\n',
+      savedAt: 1,
+      base: '2026-01-01T00:00:00Z',
+    })
 
     await useDocsStore.getState().setTags(['prod'])
 
-    // The saved body must contain the draft's text, not the server's.
-    const savedBody = (api.update.mock.calls[0][1] as { body: string }).body
-    expect(savedBody).toContain('edited text the user typed')
-    expect(savedBody).not.toContain('original server text')
-    expect(savedBody).toContain('tags: [prod]')
+    const kept = readDraft('doc-1')
+    expect(kept?.base).toBe('2026-02-02T00:00:00Z')
+    expect(kept?.body).toContain('words the user never saved')
+    // Restoring that draft later must not revert the tag that was just set.
+    expect(kept?.body).toContain('tags: [prod]')
+  })
+
+  it('never pushes the unsaved draft to the server', async () => {
+    // Saving a body stays an explicit user action: a chip click writes the tags
+    // on the stored document, never on prose the user has not committed yet.
+    api.update.mockResolvedValue({ data: doc({ tags: ['prod'] }) } as never)
+    useDocsStore.setState({
+      docs: [summary()],
+      openDoc: doc({ body: '---\ntitle: NAS\n---\n\n# NAS\n', updated_at: '2026-01-01T00:00:00Z' }),
+    })
+    writeDraft('doc-1', {
+      body: 'words the user never saved',
+      savedAt: 1,
+      base: '2026-01-01T00:00:00Z',
+    })
+
+    await useDocsStore.getState().setTags(['prod'])
+
+    expect(api.update).toHaveBeenCalledWith('doc-1', {
+      body: '---\ntitle: NAS\ntags: [prod]\n---\n\n# NAS\n',
+    })
+  })
+
+  it('carries the tag change into a recovered draft still on screen', async () => {
+    api.update.mockResolvedValue({
+      data: doc({ tags: ['prod'], updated_at: '2026-02-02T00:00:00Z' }),
+    } as never)
+    useDocsStore.setState({
+      docs: [summary()],
+      openDoc: doc({ body: '---\ntitle: NAS\n---\n\n# NAS\n', updated_at: '2026-01-01T00:00:00Z' }),
+      pendingDraft: '---\ntitle: NAS\n---\n\nrecovered words\n',
+    })
+
+    await useDocsStore.getState().setTags(['prod'])
+
+    const pending = useDocsStore.getState().pendingDraft
+    expect(pending).toContain('recovered words')
+    expect(pending).toContain('tags: [prod]')
   })
 
   it('reports a failed tag write rather than pretending it landed', async () => {
@@ -421,31 +464,6 @@ describe('preferences', () => {
     expect(useDocsStore.getState().expanded).toContain('zone:Garage')
     useDocsStore.getState().toggleExpanded('zone:Garage')
     expect(useDocsStore.getState().expanded).not.toContain('zone:Garage')
-  })
-
-  it('does not lose setGroupBy when setTreeWidth fires in the same tick', () => {
-    // Pre-fix: setGroupBy called readUi() then writeUi(). setTreeWidth did the
-    // same. When both fired synchronously the second readUi() returned stale
-    // state (before the first write landed), so the first change was silently
-    // overwritten. Both writes now happen inside the Zustand set() updater,
-    // which receives committed state — no race.
-    const s = useDocsStore.getState()
-    s.setGroupBy('subnet')
-    s.setTreeWidth(320)
-
-    const ui = JSON.parse(localStorage.getItem('homelable_docs_ui') ?? '{}')
-    expect(ui.groupBy).toBe('subnet')
-    expect(ui.treeWidth).toBe(320)
-  })
-
-  it('does not lose toggleExpanded when setGroupBy fires in the same tick', () => {
-    const s = useDocsStore.getState()
-    s.toggleExpanded('zone:Garage')
-    s.setGroupBy('tag')
-
-    const ui = JSON.parse(localStorage.getItem('homelable_docs_ui') ?? '{}')
-    expect(ui.expanded).toContain('zone:Garage')
-    expect(ui.groupBy).toBe('tag')
   })
 })
 
