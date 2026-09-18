@@ -387,15 +387,31 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   setTags: async (tags) => {
     const { openDoc } = get()
     if (!openDoc) return false
-    const draft = readDraft(openDoc.id)
-    const baseBody = (draft && draft.base === openDoc.updated_at) ? draft.body : openDoc.body
-    const body = withTags(baseBody, tags)
+    const body = withTags(openDoc.body, tags)
     try {
       const { data } = await documentsApi.update(openDoc.id, { body })
-      set((state) => ({
-        openDoc: data,
-        docs: state.docs.map((d) => (d.id === data.id ? { ...d, ...data } : d)),
-      }))
+      // The write moves `updated_at`, which would leave an unsaved draft looking
+      // stale: `open` would drop it, and the user's words with it, for having
+      // clicked a chip. Carry the draft forward instead, with the same rewrite
+      // applied, so restoring it later keeps the tags rather than reverting them.
+      const draft = readDraft(openDoc.id)
+      if (draft) {
+        writeDraft(openDoc.id, {
+          body: withTags(draft.body, tags),
+          savedAt: draft.savedAt,
+          base: data.updated_at,
+        })
+      }
+      set((state) => {
+        const editing = state.draft === null ? null : withTags(state.draft, tags)
+        return {
+          openDoc: data,
+          draft: editing,
+          dirty: editing !== null && editing !== data.body,
+          pendingDraft: state.pendingDraft === null ? null : withTags(state.pendingDraft, tags),
+          docs: state.docs.map((d) => (d.id === data.id ? { ...d, ...data } : d)),
+        }
+      })
       return true
     } catch (error) {
       set({ loadError: message(error, 'Could not save the tags') })
@@ -560,34 +576,26 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   clearSearch: () => set({ search: null }),
 
   setGroupBy: (groupBy) => {
-    set((s) => {
-      writeUi({ groupBy, expanded: s.expanded, treeWidth: s.treeWidth, lastDocId: readUi().lastDocId })
-      return { groupBy }
-    })
+    set({ groupBy })
+    writeUi({ ...readUi(), groupBy })
   },
 
   toggleExpanded: (key) => {
-    set((s) => {
-      const expanded = s.expanded.includes(key)
-        ? s.expanded.filter((k) => k !== key)
-        : [...s.expanded, key]
-      writeUi({ groupBy: s.groupBy, expanded, treeWidth: s.treeWidth, lastDocId: readUi().lastDocId })
-      return { expanded }
-    })
+    const expanded = get().expanded.includes(key)
+      ? get().expanded.filter((k) => k !== key)
+      : [...get().expanded, key]
+    set({ expanded })
+    writeUi({ ...readUi(), expanded })
   },
 
   setExpanded: (keys) => {
-    set((s) => {
-      writeUi({ groupBy: s.groupBy, expanded: keys, treeWidth: s.treeWidth, lastDocId: readUi().lastDocId })
-      return { expanded: keys }
-    })
+    set({ expanded: keys })
+    writeUi({ ...readUi(), expanded: keys })
   },
 
   setTreeWidth: (treeWidth) => {
-    set((s) => {
-      writeUi({ groupBy: s.groupBy, expanded: s.expanded, treeWidth, lastDocId: readUi().lastDocId })
-      return { treeWidth }
-    })
+    set({ treeWidth })
+    writeUi({ ...readUi(), treeWidth })
   },
 
   setFilter: (filter) => set({ filter }),
