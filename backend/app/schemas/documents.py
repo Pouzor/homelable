@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.services.doc_template import TEMPLATE_IDS
 from app.services.doc_tree import DOCUMENT_KINDS
@@ -71,6 +71,18 @@ class DocumentUpdate(BaseModel):
         if v is not None and v not in CLIENT_REVISION_REASONS:
             raise ValueError(f"revision_reason must be one of {sorted(CLIENT_REVISION_REASONS)}")
         return v
+    # Optimistic-lock guard for body writes, and it is *required* for them: a
+    # body save must name the version it was based on, so a save made from a
+    # stale draft cannot silently overwrite an MCP edit (or another writer) made
+    # since the draft was read. Non-body fields (a rename, a star, a reviewed
+    # flag) have no version guard — they do not rewrite anyone's text.
+    expected_version: int | None = Field(default=None, ge=1)
+
+
+class ExpectedVersionRequest(BaseModel):
+    """The document version a destructive whole-body action was prepared on."""
+
+    expected_version: int = Field(ge=1)
 
 
 class DocumentSummary(BaseModel):
@@ -92,6 +104,10 @@ class DocumentSummary(BaseModel):
     frontmatter: dict[str, Any] = {}
     starred: bool = False
     template_id: str | None = None
+    # The optimistic-lock counter: every body change bumps it, and a write that
+    # was prepared against an older version is refused. The section-outline and
+    # read endpoints return it so editors and MCP clients can land safely.
+    version: int = 1
     # Whether the device has moved on since the snapshot was taken. Computed by
     # the server because only the server knows the snapshot's shape: it holds
     # `label` and `type` through their fallbacks and `properties` as a flat
@@ -191,3 +207,104 @@ class CoverageResponse(BaseModel):
     overdue: int
     notes_unmigrated: int
     library_pages: int
+
+
+# ── bounded section edits (the MCP documentation workflow) ──────────────────
+
+
+class SectionItem(BaseModel):
+    """One ATX heading in a document, addressed by its outline index.
+
+    The index is stable only for the version it was read from; a section edit
+    always names the version it was prepared against, so an index cannot drift
+    onto a different section silently.
+    """
+
+    index: int
+    level: int
+    heading: str
+    parent_index: int | None = None
+    # A taste of the section's body — enough to tell two same-named headings
+    # apart without shipping the document.
+    excerpt: str = ""
+
+
+class SectionOutline(BaseModel):
+    document_id: str
+    title: str
+    version: int
+    sections: list[SectionItem]
+
+
+class SectionEditRequest(BaseModel):
+    """What one bounded edit must name.
+
+    `append` adds prose after the section's introduction, before existing child
+    sections (replacing an empty template prompt). `replace` replaces the whole
+    selected subtree, including descendants. `insert` adds a first child after
+    the introduction; `heading` is required and `level` is optional.
+    """
+
+    operation: Literal["append", "replace", "insert"]
+    section_index: int = Field(ge=0)
+    content: str
+    heading: str | None = Field(
+        default=None, description="Heading text for `insert`, without the `#` markers."
+    )
+    level: int | None = Field(
+        default=None, ge=1, le=6, description="ATX level for `insert`; defaults to the target's level + 1."
+    )
+    # The version the caller's outline was read from. The preview and the apply
+    # both refuse to work against any other version.
+    expected_version: int = Field(ge=1)
+
+
+class SectionApplyRequest(SectionEditRequest):
+    """An edit the caller swears it previewed.
+
+    Adds the `proposal_token` minted by `/sections/preview`. The token is a
+    server-signed digest of the document, version, operation, target and content
+    of exactly that preview; the apply recomputes it and refuses any request whose
+    fields do not match their own token — so an apply can never carry an edit that
+    differs from the one the caller saw.
+    """
+
+    proposal_token: str = Field(
+        min_length=16,
+        max_length=64,
+        description="The `proposal_token` returned by `/sections/preview` for this exact edit.",
+    )
+
+
+class SectionPreview(BaseModel):
+    """The bounded edit, without a single byte written."""
+
+    document_id: str
+    title: str
+    version: int
+    proposal_id: str
+    proposal_token: str
+    section: SectionItem
+    operation: str
+    # The section's body before and after the edit, so the caller can read
+    # exactly what an apply would change before approving it.
+    before: str
+    after: str
+
+
+class SectionApplyResponse(BaseModel):
+    """The document after an applied bounded edit.
+
+    `retried` is true when the apply was a replayed version of an edit that had
+    already been committed (a lost response, retried) — nothing was written a
+    second time, and the document is returned as it stands.
+    """
+
+    document_id: str
+    title: str
+    version: int
+    proposal_id: str
+    retried: bool = False
+    section: SectionItem
+    # The section's body as it reads after the edit.
+    body: str

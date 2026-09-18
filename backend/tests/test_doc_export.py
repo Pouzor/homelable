@@ -199,7 +199,7 @@ async def test_export_mirrors_the_library_tree(client: AsyncClient, headers: dic
 async def test_export_carries_the_body_the_user_saved(client: AsyncClient, headers: dict):
     doc = await _create(client, headers, title="Runbook")
     body = "---\ntags: [ops]\n---\n\n# Runbook\n\nPull the plug.\n"
-    res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": body}, headers=headers)
+    res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": body, "expected_version": 1}, headers=headers)
     assert res.status_code == 200, res.text
 
     entries = _entries((await client.get("/api/v1/documents/export", headers=headers)).content)

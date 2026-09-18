@@ -45,6 +45,11 @@ DOCUMENT_DDL: tuple[tuple[str, str], ...] = (
     # is distinguishable from "edited" — `created_at` and `updated_at` are two
     # separate clock reads on insert and are never equal.
     ("documents.edited_at", "ALTER TABLE documents ADD COLUMN edited_at DATETIME"),
+    # Optimistic-lock counter, bumped by every body change; the editor and the
+    # MCP client write against the version they read.
+    ("documents.version", "ALTER TABLE documents ADD COLUMN version INTEGER NOT NULL DEFAULT 1"),
+    # Token of the last applied MCP section edit, for lost-response retries.
+    ("documents.last_mcp_proposal", "ALTER TABLE documents ADD COLUMN last_mcp_proposal TEXT"),
     ("document_revisions.reason", "ALTER TABLE document_revisions ADD COLUMN reason TEXT"),
     (
         "documents_fts.table",

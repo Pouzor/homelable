@@ -191,7 +191,7 @@ async def test_the_route_finds_a_target_that_carries_no_links(client: AsyncClien
     ).json()
     await client.patch(
         f"/api/v1/documents/{source['id']}",
-        json={"body": "Read the [[VLAN plan]] first."},
+        json={"body": "Read the [[VLAN plan]] first.", "expected_version": 1},
         headers=headers,
     )
 
@@ -229,7 +229,7 @@ async def test_a_device_document_is_reachable_by_its_device_link(client: AsyncCl
     ).json()
     await client.patch(
         f"/api/v1/documents/{source['id']}",
-        json={"body": "Runs on [[device:nas-01]]."},
+        json={"body": "Runs on [[device:nas-01]].", "expected_version": 1},
         headers=headers,
     )
 
@@ -247,7 +247,7 @@ async def test_an_unresolved_link_is_not_a_backlink(client: AsyncClient, headers
     ).json()
     await client.patch(
         f"/api/v1/documents/{source['id']}",
-        json={"body": "Points at [[Something else]]."},
+        json={"body": "Points at [[Something else]].", "expected_version": 1},
         headers=headers,
     )
     hits = (await client.get(f"/api/v1/documents/{target['id']}/backlinks", headers=headers)).json()

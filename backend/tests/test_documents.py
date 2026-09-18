@@ -7,7 +7,18 @@ document that outlives the device it describes.
 
 import uuid
 
+import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from app.api.routes import documents as document_routes
+from app.core.config import settings
+from app.db.database import Base
+from app.db.models import Document, DocumentRevision
+from app.schemas.documents import DocumentUpdate, ExpectedVersionRequest, SectionApplyRequest
+from app.services.doc_sections import proposal_id, sign_proposal
 
 
 async def _device(client: AsyncClient, headers: dict, **body) -> dict:
@@ -20,6 +31,17 @@ async def _device(client: AsyncClient, headers: dict, **body) -> dict:
 async def _create(client: AsyncClient, headers: dict, **body) -> dict:
     res = await client.post("/api/v1/documents", json={"title": "Page", **body}, headers=headers)
     assert res.status_code == 201, res.text
+    return res.json()
+
+
+async def _preview_token(
+    client: AsyncClient, headers: dict, doc_id: str, payload: dict
+) -> dict:
+    """Preview a bounded edit and return its full preview (token included)."""
+    res = await client.post(
+        f"/api/v1/documents/{doc_id}/sections/preview", json=payload, headers=headers
+    )
+    assert res.status_code == 200, res.text
     return res.json()
 
 
@@ -354,13 +376,47 @@ async def test_listing_filters_by_tag(client: AsyncClient, headers: dict):
     assert [d["title"] for d in hits] == ["A"]
 
 
+async def test_listing_without_a_limit_preserves_a_large_gui_tree(
+    client: AsyncClient, headers: dict
+):
+    for i in range(105):
+        await _create(client, headers, title=f"Page {i:03}")
+
+    rows = (await client.get("/api/v1/documents", headers=headers)).json()
+    assert len(rows) == 105
+    assert [row["title"] for row in rows[:2]] == ["Page 000", "Page 001"]
+    assert rows[-1]["title"] == "Page 104"
+
+
+async def test_listing_paginates_stably_after_tag_filtering(client: AsyncClient, headers: dict):
+    for title, tags in (
+        ("A", "[wanted]"),
+        ("B", "[other]"),
+        ("C", "[wanted]"),
+        ("D", "[wanted]"),
+    ):
+        await _create(client, headers, title=title, body=f"---\ntags: {tags}\n---\n")
+
+    rows = (
+        await client.get(
+            "/api/v1/documents?tag=wanted&limit=2&offset=1", headers=headers
+        )
+    ).json()
+    assert [row["title"] for row in rows] == ["C", "D"]
+
+
+async def test_listing_validates_pagination(client: AsyncClient, headers: dict):
+    for query in ("limit=0", "limit=101", "offset=-1"):
+        assert (await client.get(f"/api/v1/documents?{query}", headers=headers)).status_code == 422
+
+
 # ── update ──────────────────────────────────────────────────────────────────
 
 
 async def test_editing_the_body_refreshes_the_frontmatter_cache(client: AsyncClient, headers: dict):
     doc = await _create(client, headers, title="Page")
     res = await client.patch(
-        f"/api/v1/documents/{doc['id']}", json={"body": "---\ntags: [x]\n---\n\nnew"}, headers=headers
+        f"/api/v1/documents/{doc['id']}", json={"body": "---\ntags: [x]\n---\n\nnew", "expected_version": 1}, headers=headers
     )
     assert res.status_code == 200, res.text
     assert res.json()["tags"] == ["x"]
@@ -371,7 +427,7 @@ async def test_the_body_renames_the_document(client: AsyncClient, headers: dict)
     doc = await _create(client, headers, title="Page")
     res = await client.patch(
         f"/api/v1/documents/{doc['id']}",
-        json={"body": "---\ntitle: SMB / CIFS\n---\n\n# SMB / CIFS\n"},
+        json={"body": "---\ntitle: SMB / CIFS\n---\n\n# SMB / CIFS\n", "expected_version": 1},
         headers=headers,
     )
     assert res.status_code == 200, res.text
@@ -382,7 +438,7 @@ async def test_the_body_renames_the_document(client: AsyncClient, headers: dict)
 async def test_a_body_without_a_title_keeps_the_one_it_has(client: AsyncClient, headers: dict):
     doc = await _create(client, headers, title="Page")
     res = await client.patch(
-        f"/api/v1/documents/{doc['id']}", json={"body": "---\ntags: [x]\n---\n\nnew"}, headers=headers
+        f"/api/v1/documents/{doc['id']}", json={"body": "---\ntags: [x]\n---\n\nnew", "expected_version": 1}, headers=headers
     )
     assert res.json()["title"] == "Page"
 
@@ -390,7 +446,7 @@ async def test_a_body_without_a_title_keeps_the_one_it_has(client: AsyncClient, 
 async def test_a_blank_title_in_the_body_is_ignored(client: AsyncClient, headers: dict):
     doc = await _create(client, headers, title="Page")
     res = await client.patch(
-        f"/api/v1/documents/{doc['id']}", json={"body": "---\ntitle: '   '\n---\n\nnew"}, headers=headers
+        f"/api/v1/documents/{doc['id']}", json={"body": "---\ntitle: '   '\n---\n\nnew", "expected_version": 1}, headers=headers
     )
     assert res.json()["title"] == "Page"
 
@@ -399,7 +455,7 @@ async def test_an_explicit_title_wins_over_the_body_in_the_same_request(client: 
     doc = await _create(client, headers, title="Page")
     res = await client.patch(
         f"/api/v1/documents/{doc['id']}",
-        json={"title": "Chosen", "body": "---\ntitle: From the body\n---\n\nnew"},
+        json={"title": "Chosen", "body": "---\ntitle: From the body\n---\n\nnew", "expected_version": 1},
         headers=headers,
     )
     assert res.json()["title"] == "Chosen"
@@ -410,7 +466,7 @@ async def test_a_device_document_renamed_in_its_body_keeps_its_device(client: As
     doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
     res = await client.patch(
         f"/api/v1/documents/{doc['id']}",
-        json={"body": "---\ntitle: The big NAS\n---\n\n# The big NAS\n"},
+        json={"body": "---\ntitle: The big NAS\n---\n\n# The big NAS\n", "expected_version": 1},
         headers=headers,
     )
     assert res.json()["title"] == "The big NAS"
@@ -506,7 +562,7 @@ async def test_a_property_edit_alone_marks_the_document_drifted(client: AsyncCli
 async def test_editing_the_body_does_not_make_a_document_drift(client: AsyncClient, headers: dict):
     device = await _device(client, headers)
     doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
-    res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "my words"}, headers=headers)
+    res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "my words", "expected_version": 1}, headers=headers)
     assert res.json()["drifted"] is False
 
 
@@ -528,7 +584,11 @@ async def test_regenerating_clears_the_drift(client: AsyncClient, headers: dict)
     await client.patch(
         f"/api/v1/scan/pending/{device['id']}", json={"ip": "192.168.1.99"}, headers=headers
     )
-    res = await client.post(f"/api/v1/documents/{doc['id']}/regenerate", headers=headers)
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/regenerate",
+        json={"expected_version": 1},
+        headers=headers,
+    )
     assert res.json()["drifted"] is False
 
 
@@ -559,7 +619,7 @@ async def test_a_library_page_never_drifts(client: AsyncClient, headers: dict):
 
 async def test_an_edit_records_the_previous_body(client: AsyncClient, headers: dict):
     doc = await _create(client, headers, title="Page", body="first")
-    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "second"}, headers=headers)
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "second", "expected_version": 1}, headers=headers)
     revisions = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
     assert len(revisions) == 1
     assert revisions[0]["reason"] == "edit"
@@ -569,7 +629,7 @@ async def test_an_edit_records_the_previous_body(client: AsyncClient, headers: d
 
 async def test_saving_an_unchanged_body_records_nothing(client: AsyncClient, headers: dict):
     doc = await _create(client, headers, title="Page", body="same")
-    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "same"}, headers=headers)
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "same", "expected_version": 1}, headers=headers)
     assert (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json() == []
 
 
@@ -577,7 +637,7 @@ async def test_an_edit_can_say_it_came_from_an_ai_client(client: AsyncClient, he
     doc = await _create(client, headers, title="Page", body="first")
     res = await client.patch(
         f"/api/v1/documents/{doc['id']}",
-        json={"body": "second", "revision_reason": "mcp"},
+        json={"body": "second", "expected_version": 1, "revision_reason": "mcp"},
         headers=headers,
     )
     assert res.status_code == 200, res.text
@@ -589,7 +649,7 @@ async def test_an_unknown_revision_reason_is_rejected(client: AsyncClient, heade
     doc = await _create(client, headers, title="Page", body="first")
     res = await client.patch(
         f"/api/v1/documents/{doc['id']}",
-        json={"body": "second", "revision_reason": "restore"},
+        json={"body": "second", "expected_version": 1, "revision_reason": "restore"},
         headers=headers,
     )
     assert res.status_code == 422
@@ -607,11 +667,13 @@ async def test_a_revision_reason_without_a_body_change_records_nothing(client: A
 
 async def test_restoring_brings_back_an_old_body_and_is_itself_undoable(client: AsyncClient, headers: dict):
     doc = await _create(client, headers, title="Page", body="first")
-    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "second"}, headers=headers)
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "second", "expected_version": 1}, headers=headers)
     revision = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()[0]
 
     res = await client.post(
-        f"/api/v1/documents/{doc['id']}/revisions/{revision['id']}/restore", headers=headers
+        f"/api/v1/documents/{doc['id']}/revisions/{revision['id']}/restore",
+        json={"expected_version": 2},
+        headers=headers,
     )
     assert res.status_code == 200, res.text
     assert res.json()["body"] == "first"
@@ -624,13 +686,15 @@ async def test_restoring_brings_back_the_title_that_body_carried(client: AsyncCl
     doc = await _create(client, headers, title="Page", body="---\ntitle: First name\n---\n\nfirst")
     await client.patch(
         f"/api/v1/documents/{doc['id']}",
-        json={"body": "---\ntitle: Second name\n---\n\nsecond"},
+        json={"body": "---\ntitle: Second name\n---\n\nsecond", "expected_version": 1},
         headers=headers,
     )
     revision = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()[0]
 
     res = await client.post(
-        f"/api/v1/documents/{doc['id']}/revisions/{revision['id']}/restore", headers=headers
+        f"/api/v1/documents/{doc['id']}/revisions/{revision['id']}/restore",
+        json={"expected_version": 2},
+        headers=headers,
     )
     assert res.json()["title"] == "First name"
 
@@ -638,18 +702,58 @@ async def test_restoring_brings_back_the_title_that_body_carried(client: AsyncCl
 async def test_restoring_a_revision_of_another_document_is_404(client: AsyncClient, headers: dict):
     a = await _create(client, headers, title="A", body="one")
     b = await _create(client, headers, title="B", body="one")
-    await client.patch(f"/api/v1/documents/{a['id']}", json={"body": "two"}, headers=headers)
+    await client.patch(f"/api/v1/documents/{a['id']}", json={"body": "two", "expected_version": 1}, headers=headers)
     revision = (await client.get(f"/api/v1/documents/{a['id']}/revisions", headers=headers)).json()[0]
-    res = await client.post(f"/api/v1/documents/{b['id']}/revisions/{revision['id']}/restore", headers=headers)
+    res = await client.post(
+        f"/api/v1/documents/{b['id']}/revisions/{revision['id']}/restore",
+        json={"expected_version": 1},
+        headers=headers,
+    )
     assert res.status_code == 404
+
+
+async def test_restore_requires_the_current_version_and_rejects_stale_or_future_versions(
+    client: AsyncClient, headers: dict
+):
+    doc = await _create(client, headers, title="Page", body="first")
+    await client.patch(
+        f"/api/v1/documents/{doc['id']}",
+        json={"body": "second", "expected_version": 1},
+        headers=headers,
+    )
+    revision = (await client.get(
+        f"/api/v1/documents/{doc['id']}/revisions", headers=headers
+    )).json()[0]
+    url = f"/api/v1/documents/{doc['id']}/revisions/{revision['id']}/restore"
+
+    assert (await client.post(url, headers=headers)).status_code == 422
+    for expected_version in (1, 99):
+        assert (
+            await client.post(
+                url, json={"expected_version": expected_version}, headers=headers
+            )
+        ).status_code == 409
+
+    read = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()
+    assert (read["body"], read["version"]) == ("second", 2)
+    history = (await client.get(
+        f"/api/v1/documents/{doc['id']}/revisions", headers=headers
+    )).json()
+    assert [row["reason"] for row in history] == ["edit"]
 
 
 async def test_history_is_pruned_to_the_limit(client: AsyncClient, headers: dict):
     from app.services.doc_tree import REVISION_LIMIT
 
     doc = await _create(client, headers, title="Page", body="v0")
+    version = 1
     for i in range(1, REVISION_LIMIT + 6):
-        await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": f"v{i}"}, headers=headers)
+        await client.patch(
+            f"/api/v1/documents/{doc['id']}",
+            json={"body": f"v{i}", "expected_version": version},
+            headers=headers,
+        )
+        version += 1
     revisions = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
     assert len(revisions) == REVISION_LIMIT
 
@@ -666,9 +770,13 @@ async def test_regenerating_a_device_document_rebuilds_it_from_the_facts(
 ):
     device = await _device(client, headers)
     doc = await _create(client, headers, title="nas-01", kind="device", device_id=device["id"])
-    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "everything I wrote"}, headers=headers)
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "everything I wrote", "expected_version": 1}, headers=headers)
 
-    res = await client.post(f"/api/v1/documents/{doc['id']}/regenerate", headers=headers)
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/regenerate",
+        json={"expected_version": 2},
+        headers=headers,
+    )
     assert res.status_code == 200, res.text
     body = res.json()
     assert "everything I wrote" not in body["body"]
@@ -685,7 +793,11 @@ async def test_regenerating_reads_the_devices_current_facts(client: AsyncClient,
         f"/api/v1/scan/pending/{device['id']}", json={"ip": "192.168.1.99"}, headers=headers
     )
 
-    res = await client.post(f"/api/v1/documents/{doc['id']}/regenerate", headers=headers)
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/regenerate",
+        json={"expected_version": 1},
+        headers=headers,
+    )
     assert "192.168.1.99" in res.json()["body"]
     # Regenerating documents the device as it is now, so the drift is gone.
     assert res.json()["facts_snapshot"]["ip"] == "192.168.1.99"
@@ -693,7 +805,11 @@ async def test_regenerating_reads_the_devices_current_facts(client: AsyncClient,
 
 async def test_regenerating_keeps_the_replaced_body_in_the_history(client: AsyncClient, headers: dict):
     doc = await _create(client, headers, title="VLAN plan", body="my own words")
-    await client.post(f"/api/v1/documents/{doc['id']}/regenerate", headers=headers)
+    await client.post(
+        f"/api/v1/documents/{doc['id']}/regenerate",
+        json={"expected_version": 1},
+        headers=headers,
+    )
 
     revisions = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
     assert revisions[0]["reason"] == "regenerate"
@@ -703,9 +819,13 @@ async def test_regenerating_keeps_the_replaced_body_in_the_history(client: Async
 
 async def test_regenerating_a_library_page_uses_its_template(client: AsyncClient, headers: dict):
     doc = await _create(client, headers, title="Restart the NAS", template_id="runbook")
-    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "gone"}, headers=headers)
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "gone", "expected_version": 1}, headers=headers)
 
-    res = await client.post(f"/api/v1/documents/{doc['id']}/regenerate", headers=headers)
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/regenerate",
+        json={"expected_version": 2},
+        headers=headers,
+    )
     assert res.status_code == 200, res.text
     assert "gone" not in res.json()["body"]
     assert "# Restart the NAS" in res.json()["body"]
@@ -714,13 +834,48 @@ async def test_regenerating_a_library_page_uses_its_template(client: AsyncClient
 
 async def test_regenerating_a_folder_is_rejected(client: AsyncClient, headers: dict):
     folder = await _create(client, headers, title="Runbooks", kind="folder")
-    res = await client.post(f"/api/v1/documents/{folder['id']}/regenerate", headers=headers)
+    res = await client.post(
+        f"/api/v1/documents/{folder['id']}/regenerate",
+        json={"expected_version": 1},
+        headers=headers,
+    )
     assert res.status_code == 400
 
 
 async def test_regenerating_an_unknown_document_is_404(client: AsyncClient, headers: dict):
-    res = await client.post(f"/api/v1/documents/{uuid.uuid4()}/regenerate", headers=headers)
+    res = await client.post(
+        f"/api/v1/documents/{uuid.uuid4()}/regenerate",
+        json={"expected_version": 1},
+        headers=headers,
+    )
     assert res.status_code == 404
+
+
+async def test_regenerate_requires_the_current_version_and_rejects_stale_or_future_versions(
+    client: AsyncClient, headers: dict
+):
+    doc = await _create(client, headers, title="Page", body="first")
+    await client.patch(
+        f"/api/v1/documents/{doc['id']}",
+        json={"body": "second", "expected_version": 1},
+        headers=headers,
+    )
+    url = f"/api/v1/documents/{doc['id']}/regenerate"
+
+    assert (await client.post(url, headers=headers)).status_code == 422
+    for expected_version in (1, 99):
+        assert (
+            await client.post(
+                url, json={"expected_version": expected_version}, headers=headers
+            )
+        ).status_code == 409
+
+    read = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()
+    assert (read["body"], read["version"]) == ("second", 2)
+    history = (await client.get(
+        f"/api/v1/documents/{doc['id']}/revisions", headers=headers
+    )).json()
+    assert [row["reason"] for row in history] == ["edit"]
 
 
 # ── delete ──────────────────────────────────────────────────────────────────
@@ -882,7 +1037,7 @@ async def test_coverage_stops_calling_a_document_header_only_once_it_is_edited(
 ):
     device = await _device(client, headers)
     doc = await _create(client, headers, title="nas", kind="device", device_id=device["id"])
-    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "written by hand"}, headers=headers)
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "written by hand", "expected_version": 1}, headers=headers)
     assert (await client.get("/api/v1/documents/coverage", headers=headers)).json()["header_only"] == 0
 
 
@@ -890,3 +1045,507 @@ async def test_coverage_counts_library_pages_separately(client: AsyncClient, hea
     await _create(client, headers, title="VLAN plan")
     await _create(client, headers, title="Runbooks", kind="folder")
     assert (await client.get("/api/v1/documents/coverage", headers=headers)).json()["library_pages"] == 2
+
+
+# ── bounded section edits (the MCP surface) ─────────────────────────────────
+
+
+async def test_sections_requires_auth(client: AsyncClient):
+    assert (await client.get("/api/v1/documents/x/sections")).status_code == 401
+
+
+async def test_sections_requires_auth_for_preview_and_apply(client: AsyncClient):
+    assert (await client.post("/api/v1/documents/x/sections/preview", json={})).status_code == 401
+    assert (await client.post("/api/v1/documents/x/sections/apply", json={})).status_code == 401
+
+
+async def test_outline_for_a_missing_document_is_404(client: AsyncClient, headers: dict):
+    assert (await client.get(f"/api/v1/documents/{uuid.uuid4()}/sections", headers=headers)).status_code == 404
+
+
+async def test_the_outline_names_sections_against_the_version(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# A\n\nfirst\n\n# B\n\nsecond\n")
+    outline = (await client.get(f"/api/v1/documents/{doc['id']}/sections", headers=headers)).json()
+    assert outline["document_id"] == doc["id"]
+    assert outline["version"] == 1
+    assert [s["heading"] for s in outline["sections"]] == ["A", "B"]
+    assert outline["sections"][0]["index"] == 0
+    assert outline["sections"][0]["parent_index"] is None
+
+
+async def test_an_outline_excerpt_rides_along(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\nBackup nightly.\n")
+    outline = (await client.get(f"/api/v1/documents/{doc['id']}/sections", headers=headers)).json()
+    assert outline["sections"][0]["excerpt"] == "Backup nightly."
+
+
+async def test_preview_shows_the_change_without_writing(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n\n# End\n\nfin\n")
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/preview",
+        json={"operation": "append", "section_index": 0, "content": "- backup nightly", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    preview = res.json()
+    assert preview["version"] == 1
+    assert "- backup nightly" in preview["after"]
+    assert "_…_" in preview["before"]
+    assert preview["section"]["heading"] == "Ops"
+    assert preview["proposal_id"]
+    # Previewing wrote nothing: no revision was recorded.
+    history = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
+    assert history == []
+
+
+async def test_preview_rejects_an_unclosed_code_fence(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/preview",
+        json={"operation": "append", "section_index": 0, "content": "```\nlet x = 1", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 400
+    assert "unclosed code fence" in res.json()["detail"]
+
+
+async def test_preview_rejects_a_heading_that_would_escape_the_section(
+    client: AsyncClient, headers: dict
+):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n## Sub\n\n_…_\n")
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/preview",
+        json={"operation": "append", "section_index": 1, "content": "## This breaks out", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 400
+    assert "level 2 heading" in res.json()["detail"]
+
+
+async def test_preview_rejects_a_stale_version(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "# Ops\n\nchanged\n", "expected_version": 1}, headers=headers)
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/preview",
+        json={"operation": "append", "section_index": 0, "content": "x", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 409
+
+
+async def test_apply_stores_the_edit_and_bumps_the_version(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n### Backup\n\n_…_\n")
+    payload = {
+        "operation": "append",
+        "section_index": 1,
+        "content": "- **Retention** — 30 days",
+        "expected_version": 1,
+    }
+    preview = await _preview_token(client, headers, doc["id"], payload)
+    payload["proposal_token"] = preview["proposal_token"]
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json=payload,
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    applied = res.json()
+    assert applied["retried"] is False
+    assert applied["version"] == 2
+    assert "- **Retention** — 30 days" in applied["body"]
+    # The edit is visible in later reads and recorded as an MCP revision.
+    body = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["body"]
+    assert "- **Retention** — 30 days" in body
+    history = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
+    assert history[0]["reason"] == "mcp"
+    assert "> _…_" in history[0]["title"] or history[0]["title"] == "Page"
+
+
+async def test_apply_without_a_preview_token_is_refused(client: AsyncClient, headers: dict):
+    """An apply must carry the token of the edit it actually previewed.
+
+    Regression for the issue #485 review: without server-side binding, a caller
+    could preview one edit and apply another (or none at all). The token is
+    signed over the document, version and every edited field, so a missing or
+    mismatched token is refused before any write.
+    """
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    missing = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json={"operation": "append", "section_index": 0, "content": "x", "expected_version": 1},
+        headers=headers,
+    )
+    assert missing.status_code == 422
+
+    preview = await _preview_token(
+        client, headers, doc["id"], {"operation": "append", "section_index": 0, "content": "a", "expected_version": 1}
+    )
+    # A token minted for a *different* edit than the one being applied.
+    swapped = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json={
+            "operation": "append",
+            "section_index": 0,
+            "content": "b",
+            "expected_version": 1,
+            "proposal_token": preview["proposal_token"],
+        },
+        headers=headers,
+    )
+    assert swapped.status_code == 400
+    assert "proposal_token does not match" in swapped.json()["detail"]
+    # Nothing was written by either attempt.
+    assert (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json() == []
+
+
+async def test_apply_rejects_a_stale_version(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    payload = {"operation": "append", "section_index": 0, "content": "x", "expected_version": 1}
+    preview = await _preview_token(client, headers, doc["id"], payload)
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "# Ops\n\nchanged\n", "expected_version": 1}, headers=headers)
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json={**payload, "proposal_token": preview["proposal_token"]},
+        headers=headers,
+    )
+    assert res.status_code == 409
+    # A rejected apply leaves no revision and no new body.
+    body = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["body"]
+    assert body == "# Ops\n\nchanged\n"
+
+
+async def test_apply_rejects_a_future_version_without_side_effects(
+    client: AsyncClient, headers: dict
+):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    proposal = proposal_id(doc["id"], 99, "append", 0, None, None, "loser")
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json={
+            "operation": "append",
+            "section_index": 0,
+            "content": "loser",
+            "expected_version": 99,
+            "proposal_token": sign_proposal(proposal, secret=settings.secret_key),
+        },
+        headers=headers,
+    )
+    assert res.status_code == 409
+    read = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()
+    assert (read["body"], read["version"]) == ("# Ops\n\n_…_\n", 1)
+    assert (await client.get(
+        f"/api/v1/documents/{doc['id']}/revisions", headers=headers
+    )).json() == []
+
+
+async def test_apply_rejects_a_noop(client: AsyncClient, headers: dict):
+    """Replace with the exact same content produces the same body → 400."""
+    body = "# Ops\nAlready here.\n\n# End\nfin\n"
+    doc = await _create(client, headers, title="Page", body=body)
+    payload = {"operation": "replace", "section_index": 0, "content": "Already here.", "expected_version": 1}
+    preview = await _preview_token(client, headers, doc["id"], payload)
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json={**payload, "proposal_token": preview["proposal_token"]},
+        headers=headers,
+    )
+    assert res.status_code == 400
+    assert "would not change" in res.json()["detail"]
+
+
+async def test_preview_rejects_an_unknown_section(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/preview",
+        json={"operation": "append", "section_index": 9, "content": "x", "expected_version": 1},
+        headers=headers,
+    )
+    assert res.status_code == 400
+    assert "does not exist" in res.json()["detail"]
+
+
+async def test_apply_retries_an_earlier_lost_response_without_writing_twice(
+    client: AsyncClient, headers: dict
+):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n### Backup\n\n_…_\n")
+    payload = {
+        "operation": "append",
+        "section_index": 1,
+        "content": "- **Retention** — 30 days",
+        "expected_version": 1,
+    }
+    preview = await _preview_token(client, headers, doc["id"], payload)
+    payload["proposal_token"] = preview["proposal_token"]
+    first = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply", json=payload, headers=headers
+    )
+    # The first response was lost; the caller retries the identical request.
+    second = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply", json=payload, headers=headers
+    )
+    assert second.status_code == 200, second.text
+    retried = second.json()
+    assert retried["retried"] is True
+    assert retried["proposal_id"] == first.json()["proposal_id"]
+    # The content appears exactly once, not twice.
+    body = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["body"]
+    assert body.count("- **Retention** — 30 days") == 1
+
+
+async def test_apply_does_not_retry_a_different_proposal_on_a_stale_version(
+    client: AsyncClient, headers: dict
+):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    first_payload = {"operation": "append", "section_index": 0, "content": "first", "expected_version": 1}
+    first_preview = await _preview_token(client, headers, doc["id"], first_payload)
+    # A different (still validly previewed, against the same version) edit.
+    other_payload = {"operation": "append", "section_index": 0, "content": "second", "expected_version": 1}
+    other_preview = await _preview_token(client, headers, doc["id"], other_payload)
+    await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json={**first_payload, "proposal_token": first_preview["proposal_token"]},
+        headers=headers,
+    )
+    # Same expected version, different proposal: must not be mistaken for a
+    # lost-response retry of the edit that just committed.
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/sections/apply",
+        json={**other_payload, "proposal_token": other_preview["proposal_token"]},
+        headers=headers,
+    )
+    assert res.status_code == 409
+
+
+async def test_apply_tracks_the_proposal_for_the_gui_to_see(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="# Ops\n\n_…_\n")
+    payload = {"operation": "append", "section_index": 0, "content": "new words", "expected_version": 1}
+    preview = await _preview_token(client, headers, doc["id"], payload)
+    result = (
+        await client.post(
+            f"/api/v1/documents/{doc['id']}/sections/apply",
+            json={**payload, "proposal_token": preview["proposal_token"]},
+            headers=headers,
+        )
+    ).json()
+    assert result["version"] == 2
+    listing = (await client.get("/api/v1/documents", headers=headers)).json()
+    row = next(d for d in listing if d["id"] == doc["id"])
+    assert row["version"] == 2
+
+
+async def test_patch_rejects_a_stale_expected_version(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="first")
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "second", "expected_version": 1}, headers=headers)
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"body": "third", "expected_version": 1}, headers=headers
+    )
+    assert res.status_code == 409
+    # The newer body is left alone.
+    assert (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["body"] == "second"
+
+
+async def test_patch_rejects_a_future_expected_version_before_other_fields_mutate(
+    client: AsyncClient, headers: dict
+):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas", kind="device", device_id=device["id"])
+    await client.patch(
+        f"/api/v1/scan/pending/{device['id']}", json={"ip": "192.168.1.99"}, headers=headers
+    )
+
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}",
+        json={
+            "body": "loser",
+            "title": "also loser",
+            "resync_facts": True,
+            "expected_version": 99,
+        },
+        headers=headers,
+    )
+    assert res.status_code == 409
+    read = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()
+    assert read["title"] == "nas"
+    assert read["version"] == 1
+    assert read["drifted"] is True
+    assert (await client.get(
+        f"/api/v1/documents/{doc['id']}/revisions", headers=headers
+    )).json() == []
+
+
+async def test_patch_bumps_the_version_for_body_writers(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="one")
+    res = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"body": "two", "expected_version": 1}, headers=headers
+    )
+    assert res.json()["version"] == 2
+    above = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"body": "three", "expected_version": 2}, headers=headers
+    )
+    assert above.json()["version"] == 3
+
+
+async def test_non_body_patch_does_not_bump_the_version(client: AsyncClient, headers: dict):
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas", kind="device", device_id=device["id"])
+    res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"starred": True}, headers=headers)
+    assert res.json()["version"] == 1
+
+
+async def test_a_body_write_without_an_expected_version_is_refused(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="first")
+    res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"body": "second"}, headers=headers)
+    assert res.status_code == 400, res.text
+    assert "expected_version" in res.json()["detail"]
+    # Nothing was written — the body, the version and the history are untouched.
+    read = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()
+    assert read["body"] == "first"
+    assert read["version"] == 1
+    assert (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json() == []
+
+
+async def test_a_stale_body_write_leaves_no_revision_behind(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page", body="first")
+    winner = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"body": "second", "expected_version": 1}, headers=headers
+    )
+    assert winner.status_code == 200
+    assert winner.json()["version"] == 2
+    # A second writer who also read version 1 writes after the winner landed —
+    # the overlapping save must be refused, not applied on top.
+    loser = await client.patch(
+        f"/api/v1/documents/{doc['id']}", json={"body": "third", "expected_version": 1}, headers=headers
+    )
+    assert loser.status_code == 409
+    # The refused save neither overwrote the winner nor recorded a revision:
+    # no "third" body, version still 2, and a single "edit" in history.
+    read = (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()
+    assert read["body"] == "second"
+    assert read["version"] == 2
+    history = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
+    assert [r["reason"] for r in history] == ["edit"]
+
+
+@pytest.mark.parametrize("writer", ["apply", "patch", "restore", "regenerate"])
+async def test_an_intervening_transaction_makes_each_body_writer_lose_cleanly(
+    writer: str, tmp_path, monkeypatch
+):
+    """Exercise the CAS window after the route read but before its UPDATE.
+
+    The injected transaction commits a competing body while the request still
+    holds its version-1 ORM object. Each route must then lose its conditional
+    UPDATE with 409 and roll back the speculative history row without touching
+    the search index or facts snapshot.
+    """
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / f'{writer}.db'}")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    document_id = str(uuid.uuid4())
+    revision_id = str(uuid.uuid4())
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    async with session_factory() as seed:
+        seed.add(
+            Document(
+                id=document_id,
+                kind="page",
+                title="Page",
+                slug="page",
+                body="# Ops\n\nbase\n",
+                frontmatter={},
+                tags=[],
+                template_id="blank",
+                facts_snapshot={"preserve": "me"},
+                version=1,
+            )
+        )
+        seed.add(
+            DocumentRevision(
+                id=revision_id,
+                document_id=document_id,
+                title="Page",
+                body="# Ops\n\nrestored\n",
+                reason="edit",
+            )
+        )
+        await seed.commit()
+
+    original_record_revision = document_routes._record_revision
+    winner_committed = False
+    indexed: list[str] = []
+
+    async def record_after_winner(db, doc, reason):
+        nonlocal winner_committed
+        if not winner_committed:
+            winner_committed = True
+            async with session_factory() as winner_session:
+                await winner_session.execute(
+                    update(Document)
+                    .where(Document.id == document_id, Document.version == 1)
+                    .values(body="winner", version=2)
+                )
+                await winner_session.commit()
+        await original_record_revision(db, doc, reason)
+
+    async def track_index(_db, doc):
+        indexed.append(doc.body)
+
+    monkeypatch.setattr(document_routes, "_record_revision", record_after_winner)
+    monkeypatch.setattr(document_routes.doc_search, "index_document", track_index)
+
+    async with session_factory() as loser_session:
+        with pytest.raises(HTTPException) as rejected:
+            if writer == "patch":
+                await document_routes.update_document(
+                    document_id,
+                    DocumentUpdate(body="loser", expected_version=1),
+                    loser_session,
+                    "test",
+                )
+            elif writer == "restore":
+                await document_routes.restore_revision(
+                    document_id,
+                    revision_id,
+                    ExpectedVersionRequest(expected_version=1),
+                    loser_session,
+                    "test",
+                )
+            elif writer == "regenerate":
+                await document_routes.regenerate_document(
+                    document_id,
+                    ExpectedVersionRequest(expected_version=1),
+                    loser_session,
+                    "test",
+                )
+            else:
+                request = SectionApplyRequest(
+                    operation="append",
+                    section_index=0,
+                    content="loser",
+                    expected_version=1,
+                    proposal_token="placeholder-placeholder",
+                )
+                proposal = proposal_id(
+                    document_id, 1, "append", 0, None, None, "loser"
+                )
+                request.proposal_token = sign_proposal(proposal, secret=settings.secret_key)
+                await document_routes.apply_section_edit(
+                    document_id, request, loser_session, "test"
+                )
+
+    assert rejected.value.status_code == 409
+    assert indexed == []
+    async with session_factory() as check:
+        stored = await check.get(Document, document_id)
+        assert stored is not None
+        assert (stored.body, stored.version) == ("winner", 2)
+        assert stored.facts_snapshot == {"preserve": "me"}
+        revisions = (
+            await check.execute(
+                select(DocumentRevision).where(
+                    DocumentRevision.document_id == document_id,
+                    DocumentRevision.id != revision_id,
+                )
+            )
+        ).scalars().all()
+        assert revisions == []
+    await engine.dispose()

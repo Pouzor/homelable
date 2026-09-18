@@ -1,5 +1,6 @@
 """Slugs, frontmatter parsing, and the two tree guards."""
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Document
@@ -65,6 +66,16 @@ async def test_unique_slug_ignores_the_document_being_renamed(db_session: AsyncS
 def test_parse_frontmatter_reads_the_leading_block():
     body = "---\ntitle: NAS\ntags: [a, b]\n---\n\n# NAS\n"
     assert doc_tree.parse_frontmatter(body) == {"title": "NAS", "tags": ["a", "b"]}
+
+
+@pytest.mark.parametrize("newline", ["\r\n", "\r"])
+def test_parse_frontmatter_accepts_markdown_line_endings(newline: str):
+    suffix = f"{newline}# NAS{newline}body"
+    body = newline.join(("---", "title: NAS", "tags: [a, b]", "---")) + suffix
+    original = body
+    assert doc_tree.parse_frontmatter(body) == {"title": "NAS", "tags": ["a", "b"]}
+    assert body == original
+    assert body.endswith(suffix)
 
 
 def test_parse_frontmatter_ignores_a_block_that_is_not_first():
