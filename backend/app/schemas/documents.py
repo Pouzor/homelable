@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, field_validator
 
@@ -179,6 +179,72 @@ class DriftField(BaseModel):
     field: str
     documented: Any = None
     current: Any = None
+
+
+class ResolutionItem(BaseModel):
+    """What the user wants for one conflicting fact or section.
+
+    ``choice`` is one of ``keep`` (keep the document's text), ``device`` (take
+    the device's value) or ``custom`` (the user's own replacement, in
+    ``custom``). Sent for every conflict the user has decided on; conflicts the
+    modal still shows are simply absent.
+    """
+
+    id: str
+    choice: Literal["keep", "device", "custom"] = "keep"
+    custom: str | None = None
+
+
+class ReconcileChange(BaseModel):
+    """One fact or section the update preview surfaced, and its disposition.
+
+    ``status`` is ``same``, ``auto`` or ``conflict``. A conflict carries its
+    resolution here once the user has decided, so a preview rendered back can
+    show exactly where the merge landed.
+    """
+
+    id: str
+    name: str
+    kind: str  # "field" | "section"
+    status: str
+    documented: str
+    device: str
+    previous: str = ""
+    resolution: str | None = None  # keep | device | custom
+    custom: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class UpdatePreviewRequest(BaseModel):
+    """Optional resolutions to fold into the preview.
+
+    Sent with none to open the modal; the modal then re-previews with each
+    decision as the user makes it, so the merged body is always the server's
+    merge — never a local approximation.
+    """
+
+    resolutions: list[ResolutionItem] = []
+
+
+class UpdatePreviewResponse(BaseModel):
+    preview_id: str
+    changes: list[ReconcileChange]
+    proposed_body: str
+    summary: list[str] = []
+    # The conflict ids still waiting on a decision (drives the review step).
+    unresolved: list[str] = []
+
+
+class UpdateApplyRequest(BaseModel):
+    """Settle a preview, then save the merge.
+
+    ``preview_id`` is echoed back so the server can reject a save made against
+    a preview the document has moved on from.
+    """
+
+    preview_id: str
+    resolutions: list[ResolutionItem] = []
 
 
 class CoverageResponse(BaseModel):
