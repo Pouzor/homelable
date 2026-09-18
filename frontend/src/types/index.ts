@@ -402,6 +402,13 @@ export interface EdgeTypeStyle {
   arrowStart: MarkerShape
   /** Default marker shape at the target end for new edges of this type. */
   arrowEnd: MarkerShape
+  /**
+   * Print the measured LQI on the link, like the label. A view preference, so
+   * it is read live from the custom style rather than copied onto each edge —
+   * no "Apply to existing" needed. Only edges that carry an `lqi` show it, so
+   * it is offered for the types the Zigbee import writes (`iot`, `zigbee_mesh`).
+   */
+  showLqi?: boolean
 }
 
 export interface CustomStyleDef {

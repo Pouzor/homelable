@@ -61,6 +61,28 @@ describe('CustomStyleModal', () => {
     expect(screen.queryByText(/Select a node type/)).toBeNull()
   })
 
+  it('exposes the zigbee_mesh edge type for styling', () => {
+    render(<CustomStyleModal open onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edges' }))
+    fireEvent.click(screen.getByRole('button', { name: /Zigbee Mesh/ }))
+    expect(screen.getByText(/Apply to existing Zigbee Mesh/)).toBeDefined()
+  })
+
+  it('offers the LQI toggle on the zigbee types only', () => {
+    render(<CustomStyleModal open onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edges' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /Zigbee Mesh/ }))
+    const box = screen.getByRole('checkbox', { name: /Show LQI/i }) as HTMLInputElement
+    expect(box.checked).toBe(false)
+    fireEvent.click(box)
+    expect((screen.getByRole('checkbox', { name: /Show LQI/i }) as HTMLInputElement).checked).toBe(true)
+
+    // Ethernet never carries an LQI, so the toggle isn't offered there.
+    fireEvent.click(screen.getByRole('button', { name: /Ethernet/ }))
+    expect(screen.queryByRole('checkbox', { name: /Show LQI/i })).toBeNull()
+  })
+
   it('selecting an edge type opens the edge editor with path style buttons', () => {
     render(<CustomStyleModal open onClose={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Edges' }))
