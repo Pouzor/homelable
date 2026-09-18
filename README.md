@@ -27,6 +27,7 @@
   <a href="#zigbee2mqtt-import">Zigbee / Z-Wave</a> ·
   <a href="#proxmox-ve-import">Proxmox</a> ·
   <a href="#live-view-read-only-public-canvas">Live View</a> ·
+  <a href="#rest-api">REST API</a> ·
   <a href="#mcp-server-ai-integration-optional">MCP Server</a>
 </p>
 
@@ -350,6 +351,40 @@ Restart the backend (`docker compose restart backend`).
 ```
 
 The backend port (`8000`) must be reachable from your gethomepage container.
+
+---
+
+## REST API
+
+Everything the UI does goes through a documented JSON API under `/api/v1` —
+nodes, links, designs, racks, documents, the scanner. Script it to create nodes
+for new machines, attach properties, and wire links between them.
+
+Interactive documentation ships with the app, generated from the code so it
+never drifts:
+
+| URL | What |
+|---|---|
+| `http://<your-homelab-ip>:3000/docs` | Swagger UI — browse and call every endpoint |
+| `http://<your-homelab-ip>:3000/redoc` | ReDoc — the same schema, reference layout |
+| `http://<your-homelab-ip>:3000/openapi.json` | OpenAPI schema, for client generators |
+
+Authenticate with a bearer token from `POST /api/v1/auth/login`, then send it as
+`Authorization: Bearer <token>`:
+
+```bash
+TOKEN=$(curl -s http://<your-homelab-ip>:3000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"your-password"}' | jq -r .access_token)
+
+curl -s http://<your-homelab-ip>:3000/api/v1/nodes -H "Authorization: Bearer $TOKEN"
+```
+
+> **Full documentation:** [docs/api.md](./docs/api.md)
+
+> [!WARNING]
+> The docs endpoints are not behind authentication — anyone who can reach the
+> app can read the API shape (not your data). Keep Homelable on your LAN.
 
 ---
 

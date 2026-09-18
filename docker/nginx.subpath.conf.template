@@ -40,6 +40,27 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
     }
 
+    # Interactive API docs — see docs/api.md. Swagger UI asks for the schema at
+    # the origin root (/openapi.json), which the stripped-prefix block below
+    # serves, so the page works under the prefix too.
+    location __BASE__docs {
+        proxy_pass http://backend:8000/docs;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location __BASE__redoc {
+        proxy_pass http://backend:8000/redoc;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location = __BASE__openapi.json {
+        proxy_pass http://backend:8000/openapi.json;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
     # Legacy /ws/ path
     location __BASE__ws/ {
         proxy_pass http://backend:8000/ws/;
@@ -66,6 +87,24 @@ server {
     }
 
     location /api/ {
+        proxy_pass http://backend:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /docs {
+        proxy_pass http://backend:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /redoc {
+        proxy_pass http://backend:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location = /openapi.json {
         proxy_pass http://backend:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
