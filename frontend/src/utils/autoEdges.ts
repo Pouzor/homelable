@@ -18,6 +18,8 @@ export interface AutoEdge {
   type?: string
   source_handle?: string | null
   target_handle?: string | null
+  /** Measured link quality, carried from the import (mesh links have no other home). */
+  lqi?: number | null
 }
 
 /** Side a handle id sits on ('left-t' → 'left', 'bottom-2' → 'bottom'). */
@@ -59,7 +61,7 @@ export function applyAutoEdges(
       sourceHandle,
       targetHandle,
       type,
-      data: { type } as EdgeData,
+      data: (e.lqi == null ? { type } : { type, lqi: e.lqi }) as EdgeData,
     }
   })
 

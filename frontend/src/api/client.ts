@@ -198,7 +198,7 @@ export const scanApi = {
       approved: boolean
       node_id: string
       edges_created: number
-      edges: { id: string; source: string; target: string; type?: string; source_handle?: string | null; target_handle?: string | null }[]
+      edges: { id: string; source: string; target: string; type?: string; source_handle?: string | null; target_handle?: string | null; lqi?: number | null }[]
     }>(`/scan/pending/${id}/approve`, nodeData),
   hide: (id: string) => api.post(`/scan/pending/${id}/hide`),
   ignore: (id: string) => api.post(`/scan/pending/${id}/ignore`),
@@ -208,7 +208,7 @@ export const scanApi = {
       node_ids: string[]
       device_ids: string[]
       edges_created: number
-      edges: { id: string; source: string; target: string; type?: string; source_handle?: string | null; target_handle?: string | null }[]
+      edges: { id: string; source: string; target: string; type?: string; source_handle?: string | null; target_handle?: string | null; lqi?: number | null }[]
       skipped: number
       skipped_devices: SkippedDevice[]
     }>('/scan/pending/bulk-approve', { device_ids: ids, design_id: designId ?? undefined }),

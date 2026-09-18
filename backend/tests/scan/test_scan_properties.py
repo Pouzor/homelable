@@ -190,6 +190,128 @@ async def test_approve_zigbee_creates_edge_when_other_endpoint_is_node(
 
 
 @pytest.mark.asyncio
+async def test_approve_zigbee_mesh_link_carries_lqi_onto_edge(
+    client: AsyncClient, headers, db_session
+):
+    """A mesh link has no node-property fallback, so the LQI measured at import
+    must reach the Edge — and the response — or it is lost for good."""
+    from sqlalchemy import select
+
+    from app.db.models import Edge, InventoryDeviceLink
+
+    coord_device = InventoryDevice(
+        ieee_address="0xCOORD",
+        friendly_name="Coordinator",
+        suggested_type="zigbee_coordinator",
+        status="approved",
+    )
+    db_session.add(coord_device)
+    await db_session.flush()
+    coord = Node(label="Coordinator", type="zigbee_coordinator", device_id=coord_device.id)
+    db_session.add(coord)
+
+    pending = InventoryDevice(
+        ieee_address="0xR1",
+        friendly_name="router_1",
+        suggested_type="zigbee_router",
+        status="pending",
+        discovery_source="zigbee",
+    )
+    db_session.add(pending)
+    db_session.add(
+        InventoryDeviceLink(
+            source_ieee="0xCOORD",
+            target_ieee="0xR1",
+            discovery_source="zigbee_mesh",
+            lqi=132,
+        )
+    )
+    await db_session.commit()
+
+    res = await client.post(
+        f"/api/v1/scan/pending/{pending.id}/approve",
+        json={
+            "label": "router_1",
+            "type": "zigbee_router",
+            "ip": None,
+            "status": "unknown",
+            "services": [],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["edges_created"] == 1
+    assert data["edges"][0]["type"] == "zigbee_mesh"
+    assert data["edges"][0]["lqi"] == 132
+
+    edges = (await db_session.execute(select(Edge))).scalars().all()
+    assert len(edges) == 1
+    assert edges[0].type == "zigbee_mesh"
+    # Sideways, like the cluster edges — it reads apart from the tree.
+    assert edges[0].source_handle == "right"
+    assert edges[0].target_handle == "left"
+    assert edges[0].lqi == 132
+
+
+@pytest.mark.asyncio
+async def test_approve_zigbee_tree_link_carries_lqi_onto_edge(
+    client: AsyncClient, headers, db_session
+):
+    """Same for a tree link, and lqi=0 (a real, worst-case reading) survives."""
+    from sqlalchemy import select
+
+    from app.db.models import Edge, InventoryDeviceLink
+
+    coord_device = InventoryDevice(
+        ieee_address="0xCOORD",
+        friendly_name="Coordinator",
+        suggested_type="zigbee_coordinator",
+        status="approved",
+    )
+    db_session.add(coord_device)
+    await db_session.flush()
+    db_session.add(
+        Node(label="Coordinator", type="zigbee_coordinator", device_id=coord_device.id)
+    )
+    pending = InventoryDevice(
+        ieee_address="0xR1",
+        friendly_name="router_1",
+        suggested_type="zigbee_router",
+        status="pending",
+        discovery_source="zigbee",
+    )
+    db_session.add(pending)
+    db_session.add(
+        InventoryDeviceLink(
+            source_ieee="0xCOORD",
+            target_ieee="0xR1",
+            discovery_source="zigbee",
+            lqi=0,
+        )
+    )
+    await db_session.commit()
+
+    res = await client.post(
+        f"/api/v1/scan/pending/{pending.id}/approve",
+        json={
+            "label": "router_1",
+            "type": "zigbee_router",
+            "ip": None,
+            "status": "unknown",
+            "services": [],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200
+    assert res.json()["edges"][0]["lqi"] == 0
+
+    edges = (await db_session.execute(select(Edge))).scalars().all()
+    assert edges[0].type == "iot"
+    assert edges[0].lqi == 0
+
+
+@pytest.mark.asyncio
 async def test_approve_zigbee_skips_duplicate_edge(
     client: AsyncClient, headers, db_session
 ):

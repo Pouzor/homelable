@@ -55,6 +55,22 @@ describe('applyAutoEdges', () => {
     expect(res.nodes).toBe(nodes)
   })
 
+  it('carries the imported lqi onto the edge data (0 included)', () => {
+    const res = applyAutoEdges([node('a'), node('b')], [], [
+      { id: 'e1', source: 'a', target: 'b', type: 'zigbee_mesh', source_handle: 'right', target_handle: 'left', lqi: 132 },
+      { id: 'e2', source: 'a', target: 'b', type: 'iot', lqi: 0 },
+    ])
+    expect(res.edges[0].data).toMatchObject({ type: 'zigbee_mesh', lqi: 132 })
+    expect(res.edges[1].data).toMatchObject({ type: 'iot', lqi: 0 })
+  })
+
+  it('omits lqi when the server sent none', () => {
+    const res = applyAutoEdges([node('a'), node('b')], [], [
+      { id: 'e1', source: 'a', target: 'b', type: 'iot', lqi: null },
+    ])
+    expect(res.edges[0].data).toEqual({ type: 'iot' })
+  })
+
   it('appends to existing edges rather than replacing them', () => {
     const existing = [{ id: 'x', source: 'a', target: 'b' }] as Edge<EdgeData>[]
     const res = applyAutoEdges([node('a'), node('b')], existing, [

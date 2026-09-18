@@ -784,7 +784,7 @@ async def bulk_approve_devices(
         ref = entry.pop("_ref")
         entry["existing_node_id"] = ref.id if isinstance(ref, Node) else ref
 
-    all_edges: list[dict[str, str]] = []
+    all_edges: list[dict[str, Any]] = []
     for device in approved_devices:
         all_edges.extend(
             await _resolve_pending_links_for_ieee(db, device.ieee_address, default_design_id)
@@ -992,7 +992,7 @@ async def _is_proxmox_cluster_member(db: AsyncSession, ieee: str | None) -> bool
 
 async def _resolve_pending_links_for_ieee(
     db: AsyncSession, ieee: str | None, design_id: str | None
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Materialize edges for any device_inventory_links involving ``ieee`` on the
     canvas identified by ``design_id``.
 
@@ -1050,7 +1050,7 @@ async def _resolve_pending_links_for_ieee(
     )
     existing_pairs = {(e.source, e.target) for e in existing_q.scalars().all()}
 
-    created: list[dict[str, str]] = []
+    created: list[dict[str, Any]] = []
     for link in links:
         other_ieee = (
             link.target_ieee if link.source_ieee == ieee else link.source_ieee
@@ -1094,6 +1094,9 @@ async def _resolve_pending_links_for_ieee(
             source_handle=src_handle,
             target_handle=tgt_handle,
             design_id=edge_design_id,
+            # Measured link quality, carried from the import. A mesh link has no
+            # node-property fallback, so losing it here loses it for good.
+            lqi=link.lqi,
         )
         db.add(edge)
         await db.flush()
@@ -1107,6 +1110,7 @@ async def _resolve_pending_links_for_ieee(
             "type": edge_type,
             "source_handle": src_handle,
             "target_handle": tgt_handle,
+            "lqi": link.lqi,
         })
 
     return created
