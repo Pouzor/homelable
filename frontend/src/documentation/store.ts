@@ -403,13 +403,20 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
         })
       }
       set((state) => {
+        // The list is keyed by id, so it takes the answer whichever document is
+        // on screen by now. What is on screen is another matter: the user may
+        // have moved on while this was in flight, and painting a stale document
+        // and its draft over the current one is how the other handlers here
+        // avoid ending up showing two documents at once.
+        const docs = state.docs.map((d) => (d.id === data.id ? { ...d, ...data } : d))
+        if (state.openDoc?.id !== data.id) return { docs }
         const editing = state.draft === null ? null : withTags(state.draft, tags)
         return {
+          docs,
           openDoc: data,
           draft: editing,
           dirty: editing !== null && editing !== data.body,
           pendingDraft: state.pendingDraft === null ? null : withTags(state.pendingDraft, tags),
-          docs: state.docs.map((d) => (d.id === data.id ? { ...d, ...data } : d)),
         }
       })
       return true
