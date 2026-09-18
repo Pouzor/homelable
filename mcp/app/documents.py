@@ -45,6 +45,17 @@ DOC_TEMPLATES = [
 # argument: an AI client cannot sign its edits as a human's.
 _MCP_REASON = "mcp"
 
+_SECTION_EDIT_FIELDS: dict[str, Any] = {
+    "document_id": {"type": "string"},
+    "operation": {"type": "string", "enum": ["append", "replace", "insert"]},
+    "section_index": {"type": "integer"},
+    "content": {"type": "string"},
+    "heading": {"type": "string"},
+    "level": {"type": "integer", "minimum": 1, "maximum": 6},
+    "expected_version": {"type": "integer", "minimum": 1},
+    "proposal_token": {"type": "string"},
+}
+
 DOC_TOOLS = [
     Tool(name="search_documentation", description="Full-text search across every document, returning a snippet per hit. The first thing to call when the question is 'what do we know about X' — cheaper than listing and reading documents. `engine` is 'fts5', or 'like' on a SQLite build without FTS5, where snippets are unhighlighted.", inputSchema={
         "type": "object",
@@ -67,6 +78,21 @@ DOC_TOOLS = [
         "type": "object",
         "required": ["id"],
         "properties": {"id": {"type": "string", "description": "Document id. Call search_documentation or list_documentation to discover ids."}},
+    }),
+    Tool(name="list_document_sections", description="List the current Markdown sections and document version without writing. Use its section index and version for a guarded section-edit preview.", inputSchema={
+        "type": "object",
+        "required": ["document_id"],
+        "properties": {"document_id": {"type": "string"}},
+    }),
+    Tool(name="preview_document_section_edit", description="Preview a bounded change to one section without writing. Read the document first and use its version and section index. The returned token is required to apply this exact preview.", inputSchema={
+        "type": "object",
+        "required": ["document_id", "operation", "section_index", "content", "expected_version"],
+        "properties": _SECTION_EDIT_FIELDS,
+    }),
+    Tool(name="apply_document_section_edit", description="Apply the exact bounded section change that was previewed. Stale versions and a token for different content are rejected, so it cannot overwrite an intervening edit.", inputSchema={
+        "type": "object",
+        "required": ["document_id", "operation", "section_index", "content", "expected_version", "proposal_token"],
+        "properties": _SECTION_EDIT_FIELDS,
     }),
     Tool(name="list_document_revisions", description="The edit history of one document, newest first: who caused each revision ('edit' a human in the editor, 'mcp' an AI client, 'restore', 'regenerate', 'scaffold', 'migrate') and how big the body was. Bodies are not included — read_document_revision fetches one.", inputSchema={
         "type": "object",
@@ -103,7 +129,8 @@ DOC_TOOLS = [
         "required": ["id"],
         "properties": {
             "id": {"type": "string"},
-            "body": {"type": "string", "description": "The full replacement body — not a patch. Read the document first and send it back edited, or the rest of it is dropped."},
+            "body": {"type": "string", "description": "The full replacement body, not a patch. Read the document first and send it back edited, or the rest of it is dropped."},
+            "expected_version": {"type": "integer", "minimum": 1, "description": "Required when body is sent. Use the version from read_document; a stale write is rejected."},
             "title": {"type": "string", "description": "Renames the document. A `title:` in the body's frontmatter does the same and is the way the UI does it."},
             "icon": {"type": "string"},
             "parent_id": {"type": "string", "description": "Refile a page or folder under another folder."},
@@ -115,10 +142,11 @@ DOC_TOOLS = [
     }),
     Tool(name="restore_document_revision", description="Put an earlier body back. The body being replaced becomes history too, so a restore is itself undoable.", inputSchema={
         "type": "object",
-        "required": ["document_id", "revision_id"],
+        "required": ["document_id", "revision_id", "expected_version"],
         "properties": {
             "document_id": {"type": "string"},
             "revision_id": {"type": "string", "description": "From list_document_revisions."},
+            "expected_version": {"type": "integer", "minimum": 1},
         },
     }),
 ]
@@ -143,6 +171,17 @@ async def dispatch_document(name: str, args: dict) -> Any:
     if name == "read_document":
         return await backend.get(f"/api/v1/documents/{args['id']}")
 
+    if name == "list_document_sections":
+        return await backend.get(f"/api/v1/documents/{args['document_id']}/sections")
+
+    if name in ("preview_document_section_edit", "apply_document_section_edit"):
+        allowed = (
+            "operation", "section_index", "content", "heading", "level", "expected_version", "proposal_token",
+        )
+        body = {key: args[key] for key in allowed if args.get(key) is not None}
+        endpoint = "preview" if name == "preview_document_section_edit" else "apply"
+        return await backend.post(f"/api/v1/documents/{args['document_id']}/sections/{endpoint}", body)
+
     if name == "list_document_revisions":
         return await backend.get(f"/api/v1/documents/{args['document_id']}/revisions")
 
@@ -165,6 +204,6 @@ async def dispatch_document(name: str, args: dict) -> Any:
 
     if name == "restore_document_revision":
         path = f"/api/v1/documents/{args['document_id']}/revisions/{args['revision_id']}/restore"
-        return await backend.post(path, {})
+        return await backend.post(path, {"expected_version": args["expected_version"]})
 
     raise ValueError(f"Unknown documentation tool: {name}")

@@ -243,10 +243,13 @@ never touches the database itself.
 | `search_documentation` | Full-text search, one snippet per hit. The entry point. |
 | `list_documentation` | Summaries, filterable by `kind` / `parent_id` / `device_id` / `tag`. Never a body. |
 | `read_document` | One document in full. |
+| `list_document_sections` | Current section outline and its document version. |
+| `preview_document_section_edit` | Show a bounded section edit without writing it. |
+| `apply_document_section_edit` | Apply exactly the previewed section edit. |
 | `list_document_revisions`, `read_document_revision` | The history, and the body one revision holds. |
 | `document_backlinks` | What links here. |
 | `create_document` | A new document, from a body or a template. |
-| `update_document` | An edit. The full replacement body, not a patch. |
+| `update_document` | An edit. The full replacement body, not a patch; body writes name the version they read. |
 | `restore_document_revision` | Put an earlier body back. |
 
 Resources: `homelable://documents` (summaries) and
@@ -259,6 +262,12 @@ restore either. The replaced body is snapshotted like any other edit and the
 rail says *Saved by an AI client*; restoring it is one click, and that restore is
 itself undoable. There is no delete tool: destroying documentation stays a human
 action.
+
+**Concurrent edits are guarded.** A body write names the document version it
+was read from; a newer server version returns `409 Conflict` instead of silently
+replacing text. For AI-authored prose, the section preview/apply pair is the
+safer path: the server signs the exact preview and rejects an apply against a
+stale version or different content.
 
 ---
 

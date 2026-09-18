@@ -59,6 +59,26 @@ async def test_read_document(mock_backend):
 
 
 @pytest.mark.anyio
+async def test_list_sections_returns_the_version_bound_outline(mock_backend):
+    await dispatch_document("list_document_sections", {"document_id": "doc-1"})
+    assert _path(mock_backend) == "/api/v1/documents/doc-1/sections"
+
+
+@pytest.mark.anyio
+async def test_preview_section_edit_is_read_only(mock_backend):
+    args = {"document_id": "doc-1", "operation": "append", "section_index": 2, "content": "new", "expected_version": 4}
+    await dispatch_document("preview_document_section_edit", args)
+    mock_backend.post.assert_called_once_with("/api/v1/documents/doc-1/sections/preview", {k: v for k, v in args.items() if k != "document_id"})
+
+
+@pytest.mark.anyio
+async def test_apply_section_edit_forwards_the_preview_token(mock_backend):
+    args = {"document_id": "doc-1", "operation": "append", "section_index": 2, "content": "new", "expected_version": 4, "proposal_token": "signed"}
+    await dispatch_document("apply_document_section_edit", args)
+    mock_backend.post.assert_called_once_with("/api/v1/documents/doc-1/sections/apply", {k: v for k, v in args.items() if k != "document_id"})
+
+
+@pytest.mark.anyio
 async def test_list_revisions(mock_backend):
     await dispatch_document("list_document_revisions", {"document_id": "doc-1"})
     assert _path(mock_backend) == "/api/v1/documents/doc-1/revisions"
@@ -90,11 +110,12 @@ async def test_create_document_forwards_the_arguments(mock_backend):
 
 @pytest.mark.anyio
 async def test_update_document_sends_everything_but_the_id(mock_backend):
-    await dispatch_document("update_document", {"id": "doc-1", "body": "new", "starred": True})
+    await dispatch_document("update_document", {"id": "doc-1", "body": "new", "expected_version": 3, "starred": True})
     path, body = mock_backend.patch.call_args[0]
     assert path == "/api/v1/documents/doc-1"
     assert body["body"] == "new"
     assert body["starred"] is True
+    assert body["expected_version"] == 3
     assert "id" not in body
 
 
@@ -118,10 +139,10 @@ async def test_a_client_cannot_sign_its_edit_as_a_human(mock_backend):
 @pytest.mark.anyio
 async def test_restore_posts_to_the_document_that_owns_the_revision(mock_backend):
     await dispatch_document(
-        "restore_document_revision", {"document_id": "doc-1", "revision_id": "rev-1"}
+        "restore_document_revision", {"document_id": "doc-1", "revision_id": "rev-1", "expected_version": 3}
     )
     mock_backend.post.assert_called_once_with(
-        "/api/v1/documents/doc-1/revisions/rev-1/restore", {}
+        "/api/v1/documents/doc-1/revisions/rev-1/restore", {"expected_version": 3}
     )
 
 
