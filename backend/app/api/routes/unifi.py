@@ -16,17 +16,32 @@ from app.db.models import InventoryDevice, ScanRun
 from app.schemas.unifi import (
     UnifiConfig,
     UnifiConnectionRequest,
+    UnifiImportModes,
     UnifiImportResponse,
     UnifiSyncConfig,
     UnifiTestConnectionResponse,
 )
 from app.services.discovery_sources import add_source
-from app.services.unifi_service import fetch_unifi_inventory, test_unifi_connection
+from app.services.unifi_service import (
+    SOURCE_CLIENT,
+    SOURCE_INFRA,
+    fetch_unifi_inventory,
+    test_unifi_connection,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-_UNIFI_SOURCE = "unifi"
+_UNIFI_SOURCE = SOURCE_INFRA
+
+
+def _configured_modes() -> UnifiImportModes:
+    """The import modes persisted in scan_config.json, used by the sync paths."""
+    return UnifiImportModes(
+        infrastructure=settings.unifi_import_infrastructure,
+        known_clients=settings.unifi_import_known_clients,
+        active_clients=settings.unifi_import_active_clients,
+    )
 
 
 def _resolve_credentials(payload: UnifiConnectionRequest) -> tuple[str, str]:
@@ -73,6 +88,9 @@ async def import_unifi_pending(
             username=username,
             password=password,
             verify_tls=payload.verify_tls,
+            infrastructure=payload.modes.infrastructure,
+            known_clients=payload.modes.known_clients,
+            active_clients=payload.modes.active_clients,
         )
     except ConnectionError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -102,6 +120,9 @@ async def sync_unifi_now(
             username=settings.unifi_username,
             password=settings.unifi_password,
             verify_tls=settings.unifi_verify_tls,
+            infrastructure=settings.unifi_import_infrastructure,
+            known_clients=settings.unifi_import_known_clients,
+            active_clients=settings.unifi_import_active_clients,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -119,6 +140,7 @@ async def get_unifi_config(_: str = Depends(get_current_user)) -> UnifiConfig:
         sync_enabled=settings.unifi_sync_enabled,
         sync_interval=settings.unifi_sync_interval,
         credentials_configured=bool(settings.unifi_username and settings.unifi_password),
+        modes=_configured_modes(),
     )
 
 
@@ -137,6 +159,9 @@ async def save_unifi_config(
     try:
         settings.unifi_sync_enabled = payload.sync_enabled
         settings.unifi_sync_interval = payload.sync_interval
+        settings.unifi_import_infrastructure = payload.modes.infrastructure
+        settings.unifi_import_known_clients = payload.modes.known_clients
+        settings.unifi_import_active_clients = payload.modes.active_clients
         settings.save_overrides()
         set_unifi_sync_enabled(payload.sync_enabled)
         if payload.sync_enabled:
@@ -175,6 +200,8 @@ async def _persist_devices(
 ) -> UnifiImportResponse:
     pending_created = 0
     pending_updated = 0
+    infra_count = 0
+    client_count = 0
 
     for dev in devices:
         ieee = dev.get("ieee_address")
@@ -182,6 +209,11 @@ async def _persist_devices(
             continue
         ip = dev.get("ip")
         mac = dev.get("mac")
+        source = dev.get("source") or _UNIFI_SOURCE
+        if source == SOURCE_CLIENT:
+            client_count += 1
+        else:
+            infra_count += 1
 
         existing = await _find_existing(db, ieee, mac)
 
@@ -197,15 +229,15 @@ async def _persist_devices(
                 model=dev.get("model"),
                 properties=dev.get("properties", []),
                 status="pending",
-                discovery_source=_UNIFI_SOURCE,
-                discovery_sources=[_UNIFI_SOURCE],
+                discovery_source=source,
+                discovery_sources=[source],
             )
             db.add(row)
             pending_created += 1
         else:
             existing.discovery_sources = add_source(
                 list(existing.discovery_sources or []),
-                _UNIFI_SOURCE,
+                source,
             )
             existing.ieee_address = existing.ieee_address or ieee
             existing.ip = ip or existing.ip
@@ -226,6 +258,8 @@ async def _persist_devices(
         device_count=len(devices),
         pending_created=pending_created,
         pending_updated=pending_updated,
+        infra_count=infra_count,
+        client_count=client_count,
     )
 
 
@@ -239,6 +273,9 @@ async def _background_unifi_sync(run_id: str) -> None:
                 username=settings.unifi_username,
                 password=settings.unifi_password,
                 verify_tls=settings.unifi_verify_tls,
+                infrastructure=settings.unifi_import_infrastructure,
+                known_clients=settings.unifi_import_known_clients,
+                active_clients=settings.unifi_import_active_clients,
             )
             result = await _persist_devices(db, devices)
             run = await db.get(ScanRun, run_id)
