@@ -179,6 +179,21 @@ async def save_unifi_config(
 async def _find_existing(
     db: AsyncSession, ieee: str, mac: str | None
 ) -> InventoryDevice | None:
+    """The inventory row this UniFi record *is*, in precedence order.
+
+    1. The synthetic ``unifi-{mac}`` ieee, for a row a previous import created.
+    2. Else the MAC. A MAC is an identity — the same rule the Proxmox import
+       states — so it matches a row another source already claimed, which is
+       the point: a container found by an IP scan and by Proxmox, then reported
+       by the controller as a client, is one machine and must stay one row.
+
+    Restricting the MAC match to rows with no ieee_address, as this did, filed
+    every such machine twice, because the Proxmox import gives its rows a
+    ``pve-…`` ieee. It guarded against nothing: the mesh imports never set
+    ``mac``, so a MAC match cannot reach a Zigbee or Z-Wave row.
+
+    Oldest row wins, so a re-import is stable when two rows somehow share a MAC.
+    """
     row = (
         await db.execute(select(InventoryDevice).where(InventoryDevice.ieee_address == ieee))
     ).scalars().first()
@@ -187,13 +202,18 @@ async def _find_existing(
     if mac:
         row = (
             await db.execute(
-                select(InventoryDevice).where(
-                    InventoryDevice.mac == mac,
-                    InventoryDevice.ieee_address.is_(None),
-                )
+                select(InventoryDevice)
+                .where(InventoryDevice.mac == mac)
+                .order_by(InventoryDevice.discovered_at, InventoryDevice.id)
             )
         ).scalars().first()
     return row
+
+
+def _owns(row: InventoryDevice) -> bool:
+    """True when UniFi is the only source that has ever seen this row."""
+    sources = {s for s in (row.discovery_sources or []) if s}
+    return bool(sources) and sources <= {SOURCE_INFRA, SOURCE_CLIENT}
 
 
 async def _persist_devices(
@@ -244,11 +264,23 @@ async def _persist_devices(
             existing.ieee_address = existing.ieee_address or ieee
             existing.ip = ip or existing.ip
             existing.mac = existing.mac or mac
-            existing.hostname = dev.get("hostname") or existing.hostname
-            existing.friendly_name = dev.get("label") or existing.friendly_name
-            existing.suggested_type = dev.get("type") or existing.suggested_type
-            existing.vendor = dev.get("vendor") or existing.vendor
-            existing.model = dev.get("model") or existing.model
+            # A row another source owns keeps its own description: the
+            # controller knows a client only as a name and a MAC, so letting it
+            # win would retype a Proxmox LXC as a plain "computer" and replace
+            # the hostname the guest reports with the controller's label. On a
+            # row UniFi created, a re-sync is meant to refresh those.
+            if _owns(existing):
+                existing.hostname = dev.get("hostname") or existing.hostname
+                existing.friendly_name = dev.get("label") or existing.friendly_name
+                existing.suggested_type = dev.get("type") or existing.suggested_type
+                existing.vendor = dev.get("vendor") or existing.vendor
+                existing.model = dev.get("model") or existing.model
+            else:
+                existing.hostname = existing.hostname or dev.get("hostname")
+                existing.friendly_name = existing.friendly_name or dev.get("label")
+                existing.suggested_type = existing.suggested_type or dev.get("type")
+                existing.vendor = existing.vendor or dev.get("vendor")
+                existing.model = existing.model or dev.get("model")
             # Status preserved — an approved device stays approved.
             # Only reset hidden devices (they came back visible in UniFi).
             if existing.status == "hidden":
