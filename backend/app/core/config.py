@@ -246,6 +246,23 @@ class Settings(BaseSettings):
     # (the Z-Wave node dump today). Same rationale as the Zigbee twin above.
     mqtt_response_timeout: int = 300
 
+    # OPNsense import. Credentials are secrets → env/.env ONLY, never persisted.
+    # OPNSENSE_URL=http://opnsense-rtr1.bub.lan:80
+    opnsense_api_key: str = ""
+    opnsense_api_secret: str = ""
+    opnsense_url: str = ""
+    opnsense_verify_tls: bool = False
+    opnsense_sync_enabled: bool = False
+    opnsense_sync_interval: int = 3600
+
+    # pfSense import. Credentials are secrets → env/.env ONLY, never persisted.
+    # PFSENSE_URL=https://pfsense-rtr1.example.org:10443
+    pfsense_api_key: str = ""
+    pfsense_url: str = ""
+    pfsense_verify_tls: bool = False
+    pfsense_sync_enabled: bool = False
+    pfsense_sync_interval: int = 3600
+
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"
 
@@ -293,6 +310,15 @@ class Settings(BaseSettings):
                 self.zwave_sync_enabled = bool(data["zwave_sync_enabled"])
             if "zwave_sync_interval" in data:
                 self.zwave_sync_interval = int(data["zwave_sync_interval"])
+            # OPNsense/pfSense: only sync activation persisted. Credentials are env-only.
+            if "opnsense_sync_enabled" in data:
+                self.opnsense_sync_enabled = bool(data["opnsense_sync_enabled"])
+            if "opnsense_sync_interval" in data:
+                self.opnsense_sync_interval = int(data["opnsense_sync_interval"])
+            if "pfsense_sync_enabled" in data:
+                self.pfsense_sync_enabled = bool(data["pfsense_sync_enabled"])
+            if "pfsense_sync_interval" in data:
+                self.pfsense_sync_interval = int(data["pfsense_sync_interval"])
         except Exception:
             pass
 
@@ -318,6 +344,11 @@ class Settings(BaseSettings):
             "zigbee_sync_interval": self.zigbee_sync_interval,
             "zwave_sync_enabled": self.zwave_sync_enabled,
             "zwave_sync_interval": self.zwave_sync_interval,
+            # OPNsense/pfSense: only sync activation is persisted. Credentials are env-only.
+            "opnsense_sync_enabled": self.opnsense_sync_enabled,
+            "opnsense_sync_interval": self.opnsense_sync_interval,
+            "pfsense_sync_enabled": self.pfsense_sync_enabled,
+            "pfsense_sync_interval": self.pfsense_sync_interval,
         }))
 
 

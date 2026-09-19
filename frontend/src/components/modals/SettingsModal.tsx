@@ -6,9 +6,13 @@ import {
   proxmoxApi,
   zigbeeApi,
   zwaveApi,
+  opnsenseApi,
+  pfsenseApi,
   type ProxmoxConfigData,
   type ZigbeeConfigData,
   type ZwaveConfigData,
+  type OpnsenseConfigData,
+  type PfsenseConfigData,
 } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useWalkthroughStore } from '@/stores/walkthroughStore'
@@ -130,6 +134,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [zwSyncEnabled, setZwSyncEnabled] = useState(false)
   const [zwInterval, setZwInterval] = useState(3600)
   const [zwSyncing, setZwSyncing] = useState(false)
+  const [opnConfig, setOpnConfig] = useState<OpnsenseConfigData | null>(null)
+  const [opnSyncEnabled, setOpnSyncEnabled] = useState(false)
+  const [opnInterval, setOpnInterval] = useState(3600)
+  const [opnSyncing, setOpnSyncing] = useState(false)
+  const [pfConfig, setPfConfig] = useState<PfsenseConfigData | null>(null)
+  const [pfSyncEnabled, setPfSyncEnabled] = useState(false)
+  const [pfInterval, setPfInterval] = useState(3600)
+  const [pfSyncing, setPfSyncing] = useState(false)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
   const hideIp = useCanvasStore((s) => s.hideIp)
@@ -165,6 +177,20 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setZwInterval(res.data.sync_interval)
       })
       .catch(() => {/* zwave not configured */})
+    opnsenseApi.getConfig()
+      .then((res) => {
+        setOpnConfig(res.data)
+        setOpnSyncEnabled(res.data.sync_enabled)
+        setOpnInterval(res.data.sync_interval)
+      })
+      .catch(() => {/* opnsense not configured */})
+    pfsenseApi.getConfig()
+      .then((res) => {
+        setPfConfig(res.data)
+        setPfSyncEnabled(res.data.sync_enabled)
+        setPfInterval(res.data.sync_interval)
+      })
+      .catch(() => {/* pfsense not configured */})
   }, [open])
 
   useEffect(() => subscribeAlignmentSettings(setAlignment), [])
@@ -218,6 +244,30 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     }
   }
 
+  const handleOpnSyncNow = async () => {
+    setOpnSyncing(true)
+    try {
+      await opnsenseApi.syncNow()
+      toast.success('OPNsense sync started')
+    } catch {
+      toast.error('Failed to start OPNsense sync')
+    } finally {
+      setOpnSyncing(false)
+    }
+  }
+
+  const handlePfSyncNow = async () => {
+    setPfSyncing(true)
+    try {
+      await pfsenseApi.syncNow()
+      toast.success('pfSense sync started')
+    } catch {
+      toast.error('Failed to start pfSense sync')
+    } finally {
+      setPfSyncing(false)
+    }
+  }
+
   const handleSave = async () => {
     // Canvas prefs (alignment, hide-IP) persist on change; only the backend
     // status-check interval needs an API round-trip.
@@ -251,6 +301,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         await zwaveApi.saveConfig({
           sync_enabled: zwSyncEnabled,
           sync_interval: zwInterval,
+        })
+      }
+      if (opnConfig) {
+        await opnsenseApi.saveConfig({
+          sync_enabled: opnSyncEnabled,
+          sync_interval: opnInterval,
+        })
+      }
+      if (pfConfig) {
+        await pfsenseApi.saveConfig({
+          sync_enabled: pfSyncEnabled,
+          sync_interval: pfInterval,
         })
       }
       toast.success('Settings saved')
@@ -510,6 +572,125 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
                     Set <span className="font-mono">PROXMOX_HOST</span> in the server .env to enable manual re-sync.
                   </p>
+                )}
+              </>
+            )}
+          </div>
+          )}
+
+          {/* OPNsense auto-sync */}
+          {!STANDALONE && opnConfig && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">OPNsense auto-sync</span>
+            {!opnConfig.credentials_configured ? (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                No credentials configured. Set <span className="font-mono">OPNSENSE_URL</span>,{' '}
+                <span className="font-mono">OPNSENSE_API_KEY</span>, and{' '}
+                <span className="font-mono">OPNSENSE_API_SECRET</span> in the server .env to enable auto-sync.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Auto-sync OPNsense inventory</span>
+                  <input
+                    type="checkbox"
+                    checked={opnSyncEnabled}
+                    onChange={(e) => setOpnSyncEnabled(e.target.checked)}
+                    className="cursor-pointer accent-[#d46f4d]"
+                    aria-label="Toggle OPNsense auto-sync"
+                  />
+                </label>
+                <div className={opnSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={300}
+                      max={86400}
+                      value={opnInterval}
+                      onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setOpnInterval(v) }}
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#d46f4d]"
+                      aria-label="OPNsense sync interval"
+                    />
+                    <span className="text-xs text-muted-foreground">seconds</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    Re-imports ARP/DHCP devices into the pending inventory. Min 300s (5 min).
+                  </p>
+                </div>
+                {opnConfig.url && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      onClick={handleOpnSyncNow}
+                      disabled={opnSyncing}
+                      className="h-7 text-xs border-[#d46f4d] text-[#d46f4d] hover:bg-[#d46f4d]/10"
+                    >
+                      {opnSyncing ? 'Syncing…' : 'Re-sync now'}
+                    </Button>
+                    <span className="text-[10px] text-muted-foreground leading-tight">
+                      Runs one import immediately using the server .env config.
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+          )}
+
+          {/* pfSense auto-sync */}
+          {!STANDALONE && pfConfig && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">pfSense auto-sync</span>
+            {!pfConfig.credentials_configured ? (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                No credentials configured. Set <span className="font-mono">PFSENSE_URL</span> and{' '}
+                <span className="font-mono">PFSENSE_API_KEY</span> in the server .env to enable auto-sync.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Auto-sync pfSense inventory</span>
+                  <input
+                    type="checkbox"
+                    checked={pfSyncEnabled}
+                    onChange={(e) => setPfSyncEnabled(e.target.checked)}
+                    className="cursor-pointer accent-[#5b8dd9]"
+                    aria-label="Toggle pfSense auto-sync"
+                  />
+                </label>
+                <div className={pfSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={300}
+                      max={86400}
+                      value={pfInterval}
+                      onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setPfInterval(v) }}
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#5b8dd9]"
+                      aria-label="pfSense sync interval"
+                    />
+                    <span className="text-xs text-muted-foreground">seconds</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    Re-imports ARP/DHCP devices into the pending inventory. Min 300s (5 min).
+                  </p>
+                </div>
+                {pfConfig.url && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      onClick={handlePfSyncNow}
+                      disabled={pfSyncing}
+                      className="h-7 text-xs border-[#5b8dd9] text-[#5b8dd9] hover:bg-[#5b8dd9]/10"
+                    >
+                      {pfSyncing ? 'Syncing…' : 'Re-sync now'}
+                    </Button>
+                    <span className="text-[10px] text-muted-foreground leading-tight">
+                      Runs one import immediately using the server .env config.
+                    </span>
+                  </div>
                 )}
               </>
             )}

@@ -46,6 +46,8 @@ async def db_session():
             "app.api.routes.zigbee",
             "app.api.routes.zwave",
             "app.api.routes.proxmox",
+            "app.api.routes.opnsense",
+            "app.api.routes.pfsense",
             "app.api.routes.scan",
         )
     ]
