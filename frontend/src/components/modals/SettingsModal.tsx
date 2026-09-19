@@ -6,9 +6,12 @@ import {
   proxmoxApi,
   zigbeeApi,
   zwaveApi,
+  unifiApi,
   type ProxmoxConfigData,
   type ZigbeeConfigData,
   type ZwaveConfigData,
+  type UnifiConfigData,
+  type UnifiImportModes,
 } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useWalkthroughStore } from '@/stores/walkthroughStore'
@@ -113,6 +116,13 @@ function MeshAutoSync({
   )
 }
 
+/** The controller's three inventories, described where the user ticks them. */
+const UNIFI_SOURCES: { key: keyof UnifiImportModes; label: string; hint: string }[] = [
+  { key: 'infrastructure', label: 'Infrastructure', hint: 'stat/device — adopted APs, switches, gateways.' },
+  { key: 'known_clients', label: 'Known clients', hint: 'list/user — every client ever recorded. No IP, and long on a busy site.' },
+  { key: 'active_clients', label: 'Active clients', hint: 'stat/sta — connected right now, with IP and switch port.' },
+]
+
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [interval, setIntervalValue] = useState(60)
   const [serviceCheckEnabled, setServiceCheckEnabled] = useState(false)
@@ -130,8 +140,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [zwSyncEnabled, setZwSyncEnabled] = useState(false)
   const [zwInterval, setZwInterval] = useState(3600)
   const [zwSyncing, setZwSyncing] = useState(false)
+  const [unConfig, setUnConfig] = useState<UnifiConfigData | null>(null)
+  const [unSyncEnabled, setUnSyncEnabled] = useState(false)
+  const [unInterval, setUnInterval] = useState(3600)
+  const [unModes, setUnModes] = useState<UnifiImportModes>({
+    infrastructure: true,
+    known_clients: false,
+    active_clients: false,
+  })
+  const [unSyncing, setUnSyncing] = useState(false)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
+  const anyUnifiSource = unModes.infrastructure || unModes.known_clients || unModes.active_clients
   const hideIp = useCanvasStore((s) => s.hideIp)
   const setHideIp = useCanvasStore((s) => s.setHideIp)
 
@@ -165,6 +185,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setZwInterval(res.data.sync_interval)
       })
       .catch(() => {/* zwave not configured */})
+    unifiApi.getConfig()
+      .then((res) => {
+        setUnConfig(res.data)
+        setUnSyncEnabled(res.data.sync_enabled)
+        setUnInterval(res.data.sync_interval)
+        setUnModes(res.data.modes)
+      })
+      .catch(() => {/* unifi not configured */})
   }, [open])
 
   useEffect(() => subscribeAlignmentSettings(setAlignment), [])
@@ -191,6 +219,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       toast.error('Failed to start Proxmox sync')
     } finally {
       setPmSyncing(false)
+    }
+  }
+
+  const handleUnSyncNow = async () => {
+    setUnSyncing(true)
+    try {
+      const res = await unifiApi.syncNow()
+      const { infra_count, client_count } = res.data
+      toast.success(`UniFi sync done — ${infra_count} device(s), ${client_count} client(s)`)
+    } catch {
+      toast.error('Failed to run UniFi sync')
+    } finally {
+      setUnSyncing(false)
     }
   }
 
@@ -251,6 +292,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         await zwaveApi.saveConfig({
           sync_enabled: zwSyncEnabled,
           sync_interval: zwInterval,
+        })
+      }
+      if (unConfig) {
+        // Connection config is env-only; the activation and which of the
+        // controller's three inventories to pull are what persist.
+        await unifiApi.saveConfig({
+          sync_enabled: unSyncEnabled,
+          sync_interval: unInterval,
+          modes: unModes,
         })
       }
       toast.success('Settings saved')
@@ -509,6 +559,91 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 ) : (
                   <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
                     Set <span className="font-mono">PROXMOX_HOST</span> in the server .env to enable manual re-sync.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+          )}
+          {/* UniFi auto-sync */}
+          {!STANDALONE && unConfig && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">UniFi auto-sync</span>
+            {!unConfig.credentials_configured ? (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                No controller credentials configured. Set <span className="font-mono">UNIFI_USER</span> and{' '}
+                <span className="font-mono">UNIFI_PASS</span> in the server .env to enable auto-sync.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Auto-sync UniFi inventory</span>
+                  <input
+                    type="checkbox"
+                    checked={unSyncEnabled}
+                    onChange={(e) => setUnSyncEnabled(e.target.checked)}
+                    className="cursor-pointer accent-[#0559c9]"
+                    aria-label="Toggle UniFi auto-sync"
+                  />
+                </label>
+                <div className={unSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={300}
+                      max={86400}
+                      value={unInterval}
+                      onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setUnInterval(v) }}
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#0559c9]"
+                      aria-label="UniFi sync interval"
+                    />
+                    <span className="text-xs text-muted-foreground">seconds</span>
+                  </div>
+                </div>
+                {/* Which of the controller's three inventories to pull. Applies
+                    to auto-sync and to Re-sync now, not to the import modal,
+                    which asks each time. */}
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-xs text-muted-foreground">Import from</span>
+                  {UNIFI_SOURCES.map((src) => (
+                    <label key={src.key} className="flex items-start justify-between gap-2 cursor-pointer">
+                      <span className="min-w-0">
+                        <span className="text-xs text-foreground">{src.label}</span>
+                        <span className="block text-[10px] text-muted-foreground leading-tight">{src.hint}</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={unModes[src.key]}
+                        onChange={(e) => setUnModes((m) => ({ ...m, [src.key]: e.target.checked }))}
+                        className="mt-0.5 cursor-pointer accent-[#0559c9]"
+                        aria-label={`Import ${src.label}`}
+                      />
+                    </label>
+                  ))}
+                  {!anyUnifiSource && (
+                    <p className="text-[10px] text-[#e3b341] leading-tight">
+                      Select at least one source, or the sync has nothing to import.
+                    </p>
+                  )}
+                </div>
+                {unConfig.host ? (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      onClick={handleUnSyncNow}
+                      disabled={unSyncing || !anyUnifiSource}
+                      className="h-7 text-xs border-[#0559c9] text-[#0559c9] hover:bg-[#0559c9]/10"
+                    >
+                      {unSyncing ? 'Syncing…' : 'Re-sync now'}
+                    </Button>
+                    <span className="text-[10px] text-muted-foreground leading-tight">
+                      Runs one import immediately using the server .env config.
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
+                    Set <span className="font-mono">UNIFI_HOST</span> in the server .env to enable manual re-sync.
                   </p>
                 )}
               </>
