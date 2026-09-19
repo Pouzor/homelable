@@ -302,6 +302,54 @@ export function buildLibraryTree(docs: DocumentSummary[]): TreeLeaf[] {
   return build(null)
 }
 
+/**
+ * The documents that describe something elsewhere — a device, a canvas node, a
+ * design — grouped without asking the inventory anything.
+ *
+ * `buildDeviceTree` pivots on the inventory rows, the canvas nodes and the
+ * racks. The public documentation view is handed none of those, and should not
+ * be: they are full of addresses and hardware. These documents still have to
+ * appear there, so they are grouped by what they carry themselves — their own
+ * frontmatter tags, or one flat bucket. The label is the document's own title,
+ * denormalized onto the row for exactly this reason: it outlives the thing it
+ * describes.
+ */
+export function buildLinkedDocTree(
+  docs: DocumentSummary[],
+  groupBy: 'tag' | 'flat',
+  opts: { overdue?: Set<string> } = {},
+): TreeGroup[] {
+  const groups = new Map<string, TreeLeaf[]>()
+  for (const doc of docs) {
+    if (doc.kind === 'page' || doc.kind === 'folder') continue
+    const leaf: TreeLeaf = {
+      id: doc.id,
+      label: doc.title,
+      docId: doc.id,
+      kind: doc.kind,
+      // No drift flag: deciding it needs the inventory row this view has no
+      // access to, so the badge says written / header-only / overdue only.
+      state: docState(doc, { overdue: opts.overdue?.has(doc.id) }),
+      icon: doc.icon,
+    }
+    const buckets =
+      groupBy === 'tag' ? (doc.tags?.length ? doc.tags : ['Untagged']) : ['All documents']
+    for (const bucket of buckets) {
+      const items = groups.get(bucket) ?? []
+      items.push(leaf)
+      groups.set(bucket, items)
+    }
+  }
+
+  return [...groups.entries()]
+    .map(([label, items]) => ({
+      key: `${groupBy}:${label}`,
+      label,
+      items: items.sort((a, b) => collator.compare(a.label, b.label)),
+    }))
+    .sort(compareGroups)
+}
+
 /** Filter a tree by a typed query, keeping the folders that lead to a match. */
 export function filterTree(items: TreeLeaf[], query: string): TreeLeaf[] {
   const needle = query.trim().toLowerCase()

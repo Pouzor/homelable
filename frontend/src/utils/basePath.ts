@@ -50,3 +50,14 @@ export function resolveServerPath(url: string, base: string = BASE_PATH): string
 export function isLiveViewPath(pathname: string, base: string = BASE_PATH): boolean {
   return pathname === withBase('view', base)
 }
+
+/**
+ * Is this pathname the read-only documentation view (`/docs`, `/homelab/docs`)?
+ *
+ * A path of its own, not the app's `?view=docs` query param: that one is a
+ * section of the logged-in app, this one is a different page served to someone
+ * holding only a key.
+ */
+export function isDocsViewPath(pathname: string, base: string = BASE_PATH): boolean {
+  return pathname === withBase('docs', base)
+}

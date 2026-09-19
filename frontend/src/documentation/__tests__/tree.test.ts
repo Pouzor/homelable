@@ -6,6 +6,7 @@ import {
   bucketsFor,
   buildDeviceTree,
   buildLibraryTree,
+  buildLinkedDocTree,
   canMoveInto,
   deviceLabel,
   docState,
@@ -58,6 +59,58 @@ function node(id: string, data: Partial<NodeData>): Node<NodeData> {
     data: { label: id, type: 'server', status: 'unknown', services: [], ...data } as NodeData,
   }
 }
+
+// The public documentation view is handed no inventory, no canvas and no racks,
+// so it cannot use `buildDeviceTree`. This builder groups the same documents by
+// what they carry themselves.
+describe('buildLinkedDocTree', () => {
+  it('puts everything under one bucket when flat', () => {
+    const groups = buildLinkedDocTree([doc(), doc({ id: 'doc-2', title: 'switch-01' })], 'flat')
+    expect(groups).toHaveLength(1)
+    expect(groups[0].label).toBe('All documents')
+    expect(groups[0].items.map((i) => i.label)).toEqual(['nas-01', 'switch-01'])
+  })
+
+  it('leaves the Library out — those are filed by hand, not pivoted', () => {
+    const groups = buildLinkedDocTree(
+      [doc(), doc({ id: 'doc-2', kind: 'page' }), doc({ id: 'doc-3', kind: 'folder' })],
+      'flat',
+    )
+    expect(groups[0].items.map((i) => i.id)).toEqual(['doc-1'])
+  })
+
+  it('files a document under each of its tags, and the untagged together', () => {
+    const groups = buildLinkedDocTree(
+      [
+        doc({ id: 'doc-1', title: 'nas-01', tags: ['storage', 'prod'] }),
+        doc({ id: 'doc-2', title: 'switch-01', tags: ['prod'] }),
+        doc({ id: 'doc-3', title: 'printer' }),
+      ],
+      'tag',
+    )
+    const byLabel = Object.fromEntries(groups.map((g) => [g.label, g.items.map((i) => i.title ?? i.label)]))
+    expect(byLabel['prod']).toEqual(['nas-01', 'switch-01'])
+    expect(byLabel['storage']).toEqual(['nas-01'])
+    expect(byLabel['Untagged']).toEqual(['printer'])
+  })
+
+  it('sorts the last-resort bucket to the bottom', () => {
+    const groups = buildLinkedDocTree(
+      [doc({ id: 'doc-1', tags: ['zzz'] }), doc({ id: 'doc-2' })],
+      'tag',
+    )
+    expect(groups.map((g) => g.label)).toEqual(['zzz', 'Untagged'])
+  })
+
+  it('badges an overdue document, and never a drifted one', () => {
+    // Drift is decided against the inventory row, which this view has no access
+    // to — so the badge can only ever say written / header-only / overdue.
+    const groups = buildLinkedDocTree([doc({ edited_at: '2026-01-02T00:00:00Z' })], 'flat', {
+      overdue: new Set(['doc-1']),
+    })
+    expect(groups[0].items[0].state).toBe('overdue')
+  })
+})
 
 const designs: Design[] = [
   { id: 'design-1', name: 'Home network', design_type: 'network' } as Design,
