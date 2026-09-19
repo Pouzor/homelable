@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, BookOpen, ChevronDown, ChevronRight, FilePlus, FolderPlus, Search, X } from 'lucide-react'
+import { Archive, BookOpen, ChevronDown, ChevronRight, FilePlus, FolderPlus, Link2, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
-import { scanApi } from '@/api/client'
+import { docsviewApi, scanApi } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import type { InventoryEntry } from '@/types'
 import { cn } from '@/lib/utils'
+import { withBase } from '@/utils/basePath'
+import { copyToClipboard } from '@/utils/clipboard'
 import { formatRelative } from '@/utils/timeFormat'
 import { downloadAllDocs, downloadDoc } from '../export'
 import { isOverdue } from '../frontmatter'
@@ -301,6 +303,24 @@ export function DocumentationView() {
     toast.success(created === 1 ? '1 note became a document' : `${created} notes became documents`)
   }, [loadDocs, scaffold])
 
+  // The read-only link to this documentation, when DOCS_VIEW_KEY is set. The
+  // key is admin-only — the app asks the server for it rather than being told
+  // at build time — and with the feature off there is simply no button.
+  const [docsLink, setDocsLink] = useState<string | null>(null)
+  useEffect(() => {
+    if (STANDALONE) return
+    docsviewApi
+      .getConfig()
+      .then(({ data }) =>
+        setDocsLink(
+          data.enabled && data.key
+            ? `${window.location.origin}${withBase('docs')}?key=${encodeURIComponent(data.key)}`
+            : null,
+        ),
+      )
+      .catch(() => setDocsLink(null))
+  }, [])
+
   // Drag-to-resize the tree pane. Width lives in localStorage, per viewer.
   const dragging = useRef(false)
   useEffect(() => {
@@ -486,6 +506,21 @@ export function DocumentationView() {
             <Archive size={12} />
             {exporting ? 'Exporting…' : 'Export all'}
           </Button>
+          {docsLink && (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="cursor-pointer gap-1 px-1.5"
+              title="Copy the read-only link — anyone holding it reads every document"
+              onClick={async () => {
+                if (await copyToClipboard(docsLink)) toast.success('Read-only link copied')
+                else toast.error('Could not copy the link')
+              }}
+            >
+              <Link2 size={12} />
+              Share link
+            </Button>
+          )}
           {coverage && (
             <span
               className="ml-auto text-[10px] tabular-nums text-muted-foreground/70"
