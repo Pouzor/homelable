@@ -11,6 +11,17 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+
+class UnifiApiError(ConnectionError):
+    """No UniFi API path answered 200 for a request.
+
+    Distinct from "the controller answered with an empty list": a wrong site
+    name returns 401 ``api.err.NoSiteContext``, which must not read as a healthy
+    controller with nothing in it. Subclasses ConnectionError so the routes map
+    it to a 502 like any other upstream failure.
+    """
+
+
 # Map UniFi device type codes to homelable node types
 _TYPE_MAP: dict[str, str] = {
     "ugw": "router",    # UniFi Security Gateway
@@ -89,13 +100,20 @@ async def _login(
     return None
 
 
-async def _fetch_devices(
+async def _get_list(
     client: httpx.AsyncClient,
     host: str,
     port: int,
-    site: str,
     cookies: dict[str, str],
+    paths: list[str],
+    what: str,
 ) -> list[dict[str, Any]]:
+    """GET the first of ``paths`` that answers 200 and return its ``data`` list.
+
+    Raises UnifiApiError when none does, so a wrong site (401
+    ``api.err.NoSiteContext``) or a missing endpoint is reported instead of
+    passing for an empty result.
+    """
     base = f"https://{host}:{port}"
     headers = {}
     # UniFi OS requires X-CSRF-Token header
@@ -103,10 +121,8 @@ async def _fetch_devices(
         headers["X-CSRF-Token"] = cookies["csrf_token"]
 
     # Try UniFi OS proxy path first, then legacy path
-    for path in [
-        f"/proxy/network/api/s/{site}/stat/device",
-        f"/api/s/{site}/stat/device",
-    ]:
+    failures: list[str] = []
+    for path in paths:
         try:
             r = await client.get(
                 f"{base}{path}",
@@ -115,12 +131,32 @@ async def _fetch_devices(
                 follow_redirects=True,
             )
             if r.status_code == 200:
-                data = r.json()
-                devices: list[dict[str, Any]] = data.get("data", [])
-                return devices
-        except Exception:
-            continue
-    return []
+                data: list[dict[str, Any]] = r.json().get("data", [])
+                return data
+            failures.append(f"{path} → HTTP {r.status_code}")
+        except Exception as exc:
+            failures.append(f"{path} → {exc}")
+    raise UnifiApiError(f"UniFi {what} endpoint unavailable ({'; '.join(failures)})")
+
+
+async def _fetch_devices(
+    client: httpx.AsyncClient,
+    host: str,
+    port: int,
+    site: str,
+    cookies: dict[str, str],
+) -> list[dict[str, Any]]:
+    return await _get_list(
+        client,
+        host,
+        port,
+        cookies,
+        [
+            f"/proxy/network/api/s/{site}/stat/device",
+            f"/api/s/{site}/stat/device",
+        ],
+        "device",
+    )
 
 
 async def fetch_unifi_topology(
@@ -227,29 +263,18 @@ async def _fetch_clients(
     site: str,
     cookies: dict[str, str],
 ) -> list[dict[str, Any]]:
-    """Fetch connected client stations from the UniFi controller."""
-    base = f"https://{host}:{port}"
-    headers = {}
-    if "csrf_token" in cookies:
-        headers["X-CSRF-Token"] = cookies["csrf_token"]
-
-    for path in [
-        f"/proxy/network/api/s/{site}/stat/sta",
-        f"/api/s/{site}/stat/sta",
-    ]:
-        try:
-            r = await client.get(
-                f"{base}{path}",
-                cookies=cookies,
-                headers=headers,
-                follow_redirects=True,
-            )
-            if r.status_code == 200:
-                devices: list[dict[str, Any]] = r.json().get("data", [])
-                return devices
-        except Exception:
-            continue
-    return []
+    """Fetch connected client stations (``stat/sta``) from the controller."""
+    return await _get_list(
+        client,
+        host,
+        port,
+        cookies,
+        [
+            f"/proxy/network/api/s/{site}/stat/sta",
+            f"/api/s/{site}/stat/sta",
+        ],
+        "active client",
+    )
 
 
 def _normalize(d: dict[str, Any]) -> dict[str, Any]:
