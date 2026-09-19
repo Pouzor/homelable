@@ -85,7 +85,15 @@ async def test_find_existing_by_ieee(db_session: AsyncSession) -> None:
     assert found is not None
     assert found.ieee_address == "unifi-aa:bb:cc:dd:ee:ff"
 @pytest.mark.asyncio
-async def test_find_existing_mac_not_stolen_from_ieee_device(db_session: AsyncSession) -> None:
+async def test_find_existing_matches_a_mac_on_a_claimed_row(db_session: AsyncSession) -> None:
+    """A MAC is an identity, so it reaches a row another source already owns.
+
+    This asserted the opposite until the duplicate it caused showed up: the
+    Proxmox import gives every guest a `pve-…` ieee_address, so skipping rows
+    that have one filed each such machine a second time when the controller
+    reported it as a client. The mesh imports never set `mac`, so no Zigbee or
+    Z-Wave row is reachable this way.
+    """
     row = InventoryDevice(
         ieee_address="scan-device-xyz",
         mac="11:22:33:44:55:66",
@@ -96,7 +104,8 @@ async def test_find_existing_mac_not_stolen_from_ieee_device(db_session: AsyncSe
     await db_session.commit()
 
     found = await _find_existing(db_session, "unifi-11:22:33:44:55:66", "11:22:33:44:55:66")
-    assert found is None
+    assert found is not None
+    assert found.ieee_address == "scan-device-xyz"
 # --- approved status preserved ---------------------------------------------
 
 @pytest.mark.asyncio
@@ -241,3 +250,154 @@ async def test_an_ip_scan_row_gains_the_unifi_client_source(
     rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
     assert len(rows) == 1
     assert rows[0].discovery_sources == ["arp", "unifi-client"]
+
+
+# --- dedup against rows another source already owns -------------------------
+
+@pytest.mark.asyncio
+async def test_merges_into_a_proxmox_row_with_the_same_mac(
+    db_session: AsyncSession,
+) -> None:
+    """Regression: a Proxmox LXC reported as a UniFi client landed twice.
+
+    The MAC fallback skipped rows that had an ieee_address, and every Proxmox
+    guest has one (`pve-…`), so the controller's view of the same machine
+    became a second inventory entry.
+    """
+    row = InventoryDevice(
+        ieee_address="pve-proxmox-129",
+        ip="192.168.1.20",
+        mac="bc:24:11:8d:26:ed",
+        hostname="paperless-ngx",
+        friendly_name="Paperless",
+        suggested_type="lxc",
+        vendor="Proxmox VE",
+        model="LXC",
+        status="approved",
+        discovery_source="proxmox",
+        discovery_sources=["arp", "proxmox"],
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    await _persist_devices(db_session, [{
+        "ieee_address": "unifi-bc:24:11:8d:26:ed",
+        "mac": "bc:24:11:8d:26:ed",
+        "ip": None,
+        "hostname": "Paperless",
+        "label": "Paperless",
+        "type": "computer",
+        "vendor": "Proxmox Server Solutions GmbH",
+        "properties": [],
+        "source": "unifi-client",
+    }])
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert len(rows) == 1, "the UniFi client must merge, not create a second row"
+    merged = rows[0]
+    assert merged.discovery_sources == ["arp", "proxmox", "unifi-client"]
+    # The guest keeps its identity and its richer description.
+    assert merged.ieee_address == "pve-proxmox-129"
+    assert merged.suggested_type == "lxc"
+    assert merged.hostname == "paperless-ngx"
+    assert merged.ip == "192.168.1.20"
+    assert merged.status == "approved"
+
+
+@pytest.mark.asyncio
+async def test_merging_twice_changes_nothing_more(db_session: AsyncSession) -> None:
+    row = InventoryDevice(
+        ieee_address="pve-proxmox-129",
+        mac="bc:24:11:8d:26:ed",
+        suggested_type="lxc",
+        status="pending",
+        discovery_source="proxmox",
+        discovery_sources=["proxmox"],
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    dev = {
+        "ieee_address": "unifi-bc:24:11:8d:26:ed",
+        "mac": "bc:24:11:8d:26:ed",
+        "ip": "192.168.1.20",
+        "hostname": "Paperless",
+        "label": "Paperless",
+        "type": "computer",
+        "vendor": "Ubiquiti",
+        "properties": [],
+        "source": "unifi-client",
+    }
+    first = await _persist_devices(db_session, [dev])
+    second = await _persist_devices(db_session, [dev])
+
+    assert (first.pending_created, second.pending_created) == (0, 0)
+    assert (first.pending_updated, second.pending_updated) == (1, 1)
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].discovery_sources == ["proxmox", "unifi-client"]
+
+
+@pytest.mark.asyncio
+async def test_a_unifi_owned_row_is_still_refreshed(db_session: AsyncSession) -> None:
+    """A re-sync must keep updating rows UniFi created — a rename, a new model."""
+    row = InventoryDevice(
+        ieee_address="unifi-00:27:22:e0:00:02",
+        mac="00:27:22:e0:00:02",
+        hostname="USW Ultra",
+        friendly_name="USW Ultra",
+        suggested_type="switch",
+        model="USM8P",
+        status="pending",
+        discovery_source="unifi",
+        discovery_sources=["unifi"],
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    await _persist_devices(db_session, [{
+        "ieee_address": "unifi-00:27:22:e0:00:02",
+        "mac": "00:27:22:e0:00:02",
+        "ip": "192.168.1.101",
+        "hostname": "Switch Garage",
+        "label": "Switch Garage",
+        "type": "switch",
+        "vendor": "Ubiquiti",
+        "model": "USM8P",
+        "properties": [],
+        "source": "unifi",
+    }])
+
+    updated = (await db_session.execute(select(InventoryDevice))).scalars().first()
+    assert updated is not None
+    assert updated.friendly_name == "Switch Garage"
+    assert updated.ip == "192.168.1.101"
+
+
+@pytest.mark.asyncio
+async def test_the_oldest_row_wins_when_two_share_a_mac(
+    db_session: AsyncSession,
+) -> None:
+    """Without an order the database picked either row, so a re-import drifted."""
+    from datetime import datetime, timezone
+
+    older = InventoryDevice(
+        ieee_address="pve-proxmox-1",
+        mac="bc:24:11:8d:26:ed",
+        status="pending",
+        discovery_sources=["proxmox"],
+        discovered_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    newer = InventoryDevice(
+        ieee_address="pve-proxmox-2",
+        mac="bc:24:11:8d:26:ed",
+        status="pending",
+        discovery_sources=["proxmox"],
+        discovered_at=datetime(2026, 6, 1, tzinfo=timezone.utc),
+    )
+    db_session.add_all([newer, older])
+    await db_session.commit()
+
+    found = await _find_existing(db_session, "unifi-bc:24:11:8d:26:ed", "bc:24:11:8d:26:ed")
+    assert found is not None
+    assert found.ieee_address == "pve-proxmox-1"
