@@ -113,6 +113,40 @@ Full mode only — documents need the backend to store, index and search them.
 
 ---
 
+## Documentation View (read-only public documentation)
+
+Documentation View shares your documentation space — the tree, the pages and their
+version history — with anyone on your network, no login required. It is disabled by
+default, and uses its own key: enabling Live View does not enable this.
+
+### Activation
+
+Add `DOCS_VIEW_KEY` to your `.env`:
+
+`DOCS_VIEW_KEY=your-secret-key`
+
+Generate one with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`, then
+restart the backend:
+
+`docker compose restart backend`
+
+### Usage
+
+Use this URL to read your documentation:
+
+`http://<your-homelab-ip>/docs?key=your-secret-key`
+
+The page shows the document tree, the filter box and any page you pick, plus its earlier
+versions. Nothing can be written: no editing, no restoring, no deleting. Your device
+inventory and your canvases are not reachable through it.
+
+> **Anyone holding that URL reads every document**, and every image a document embeds —
+> uploaded media is served without authentication. There is no per-document opt-in: the
+> key is all or nothing. Keep documentation you would not share out of Homelable, or
+> leave this off.
+
+---
+
 ## Network Scanner
 
 The scanner runs `nmap -sV --open` on your configured CIDR ranges and populates a **Pending Devices** queue. From the sidebar you can then approve (adds a node to the canvas), hide, or ignore each discovered device.
@@ -297,40 +331,6 @@ Use this URL to view your canvas:
 http://<your-homelab-ip>/view?key=your-secret-key
 
 The page shows your canvas in pan/zoom-only mode — no editing, no credentials needed. Clicking a node that has an IP opens it in a new tab.
-
----
-
-## Documentation View (read-only public documentation)
-
-Documentation View shares your documentation space — the tree, the pages and their
-version history — with anyone on your network, no login required. It is disabled by
-default, and uses its own key: enabling Live View does not enable this.
-
-### Activation
-
-Add `DOCS_VIEW_KEY` to your `.env`:
-
-`DOCS_VIEW_KEY=your-secret-key`
-
-Generate one with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`, then
-restart the backend:
-
-`docker compose restart backend`
-
-### Usage
-
-Use this URL to read your documentation:
-
-`http://<your-homelab-ip>/docs?key=your-secret-key`
-
-The page shows the document tree, the filter box and any page you pick, plus its earlier
-versions. Nothing can be written: no editing, no restoring, no deleting. Your device
-inventory and your canvases are not reachable through it.
-
-> **Anyone holding that URL reads every document**, and every image a document embeds —
-> uploaded media is served without authentication. There is no per-document opt-in: the
-> key is all or nothing. Keep documentation you would not share out of Homelable, or
-> leave this off.
 
 ---
 
