@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, Square, Settings, LogOut, Network, RadioTower, Server, Type, PlusCircle, Pencil, Trash2, Rows3, BookOpen, Loader2 } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, Square, Settings, LogOut, Network, RadioTower, Server, Wifi, Type, PlusCircle, Pencil, Trash2, Rows3, BookOpen, Loader2 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -28,13 +28,14 @@ interface SidebarProps {
   onZigbeeImport: () => void
   onZwaveImport: () => void
   onProxmoxImport: () => void
+  onUnifiImport: () => void
   onSave: () => void
   onOpenSettings: () => void
   onOpenHistory: () => void
   onOpenInventory: (deviceId?: string, status?: 'pending' | 'hidden') => void
 }
 
-export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onZwaveImport, onProxmoxImport, onSave, onOpenSettings, onOpenHistory, onOpenInventory }: SidebarProps) {
+export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbeeImport, onZwaveImport, onProxmoxImport, onUnifiImport, onSave, onOpenSettings, onOpenHistory, onOpenInventory }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const logout = useAuthStore((s) => s.logout)
   const { designs, activeDesignId, activeDesignType, setActiveDesign, addDesign, updateDesign, removeDesign } = useDesignStore()
@@ -316,6 +317,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onZigbee
         {!STANDALONE && !isRack && <SidebarItem icon={Network} label="Zigbee Import" collapsed={collapsed} onClick={onZigbeeImport} dataTour="zigbee-import" />}
         {!STANDALONE && !isRack && <SidebarItem icon={RadioTower} label="Z-Wave Import" collapsed={collapsed} onClick={onZwaveImport} dataTour="zwave-import" />}
         {!STANDALONE && !isRack && <SidebarItem icon={Server} label="Proxmox Import" collapsed={collapsed} onClick={onProxmoxImport} dataTour="proxmox-import" />}
+        {!STANDALONE && !isRack && <SidebarItem icon={Wifi} label="UniFi Import" collapsed={collapsed} onClick={onUnifiImport} dataTour="unifi-import" />}
         <SidebarItem
           icon={Save}
           label={isRack ? 'Save Rack' : 'Save Canvas'}

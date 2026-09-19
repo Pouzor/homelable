@@ -45,22 +45,44 @@ async def test_unifi_connection(
     username: str,
     password: str,
     verify_tls: bool = False,
-) -> tuple[bool, str]:
-    """Test UniFi controller reachability and credentials."""
+    known_clients: bool = False,
+    active_clients: bool = False,
+) -> tuple[bool, str, dict[str, int]]:
+    """Test the controller and count what each selected source holds.
+
+    Infrastructure is always counted — it doubles as the reachability check.
+    The client sources are counted only when asked, so the UI can show how many
+    rows a box would import before the user ticks it; list/user runs long.
+    """
+    counts: dict[str, int] = {}
     try:
         client = httpx.AsyncClient(verify=verify_tls, timeout=10.0)
         try:
             cookies = await _login(client, host, port, username, password)
             if not cookies:
-                return False, "Login failed: invalid credentials or unreachable host"
-            devices = await _fetch_devices(client, host, port, site, cookies)
-            return True, f"Connected — {len(devices)} device(s) found in site '{site}'"
+                return False, "Login failed: invalid credentials or unreachable host", counts
+            counts["infrastructure"] = len(
+                await _fetch_devices(client, host, port, site, cookies)
+            )
+            if known_clients:
+                counts["known_clients"] = len(
+                    await _fetch_known_clients(client, host, port, site, cookies)
+                )
+            if active_clients:
+                counts["active_clients"] = len(
+                    await _fetch_clients(client, host, port, site, cookies)
+                )
+            return (
+                True,
+                f"Connected — {counts['infrastructure']} device(s) found in site '{site}'",
+                counts,
+            )
         finally:
             await client.aclose()
     except httpx.ConnectError as exc:
-        return False, f"Cannot reach {host}:{port} — {exc}"
+        return False, f"Cannot reach {host}:{port} — {exc}", counts
     except Exception as exc:
-        return False, str(exc)
+        return False, str(exc), counts
 
 
 async def fetch_unifi_inventory(

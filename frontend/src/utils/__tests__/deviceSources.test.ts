@@ -24,6 +24,18 @@ describe('sourceBuckets', () => {
     expect([...buckets].sort()).toEqual(['ip', 'proxmox'])
   })
 
+  it('buckets UniFi infrastructure and clients together', () => {
+    // Both must be recognised explicitly: the fallback branch sends anything
+    // unknown to the ip bucket, which would hide them behind the IP filter.
+    expect([...sourceBuckets(device({ discovery_sources: ['unifi'] }))]).toEqual(['unifi'])
+    expect([...sourceBuckets(device({ discovery_sources: ['unifi-client'] }))]).toEqual(['unifi'])
+  })
+
+  it('keeps both sources for a host seen by an IP scan and by UniFi', () => {
+    const buckets = sourceBuckets(device({ discovery_sources: ['arp', 'unifi-client'] }))
+    expect([...buckets].sort()).toEqual(['ip', 'unifi'])
+  })
+
   it('maps arp and mdns to the single ip bucket', () => {
     expect([...sourceBuckets(device({ discovery_sources: ['arp'] }))]).toEqual(['ip'])
     expect([...sourceBuckets(device({ discovery_sources: ['mdns'] }))]).toEqual(['ip'])

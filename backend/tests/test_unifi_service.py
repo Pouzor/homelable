@@ -117,7 +117,7 @@ def _self_hosted(devices: list, site: str = "default"):
 async def test_login_falls_back_to_the_legacy_path() -> None:
     ctx, factory = _patch(_self_hosted(_DEVICES))
     with ctx:
-        connected, message = await check_connection(
+        connected, message, _ = await check_connection(
             "unifi.local", 8443, "default", "admin", "pw"
         )
     assert connected is True
@@ -144,7 +144,7 @@ async def test_bad_credentials_report_a_login_failure() -> None:
 
     ctx, _ = _patch(handler)
     with ctx:
-        connected, message = await check_connection(
+        connected, message, _ = await check_connection(
             "unifi.local", 8443, "default", "admin", "wrong"
         )
     assert connected is False
@@ -158,7 +158,7 @@ async def test_unknown_site_is_not_reported_as_connected() -> None:
     """Regression: a wrong site answered 401 and read as "Connected — 0 devices"."""
     ctx, _ = _patch(_self_hosted(_DEVICES))
     with ctx:
-        connected, message = await check_connection(
+        connected, message, _ = await check_connection(
             "unifi.local", 8443, "nosuchsite", "admin", "pw"
         )
     assert connected is False
@@ -177,7 +177,7 @@ async def test_an_empty_site_still_connects() -> None:
     """The other half of the regression: genuinely empty must stay a success."""
     ctx, _ = _patch(_self_hosted([]))
     with ctx:
-        connected, message = await check_connection(
+        connected, message, _ = await check_connection(
             "unifi.local", 8443, "default", "admin", "pw"
         )
     assert connected is True
@@ -327,3 +327,27 @@ async def test_a_client_without_a_mac_is_skipped() -> None:
     from app.services.unifi_service import _normalize_client
 
     assert _normalize_client({"name": "ghost"}) is None
+
+
+@pytest.mark.asyncio
+async def test_test_connection_counts_only_the_requested_sources() -> None:
+    ctx, factory = _patch(_full_controller())
+    with ctx:
+        connected, _msg, counts = await check_connection(
+            "unifi.local", 8443, "default", "admin", "pw", known_clients=True
+        )
+    assert connected is True
+    # Infrastructure always — it is the reachability check. stat/sta untouched.
+    assert counts == {"infrastructure": 3, "known_clients": 2}
+    assert not any("stat/sta" in p for p in (r.url.path for r in factory.requests))
+
+
+@pytest.mark.asyncio
+async def test_test_connection_counts_every_source_when_asked() -> None:
+    ctx, _ = _patch(_full_controller())
+    with ctx:
+        _c, _m, counts = await check_connection(
+            "unifi.local", 8443, "default", "admin", "pw",
+            known_clients=True, active_clients=True,
+        )
+    assert counts == {"infrastructure": 3, "known_clients": 2, "active_clients": 1}
