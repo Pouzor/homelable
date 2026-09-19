@@ -43,6 +43,9 @@ class UnifiConnectionRequest(BaseModel):
 class UnifiTestConnectionResponse(BaseModel):
     connected: bool
     message: str
+    # Rows each queried source holds right now, so the import UI can show what
+    # a box would pull in. Only the sources asked for are present.
+    counts: dict[str, int] = Field(default_factory=dict)
 
 
 class UnifiDeviceOut(BaseModel):

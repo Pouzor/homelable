@@ -28,6 +28,7 @@ import { SettingsModal } from '@/components/modals/SettingsModal'
 import { ZigbeeImportModal } from '@/components/zigbee/ZigbeeImportModal'
 import { ZwaveImportModal } from '@/components/zwave/ZwaveImportModal'
 import { ProxmoxImportModal } from '@/components/proxmox/ProxmoxImportModal'
+import { UnifiImportModal } from '@/components/unifi/UnifiImportModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
 import { TextModal, type TextFormData } from '@/components/modals/TextModal'
 import { ThemeModal } from '@/components/modals/ThemeModal'
@@ -158,6 +159,7 @@ export default function App() {
   const [zigbeeImportOpen, setZigbeeImportOpen] = useState(false)
   const [zwaveImportOpen, setZwaveImportOpen] = useState(false)
   const [proxmoxImportOpen, setProxmoxImportOpen] = useState(false)
+  const [unifiImportOpen, setUnifiImportOpen] = useState(false)
 
   // Declare handleSave before the Ctrl+S effect so it is in scope.
   // Returns true on success, false on failure — the design-switch effect relies
@@ -1140,6 +1142,7 @@ export default function App() {
             onAddText={() => setAddTextOpen(true)}
             onScan={() => setScanConfigOpen(true)}
             onZigbeeImport={() => setZigbeeImportOpen(true)}
+            onUnifiImport={() => setUnifiImportOpen(true)}
             onZwaveImport={() => setZwaveImportOpen(true)}
             onProxmoxImport={() => setProxmoxImportOpen(true)}
             onSave={handleSave}
@@ -1322,6 +1325,16 @@ export default function App() {
             onInventoryImported={() => {
               toast.success('Proxmox import started — check Scan History for results')
             }}
+          />
+        )}
+
+        {!STANDALONE && (
+          <UnifiImportModal
+            open={unifiImportOpen}
+            onClose={() => setUnifiImportOpen(false)}
+            // The UniFi import is synchronous and already reports its counts,
+            // so land the user on what it just created.
+            onInventoryImported={() => openInventoryModal()}
           />
         )}
 

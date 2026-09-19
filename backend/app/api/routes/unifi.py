@@ -61,15 +61,17 @@ async def test_connection_endpoint(
     _: str = Depends(get_current_user),
 ) -> UnifiTestConnectionResponse:
     username, password = _resolve_credentials(payload)
-    connected, message = await test_unifi_connection(
+    connected, message, counts = await test_unifi_connection(
         host=payload.host,
         port=payload.port,
         site=payload.site,
         username=username,
         password=password,
         verify_tls=payload.verify_tls,
+        known_clients=payload.modes.known_clients,
+        active_clients=payload.modes.active_clients,
     )
-    return UnifiTestConnectionResponse(connected=connected, message=message)
+    return UnifiTestConnectionResponse(connected=connected, message=message, counts=counts)
 
 
 @router.post("/import-pending", response_model=UnifiImportResponse)
