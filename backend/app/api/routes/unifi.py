@@ -26,6 +26,7 @@ from app.services.unifi_service import (
     SOURCE_CLIENT,
     SOURCE_INFRA,
     fetch_unifi_inventory,
+    merge_unifi_properties,
     test_unifi_connection,
 )
 
@@ -264,6 +265,14 @@ async def _persist_devices(
             existing.ieee_address = existing.ieee_address or ieee
             existing.ip = ip or existing.ip
             existing.mac = existing.mac or mac
+            # Refresh the values, keep the visibility the user chose and any
+            # property they added by hand. A row merged from another source
+            # gains the controller's facts here rather than staying without
+            # them — they were only ever written when the row was created.
+            existing.properties = merge_unifi_properties(
+                list(existing.properties or []),
+                dev.get("properties", []),
+            )
             # A row another source owns keeps its own description: the
             # controller knows a client only as a name and a MAC, so letting it
             # win would retype a Proxmox LXC as a plain "computer" and replace

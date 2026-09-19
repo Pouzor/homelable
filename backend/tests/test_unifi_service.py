@@ -199,7 +199,8 @@ async def test_inventory_maps_unifi_types_to_node_types() -> None:
     assert ap["ip"] == "192.168.1.100"
     assert ap["vendor"] == "Ubiquiti"
     assert ap["model"] == "U7PRO"
-    assert {"name": "Firmware", "value": "8.6.11.18870"} in ap["properties"]
+    assert {"key": "Firmware", "value": "8.6.11.18870", "icon": "CircuitBoard",
+            "visible": False} in ap["properties"]
 
 
 # ── import modes ────────────────────────────────────────────────────────────
@@ -291,7 +292,7 @@ async def test_known_clients_can_be_imported_alone() -> None:
 async def test_active_clients_carry_the_live_attachment() -> None:
     devices, _ = await _fetch(infrastructure=False, active_clients=True)
     assert len(devices) == 1
-    props = {p["name"]: p["value"] for p in devices[0]["properties"]}
+    props = {p["key"]: p["value"] for p in devices[0]["properties"]}
     assert devices[0]["ip"] == "192.168.1.50"
     assert props["Switch"] == "00:27:22:e0:00:02"
     assert props["Switch port"] == "7"
@@ -309,7 +310,7 @@ async def test_a_client_in_both_sources_is_merged_once() -> None:
     # Live data wins for the IP, and the OUI from list/user survives.
     assert paperless["ip"] == "192.168.1.50"
     assert paperless["vendor"] == "Proxmox Server Solutions GmbH"
-    assert {p["name"] for p in paperless["properties"]} >= {"Switch port", "OUI"}
+    assert {p["key"] for p in paperless["properties"]} >= {"Switch port", "OUI"}
 
 
 @pytest.mark.asyncio
@@ -351,3 +352,51 @@ async def test_test_connection_counts_every_source_when_asked() -> None:
             known_clients=True, active_clients=True,
         )
     assert counts == {"infrastructure": 3, "known_clients": 2, "active_clients": 1}
+
+
+# ── the NodeProperty contract ───────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_properties_follow_the_node_property_contract() -> None:
+    """key/value/icon/visible — not the {name, value} pairs this used to emit.
+
+    The inventory and the canvas address a property row by its `key`
+    (`_property_view_key`), and PropertyList reads `key`, `icon` and `visible`.
+    A `name` pair collapsed every row onto one keyless entry.
+    """
+    devices, _ = await _fetch(
+        infrastructure=True, known_clients=True, active_clients=True
+    )
+    for dev in devices:
+        for prop in dev["properties"]:
+            assert set(prop) == {"key", "value", "icon", "visible"}
+            assert isinstance(prop["key"], str) and prop["key"]
+            # Opt-in, like the Proxmox and mesh importers build theirs.
+            assert prop["visible"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_wired_and_a_wifi_client_get_different_icons() -> None:
+    from app.services.unifi_service import _normalize_client
+
+    wired = _normalize_client({"mac": "aa:bb:cc:dd:ee:01", "is_wired": True})
+    wifi = _normalize_client({"mac": "aa:bb:cc:dd:ee:02", "is_wired": False})
+    assert wired is not None and wifi is not None
+    assert wired["properties"][0]["icon"] == "EthernetPort"
+    assert wifi["properties"][0]["icon"] == "Wifi"
+
+
+@pytest.mark.asyncio
+async def test_every_icon_is_one_the_front_end_can_render() -> None:
+    """PROPERTY_ICONS in frontend/src/utils/propertyIcons.ts is the whole set."""
+    known = {
+        "Battery", "Box", "CircuitBoard", "Clock", "Cpu", "Database",
+        "EthernetPort", "Globe", "Gpu", "HardDrive", "HdmiPort", "Hash", "Key",
+        "Layers", "Link", "MemoryStick", "Monitor", "Network", "Server",
+        "Shield", "Tag", "Thermometer", "Usb", "Wifi", "Zap",
+    }
+    devices, _ = await _fetch(
+        infrastructure=True, known_clients=True, active_clients=True
+    )
+    used = {p["icon"] for d in devices for p in d["properties"] if p["icon"]}
+    assert used and used <= known, f"unknown icon(s): {used - known}"
