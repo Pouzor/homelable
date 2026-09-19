@@ -94,6 +94,76 @@ describe('DocViewer — tags', () => {
   })
 })
 
+describe('DocViewer — read-only', () => {
+  // The public documentation view renders this same component with no session
+  // behind it. Every control that writes has to be gone, not merely disabled:
+  // there is no endpoint to take the write.
+  it('offers nothing that writes', () => {
+    render(<DocViewer {...noop} readOnly doc={makeDoc({ tags: ['prod'] })} />)
+
+    expect(screen.queryByText('Edit')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Delete this document')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Delete this document')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Regenerate this document')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tag' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Remove tag prod')).not.toBeInTheDocument()
+    // The tag itself still reads — it is part of the document.
+    expect(screen.getByText('#prod')).toBeInTheDocument()
+  })
+
+  it('still reads: the body and the download', () => {
+    const onDownload = vi.fn()
+    const doc = makeDoc({ body: '---\ntitle: NAS\n---\n\nIt lives in the shed.\n' })
+    render(<DocViewer {...noop} readOnly doc={doc} onDownload={onDownload} />)
+
+    expect(screen.getByText('It lives in the shed.')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Download this document'))
+    expect(onDownload).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens history but offers no restore', () => {
+    const revision = {
+      id: 'rev-1',
+      document_id: 'doc-1',
+      title: 'NAS',
+      reason: 'edit' as const,
+      saved_at: '2026-01-01T00:00:00Z',
+      size: 12,
+    }
+    render(
+      <DocViewer
+        {...noop}
+        readOnly
+        doc={makeDoc()}
+        history={{
+          open: true,
+          loading: false,
+          revisions: [revision],
+          preview: { revision, body: 'an older body' },
+          onToggle: vi.fn(),
+          onSelect: vi.fn(),
+          onClosePreview: vi.fn(),
+        }}
+      />,
+    )
+
+    expect(screen.getByText('an older body')).toBeInTheDocument()
+    expect(screen.queryByText('Restore')).not.toBeInTheDocument()
+  })
+
+  it('says a document is due for review without offering to mark it', () => {
+    const doc = makeDoc({
+      body: '---\ntitle: NAS\nreview_every: 1d\n---\n\n# NAS\n',
+      created_at: '2020-01-01T00:00:00Z',
+      reviewed_at: null,
+    })
+    render(<DocViewer {...noop} readOnly doc={doc} />)
+
+    expect(screen.getByText(/Due for review/)).toBeInTheDocument()
+    expect(screen.queryByText(/mark as reviewed/)).not.toBeInTheDocument()
+  })
+})
+
 describe('DocViewer — download', () => {
   it('hands the open document to the host on click', () => {
     const onDownload = vi.fn()

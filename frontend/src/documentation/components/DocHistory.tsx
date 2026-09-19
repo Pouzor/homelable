@@ -99,7 +99,11 @@ interface PreviewProps {
   docs: LinkableDoc[]
   devices: LinkableDevice[]
   onOpenDoc: (id: string) => void
-  onRestore: () => void
+  /**
+   * Omitted by a read-only host, and then no Restore is offered — reading an
+   * old version is a read, taking one back is not.
+   */
+  onRestore?: () => void
   onClose: () => void
 }
 
@@ -149,9 +153,11 @@ export function RevisionPreview({
           >
             {showChanges ? 'Read it' : 'Changes'}
           </Button>
-          <Button size="sm" variant="ghost" onClick={onRestore} className="cursor-pointer gap-1">
-            <RotateCcw size={13} /> Restore
-          </Button>
+          {onRestore && (
+            <Button size="sm" variant="ghost" onClick={onRestore} className="cursor-pointer gap-1">
+              <RotateCcw size={13} /> Restore
+            </Button>
+          )}
           <Button size="icon-xs" variant="ghost" aria-label="Back to the current version" onClick={onClose} className="cursor-pointer">
             <X />
           </Button>
