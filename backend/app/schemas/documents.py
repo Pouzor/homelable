@@ -129,6 +129,62 @@ class RevisionResponse(RevisionSummary):
     body: str = ""
 
 
+# ── Public (documentation view) ─────────────────────────────────────────────
+# What DOCS_VIEW_KEY opens to anyone holding the URL.
+#
+# Written out field by field rather than subclassed from the models above, and
+# that is the whole point: inheriting would enrol every field added to
+# `DocumentSummary` later into the public payload by default. What is missing
+# here is missing on purpose — `device_id`, `node_id`, `design_id`,
+# `facts_snapshot`, `facts_synced_at`, `drifted` and `template_id` are handles
+# onto inventory and canvas rows this key grants nothing of.
+
+
+class PublicDocumentSummary(BaseModel):
+    """What the public tree needs: placement, naming, badges. Never a body."""
+
+    id: str
+    kind: str
+    title: str
+    slug: str
+    icon: str | None = None
+    parent_id: str | None = None
+    sort_order: int = 0
+    tags: list[str] = []
+    # Parsed out of a body this key already serves, and what the tree badges
+    # "due for review" from — so it carries nothing the reader cannot see.
+    frontmatter: dict[str, Any] = {}
+    starred: bool = False
+    reviewed_at: datetime | None = None
+    edited_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PublicDocumentResponse(PublicDocumentSummary):
+    body: str = ""
+
+
+class PublicRevisionSummary(BaseModel):
+    """One earlier version, listed. Reading history is a read; restoring is not,
+    and the public router offers no way to take one."""
+
+    id: str
+    document_id: str
+    title: str
+    reason: str
+    saved_at: datetime
+    size: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class PublicRevisionResponse(PublicRevisionSummary):
+    body: str = ""
+
+
 class SearchHit(BaseModel):
     doc_id: str
     title: str

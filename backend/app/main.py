@@ -12,6 +12,7 @@ from app.api.routes import (
     auth,
     canvas,
     designs,
+    docsview,
     documents,
     edges,
     liveview,
@@ -99,6 +100,7 @@ app.include_router(proxmox.router, prefix="/api/v1/proxmox", tags=["proxmox"])
 app.include_router(stats.router, prefix="/api/v1/stats", tags=["stats"])
 app.include_router(media.router, prefix="/api/v1/media", tags=["media"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
+app.include_router(docsview.router, prefix="/api/v1/docsview", tags=["docsview"])
 
 
 @app.get("/api/v1/health")
