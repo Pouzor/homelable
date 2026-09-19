@@ -267,6 +267,11 @@ class Settings(BaseSettings):
     unifi_verify_tls: bool = False
     unifi_sync_enabled: bool = False
     unifi_sync_interval: int = 3600
+    # Which controller inventories to import. Clients are opt-in: list/user
+    # holds every client ever seen and carries no IP.
+    unifi_import_infrastructure: bool = True
+    unifi_import_known_clients: bool = False
+    unifi_import_active_clients: bool = False
 
     @property
     def unifi_effective_host(self) -> str:
@@ -335,6 +340,10 @@ class Settings(BaseSettings):
                 self.unifi_sync_enabled = bool(data["unifi_sync_enabled"])
             if "unifi_sync_interval" in data:
                 self.unifi_sync_interval = int(data["unifi_sync_interval"])
+            for mode in ("infrastructure", "known_clients", "active_clients"):
+                key = f"unifi_import_{mode}"
+                if key in data:
+                    setattr(self, key, bool(data[key]))
             if "unifi_host" in data:
                 self.unifi_host = str(data["unifi_host"])
             if "unifi_port" in data:
@@ -372,6 +381,9 @@ class Settings(BaseSettings):
             # Credentials (username/password) are env-only and never written here.
             "unifi_sync_enabled": self.unifi_sync_enabled,
             "unifi_sync_interval": self.unifi_sync_interval,
+            "unifi_import_infrastructure": self.unifi_import_infrastructure,
+            "unifi_import_known_clients": self.unifi_import_known_clients,
+            "unifi_import_active_clients": self.unifi_import_active_clients,
             "unifi_host": self.unifi_host,
             "unifi_port": self.unifi_port,
             "unifi_site": self.unifi_site,

@@ -134,3 +134,110 @@ async def test_approved_device_stays_approved(db_session: AsyncSession) -> None:
     assert updated.status == "approved", (
         f"Status changed to '{updated.status}'; auto-sync must not un-approve devices"
     )
+# --- import modes ----------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_config_exposes_the_import_modes(client: AsyncClient, headers: dict) -> None:
+    res = await client.get("/api/v1/unifi/config", headers=headers)
+    assert res.status_code == 200
+    modes = res.json()["modes"]
+    # Infrastructure only by default: list/user is long and IP-less.
+    assert modes == {
+        "infrastructure": True,
+        "known_clients": False,
+        "active_clients": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_import_with_no_source_selected_is_rejected(
+    client: AsyncClient, headers: dict
+) -> None:
+    res = await client.post(
+        "/api/v1/unifi/import-pending",
+        headers=headers,
+        json={
+            "host": "unifi.local",
+            "username": "admin",
+            "password": "pw",
+            "modes": {
+                "infrastructure": False,
+                "known_clients": False,
+                "active_clients": False,
+            },
+        },
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_clients_persist_under_their_own_source(db_session: AsyncSession) -> None:
+    """A client keeps discovery_source "unifi-client", infra keeps "unifi"."""
+    devices = [
+        {
+            "ieee_address": "unifi-00:27:22:e0:00:02",
+            "mac": "00:27:22:e0:00:02",
+            "ip": "192.168.1.101",
+            "hostname": "USW Ultra",
+            "label": "USW Ultra",
+            "type": "switch",
+            "vendor": "Ubiquiti",
+            "properties": [],
+            "source": "unifi",
+        },
+        {
+            "ieee_address": "unifi-bc:24:11:8d:26:ed",
+            "mac": "bc:24:11:8d:26:ed",
+            "ip": None,
+            "hostname": "Paperless",
+            "label": "Paperless",
+            "type": "computer",
+            "vendor": "Proxmox Server Solutions GmbH",
+            "properties": [],
+            "source": "unifi-client",
+        },
+    ]
+    result = await _persist_devices(db_session, devices)
+    assert (result.infra_count, result.client_count) == (1, 1)
+    assert result.pending_created == 2
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    by_mac = {r.mac: r for r in rows}
+    assert by_mac["00:27:22:e0:00:02"].discovery_sources == ["unifi"]
+    assert by_mac["bc:24:11:8d:26:ed"].discovery_sources == ["unifi-client"]
+    # Clients are approvable like any other discovery: they land pending with a
+    # suggested type.
+    assert by_mac["bc:24:11:8d:26:ed"].status == "pending"
+    assert by_mac["bc:24:11:8d:26:ed"].suggested_type == "computer"
+
+
+@pytest.mark.asyncio
+async def test_an_ip_scan_row_gains_the_unifi_client_source(
+    db_session: AsyncSession,
+) -> None:
+    """The same machine found by nmap and by UniFi stays one inventory row."""
+    row = InventoryDevice(
+        ip="192.168.1.50",
+        mac="bc:24:11:8d:26:ed",
+        status="pending",
+        discovery_source="arp",
+        discovery_sources=["arp"],
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    await _persist_devices(db_session, [{
+        "ieee_address": "unifi-bc:24:11:8d:26:ed",
+        "mac": "bc:24:11:8d:26:ed",
+        "ip": "192.168.1.50",
+        "hostname": "paperless",
+        "label": "paperless",
+        "type": "computer",
+        "vendor": "Proxmox Server Solutions GmbH",
+        "properties": [],
+        "source": "unifi-client",
+    }])
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].discovery_sources == ["arp", "unifi-client"]

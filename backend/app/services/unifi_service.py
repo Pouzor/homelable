@@ -22,6 +22,11 @@ class UnifiApiError(ConnectionError):
     """
 
 
+# discovery_source values. Infrastructure and clients are told apart in the
+# data; the UI buckets both under one UniFi filter.
+SOURCE_INFRA = "unifi"
+SOURCE_CLIENT = "unifi-client"
+
 # Map UniFi device type codes to homelable node types
 _TYPE_MAP: dict[str, str] = {
     "ugw": "router",    # UniFi Security Gateway
@@ -65,17 +70,63 @@ async def fetch_unifi_inventory(
     username: str,
     password: str,
     verify_tls: bool = False,
+    infrastructure: bool = True,
+    known_clients: bool = False,
+    active_clients: bool = False,
 ) -> list[dict[str, Any]]:
-    """Fetch all devices from the UniFi controller and return normalized dicts."""
+    """Fetch the selected UniFi sources and return normalized dicts.
+
+    Three sources, three different things (see README):
+
+    - ``infrastructure`` — ``stat/device``, the adopted gear (AP, switch,
+      gateway). Carries IP, model and firmware.
+    - ``known_clients`` — ``list/user``, every client the controller has ever
+      recorded. Persistent but thin: no IP, no point of attachment.
+    - ``active_clients`` — ``stat/sta``, the sessions live right now. Carries
+      the IP and the AP or switch port the client hangs off.
+
+    A MAC seen by more than one source is merged once, live data winning over
+    the persistent record.
+    """
     client = httpx.AsyncClient(verify=verify_tls, timeout=15.0)
     try:
         cookies = await _login(client, host, port, username, password)
         if not cookies:
             raise ConnectionError("UniFi login failed: invalid credentials or unreachable host")
-        raw = await _fetch_devices(client, host, port, site, cookies)
-        return [_normalize(d) for d in raw]
+
+        # Weakest source first: later sources overwrite the fields they know
+        # better, and `list/user` knows the least.
+        merged: dict[str, dict[str, Any]] = {}
+        if known_clients:
+            for raw in await _fetch_known_clients(client, host, port, site, cookies):
+                _merge(merged, _normalize_client(raw))
+        if active_clients:
+            for raw in await _fetch_clients(client, host, port, site, cookies):
+                _merge(merged, _normalize_client(raw))
+        if infrastructure:
+            for raw in await _fetch_devices(client, host, port, site, cookies):
+                _merge(merged, _normalize(raw))
+        return list(merged.values())
     finally:
         await client.aclose()
+
+
+def _merge(acc: dict[str, dict[str, Any]], dev: dict[str, Any] | None) -> None:
+    """Add ``dev`` to ``acc``, keyed by ieee, filling blanks on a known key."""
+    if dev is None:
+        return
+    key = dev["ieee_address"]
+    prev = acc.get(key)
+    if prev is None:
+        acc[key] = dev
+        return
+    # Same device from a richer source: take its values, keep what it lacks.
+    for field, value in dev.items():
+        if field == "properties":
+            names = {p["name"] for p in value}
+            value = value + [p for p in prev["properties"] if p["name"] not in names]
+        if value:
+            prev[field] = value
 
 
 async def _login(
@@ -277,6 +328,31 @@ async def _fetch_clients(
     )
 
 
+async def _fetch_known_clients(
+    client: httpx.AsyncClient,
+    host: str,
+    port: int,
+    site: str,
+    cookies: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Fetch every client the controller knows of (``list/user``).
+
+    Persistent records, kept after the client disconnects — and thin: a manual
+    entry carries little more than a MAC, a name and an OUI.
+    """
+    return await _get_list(
+        client,
+        host,
+        port,
+        cookies,
+        [
+            f"/proxy/network/api/s/{site}/list/user",
+            f"/api/s/{site}/list/user",
+        ],
+        "known client",
+    )
+
+
 def _normalize(d: dict[str, Any]) -> dict[str, Any]:
     """Convert a raw UniFi device record to a homelable-compatible dict."""
     raw_type = (d.get("type") or "").lower()
@@ -312,4 +388,52 @@ def _normalize(d: dict[str, Any]) -> dict[str, Any]:
         "model": model,
         "properties": props,
         "raw_type": raw_type,
+        "source": SOURCE_INFRA,
+    }
+
+
+def _normalize_client(d: dict[str, Any]) -> dict[str, Any] | None:
+    """Convert a UniFi client record (``list/user`` or ``stat/sta``) to a dict.
+
+    Returns None for a record with no MAC — the only key both endpoints
+    guarantee, and the one the inventory dedupes on.
+    """
+    mac = (d.get("mac") or "").lower()
+    if not mac:
+        return None
+
+    name = d.get("name") or d.get("hostname") or d.get("display_name") or mac
+    # stat/sta carries the live lease; list/user only ever a reservation.
+    ip = d.get("ip") or d.get("fixed_ip") or None
+    wired = d.get("is_wired")
+
+    props: list[dict[str, str]] = []
+    if wired is not None:
+        props.append({"name": "Connection", "value": "wired" if wired else "wifi"})
+    uplink = d.get("sw_mac") or d.get("ap_mac")
+    if uplink:
+        label = "Switch" if d.get("sw_mac") else "Access point"
+        props.append({"name": label, "value": str(uplink).lower()})
+    port = d.get("sw_port")
+    if port is not None:
+        props.append({"name": "Switch port", "value": str(port)})
+    for key, label in (("essid", "SSID"), ("network", "Network"), ("oui", "OUI")):
+        value = d.get(key)
+        if value:
+            props.append({"name": label, "value": str(value)})
+
+    return {
+        "ieee_address": f"unifi-{mac}",
+        "mac": mac,
+        "ip": ip,
+        "hostname": name,
+        "label": name,
+        # UniFi says nothing reliable about what a client *is*; the user retypes
+        # it on approve, like any other discovery.
+        "type": "computer",
+        "vendor": d.get("oui") or None,
+        "model": None,
+        "properties": props,
+        "raw_type": "client",
+        "source": SOURCE_CLIENT,
     }

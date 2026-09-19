@@ -200,3 +200,130 @@ async def test_inventory_maps_unifi_types_to_node_types() -> None:
     assert ap["vendor"] == "Ubiquiti"
     assert ap["model"] == "U7PRO"
     assert {"name": "Firmware", "value": "8.6.11.18870"} in ap["properties"]
+
+
+# ── import modes ────────────────────────────────────────────────────────────
+
+_KNOWN_CLIENTS = [
+    # A hand-added client: what list/user really carries — no IP, no uplink.
+    {
+        "_id": "6aaef4dff140c244eb55edbd",
+        "mac": "bc:24:11:8d:26:ed",
+        "name": "Paperless",
+        "oui": "Proxmox Server Solutions GmbH",
+        "is_wired": True,
+        "noted": True,
+    },
+    {"mac": "bc:24:11:00:00:99", "hostname": "nas", "oui": "Synology"},
+]
+
+_ACTIVE_CLIENTS = [
+    # Same MAC as Paperless above, seen live: this is where the IP lives.
+    {
+        "mac": "bc:24:11:8d:26:ed",
+        "ip": "192.168.1.50",
+        "hostname": "paperless",
+        "is_wired": True,
+        "sw_mac": "00:27:22:e0:00:02",
+        "sw_port": 7,
+        "network": "LAN",
+    },
+]
+
+
+def _full_controller(site: str = "default"):
+    """A controller serving all three inventories on the legacy paths."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == _LOGIN_OS:
+            return _err("api.err.LoginRequired")
+        if path == _LOGIN_LEGACY:
+            return httpx.Response(
+                200,
+                json={"meta": {"rc": "ok"}, "data": []},
+                headers={"set-cookie": "unifises=abc123; Path=/; HttpOnly"},
+            )
+        if path.startswith("/proxy/network/"):
+            return httpx.Response(404, text="<html>HTTP Status 404</html>")
+        if path == f"/api/s/{site}/stat/device":
+            return _ok(_DEVICES)
+        if path == f"/api/s/{site}/list/user":
+            return _ok(_KNOWN_CLIENTS)
+        if path == f"/api/s/{site}/stat/sta":
+            return _ok(_ACTIVE_CLIENTS)
+        return _err("api.err.NoSiteContext")
+
+    return handler
+
+
+async def _fetch(**modes):
+    ctx, factory = _patch(_full_controller())
+    with ctx:
+        devices = await fetch_unifi_inventory(
+            "unifi.local", 8443, "default", "admin", "pw", **modes
+        )
+    return devices, [r.url.path for r in factory.requests]
+
+
+@pytest.mark.asyncio
+async def test_infrastructure_only_is_the_default() -> None:
+    devices, paths = await _fetch()
+    assert len(devices) == 3
+    assert {d["source"] for d in devices} == {"unifi"}
+    # No client endpoint is even contacted.
+    assert not any("list/user" in p or "stat/sta" in p for p in paths)
+
+
+@pytest.mark.asyncio
+async def test_known_clients_can_be_imported_alone() -> None:
+    devices, paths = await _fetch(infrastructure=False, known_clients=True)
+    assert [d["hostname"] for d in devices] == ["Paperless", "nas"]
+    assert {d["source"] for d in devices} == {"unifi-client"}
+    assert all(d["type"] == "computer" for d in devices)
+    # list/user carries no address — the entry lands without one.
+    assert devices[0]["ip"] is None
+    assert devices[0]["vendor"] == "Proxmox Server Solutions GmbH"
+    assert not any("stat/device" in p for p in paths)
+
+
+@pytest.mark.asyncio
+async def test_active_clients_carry_the_live_attachment() -> None:
+    devices, _ = await _fetch(infrastructure=False, active_clients=True)
+    assert len(devices) == 1
+    props = {p["name"]: p["value"] for p in devices[0]["properties"]}
+    assert devices[0]["ip"] == "192.168.1.50"
+    assert props["Switch"] == "00:27:22:e0:00:02"
+    assert props["Switch port"] == "7"
+    assert props["Connection"] == "wired"
+
+
+@pytest.mark.asyncio
+async def test_a_client_in_both_sources_is_merged_once() -> None:
+    devices, _ = await _fetch(
+        infrastructure=False, known_clients=True, active_clients=True
+    )
+    macs = [d["mac"] for d in devices]
+    assert macs.count("bc:24:11:8d:26:ed") == 1
+    paperless = next(d for d in devices if d["mac"] == "bc:24:11:8d:26:ed")
+    # Live data wins for the IP, and the OUI from list/user survives.
+    assert paperless["ip"] == "192.168.1.50"
+    assert paperless["vendor"] == "Proxmox Server Solutions GmbH"
+    assert {p["name"] for p in paperless["properties"]} >= {"Switch port", "OUI"}
+
+
+@pytest.mark.asyncio
+async def test_every_source_at_once() -> None:
+    devices, _ = await _fetch(
+        infrastructure=True, known_clients=True, active_clients=True
+    )
+    assert len(devices) == 5  # 3 infra + 2 distinct clients
+    assert [d["source"] for d in devices].count("unifi") == 3
+    assert [d["source"] for d in devices].count("unifi-client") == 2
+
+
+@pytest.mark.asyncio
+async def test_a_client_without_a_mac_is_skipped() -> None:
+    from app.services.unifi_service import _normalize_client
+
+    assert _normalize_client({"name": "ghost"}) is None
