@@ -194,6 +194,13 @@ class Settings(BaseSettings):
     # Leave unset (or empty) to keep the feature disabled (default).
     liveview_key: str | None = None
 
+    # Documentation view — optional read-only public documentation space.
+    # Set to a random secret string to enable /api/v1/docsview?key=<value>.
+    # Leave unset (or empty) to keep the feature disabled (default).
+    # Its own key, deliberately not liveview_key's: an install already sharing a
+    # canvas must not start serving every document because it upgraded.
+    docs_view_key: str | None = None
+
     # Homepage widget — optional read-only stats endpoint for gethomepage.
     # Set to a random secret to enable /api/v1/stats/summary (X-API-Key header).
     # Leave empty to keep the feature disabled (default).

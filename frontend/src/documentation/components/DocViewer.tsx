@@ -19,7 +19,8 @@ export interface HistoryControls {
   onToggle: () => void
   onSelect: (revisionId: string) => void
   onClosePreview: () => void
-  onRestore: (revisionId: string) => void
+  /** Omitted by a read-only host; no Restore is then offered. */
+  onRestore?: (revisionId: string) => void
 }
 
 interface Props {
@@ -35,18 +36,27 @@ interface Props {
    * none — the button would have nothing to open.
    */
   history?: HistoryControls
-  onEdit: () => void
-  onToggleStar: () => void
-  onMarkReviewed: () => void
-  onRegenerate: () => void
+  /**
+   * Reading without a session — the public documentation view.
+   *
+   * Every control that writes is gone rather than disabled: there is no session
+   * behind this page and no endpoint to take the write, so a greyed-out button
+   * would only promise something that does not exist. History stays, because
+   * reading an old version is a read.
+   */
+  readOnly?: boolean
+  onEdit?: () => void
+  onToggleStar?: () => void
+  onMarkReviewed?: () => void
+  onRegenerate?: () => void
   /** Saves this document to disk as the `.md` file its body already is. */
   onDownload: () => void
-  onDelete: () => void
+  onDelete?: () => void
   onOpenDoc: (id: string) => void
-  onCreateFromLink: (label: string) => void
-  onToggleTask: (body: string) => void
+  onCreateFromLink?: (label: string) => void
+  onToggleTask?: (body: string) => void
   /** Writes the whole tag list back into the document's frontmatter. */
-  onSetTags: (tags: string[]) => void
+  onSetTags?: (tags: string[]) => void
 }
 
 const NO_HISTORY: HistoryControls = {
@@ -57,7 +67,6 @@ const NO_HISTORY: HistoryControls = {
   onToggle: () => {},
   onSelect: () => {},
   onClosePreview: () => {},
-  onRestore: () => {},
 }
 
 /** The metadata a frontmatter block is worth surfacing as a chip. */
@@ -75,6 +84,7 @@ export function DocViewer({
   backlinks = [],
   backlinksLoading = false,
   history,
+  readOnly = false,
   onEdit,
   onToggleStar,
   onMarkReviewed,
@@ -103,7 +113,7 @@ export function DocViewer({
       known.add(tag.toLowerCase())
       added.push(tag)
     }
-    if (added.length) onSetTags([...doc.tags, ...added])
+    if (added.length) onSetTags?.([...doc.tags, ...added])
     setTagDraft(null)
   }
 
@@ -121,7 +131,11 @@ export function DocViewer({
           docs={docs}
           devices={devices}
           onOpenDoc={onOpenDoc}
-          onRestore={() => controls.onRestore(preview.revision.id)}
+          onRestore={
+            readOnly || !controls.onRestore
+              ? undefined
+              : () => controls.onRestore?.(preview.revision.id)
+          }
           onClose={controls.onClosePreview}
         />
         {controls.open && (
@@ -142,19 +156,23 @@ export function DocViewer({
       <div className="min-w-0 flex-1 overflow-y-auto">
         <div className="flex items-start gap-2 px-6 pt-5">
           <h1 className="min-w-0 flex-1 truncate text-xl font-semibold">{doc.title}</h1>
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            title={doc.starred ? 'Unstar' : 'Star'}
-            aria-pressed={doc.starred}
-            onClick={onToggleStar}
-            className="cursor-pointer"
-          >
-            <Star className={cn(doc.starred && 'fill-current text-[var(--accent-orange,#ff6e00)]')} />
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onEdit} className="cursor-pointer gap-1">
-            <Pencil size={13} /> Edit
-          </Button>
+          {!readOnly && (
+            <>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                title={doc.starred ? 'Unstar' : 'Star'}
+                aria-pressed={doc.starred}
+                onClick={onToggleStar}
+                className="cursor-pointer"
+              >
+                <Star className={cn(doc.starred && 'fill-current text-[var(--accent-orange,#ff6e00)]')} />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onEdit} className="cursor-pointer gap-1">
+                <Pencil size={13} /> Edit
+              </Button>
+            </>
+          )}
           {history && (
             <Button
               size="icon-xs"
@@ -169,7 +187,7 @@ export function DocViewer({
             </Button>
           )}
           {/* A folder holds children, not a generated body — nothing to rebuild. */}
-          {doc.kind !== 'folder' && (
+          {!readOnly && doc.kind !== 'folder' && (
             <Button
               size="icon-xs"
               variant="ghost"
@@ -191,9 +209,11 @@ export function DocViewer({
           >
             <Download />
           </Button>
-          <Button size="icon-xs" variant="ghost" title="Delete this document" onClick={onDelete} className="cursor-pointer">
-            <Trash2 />
-          </Button>
+          {!readOnly && (
+            <Button size="icon-xs" variant="ghost" title="Delete this document" onClick={onDelete} className="cursor-pointer">
+              <Trash2 />
+            </Button>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 px-6 pt-2 text-[10px]">
@@ -203,55 +223,71 @@ export function DocViewer({
             </span>
           ))}
           {doc.tags.map((tag) => (
-            <span key={tag} className="flex items-center gap-1 rounded bg-primary/10 py-0.5 pl-1.5 pr-1 text-primary">
+            <span
+              key={tag}
+              className={cn(
+                'flex items-center gap-1 rounded bg-primary/10 py-0.5 pl-1.5 text-primary',
+                readOnly ? 'pr-1.5' : 'pr-1',
+              )}
+            >
               #{tag}
-              <button
-                type="button"
-                aria-label={`Remove tag ${tag}`}
-                onClick={() => onSetTags(doc.tags.filter((t) => t !== tag))}
-                className="cursor-pointer opacity-60 hover:opacity-100"
-              >
-                <X size={10} />
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  aria-label={`Remove tag ${tag}`}
+                  onClick={() => onSetTags?.(doc.tags.filter((t) => t !== tag))}
+                  className="cursor-pointer opacity-60 hover:opacity-100"
+                >
+                  <X size={10} />
+                </button>
+              )}
             </span>
           ))}
-          {tagDraft === null ? (
-            <button
-              type="button"
-              onClick={() => setTagDraft('')}
-              className="flex cursor-pointer items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
-            >
-              <Plus size={10} /> Tag
-            </button>
-          ) : (
-            <input
-              autoFocus
-              value={tagDraft}
-              aria-label="New tag"
-              placeholder="tag, tag…"
-              onChange={(event) => setTagDraft(event.target.value)}
-              onBlur={commitTags}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') commitTags()
-                if (event.key === 'Escape') setTagDraft(null)
-              }}
-              className="w-28 rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground outline-none ring-1 ring-border focus:ring-primary"
-            />
-          )}
+          {!readOnly &&
+            (tagDraft === null ? (
+              <button
+                type="button"
+                onClick={() => setTagDraft('')}
+                className="flex cursor-pointer items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
+              >
+                <Plus size={10} /> Tag
+              </button>
+            ) : (
+              <input
+                autoFocus
+                value={tagDraft}
+                aria-label="New tag"
+                placeholder="tag, tag…"
+                onChange={(event) => setTagDraft(event.target.value)}
+                onBlur={commitTags}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') commitTags()
+                  if (event.key === 'Escape') setTagDraft(null)
+                }}
+                className="w-28 rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground outline-none ring-1 ring-border focus:ring-primary"
+              />
+            ))}
           {!doc.edited_at && (
             <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
               Only the generated header so far
             </span>
           )}
-          {overdue && (
-            <button
-              type="button"
-              onClick={onMarkReviewed}
-              className="flex cursor-pointer items-center gap-1 rounded bg-[var(--status-pending,#e3b341)]/15 px-1.5 py-0.5 text-[var(--status-pending,#e3b341)]"
-            >
-              <Clock size={10} /> Due for review — mark as reviewed
-            </button>
-          )}
+          {overdue &&
+            (readOnly ? (
+              // Still worth saying the page may be stale; marking it reviewed
+              // is a write, so the reader is told rather than offered a button.
+              <span className="flex items-center gap-1 rounded bg-[var(--status-pending,#e3b341)]/15 px-1.5 py-0.5 text-[var(--status-pending,#e3b341)]">
+                <Clock size={10} /> Due for review
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={onMarkReviewed}
+                className="flex cursor-pointer items-center gap-1 rounded bg-[var(--status-pending,#e3b341)]/15 px-1.5 py-0.5 text-[var(--status-pending,#e3b341)]"
+              >
+                <Clock size={10} /> Due for review — mark as reviewed
+              </button>
+            ))}
           {drifted && (
             <span className="flex items-center gap-1 rounded bg-[var(--status-pending,#e3b341)]/15 px-1.5 py-0.5 text-[var(--status-pending,#e3b341)]">
               <RefreshCw size={10} /> The device has changed
@@ -264,8 +300,11 @@ export function DocViewer({
           docs={docs}
           devices={devices}
           onOpenDoc={onOpenDoc}
-          onCreateFromLink={onCreateFromLink}
-          onToggleTask={onToggleTask}
+          // Both write. Left undefined, an unresolved wiki-link still renders
+          // as the dashed "no match" affordance, inert, and a task checkbox
+          // stops accepting clicks.
+          onCreateFromLink={readOnly ? undefined : onCreateFromLink}
+          onToggleTask={readOnly ? undefined : onToggleTask}
           className="max-w-[72ch] px-6 pb-6 pt-2 text-sm"
         />
 

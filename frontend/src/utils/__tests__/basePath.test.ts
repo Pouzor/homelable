@@ -5,6 +5,7 @@ import {
   normalizeBasePath,
   withBase,
   resolveServerPath,
+  isDocsViewPath,
   isLiveViewPath,
 } from '@/utils/basePath'
 
@@ -87,6 +88,22 @@ describe('isLiveViewPath', () => {
   })
 })
 
+describe('isDocsViewPath', () => {
+  it('matches the documentation view under the base only', () => {
+    expect(isDocsViewPath('/homelab/docs', SUB)).toBe(true)
+    expect(isDocsViewPath('/docs', SUB)).toBe(false)
+    expect(isDocsViewPath('/homelab/', SUB)).toBe(false)
+    expect(isDocsViewPath('/homelab/documents', SUB)).toBe(false)
+    expect(isDocsViewPath('/docs')).toBe(true)
+  })
+
+  // Two public pages, two paths: one must never answer for the other.
+  it('is not the live view', () => {
+    expect(isDocsViewPath('/view')).toBe(false)
+    expect(isLiveViewPath('/docs')).toBe(false)
+  })
+})
+
 describe('module wiring', () => {
   afterEach(() => {
     vi.unstubAllEnvs()
@@ -101,6 +118,7 @@ describe('module wiring', () => {
     expect(mod.API_BASE_URL).toBe('/homelab/api/v1')
     expect(mod.withBase('view')).toBe('/homelab/view')
     expect(mod.isLiveViewPath('/homelab/view')).toBe(true)
+    expect(mod.isDocsViewPath('/homelab/docs')).toBe(true)
     expect(mod.resolveServerPath('/api/v1/media/a.png')).toBe('/homelab/api/v1/media/a.png')
   })
 })

@@ -102,6 +102,32 @@ export const liveviewApi = {
   getConfig: () => api.get<{ enabled: boolean; key: string | null }>('/liveview/config'),
 }
 
+/**
+ * The read-only documentation space at `/docs?key=…`.
+ *
+ * On `publicApi`, like live view: no JWT rides along, and a 401 must not bounce
+ * a reader towards a login they do not have. Reads only — the public router
+ * declares no write for this to call.
+ */
+export const docsviewApi = {
+  tree: (key: string) =>
+    publicApi.get<import('@/documentation/types').DocumentSummary[]>('/docsview/tree', {
+      params: { key },
+    }),
+  get: (key: string, id: string) =>
+    publicApi.get<import('@/documentation/types').Doc>(`/docsview/${id}`, { params: { key } }),
+  revisions: (key: string, id: string) =>
+    publicApi.get<import('@/documentation/types').DocRevision[]>(`/docsview/${id}/revisions`, {
+      params: { key },
+    }),
+  revision: (key: string, revisionId: string) =>
+    publicApi.get<import('@/documentation/types').DocRevision & { body: string }>(
+      `/docsview/revisions/${revisionId}`,
+      { params: { key } },
+    ),
+  getConfig: () => api.get<{ enabled: boolean; key: string | null }>('/docsview/config'),
+}
+
 export interface DeepScanConfig {
   http_ranges: string[]
   http_probe_enabled: boolean
