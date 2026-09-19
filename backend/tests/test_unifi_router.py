@@ -401,3 +401,87 @@ async def test_the_oldest_row_wins_when_two_share_a_mac(
     found = await _find_existing(db_session, "unifi-bc:24:11:8d:26:ed", "bc:24:11:8d:26:ed")
     assert found is not None
     assert found.ieee_address == "pve-proxmox-1"
+
+
+# --- properties on re-sync --------------------------------------------------
+
+def _prop(key: str, value: str, visible: bool = False) -> dict:
+    return {"key": key, "value": value, "icon": None, "visible": visible}
+
+
+@pytest.mark.asyncio
+async def test_resync_refreshes_values_and_keeps_the_users_choices(
+    db_session: AsyncSession,
+) -> None:
+    """Properties were written only when a row was created, so a re-sync left
+    the firmware and uptime frozen at whatever the first import saw."""
+    row = InventoryDevice(
+        ieee_address="unifi-00:27:22:e0:00:01",
+        mac="00:27:22:e0:00:01",
+        status="pending",
+        discovery_source="unifi",
+        discovery_sources=["unifi"],
+        properties=[
+            _prop("Firmware", "8.6.11.18870", visible=True),
+            _prop("Rack unit", "U12"),  # added by hand from the right panel
+        ],
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    await _persist_devices(db_session, [{
+        "ieee_address": "unifi-00:27:22:e0:00:01",
+        "mac": "00:27:22:e0:00:01",
+        "hostname": "U7 Pro",
+        "label": "U7 Pro",
+        "type": "ap",
+        "properties": [
+            _prop("Firmware", "8.7.0.99999"),
+            _prop("Uptime (s)", "4200"),
+        ],
+        "source": "unifi",
+    }])
+
+    updated = (await db_session.execute(select(InventoryDevice))).scalars().first()
+    assert updated is not None
+    by_key = {p["key"]: p for p in updated.properties}
+    assert by_key["Firmware"]["value"] == "8.7.0.99999"
+    # The user turned Firmware on; a re-sync must not turn it back off.
+    assert by_key["Firmware"]["visible"] is True
+    assert by_key["Uptime (s)"]["value"] == "4200"
+    # Their own property survives untouched.
+    assert by_key["Rack unit"]["value"] == "U12"
+
+
+@pytest.mark.asyncio
+async def test_a_merged_row_gains_the_controller_properties(
+    db_session: AsyncSession,
+) -> None:
+    row = InventoryDevice(
+        ieee_address="pve-proxmox-129",
+        mac="bc:24:11:8d:26:ed",
+        status="approved",
+        discovery_source="proxmox",
+        discovery_sources=["proxmox"],
+        properties=[_prop("VMID", "129"), _prop("Kind", "LXC")],
+    )
+    db_session.add(row)
+    await db_session.commit()
+
+    await _persist_devices(db_session, [{
+        "ieee_address": "unifi-bc:24:11:8d:26:ed",
+        "mac": "bc:24:11:8d:26:ed",
+        "hostname": "Paperless",
+        "label": "Paperless",
+        "type": "computer",
+        "properties": [_prop("Connection", "wired"), _prop("Switch port", "7")],
+        "source": "unifi-client",
+    }])
+
+    merged = (await db_session.execute(select(InventoryDevice))).scalars().first()
+    assert merged is not None
+    by_key = {p["key"]: p["value"] for p in merged.properties}
+    # Proxmox's facts stay, the controller's are added alongside.
+    assert by_key == {
+        "VMID": "129", "Kind": "LXC", "Connection": "wired", "Switch port": "7",
+    }

@@ -9,7 +9,13 @@ from typing import Any
 
 import httpx
 
+from app.services.zigbee_service import merge_zigbee_properties
+
 logger = logging.getLogger(__name__)
+
+# Same NodeProperty shape and the same visibility-preservation rules, so the
+# re-sync update path reuses the contract verbatim.
+merge_unifi_properties = merge_zigbee_properties
 
 
 class UnifiApiError(ConnectionError):
@@ -145,8 +151,8 @@ def _merge(acc: dict[str, dict[str, Any]], dev: dict[str, Any] | None) -> None:
     # Same device from a richer source: take its values, keep what it lacks.
     for field, value in dev.items():
         if field == "properties":
-            names = {p["name"] for p in value}
-            value = value + [p for p in prev["properties"] if p["name"] not in names]
+            keys = {p["key"] for p in value}
+            value = value + [p for p in prev["properties"] if p["key"] not in keys]
         if value:
             prev[field] = value
 
@@ -375,6 +381,15 @@ async def _fetch_known_clients(
     )
 
 
+def _prop(key: str, value: str, icon: str | None = None) -> dict[str, Any]:
+    """One NodeProperty row: ``{key, value, icon, visible}``.
+
+    ``visible`` is False because the whole inventory convention is opt-in — a
+    device carries more facts than a canvas should print.
+    """
+    return {"key": key, "value": value, "icon": icon, "visible": False}
+
+
 def _normalize(d: dict[str, Any]) -> dict[str, Any]:
     """Convert a raw UniFi device record to a homelable-compatible dict."""
     raw_type = (d.get("type") or "").lower()
@@ -388,16 +403,19 @@ def _normalize(d: dict[str, Any]) -> dict[str, Any]:
 
     ieee = f"unifi-{mac}" if mac else f"unifi-{name}"
 
-    props: list[dict[str, str]] = []
+    # NodeProperty rows: keyed, with an icon from PROPERTY_ICONS, hidden until
+    # the user opts in from the right panel — as the Proxmox and mesh importers
+    # build theirs.
+    props: list[dict[str, Any]] = []
     if raw_type:
-        props.append({"name": "UniFi type", "value": raw_type})
+        props.append(_prop("UniFi type", raw_type, "Tag"))
     if model:
-        props.append({"name": "Model", "value": model})
+        props.append(_prop("Model", model, "Box"))
     if version:
-        props.append({"name": "Firmware", "value": version})
+        props.append(_prop("Firmware", version, "CircuitBoard"))
     uptime = d.get("uptime")
     if uptime is not None:
-        props.append({"name": "Uptime (s)", "value": str(uptime)})
+        props.append(_prop("Uptime (s)", str(uptime), "Clock"))
 
     return {
         "ieee_address": ieee,
@@ -429,20 +447,28 @@ def _normalize_client(d: dict[str, Any]) -> dict[str, Any] | None:
     ip = d.get("ip") or d.get("fixed_ip") or None
     wired = d.get("is_wired")
 
-    props: list[dict[str, str]] = []
+    props: list[dict[str, Any]] = []
     if wired is not None:
-        props.append({"name": "Connection", "value": "wired" if wired else "wifi"})
+        props.append(_prop(
+            "Connection",
+            "wired" if wired else "wifi",
+            "EthernetPort" if wired else "Wifi",
+        ))
     uplink = d.get("sw_mac") or d.get("ap_mac")
     if uplink:
         label = "Switch" if d.get("sw_mac") else "Access point"
-        props.append({"name": label, "value": str(uplink).lower()})
+        props.append(_prop(label, str(uplink).lower(), "Network"))
     port = d.get("sw_port")
     if port is not None:
-        props.append({"name": "Switch port", "value": str(port)})
-    for key, label in (("essid", "SSID"), ("network", "Network"), ("oui", "OUI")):
-        value = d.get(key)
+        props.append(_prop("Switch port", str(port), "EthernetPort"))
+    for field, label, icon in (
+        ("essid", "SSID", "Wifi"),
+        ("network", "Network", "Globe"),
+        ("oui", "OUI", "Tag"),
+    ):
+        value = d.get(field)
         if value:
-            props.append({"name": label, "value": str(value)})
+            props.append(_prop(label, str(value), icon))
 
     return {
         "ieee_address": f"unifi-{mac}",
