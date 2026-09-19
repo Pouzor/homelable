@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label'
 import { unifiApi, type UnifiImportModes } from '@/api/client'
 import { toast } from 'sonner'
 
+const ACCENT = '#0559c9'
+
 interface UnifiImportModalProps {
   open: boolean
   onClose: () => void
@@ -143,7 +145,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
       <DialogContent className="bg-[#161b22] border-border max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
-            <Wifi size={16} className="text-[#0559c9]" />
+            <Wifi size={16} style={{ color: ACCENT }} />
             UniFi Import
           </DialogTitle>
         </DialogHeader>
@@ -184,7 +186,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 <Input
                   value={form.username}
                   onChange={(e) => updateField('username', e.target.value)}
-                  placeholder="falls back to server env"
+                  placeholder="admin"
                   className="text-sm bg-[#0d1117] border-border"
                 />
               </div>
@@ -205,7 +207,8 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                     type="checkbox"
                     checked={form.verify_tls}
                     onChange={(e) => setForm((f) => ({ ...f, verify_tls: e.target.checked }))}
-                    className="w-3 h-3 accent-[#0559c9] cursor-pointer"
+                    className="w-3 h-3 cursor-pointer"
+                    style={{ accentColor: ACCENT }}
                   />
                   Verify TLS certificate
                   <span className="text-muted-foreground/50">(off for a self-signed controller)</span>
@@ -241,14 +244,15 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                       checked={modes[s.key]}
                       onChange={() => toggleMode(s.key)}
                       aria-label={s.label}
-                      className="w-3 h-3 mt-0.5 accent-[#0559c9] cursor-pointer"
+                      className="w-3 h-3 mt-0.5 cursor-pointer"
+                      style={{ accentColor: ACCENT }}
                     />
                     <span className="min-w-0">
                       <span className="flex flex-wrap items-center gap-x-2">
                         {s.label}
                         <code className="font-mono text-[10px] text-muted-foreground/70">{s.endpoint}</code>
                         {counts[s.key] !== undefined && (
-                          <span className="text-[#0559c9]">{counts[s.key]} found</span>
+                          <span style={{ color: ACCENT }}>{counts[s.key]} found</span>
                         )}
                       </span>
                       <span className="block text-muted-foreground/60">{s.hint}</span>
@@ -261,36 +265,40 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
               )}
             </div>
 
-            <p className="text-xs text-muted-foreground/60">
-              Everything lands in the device inventory as pending, to approve onto a canvas
-              like any other discovery.
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-1.5 text-muted-foreground hover:text-foreground border border-border hover:bg-[#21262d]"
+                onClick={handleTestConnection}
+                disabled={connectionStatus === 'testing' || importing}
+              >
+                {connectionStatus === 'testing'
+                  ? <Loader2 size={13} className="animate-spin" />
+                  : <CheckCircle2 size={13} />}
+                Test Connection
+              </Button>
+              <Button
+                size="sm"
+                style={{ background: ACCENT, color: '#ffffff' }}
+                className="gap-1.5"
+                onClick={handleImport}
+                disabled={!anyMode || importing || connectionStatus === 'testing'}
+              >
+                {importing ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                Import to Inventory
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground italic">
+              Leave the credentials blank to use the ones in the server .env. Everything lands
+              in the device inventory as pending, to approve onto a canvas like any other
+              discovery.
             </p>
           </div>
         </div>
 
         <DialogFooter className="gap-2 shrink-0 pt-2 border-t border-border">
           <Button variant="ghost" onClick={handleClose}>Cancel</Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="gap-1.5 text-muted-foreground hover:text-foreground border border-border hover:bg-[#21262d]"
-            onClick={handleTestConnection}
-            disabled={connectionStatus === 'testing' || importing}
-          >
-            {connectionStatus === 'testing'
-              ? <Loader2 size={13} className="animate-spin" />
-              : <CheckCircle2 size={13} />}
-            Test Connection
-          </Button>
-          <Button
-            onClick={handleImport}
-            disabled={!anyMode || importing}
-            style={{ background: '#0559c9', color: '#ffffff' }}
-            className="gap-1.5"
-          >
-            {importing ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-            Import to Inventory
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

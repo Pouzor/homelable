@@ -157,6 +157,18 @@ describe('UnifiImportModal', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('keeps the actions in the body and Cancel alone in the footer', () => {
+    // Three buttons in the footer overflowed it; the mesh modals put the
+    // actions in the body and leave Cancel on its own.
+    render(<UnifiImportModal {...defaultProps} />)
+    const named = screen
+      .getAllByRole('button')
+      .map((b) => b.textContent?.trim())
+      .filter(Boolean)
+    // 'Close' is the dialog's own corner button, rendered last.
+    expect(named).toEqual(['Test Connection', 'Import to Inventory', 'Cancel', 'Close'])
+  })
+
   it('refuses to call the API without a host', () => {
     render(<UnifiImportModal {...defaultProps} />)
     fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
