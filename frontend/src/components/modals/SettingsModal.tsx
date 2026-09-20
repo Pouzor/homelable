@@ -613,15 +613,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <p className="text-[10px] text-[#e3b341] leading-tight">
                 No controller credentials configured. Set <span className="font-mono">UNIFI_USER</span> and{' '}
                 <span className="font-mono">UNIFI_PASS</span> in the server .env to enable auto-sync.
-          {/* XCP-ng auto-sync */}
-          {!STANDALONE && xcConfig && (
-          <div className="pt-3 border-t border-border space-y-2">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">XCP-ng auto-sync</span>
-            {!xcConfig.credentials_configured ? (
-              <p className="text-[10px] text-[#e3b341] leading-tight">
-                No credentials configured. Set <span className="font-mono">XCPNG_HOST</span>,{' '}
-                <span className="font-mono">XCPNG_USERNAME</span>, and{' '}
-                <span className="font-mono">XCPNG_PASSWORD</span> in the server .env to enable auto-sync.
               </p>
             ) : (
               <>
@@ -636,16 +627,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   />
                 </label>
                 <div className={unSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
-                  <span className="text-xs text-foreground">Auto-sync XCP-ng inventory</span>
-                  <input
-                    type="checkbox"
-                    checked={xcSyncEnabled}
-                    onChange={(e) => setXcSyncEnabled(e.target.checked)}
-                    className="cursor-pointer accent-[#0ea5e9]"
-                    aria-label="Toggle XCP-ng auto-sync"
-                  />
-                </label>
-                <div className={xcSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
                   <label className="text-xs text-muted-foreground">Sync interval (s)</label>
                   <div className="flex items-center gap-2">
                     <input
@@ -695,6 +676,49 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       className="h-7 text-xs border-[#0559c9] text-[#0559c9] hover:bg-[#0559c9]/10"
                     >
                       {unSyncing ? 'Syncing…' : 'Re-sync now'}
+                    </Button>
+                    <span className="text-[10px] text-muted-foreground leading-tight">
+                      Runs one import immediately using the server .env config.
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
+                    Set <span className="font-mono">UNIFI_HOST</span> in the server .env to enable manual re-sync.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+          )}
+          {/* XCP-ng auto-sync */}
+          {!STANDALONE && xcConfig && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">XCP-ng auto-sync</span>
+            {!xcConfig.credentials_configured ? (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                No credentials configured. Set <span className="font-mono">XCPNG_HOST</span>,{' '}
+                <span className="font-mono">XCPNG_USERNAME</span>, and{' '}
+                <span className="font-mono">XCPNG_PASSWORD</span> in the server .env to enable auto-sync.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Auto-sync XCP-ng inventory</span>
+                  <input
+                    type="checkbox"
+                    checked={xcSyncEnabled}
+                    onChange={(e) => setXcSyncEnabled(e.target.checked)}
+                    className="cursor-pointer accent-[#0ea5e9]"
+                    aria-label="Toggle XCP-ng auto-sync"
+                  />
+                </label>
+                <div className={xcSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={300}
+                      max={86400}
                       value={xcInterval}
                       onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setXcInterval(v) }}
                       className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#0ea5e9]"
@@ -722,7 +746,6 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   </div>
                 ) : (
                   <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
-                    Set <span className="font-mono">UNIFI_HOST</span> in the server .env to enable manual re-sync.
                     Set <span className="font-mono">XCPNG_HOST</span> in the server .env to enable manual re-sync.
                   </p>
                 )}
