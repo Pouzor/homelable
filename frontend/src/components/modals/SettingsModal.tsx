@@ -252,6 +252,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       toast.error('Failed to run UniFi sync')
     } finally {
       setUnSyncing(false)
+    }
+  }
+
   const handleXcSyncNow = async () => {
     setXcSyncing(true)
     try {
