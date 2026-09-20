@@ -75,6 +75,37 @@ async def test_connection_endpoint(
     return UnifiTestConnectionResponse(connected=connected, message=message, counts=counts)
 
 
+async def _record_run(
+    db: AsyncSession,
+    target: str,
+    started_at: datetime,
+    *,
+    status: str,
+    devices_found: int = 0,
+    error: str | None = None,
+) -> str:
+    """Log a manual UniFi import in Scan History.
+
+    The manual import runs inline rather than as a background job, so unlike
+    every other importer there is no ``running`` row waiting to be finished —
+    the run is written once, already terminal. Without it the import left no
+    trace in the history at all.
+    """
+    run = ScanRun(
+        status=status,
+        kind="unifi",
+        ranges=[target],
+        devices_found=devices_found,
+        started_at=started_at,
+        finished_at=datetime.now(timezone.utc),
+        error=error,
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+    return run.id
+
+
 @router.post("/import-pending", response_model=UnifiImportResponse)
 async def import_unifi_pending(
     payload: UnifiConnectionRequest,
@@ -83,6 +114,8 @@ async def import_unifi_pending(
 ) -> UnifiImportResponse:
     """Fetch UniFi inventory and upsert into pending device inventory."""
     username, password = _resolve_credentials(payload)
+    started_at = datetime.now(timezone.utc)
+    target = f"{payload.host}:{payload.port}"
     try:
         devices = await fetch_unifi_inventory(
             host=payload.host,
@@ -96,12 +129,17 @@ async def import_unifi_pending(
             active_clients=payload.modes.active_clients,
         )
     except ConnectionError as exc:
+        await _record_run(db, target, started_at, status="error", error=str(exc))
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Unexpected error during UniFi import")
+        await _record_run(
+            db, target, started_at, status="error", error="Unexpected error during UniFi import"
+        )
         raise HTTPException(status_code=500, detail="Unexpected error during UniFi import") from exc
 
     result = await _persist_devices(db, devices)
+    await _record_run(db, target, started_at, status="done", devices_found=result.device_count)
     return result
 
 
@@ -115,6 +153,8 @@ async def sync_unifi_now(
             status_code=400,
             detail="Cannot sync: no UniFi host/credentials configured on the server.",
         )
+    started_at = datetime.now(timezone.utc)
+    target = f"{settings.unifi_effective_host}:{settings.unifi_effective_port}"
     try:
         devices = await fetch_unifi_inventory(
             host=settings.unifi_effective_host,
@@ -128,9 +168,12 @@ async def sync_unifi_now(
             active_clients=settings.unifi_import_active_clients,
         )
     except Exception as exc:
+        await _record_run(db, target, started_at, status="error", error=str(exc))
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    return await _persist_devices(db, devices)
+    result = await _persist_devices(db, devices)
+    await _record_run(db, target, started_at, status="done", devices_found=result.device_count)
+    return result
 
 
 @router.get("/config", response_model=UnifiConfig)
