@@ -300,6 +300,55 @@ describe('SettingsModal — UniFi', () => {
     expect(screen.getByText(/select at least one source/i)).toBeInTheDocument()
   })
 
+  it('blocks Save when no source is selected, so nothing partially persists', async () => {
+    vi.mocked(unifiApi.getConfig).mockResolvedValue(config() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText('UniFi auto-sync')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByLabelText('Import Infrastructure'))
+
+    const save = screen.getByRole('button', { name: /save/i })
+    expect(save).toBeDisabled()
+    fireEvent.click(save)
+    // Before the fix the status-check config saved, then UniFi 422'd and the
+    // user got a cause-less "Failed to save settings".
+    expect(settingsApi.save).not.toHaveBeenCalled()
+    expect(unifiApi.saveConfig).not.toHaveBeenCalled()
+  })
+
+  it('leaves Save enabled when the UniFi panel is absent', async () => {
+    vi.mocked(unifiApi.getConfig).mockRejectedValue(new Error('not configured'))
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await waitFor(() => expect(unifiApi.getConfig).toHaveBeenCalled())
+    expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled()
+  })
+
+  it('clamps a typed sync interval below the backend minimum', async () => {
+    vi.mocked(unifiApi.getConfig).mockResolvedValue(config() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText('UniFi auto-sync')).toBeInTheDocument())
+
+    // min={300} on the input never stopped a typed value; the backend's
+    // sync_interval ge=300 would 422 and abort the whole save.
+    fireEvent.change(screen.getByLabelText('UniFi sync interval'), { target: { value: '100' } })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(unifiApi.saveConfig).toHaveBeenCalled())
+    expect(vi.mocked(unifiApi.saveConfig).mock.calls[0][0].sync_interval).toBe(300)
+  })
+
+  it('clamps a typed sync interval above the backend maximum', async () => {
+    vi.mocked(unifiApi.getConfig).mockResolvedValue(config() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText('UniFi auto-sync')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByLabelText('UniFi sync interval'), { target: { value: '999999' } })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(unifiApi.saveConfig).toHaveBeenCalled())
+    expect(vi.mocked(unifiApi.saveConfig).mock.calls[0][0].sync_interval).toBe(86400)
+  })
+
   it('reports what a manual re-sync imported', async () => {
     vi.mocked(unifiApi.getConfig).mockResolvedValue(config() as never)
     render(<SettingsModal open onClose={vi.fn()} />)
