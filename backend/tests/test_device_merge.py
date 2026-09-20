@@ -164,9 +164,9 @@ async def test_merge_shows_the_new_facts_on_a_canvas_that_never_saw_them(db_sess
     services = poor.display_view["services"]
     assert [e["visible"] for e in services] == [True, True]
     # The pre-existing entry is kept exactly as it was stored — a view is
-    # rewritten by a save, not by a merge — so the key seeded alongside it is
-    # in today's port-keyed form while that one stays in the older one.
-    assert {e["key"] for e in services} == {"5678|tcp|http", "22|tcp"}
+    # rewritten by a save, not by a merge — so the key seeded alongside it
+    # names the site it is served on while that one stays in the older form.
+    assert {e["key"] for e in services} == {"5678|tcp|http", "22|tcp||"}
     # A property list this canvas had never seen picks up the survivor's.
     assert [e["key"] for e in poor.display_view["properties"]] == ["vmid"]
 
@@ -188,6 +188,32 @@ async def test_merge_keeps_a_deliberately_hidden_fact_hidden(db_session):
     await db_session.refresh(node)
 
     assert node.display_view["services"] == [{"key": "22|tcp|ssh", "visible": False}]
+
+
+@pytest.mark.asyncio
+async def test_merge_keeps_a_hidden_service_hidden_on_a_view_that_names_no_site(db_session):
+    """A view written before #503 speaks of a port, the seed of a port and a site.
+
+    Comparing the two as written would call the hidden service missing and
+    append it again as shown, quietly undoing the canvas' choice on upgrade.
+    """
+    design = await _design(db_session)
+    winner = await _device(
+        db_session, id="w", ip="192.168.1.62",
+        services=[
+            {"service_name": "Pi-hole", "port": 443, "protocol": "tcp", "host": "pihole.lan"},
+        ],
+    )
+    loser = await _device(db_session, id="l", ip="192.168.1.62", services=[])
+    node = await _node(db_session, design, loser)
+    node.display_view = {"services": [{"key": "443|tcp", "visible": False}], "properties": []}
+    await db_session.flush()
+
+    await merge_devices(db_session, winner, [loser])
+    await db_session.flush()
+    await db_session.refresh(node)
+
+    assert node.display_view["services"] == [{"key": "443|tcp", "visible": False}]
 
 
 @pytest.mark.asyncio
