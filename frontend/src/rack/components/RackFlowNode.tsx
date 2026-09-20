@@ -1,6 +1,7 @@
 /** One rack = one React Flow node. The U grid inside is rendered by hand. */
 import { useCallback, useState } from 'react'
 import { useReactFlow, type NodeProps } from '@xyflow/react'
+import { toast } from 'sonner'
 import { patchedPortIds } from '../cableVisibility'
 import { getFaceplate } from '../faceplates'
 import {
@@ -145,10 +146,13 @@ export function RackFlowNode({ id }: NodeProps) {
   const height = rackHeight(rack)
   const gutter = rack.style.showNumbers ? NUMBER_GUTTER_PX : 0
   const col = columnWidth(rack)
+  // The socket takes the colour of the first cable on it: a patch panel port
+  // carries two, and letting the later one win made the LED flip colour when an
+  // unrelated patch was added at the other end of the panel.
   const patchedPorts = new Map<string, string>()
   for (const cable of cables) {
-    patchedPorts.set(cable.from.portId, cable.color)
-    patchedPorts.set(cable.to.portId, cable.color)
+    if (!patchedPorts.has(cable.from.portId)) patchedPorts.set(cable.from.portId, cable.color)
+    if (!patchedPorts.has(cable.to.portId)) patchedPorts.set(cable.to.portId, cable.color)
   }
   const cablesOn = cableVisibility === 'always' || cableMode
   // Ports of non-patch gear stay hidden until the plate is focused, or until
@@ -316,7 +320,11 @@ export function RackFlowNode({ id }: NodeProps) {
               patchedPorts={patchedPorts}
               draftPortId={isDraftDevice ? cableDraft.portId : null}
               onPortPointerDown={(portId) => startCableDrag(device.id, portId)}
-              onPortPointerUp={(portId) => endCableDrag({ deviceId: device.id, portId })}
+              onPortPointerUp={(portId) => {
+                if (endCableDrag({ deviceId: device.id, portId }) === 'refused') {
+                  toast.error('That port is already patched — unplug a cable first')
+                }
+              }}
             />
           </div>
         )

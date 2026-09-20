@@ -17,6 +17,15 @@ export const DEFAULT_RACK_STYLE: RackStyle = {
 export const MIN_RACK_U = 1
 export const MAX_RACK_U = 48
 
+/**
+ * Cables a single patch panel port accepts, front and rear.
+ *
+ * Every other port takes one: a switch jack really is one cable. A panel port
+ * is a pass-through, and with only a front view to draw on both ends of it hang
+ * off the same port.
+ */
+export const PATCH_PANEL_PORT_CABLES = 2
+
 export const CABLE_COLORS: Record<CableType, string> = {
   ethernet: '#39d353',
   fiber: '#f0a500',
