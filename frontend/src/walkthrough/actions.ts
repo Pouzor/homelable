@@ -18,7 +18,7 @@ export interface WalkthroughActionApi {
   editFirstNode: () => void
   selectTwoNodes: () => void
   openStyle: () => void
-  openZigbeeImport: () => void
+  openImportPicker: () => void
   /** Swaps the whole main pane for the Documentation section (`closeAll` swaps it back). */
   openDocumentation: () => void
 }
