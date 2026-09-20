@@ -244,7 +244,7 @@ interface RackState {
    * Press on a port: arms it as the cable source, or — when another port is
    * already armed — closes the patch, so click-then-click still works.
    */
-  startCableDrag: (deviceId: string, portId: string) => void
+  startCableDrag: (deviceId: string, portId: string) => PatchResult
   moveCableDrag: (pointer: { x: number; y: number }) => void
   /**
    * Release: patch onto `target`, or drop the draft if the pointer travelled.
@@ -972,11 +972,15 @@ export const useRackStore = create<RackState>((set, get) => {
         const samePort = cableDraft.deviceId === deviceId && cableDraft.portId === portId
         // Pressing the armed port again disarms it; pressing another closes the
         // patch — that is the click-then-click flow, kept alongside dragging.
-        if (!samePort) get().addCable(cableDraft, { deviceId, portId })
+        // The press is where that patch is made, so it is also where a refusal
+        // has to be reported; the release that follows has nothing left to do.
+        const id = samePort ? null : get().addCable(cableDraft, { deviceId, portId })
         set({ cableDraft: null, cableDrag: null })
-        return
+        if (samePort) return 'none'
+        return id ? 'patched' : 'refused'
       }
       set({ cableDraft: { deviceId, portId }, cableDrag: { pointer: null, moved: false } })
+      return 'none'
     },
 
     moveCableDrag: (pointer) => {

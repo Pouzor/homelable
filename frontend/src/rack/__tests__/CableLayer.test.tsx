@@ -3,7 +3,7 @@
  * it outright, so a misclick costs nothing and Delete is the destructive step.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, fireEvent } from '@testing-library/react'
+import { render, fireEvent, act } from '@testing-library/react'
 import { CableLayer } from '../components/CableLayer'
 import { useRackStore } from '../store'
 
@@ -36,6 +36,26 @@ describe('CableLayer selection', () => {
     fireEvent.click(paths[0])
     expect(useRackStore.getState().cableMode).toBe(false)
     expect(useRackStore.getState().selectedCableId).toBe(useRackStore.getState().cables[0].id)
+  })
+
+  // The overlay paints above the plates and a hit stroke is 14 wide around the
+  // run's own end point, so it covered the socket that run is plugged into. A
+  // second patch released on a patch panel port landed on the cable and the
+  // canvas read it as a drop on nothing.
+  it('stops taking the pointer while a patch is in flight', () => {
+    const store = useRackStore.getState()
+    store.setCableVisibility('always')
+    const { container, rerender } = render(<CableLayer />)
+    expect(hitPaths(container)[0].style.pointerEvents).toBe('stroke')
+
+    const { from } = useRackStore.getState().cables[0]
+    act(() => useRackStore.getState().startCableDrag(from.deviceId, from.portId))
+    rerender(<CableLayer />)
+    expect(hitPaths(container)[0].style.pointerEvents).toBe('none')
+
+    act(() => useRackStore.getState().cancelCableDraft())
+    rerender(<CableLayer />)
+    expect(hitPaths(container)[0].style.pointerEvents).toBe('stroke')
   })
 
   it('keeps the selected cable drawn when cables are hidden', () => {

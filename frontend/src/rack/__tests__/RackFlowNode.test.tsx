@@ -158,6 +158,24 @@ describe('RackFlowNode patching', () => {
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('already patched'))
   })
 
+  it('says so when a click-then-click closes onto a full port', () => {
+    store().toggleCableMode()
+    renderRack()
+    const { b } = freePorts()
+    const taken = store().cables.find((c) => c.from.deviceId !== 'dev-patch')!
+    const device = store().devices.find((d) => d.id === taken.from.deviceId)!
+    const port = device.ports.find((p) => p.id === taken.from.portId)!
+    const before = store().cables.length
+
+    const portB = portGroup(b.device.label, b.port.label, b.port.type)
+    fireEvent.pointerDown(portB)
+    fireEvent.pointerUp(portB)
+    fireEvent.pointerDown(portGroup(device.label, port.label, port.type))
+
+    expect(store().cables).toHaveLength(before)
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('already patched'))
+  })
+
   it('still patches with two separate clicks', () => {
     store().toggleCableMode()
     renderRack()
