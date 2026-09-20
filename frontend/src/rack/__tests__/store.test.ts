@@ -682,6 +682,21 @@ describe('cables', () => {
     expect(store().cableDrag).toBeNull()
   })
 
+  // The second click is what makes the cable, so it is what has to report.
+  it('reports what a click-then-click press did', () => {
+    const { a, b } = freePorts()
+    expect(store().startCableDrag(a.deviceId, a.portId)).toBe('none')
+    expect(store().startCableDrag(a.deviceId, a.portId)).toBe('none')
+
+    store().startCableDrag(a.deviceId, a.portId)
+    expect(store().startCableDrag(b.deviceId, b.portId)).toBe('patched')
+
+    const full = store().cables.find((c) => c.from.deviceId === 'dev-sw24')!
+    const spare = store().devices.find((d) => d.id === 'dev-pve2')!.ports[0]
+    store().startCableDrag(full.from.deviceId, full.from.portId)
+    expect(store().startCableDrag('dev-pve2', spare.id)).toBe('refused')
+  })
+
   // The refusal used to be silent — the run simply vanished on release.
   it('reports what a release did, so a refused patch can be explained', () => {
     const { a, b } = freePorts()

@@ -21,7 +21,7 @@ import {
   xToCol,
   yToU,
 } from '../layout'
-import { useRackStore } from '../store'
+import { useRackStore, type PatchResult } from '../store'
 import { useRackPalette } from '../rackTheme'
 import { resolveDeviceStatus } from '../deviceStatus'
 import { RACK_COLUMNS } from '@/types'
@@ -34,6 +34,11 @@ interface DropPreview {
   colStart: number
   colSpan: number
   valid: boolean
+}
+
+/** A patch the store turned down used to vanish without a word. */
+function reportPatch(result: PatchResult) {
+  if (result === 'refused') toast.error('That port is already patched — unplug a cable first')
 }
 
 export function RackFlowNode({ id }: NodeProps) {
@@ -319,12 +324,12 @@ export function RackFlowNode({ id }: NodeProps) {
               interactivePorts={cableMode}
               patchedPorts={patchedPorts}
               draftPortId={isDraftDevice ? cableDraft.portId : null}
-              onPortPointerDown={(portId) => startCableDrag(device.id, portId)}
-              onPortPointerUp={(portId) => {
-                if (endCableDrag({ deviceId: device.id, portId }) === 'refused') {
-                  toast.error('That port is already patched — unplug a cable first')
-                }
+              onPortPointerDown={(portId) => {
+                // A click-then-click patch is closed by the press, a dragged one
+                // by the release — both can be refused, so both report.
+                reportPatch(startCableDrag(device.id, portId))
               }}
+              onPortPointerUp={(portId) => reportPatch(endCableDrag({ deviceId: device.id, portId }))}
             />
           </div>
         )
