@@ -157,6 +157,85 @@ class TestMergeRules:
         assert len(out) == 2
 
 
+    def test_two_sites_on_one_port_are_two_services(self):
+        """A reverse proxy serves several hosts on 443, and each is its own.
+
+        The port was the whole of a service's identity, so the second collapsed
+        into the first and was gone from the row on the next save (issue #503).
+        """
+        out = merge_services(
+            [{"port": 443, "protocol": "tcp", "service_name": "Pi-hole",
+              "host": "192.168.1.3", "path": "/admin"}],
+            [{"port": 443, "protocol": "tcp", "service_name": "Pi-hole",
+              "host": "pihole.domain.ch", "path": "/admin"}],
+        )
+        assert len(out) == 2
+        assert [s["host"] for s in out] == ["192.168.1.3", "pihole.domain.ch"]
+
+    def test_two_paths_on_one_host_are_two_services(self):
+        """A path-routed proxy is told apart by the path alone."""
+        out = merge_services(
+            [{"port": 443, "protocol": "tcp", "service_name": "Photos",
+              "host": "nas.lan", "path": "/photos"}],
+            [{"port": 443, "protocol": "tcp", "service_name": "Files",
+              "host": "nas.lan", "path": "/files"}],
+        )
+        assert len(out) == 2
+        assert [s["service_name"] for s in out] == ["Photos", "Files"]
+
+    def test_a_path_is_anchored_before_it_is_compared(self):
+        """`admin` and `/admin` reach the same URL, so they are one service."""
+        out = merge_services(
+            [{"port": 443, "protocol": "tcp", "service_name": "Pi-hole", "path": "admin"}],
+            [{"port": 443, "protocol": "tcp", "service_name": "Pi-hole", "path": "/admin"}],
+        )
+        assert len(out) == 1
+
+    def test_a_host_is_compared_case_insensitively(self):
+        """A hostname is a hostname however it was typed."""
+        out = merge_services(
+            [{"port": 443, "protocol": "tcp", "service_name": "Pi-hole", "host": "PiHole.LAN"}],
+            [{"port": 443, "protocol": "tcp", "service_name": "Pi-hole", "host": "pihole.lan"}],
+        )
+        assert len(out) == 1
+
+    def test_a_scan_never_duplicates_a_service_carrying_a_host_override(self):
+        """fingerprint_ports knows a port; it never knows the site served on it."""
+        out = merge_services(
+            [{"port": 443, "protocol": "tcp", "service_name": "Pi-hole", "host": "pihole.lan"}],
+            [{"port": 443, "protocol": "tcp", "service_name": "https", "icon": "Globe"}],
+            discovered=True,
+        )
+        assert len(out) == 1
+        assert out[0]["host"] == "pihole.lan"
+        assert out[0]["service_name"] == "Pi-hole"
+        assert out[0]["icon"] == "Globe"
+
+    def test_a_scan_lands_on_one_site_and_never_adds_a_third(self):
+        """Two sites on one port, one scan hit: it refreshes one of them."""
+        out = merge_services(
+            [
+                {"port": 443, "protocol": "tcp", "service_name": "Pi-hole", "host": "a.lan"},
+                {"port": 443, "protocol": "tcp", "service_name": "Gitea", "host": "b.lan"},
+            ],
+            [{"port": 443, "protocol": "tcp", "service_name": "https"}],
+            discovered=True,
+        )
+        assert len(out) == 2
+        assert [s["host"] for s in out] == ["a.lan", "b.lan"]
+
+    def test_a_new_site_is_added_once_the_ones_on_the_port_are_taken(self):
+        """The fallback hands over each entry once; what is left is a new service."""
+        out = merge_services(
+            [{"port": 443, "protocol": "tcp", "service_name": "Pi-hole", "host": "a.lan"}],
+            [
+                {"port": 443, "protocol": "tcp", "service_name": "Pi-hole", "host": "a.lan"},
+                {"port": 443, "protocol": "tcp", "service_name": "Gitea", "host": "b.lan"},
+            ],
+        )
+        assert len(out) == 2
+        assert [s["host"] for s in out] == ["a.lan", "b.lan"]
+
     def test_a_scan_never_repaints_an_icon_the_user_picked(self):
         """Every "Scan network" used to overwrite a hand-picked brand icon."""
         base = [
@@ -1410,7 +1489,7 @@ class TestPerNodeView:
         assert await seed_node_views(db_session) == 1
         await db_session.commit()
         assert node.display_view == {
-            "services": [{"key": "22|tcp", "visible": True}],
+            "services": [{"key": "22|tcp||", "visible": True}],
             "properties": [],
         }
         # Idempotent: a second boot finds nothing without a view.
@@ -1543,7 +1622,7 @@ class TestPerNodeView:
         assert await seed_node_views(db_session, drawn=lambda: drawn) == 1
         await db_session.commit()
 
-        assert node.display_view["services"] == [{"key": "22|tcp", "visible": True}]
+        assert node.display_view["services"] == [{"key": "22|tcp||", "visible": True}]
 
     @pytest.mark.asyncio
     async def test_a_node_without_a_view_still_shows_everything(self, db_session):
@@ -1665,6 +1744,134 @@ class TestPerNodeView:
         ]
 
 
+class TestSeveralSitesOnOnePort:
+    """Two services on one port are two services (issue #503).
+
+    A node behind a reverse proxy serves several sites on 443. The port was the
+    whole of a service's identity, so the second collapsed into the first on
+    read, and the canvas then saved back the shortened list the node drew —
+    deleting it from the inventory row for good.
+    """
+
+    _SITES = [
+        {"port": 443, "protocol": "tcp", "service_name": "Pi-hole",
+         "host": "192.168.1.3", "path": "/admin"},
+        {"port": 443, "protocol": "tcp", "service_name": "Pi-hole",
+         "host": "pihole.domain.ch", "path": "/admin"},
+    ]
+
+    async def _device_and_design(self, db_session) -> str:
+        db_session.add(
+            InventoryDevice(id="d-1", ip="192.168.1.3", services=[dict(s) for s in self._SITES])
+        )
+        await db_session.commit()
+        return await _design(db_session)
+
+    async def _node_on(self, client, headers, design_id: str) -> dict:
+        res = await client.post(
+            "/api/v1/nodes",
+            json={"type": "nas", "label": "Pi-hole", "ip": "192.168.1.3",
+                  "design_id": design_id, "force": True},
+            headers=headers,
+        )
+        assert res.status_code == 201
+        return res.json()
+
+    @pytest.mark.asyncio
+    async def test_both_survive_the_canvas_save_that_used_to_delete_one(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """The reported scenario end to end: draw the device, save, look again."""
+        design = await self._device_and_design(db_session)
+        node = await self._node_on(client, headers, design)
+        assert [s["host"] for s in node["services"]] == ["192.168.1.3", "pihole.domain.ch"]
+
+        # A canvas save sends what the node draws, and the write-through takes
+        # the list wholesale — a service missing from it is a service deleted.
+        res = await client.patch(
+            f"/api/v1/nodes/{node['id']}", json={"services": node["services"]}, headers=headers
+        )
+        assert res.status_code == 200
+        assert [s["host"] for s in res.json()["services"]] == [
+            "192.168.1.3", "pihole.domain.ch",
+        ]
+
+        device = await db_session.get(InventoryDevice, "d-1")
+        await db_session.refresh(device)
+        assert [s["host"] for s in device.services] == ["192.168.1.3", "pihole.domain.ch"]
+
+    @pytest.mark.asyncio
+    async def test_one_site_can_be_hidden_without_taking_the_other_with_it(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """The view addresses each site in its own right, not the port they share."""
+        design = await self._device_and_design(db_session)
+        node = await self._node_on(client, headers, design)
+
+        hidden = [dict(self._SITES[0]), {**self._SITES[1], "visible": False}]
+        res = await client.patch(
+            f"/api/v1/nodes/{node['id']}", json={"services": hidden}, headers=headers
+        )
+        assert res.status_code == 200
+        assert [(s["host"], s.get("visible", True)) for s in res.json()["services"]] == [
+            ("192.168.1.3", True), ("pihole.domain.ch", False),
+        ]
+
+        again = (await client.get(f"/api/v1/nodes/{node['id']}", headers=headers)).json()
+        assert [(s["host"], s.get("visible", True)) for s in again["services"]] == [
+            ("192.168.1.3", True), ("pihole.domain.ch", False),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_view_written_before_the_fix_draws_one_and_brings_the_other_in_hidden(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """Upgrading must not hide a canvas' services, nor unhide what it hid.
+
+        A stored view addresses both sites as ``443|tcp`` — it predates the
+        site being part of a service's address, so it can only speak for one.
+        The first is drawn as it was, and the second arrives the way any service
+        the row gained since does: hidden, one toggle away.
+        """
+        design = await self._device_and_design(db_session)
+        node = await self._node_on(client, headers, design)
+        stored = await db_session.get(Node, node["id"])
+        stored.display_view = {
+            "services": [{"key": "443|tcp", "visible": True}],
+            "properties": [],
+        }
+        await db_session.commit()
+
+        drawn = (await client.get(f"/api/v1/nodes/{node['id']}", headers=headers)).json()
+        assert [(s["host"], s.get("visible", True)) for s in drawn["services"]] == [
+            ("192.168.1.3", True), ("pihole.domain.ch", False),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_editing_a_site_does_not_drop_it_from_the_canvas(
+        self, client: AsyncClient, headers, db_session
+    ):
+        """The site is identity, so an edit rewrites the key a view holds.
+
+        Without the fallback to the port the node would lose track of the entry
+        and redraw it hidden — which is what #468 was, in a new field.
+        """
+        design = await self._device_and_design(db_session)
+        node = await self._node_on(client, headers, design)
+
+        device = await db_session.get(InventoryDevice, "d-1")
+        device.services = [
+            {**self._SITES[0], "host": "pihole.lan"},
+            dict(self._SITES[1]),
+        ]
+        await db_session.commit()
+
+        drawn = (await client.get(f"/api/v1/nodes/{node['id']}", headers=headers)).json()
+        assert [(s["host"], s.get("visible", True)) for s in drawn["services"]] == [
+            ("pihole.lan", True), ("pihole.domain.ch", True),
+        ]
+
+
 class TestNormalizeViewKey:
     """Stored view keys, narrowed to the identity the row is addressed by."""
 
@@ -1682,6 +1889,21 @@ class TestNormalizeViewKey:
 
     def test_a_name_carrying_a_pipe_survives_the_split(self):
         assert normalize_view_key("None|tcp|a|b", "services") == "None|tcp|a|b"
+
+    def test_a_key_naming_a_site_is_left_alone(self):
+        """Today's form: the port, the protocol, then the host and the path."""
+        assert normalize_view_key("443|tcp|pihole.lan|/admin", "services") == (
+            "443|tcp|pihole.lan|/admin"
+        )
+
+    def test_a_key_naming_no_site_is_left_alone(self):
+        """The site is empty rather than absent — both segments are still there."""
+        assert normalize_view_key("3001|tcp||", "services") == "3001|tcp||"
+
+    def test_a_port_less_key_in_todays_form_keeps_its_name_and_its_site(self):
+        assert normalize_view_key("None|tcp|vaultwarden|vault.lan|", "services") == (
+            "None|tcp|vaultwarden|vault.lan|"
+        )
 
     def test_a_property_key_is_never_touched(self):
         assert normalize_view_key("rack", "properties") == "rack"

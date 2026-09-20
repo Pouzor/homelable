@@ -101,6 +101,52 @@ describe('listArrangedForNode', () => {
   const guessed = { port: 8096, protocol: 'tcp' as const, service_name: 'TCP/8096' }
   const renamed = { ...guessed, service_name: 'Jellyfin' }
 
+  const adminIp = {
+    port: 443,
+    protocol: 'tcp' as const,
+    service_name: 'Pi-hole',
+    host: '192.168.1.3',
+    path: '/admin',
+  }
+  const adminDomain = { ...adminIp, host: 'pihole.domain.ch' }
+
+  it('keeps two sites served on one port apart (#503)', () => {
+    // A reverse proxy serves both on 443. Keying on the port alone collapsed
+    // them, so the node drew one and the canvas saved that shortened list back
+    // over the row — deleting the other for good.
+    expect(listArrangedForNode([adminIp, adminDomain], [adminIp, adminDomain])).toEqual([
+      adminIp,
+      adminDomain,
+    ])
+  })
+
+  it('hides one site without touching the other', () => {
+    const arranged = listArrangedForNode(
+      [{ ...adminIp, visible: false }, adminDomain],
+      [adminIp, adminDomain],
+    )
+    expect(arranged).toEqual([{ ...adminIp, visible: false }, adminDomain])
+  })
+
+  it('follows an edited host rather than hiding the service', () => {
+    // The site is part of a service's identity, so editing it in the Device
+    // Inventory rewrites the key the node holds — #468 in a new field unless
+    // the match falls back to the port.
+    const moved = { ...adminIp, host: 'pihole.lan' }
+    expect(listArrangedForNode([adminIp], [moved])).toEqual([moved])
+  })
+
+  it('brings a second site in hidden rather than mistaking it for an edit', () => {
+    const arranged = listArrangedForNode([adminIp], [adminIp, adminDomain])
+    expect(arranged).toEqual([adminIp, { ...adminDomain, visible: false }])
+  })
+
+  it('reads a path the same way the service URL does', () => {
+    // `admin` and `/admin` reach the same URL, so they are one service.
+    const typed = { ...adminIp, path: 'admin' }
+    expect(listArrangedForNode([typed], [adminIp])).toEqual([adminIp])
+  })
+
   it('follows a rename rather than hiding the service (#468)', () => {
     // A service is its port, not its name. Keying on the name dropped the entry
     // the node drew and appended the renamed one hidden, so correcting a

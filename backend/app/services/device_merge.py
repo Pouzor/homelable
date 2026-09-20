@@ -38,6 +38,7 @@ from app.services.inventory_sync import (
     merge_properties,
     merge_services,
     normalize_view_key,
+    view_key_port,
     view_of_device,
 )
 from app.services.node_dedupe import dedupe_nodes_by_device
@@ -198,7 +199,19 @@ async def _show_merged_facts(db: AsyncSession, winner: InventoryDevice) -> int:
                 for e in entries
                 if isinstance(e, dict)
             }
-            missing = [entry for entry in seeds[kind] if entry["key"] not in listed]
+            if kind == "services":
+                # A view written before #503 names a port and no site, so a
+                # freshly seeded key never matches it as written. Both reduce to
+                # the same port, and that is what says this canvas has already
+                # spoken about the service — including to hide it.
+                listed |= {view_key_port(key) for key in listed}
+                missing = [
+                    entry
+                    for entry in seeds[kind]
+                    if view_key_port(entry["key"]) not in listed
+                ]
+            else:
+                missing = [entry for entry in seeds[kind] if entry["key"] not in listed]
             if missing:
                 view[kind] = [*entries, *missing]
                 changed = True
