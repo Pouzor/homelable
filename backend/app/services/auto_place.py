@@ -19,7 +19,9 @@ from app.db.models import Edge, InventoryDevice, InventoryDeviceLink, Node
 try:
     from app.services.unifi_service import fetch_unifi_topology
 except ImportError:
-    async def fetch_unifi_topology(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    async def fetch_unifi_topology(
+        host: str, port: int, site: str, username: str, password: str, verify_tls: bool = False
+    ) -> dict[str, Any]:
         return {}
 
 try:
