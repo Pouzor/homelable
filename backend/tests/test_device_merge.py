@@ -217,6 +217,81 @@ async def test_merge_keeps_a_hidden_service_hidden_on_a_view_that_names_no_site(
 
 
 @pytest.mark.asyncio
+async def test_merge_shows_a_second_site_the_survivor_brings_to_a_shared_port(db_session):
+    """A view naming one service on a port speaks for that one, not for the port.
+
+    The survivor serves two sites on 443 and the node's view knows only the
+    first. Reading the view as "this canvas has been told about 443" would
+    leave the second hidden — the merge would fold the facts in and the canvas
+    would look exactly as bare as before, which is what this function exists to
+    prevent.
+    """
+    design = await _design(db_session)
+    winner = await _device(
+        db_session, id="w", ip="192.168.1.62",
+        services=[
+            {"service_name": "Pi-hole", "port": 443, "protocol": "tcp", "host": "a.lan"},
+            {"service_name": "Gitea", "port": 443, "protocol": "tcp", "host": "b.lan"},
+        ],
+    )
+    loser = await _device(
+        db_session, id="l", ip="192.168.1.62",
+        services=[{"service_name": "Pi-hole", "port": 443, "protocol": "tcp", "host": "a.lan"}],
+    )
+    node = await _node(db_session, design, loser)
+    node.display_view = {
+        "services": [{"key": "443|tcp|a.lan|", "visible": True}],
+        "properties": [],
+    }
+    await db_session.flush()
+
+    await merge_devices(db_session, winner, [loser])
+    await db_session.flush()
+    await db_session.refresh(node)
+
+    assert node.display_view["services"] == [
+        {"key": "443|tcp|a.lan|", "visible": True},
+        {"key": "443|tcp|b.lan|", "visible": True},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_merge_leaves_a_hidden_site_hidden_while_showing_its_neighbour(db_session):
+    """One key hides one site; the other is still new and still arrives shown.
+
+    The two halves of the rule meet here: the hidden entry claims its own site
+    and nothing else, so the site beside it on the same port is added.
+    """
+    design = await _design(db_session)
+    winner = await _device(
+        db_session, id="w", ip="192.168.1.62",
+        services=[
+            {"service_name": "Pi-hole", "port": 443, "protocol": "tcp", "host": "a.lan"},
+            {"service_name": "Gitea", "port": 443, "protocol": "tcp", "host": "b.lan"},
+        ],
+    )
+    loser = await _device(
+        db_session, id="l", ip="192.168.1.62",
+        services=[{"service_name": "Pi-hole", "port": 443, "protocol": "tcp", "host": "a.lan"}],
+    )
+    node = await _node(db_session, design, loser)
+    node.display_view = {
+        "services": [{"key": "443|tcp|a.lan|", "visible": False}],
+        "properties": [],
+    }
+    await db_session.flush()
+
+    await merge_devices(db_session, winner, [loser])
+    await db_session.flush()
+    await db_session.refresh(node)
+
+    assert node.display_view["services"] == [
+        {"key": "443|tcp|a.lan|", "visible": False},
+        {"key": "443|tcp|b.lan|", "visible": True},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_merge_collapses_two_nodes_that_now_draw_one_device(db_session):
     """Both rows drawn on the *same* canvas: one node survives, the oldest."""
     design = await _design(db_session)

@@ -163,6 +163,41 @@ async def _merge_documents(db: AsyncSession, winner: InventoryDevice, loser_ids:
     return orphaned
 
 
+def _seeds_no_entry_speaks_for(
+    listed: list[str], seeds: list[dict[str, Any]], kind: str
+) -> list[dict[str, Any]]:
+    """The seeded keys no entry in ``listed`` already speaks for.
+
+    One entry in a view speaks for one service, so the match is one-for-one. A
+    key that names a service exactly claims it; what is left over is a key
+    written before #503, which names a port and no site, and claims one of the
+    services on that port.
+
+    Both halves matter. Matching on the exact key alone would call a service
+    such a key already speaks for "missing" and append it again as shown, which
+    unhides what the canvas hid on purpose. Treating a whole port as spoken for
+    because one key mentions it goes wrong the other way: a second site the
+    merge has just folded in would never be added, and would arrive hidden —
+    exactly the facts this function exists to reveal.
+    """
+    remaining = list(seeds)
+    leftover: list[str] = []
+    for key in listed:
+        seed = next((s for s in remaining if s["key"] == key), None)
+        if seed is None:
+            leftover.append(key)
+        else:
+            remaining.remove(seed)
+    if kind != "services":
+        return remaining
+    for key in leftover:
+        port = view_key_port(key)
+        seed = next((s for s in remaining if view_key_port(s["key"]) == port), None)
+        if seed is not None:
+            remaining.remove(seed)
+    return remaining
+
+
 async def _show_merged_facts(db: AsyncSession, winner: InventoryDevice) -> int:
     """Make the survivor's facts visible on every canvas that draws it.
 
@@ -194,24 +229,12 @@ async def _show_merged_facts(db: AsyncSession, winner: InventoryDevice) -> int:
             # Normalized: a view written before #469 addresses a service by a
             # key that carries its name, and comparing it raw against a freshly
             # seeded key would call an already-listed service missing.
-            listed = {
+            listed = [
                 normalize_view_key(str(e.get("key")), kind)
                 for e in entries
                 if isinstance(e, dict)
-            }
-            if kind == "services":
-                # A view written before #503 names a port and no site, so a
-                # freshly seeded key never matches it as written. Both reduce to
-                # the same port, and that is what says this canvas has already
-                # spoken about the service — including to hide it.
-                listed |= {view_key_port(key) for key in listed}
-                missing = [
-                    entry
-                    for entry in seeds[kind]
-                    if view_key_port(entry["key"]) not in listed
-                ]
-            else:
-                missing = [entry for entry in seeds[kind] if entry["key"] not in listed]
+            ]
+            missing = _seeds_no_entry_speaks_for(listed, seeds[kind], kind)
             if missing:
                 view[kind] = [*entries, *missing]
                 changed = True
