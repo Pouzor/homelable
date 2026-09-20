@@ -83,6 +83,17 @@ const PROXMOX_RUN = {
   error: null,
 }
 
+const UNIFI_RUN = {
+  id: 'run-8',
+  status: 'done',
+  kind: 'unifi',
+  ranges: ['unifi:443'],
+  devices_found: 12,
+  started_at: new Date().toISOString(),
+  finished_at: new Date().toISOString(),
+  error: null,
+}
+
 function renderModal() {
   return render(
     <TooltipProvider>
@@ -214,5 +225,53 @@ describe('ScanHistoryModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Proxmox' }))
     expect(screen.getByText('9 found')).toBeDefined()
     expect(screen.queryByText('3 found')).toBeNull()
+  })
+
+  it('shows a unifi auto-sync run under its own kind, not IP', async () => {
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [DONE_RUN, UNIFI_RUN] } as never)
+    renderModal()
+    await waitFor(() => expect(screen.getAllByText('done').length).toBe(2))
+    // Badge on the run plus the filter chip — before the fix runKind() fell
+    // through to 'ip' and the run wore the purple IP badge.
+    expect(screen.getAllByText('UniFi').length).toBeGreaterThanOrEqual(2)
+    fireEvent.click(screen.getByRole('button', { name: 'UniFi' }))
+    expect(screen.getByText('12 found')).toBeDefined()
+    expect(screen.queryByText('3 found')).toBeNull()
+  })
+
+  it('keeps a unifi run out of the IP filter', async () => {
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [DONE_RUN, UNIFI_RUN] } as never)
+    renderModal()
+    await waitFor(() => expect(screen.getAllByText('done').length).toBe(2))
+    fireEvent.click(screen.getByRole('button', { name: 'IP' }))
+    expect(screen.getByText('3 found')).toBeDefined()
+    expect(screen.queryByText('12 found')).toBeNull()
+  })
+
+  it('toasts when a unifi auto-sync run finishes', async () => {
+    const running = { ...UNIFI_RUN, status: 'running', finished_at: null, devices_found: 0 }
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [running] } as never)
+    renderModal()
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [UNIFI_RUN] } as never)
+    fireEvent.click(screen.getByTitle('Refresh'))
+    // Auto-sync has no modal of its own, so the toast is its only surface.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('UniFi import done — 12 devices')
+    )
+  })
+
+  it('surfaces a done unifi run advisory as a warning', async () => {
+    const running = { ...UNIFI_RUN, status: 'running', finished_at: null, devices_found: 0 }
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [running] } as never)
+    renderModal()
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+    vi.mocked(scanApi.runs).mockResolvedValue({
+      data: [{ ...UNIFI_RUN, error: 'Controller returned no active clients' }],
+    } as never)
+    fireEvent.click(screen.getByTitle('Refresh'))
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith('UniFi import: Controller returned no active clients')
+    )
   })
 })
