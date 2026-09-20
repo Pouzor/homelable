@@ -117,6 +117,10 @@ function MeshAutoSync({
 }
 
 /** The controller's three inventories, described where the user ticks them. */
+// Mirrors UnifiSyncConfig.sync_interval (ge=300, le=86400) on the backend.
+const UNIFI_MIN_INTERVAL = 300
+const UNIFI_MAX_INTERVAL = 86400
+
 const UNIFI_SOURCES: { key: keyof UnifiImportModes; label: string; hint: string }[] = [
   { key: 'infrastructure', label: 'Infrastructure', hint: 'stat/device — adopted APs, switches, gateways.' },
   { key: 'known_clients', label: 'Known clients', hint: 'list/user — every client ever recorded. No IP, and long on a busy site.' },
@@ -152,6 +156,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
   const anyUnifiSource = unModes.infrastructure || unModes.known_clients || unModes.active_clients
+  // Saving with every source unticked 422s on the backend, aborting the save
+  // after the other configs already persisted — refuse it up front instead.
+  const unifiBlocksSave = !STANDALONE && unConfig !== null && !anyUnifiSource
   const hideIp = useCanvasStore((s) => s.hideIp)
   const setHideIp = useCanvasStore((s) => s.setHideIp)
 
@@ -297,9 +304,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       if (unConfig) {
         // Connection config is env-only; the activation and which of the
         // controller's three inventories to pull are what persist.
+        // Clamp: the input's min/max never stopped a typed value, and a
+        // sync_interval outside the range 422s — which would abort the save
+        // after the configs above already persisted.
+        const clamped = Math.min(UNIFI_MAX_INTERVAL, Math.max(UNIFI_MIN_INTERVAL, Math.round(unInterval)))
+        if (clamped !== unInterval) setUnInterval(clamped)
         await unifiApi.saveConfig({
           sync_enabled: unSyncEnabled,
-          sync_interval: unInterval,
+          sync_interval: clamped,
           modes: unModes,
         })
       }
@@ -657,7 +669,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || unifiBlocksSave}
+            title={unifiBlocksSave ? 'Select at least one UniFi source to import.' : undefined}
             style={{ background: '#00d4ff', color: '#0d1117' }}
           >
             {saving ? 'Saving…' : 'Save'}
