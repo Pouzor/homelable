@@ -10,7 +10,7 @@ from typing import Any
 
 from mcp.types import Tool
 
-from .backend_client import backend
+from .backend_client import backend, safe_id
 
 # Fields shared by create and update, mirroring InventoryDeviceCreate /
 # InventoryDeviceUpdate (backend/app/schemas/scan.py). `_dispatch` forwards args
@@ -133,10 +133,10 @@ async def dispatch_device(name: str, args: dict) -> Any:
 
     if name == "update_device":
         body = {k: v for k, v in args.items() if k != "id"}
-        return await backend.patch(f"/api/v1/scan/pending/{args['id']}", body)
+        return await backend.patch(f"/api/v1/scan/pending/{safe_id(args['id'], field='device id')}", body)
 
     if name == "delete_device":
-        return await backend.delete(f"/api/v1/scan/pending/{args['id']}")
+        return await backend.delete(f"/api/v1/scan/pending/{safe_id(args['id'], field='device id')}")
 
     if name == "bulk_approve_devices":
         approval: dict[str, Any] = {"device_ids": args["device_ids"]}
@@ -152,10 +152,10 @@ async def dispatch_device(name: str, args: dict) -> Any:
 
     if name == "rescan_device":
         options = {k: v for k, v in args.items() if k != "id"}
-        return await backend.post(f"/api/v1/scan/pending/{args['id']}/rescan", options)
+        return await backend.post(f"/api/v1/scan/pending/{safe_id(args['id'], field='device id')}/rescan", options)
 
     if name == "list_proxmox_children":
-        return await backend.get(f"/api/v1/scan/pending/{args['id']}/proxmox-children")
+        return await backend.get(f"/api/v1/scan/pending/{safe_id(args['id'], field='device id')}/proxmox-children")
 
     if name == "get_scan_config":
         return await backend.get("/api/v1/scan/config")

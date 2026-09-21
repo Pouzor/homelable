@@ -1,4 +1,5 @@
 import json
+import re
 
 import httpx
 
@@ -24,6 +25,13 @@ class BackendError(RuntimeError):
 # Enough for a FastAPI detail — a structured one included — without pasting a
 # whole HTML error page into the client's context.
 _MAX_DETAIL = 500
+
+
+def safe_id(value: str, *, field: str = "id") -> str:
+    """Allow only one backend identifier path segment."""
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", value):
+        raise ValueError(f"Invalid {field}")
+    return value
 
 
 def _detail_of(resp: httpx.Response) -> str:

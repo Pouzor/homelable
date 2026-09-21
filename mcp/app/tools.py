@@ -2,7 +2,7 @@ import json
 from urllib.parse import quote
 from mcp.server import Server
 from mcp.types import Tool, TextContent
-from .backend_client import backend
+from .backend_client import backend, safe_id
 from .devices import DEVICE_TOOL_NAMES, DEVICE_TOOLS, dispatch_device
 from .documents import DOC_TOOL_NAMES, DOC_TOOLS, dispatch_document
 from .racks import RACK_TOOL_NAMES, RACK_TOOLS, dispatch_rack
@@ -420,39 +420,39 @@ async def _dispatch(name: str, args: dict) -> dict:
         return await backend.post("/api/v1/nodes", args)
 
     if name == "update_node":
-        node_id = args.pop("id")
-        return await backend.patch(f"/api/v1/nodes/{node_id}", args)
+        node_id = safe_id(args.pop("id"), field="node id")
+        return await backend.patch(f"/api/v1/nodes/{safe_id(node_id, field='node id')}", args)
 
     if name == "delete_node":
-        return await backend.delete(f"/api/v1/nodes/{args['id']}")
+        return await backend.delete(f"/api/v1/nodes/{safe_id(args['id'], field='node id')}")
 
     if name == "create_edge":
         return await backend.post("/api/v1/edges", args)
 
     if name == "update_edge":
-        edge_id = args.pop("id")
+        edge_id = safe_id(args.pop("id"), field="edge id")
         return await backend.patch(f"/api/v1/edges/{edge_id}", args)
 
     if name == "list_edges":
         return await backend.get("/api/v1/edges")
 
     if name == "delete_edge":
-        return await backend.delete(f"/api/v1/edges/{args['id']}")
+        return await backend.delete(f"/api/v1/edges/{safe_id(args['id'], field='edge id')}")
 
     if name == "trigger_scan":
         body = {"ranges": args["ranges"]} if "ranges" in args else {}
         return await backend.post("/api/v1/scan/trigger", body)
 
     if name == "approve_device":
-        device_id = args.pop("id")
+        device_id = safe_id(args.pop("id"), field="device id")
         return await backend.post(f"/api/v1/scan/pending/{device_id}/approve", args)
 
     if name == "hide_device":
-        return await backend.post(f"/api/v1/scan/pending/{args['id']}/hide", {})
+        return await backend.post(f"/api/v1/scan/pending/{safe_id(args['id'], field='device id')}/hide", {})
 
     if name == "get_canvas":
         design_id = args.get("design_id")
-        path = f"/api/v1/canvas?design_id={design_id}" if design_id else "/api/v1/canvas"
+        path = f"/api/v1/canvas?design_id={quote(safe_id(design_id, field='design id'))}" if design_id else "/api/v1/canvas"
         raw = await backend.get(path)
         return _slim_canvas(raw)
 
@@ -467,7 +467,7 @@ async def _dispatch(name: str, args: dict) -> dict:
         node_id = args.get("id")
         label = args.get("label")
         if node_id:
-            return await backend.get(f"/api/v1/nodes/{node_id}")
+            return await backend.get(f"/api/v1/nodes/{safe_id(node_id, field='node id')}")
         if label:
             return await backend.get(f"/api/v1/nodes?label={quote(label)}")
         raise ValueError("get_node requires either 'id' or 'label'")
@@ -493,7 +493,7 @@ async def _dispatch(name: str, args: dict) -> dict:
         return await backend.get("/api/v1/scan/hidden")
 
     if name == "restore_device":
-        return await backend.post(f"/api/v1/scan/pending/{args['id']}/restore", {})
+        return await backend.post(f"/api/v1/scan/pending/{safe_id(args['id'], field='device id')}/restore", {})
 
     if name == "create_zone":
         colors = {k: args.pop(k) for k in list(_ZONE_COLOR_FIELDS) if k in args}
@@ -542,7 +542,7 @@ async def _dispatch(name: str, args: dict) -> dict:
                 continue
             # The canvas stores a child's position relative to its parent, so
             # rebase or the node jumps by the zone's offset on the next load.
-            await backend.patch(f"/api/v1/nodes/{node_id}", {
+            await backend.patch(f"/api/v1/nodes/{safe_id(node_id, field='node id')}", {
                 "parent_id": zone_id,
                 "pos_x": (node.get("pos_x") or 0) - (zone.get("pos_x") or 0),
                 "pos_y": (node.get("pos_y") or 0) - (zone.get("pos_y") or 0),
@@ -561,7 +561,7 @@ async def _dispatch(name: str, args: dict) -> dict:
                 skipped.append(node_id)
                 continue
             # Zone-relative → absolute, so the node stays where it looks.
-            await backend.patch(f"/api/v1/nodes/{node_id}", {
+            await backend.patch(f"/api/v1/nodes/{safe_id(node_id, field='node id')}", {
                 "parent_id": None,
                 "pos_x": (node.get("pos_x") or 0) + (zone.get("pos_x") or 0),
                 "pos_y": (node.get("pos_y") or 0) + (zone.get("pos_y") or 0),
@@ -576,6 +576,6 @@ async def _dispatch(name: str, args: dict) -> dict:
         return await backend.post("/api/v1/designs", args)
 
     if name == "delete_design":
-        return await backend.delete(f"/api/v1/designs/{args['design_id']}")
+        return await backend.delete(f"/api/v1/designs/{safe_id(args['design_id'], field='design id')}")
 
     raise ValueError(f"Unknown tool: {name}")
