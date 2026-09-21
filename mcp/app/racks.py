@@ -22,7 +22,7 @@ from urllib.parse import quote
 
 from mcp.types import Tool
 
-from .backend_client import backend
+from .backend_client import backend, safe_id
 from .faceplates import (
     FACEPLATES,
     RACK_COLUMNS,
@@ -65,7 +65,7 @@ def _savable(row: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _load_state(design_id: str) -> dict[str, Any]:
-    return cast(dict[str, Any], await backend.get(f"/api/v1/racks?design_id={quote(design_id)}"))
+    return cast(dict[str, Any], await backend.get(f"/api/v1/racks?design_id={quote(safe_id(design_id, field='design id'))}"))
 
 
 async def _save_state(design_id: str, state: dict[str, Any]) -> dict[str, Any]:
@@ -393,7 +393,7 @@ async def dispatch_rack(name: str, args: dict) -> Any:
         }
 
     if name == "list_rack_inventory":
-        data = cast(dict[str, Any], await backend.get(f"/api/v1/racks/inventory?design_id={quote(design_id)}"))
+        data = cast(dict[str, Any], await backend.get(f"/api/v1/racks/inventory?design_id={quote(safe_id(design_id, field='design id'))}"))
         return [_slim_inventory_item(item) for item in data.get("items", [])]
 
     # --- Writes -------------------------------------------------------------
@@ -673,7 +673,7 @@ async def _mount_device(design_id: str, args: dict[str, Any]) -> dict[str, Any]:
     rack = _rack_or_raise(state, args["rack_id"])
 
     inventory = cast(
-        dict[str, Any], await backend.get(f"/api/v1/racks/inventory?design_id={quote(design_id)}")
+        dict[str, Any], await backend.get(f"/api/v1/racks/inventory?design_id={quote(safe_id(design_id, field='design id'))}")
     )
     item = next(
         (i for i in inventory.get("items", []) if i["id"] == args["inventory_device_id"]), None

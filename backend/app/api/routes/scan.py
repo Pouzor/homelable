@@ -311,7 +311,17 @@ async def rescan_device(
     if device.status == "hidden":
         raise HTTPException(status_code=409, detail="Device is hidden")
 
-    target = f"{device.ip}/32"
+    device_ips = []
+    for candidate in _ip_tokens(device.ip):
+        try:
+            device_ips.append(str(ipaddress.ip_address(candidate)))
+        except ValueError:
+            continue
+    if not device_ips:
+        raise HTTPException(status_code=409, detail="Device has no valid IP address to scan")
+    # A row may retain multiple observed addresses. The deep-rescan operation
+    # targets the first valid address, matching the scanner's single-host API.
+    target = f"{device_ips[0]}/32"
     running = (await db.execute(
         select(ScanRun).where(ScanRun.status == "running", ScanRun.kind == "device")
     )).scalars().all()

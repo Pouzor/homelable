@@ -59,18 +59,35 @@ _PVE_IEEE_PREFIX = "pve-"
 
 
 def _resolve_credentials(payload: ProxmoxConnectionRequest) -> tuple[str, str]:
-    """Pick the API token: request body first, else server env config.
+    """Resolve credentials without sending server secrets to custom hosts.
 
-    Raises HTTP 400 when neither carries a token.
+    Environment credentials are only valid for the configured Proxmox endpoint.
+    A custom endpoint must provide both token fields explicitly.
     """
-    token_id = payload.token_id or settings.proxmox_token_id
-    token_secret = payload.token_secret or settings.proxmox_token_secret
-    if not token_id or not token_secret:
+    has_request_token = bool(payload.token_id or payload.token_secret)
+    if has_request_token:
+        if not payload.token_id or not payload.token_secret:
+            raise HTTPException(status_code=400, detail="Provide both Proxmox token fields")
+        return payload.token_id, payload.token_secret
+
+    configured_host = settings.proxmox_host.strip().rstrip(".").lower()
+    request_host = payload.host.strip().rstrip(".").lower()
+    if (
+        not configured_host
+        or request_host != configured_host
+        or payload.port != settings.proxmox_port
+        or payload.verify_tls != settings.proxmox_verify_tls
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Custom Proxmox hosts require an explicit API token",
+        )
+    if not settings.proxmox_token_id or not settings.proxmox_token_secret:
         raise HTTPException(
             status_code=400,
             detail="No Proxmox API token provided and none configured on the server.",
         )
-    return token_id, token_secret
+    return settings.proxmox_token_id, settings.proxmox_token_secret
 
 
 @router.post("/test-connection", response_model=ProxmoxTestConnectionResponse)

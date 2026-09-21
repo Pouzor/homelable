@@ -2,7 +2,7 @@ import json
 from mcp.server import Server
 from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.types import Resource, ResourceTemplate
-from .backend_client import backend
+from .backend_client import backend, safe_id
 
 RESOURCE_LIST = [
     Resource(uri="homelable://canvas",        name="Canvas",          description="Full canvas state (nodes + edges + viewport)", mimeType="application/json"),
@@ -54,12 +54,12 @@ async def read_resource(uri: str) -> list[ReadResourceContents]:
     uri = str(uri)
     if uri.startswith("homelable://nodes/") and uri != "homelable://nodes/":
         node_id = uri.split("/")[-1]
-        data = await backend.get(f"/api/v1/nodes/{node_id}")
+        data = await backend.get(f"/api/v1/nodes/{safe_id(node_id, field='node id')}")
         return [_json_contents(data)]
 
     if uri.startswith("homelable://documents/") and uri != "homelable://documents/":
         document_id = uri.split("/")[-1]
-        data = await backend.get(f"/api/v1/documents/{document_id}")
+        data = await backend.get(f"/api/v1/documents/{safe_id(document_id, field='document id')}")
         return [_json_contents(data)]
 
     if uri not in ROUTES:

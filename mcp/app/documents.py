@@ -16,7 +16,7 @@ from urllib.parse import urlencode
 
 from mcp.types import Tool
 
-from .backend_client import backend
+from .backend_client import backend, safe_id
 
 # Kept in sync with DOCUMENT_KINDS (backend/app/services/doc_tree.py), which is
 # itself the DocKind union in frontend/src/documentation/types.ts.
@@ -141,16 +141,16 @@ async def dispatch_document(name: str, args: dict) -> Any:
         return await backend.get(path)
 
     if name == "read_document":
-        return await backend.get(f"/api/v1/documents/{args['id']}")
+        return await backend.get(f"/api/v1/documents/{safe_id(args['id'], field='document id')}")
 
     if name == "list_document_revisions":
-        return await backend.get(f"/api/v1/documents/{args['document_id']}/revisions")
+        return await backend.get(f"/api/v1/documents/{safe_id(args['document_id'], field='document id')}/revisions")
 
     if name == "read_document_revision":
-        return await backend.get(f"/api/v1/documents/revisions/{args['revision_id']}")
+        return await backend.get(f"/api/v1/documents/revisions/{safe_id(args['revision_id'], field='revision id')}")
 
     if name == "document_backlinks":
-        return await backend.get(f"/api/v1/documents/{args['document_id']}/backlinks")
+        return await backend.get(f"/api/v1/documents/{safe_id(args['document_id'], field='document id')}/backlinks")
 
     if name == "create_document":
         return await backend.post("/api/v1/documents", args)
@@ -161,10 +161,10 @@ async def dispatch_document(name: str, args: dict) -> Any:
         # client asked for. The backend ignores the reason when the body is
         # unchanged, so a starred flag still snapshots nothing.
         body["revision_reason"] = _MCP_REASON
-        return await backend.patch(f"/api/v1/documents/{args['id']}", body)
+        return await backend.patch(f"/api/v1/documents/{safe_id(args['id'], field='document id')}", body)
 
     if name == "restore_document_revision":
-        path = f"/api/v1/documents/{args['document_id']}/revisions/{args['revision_id']}/restore"
+        path = f"/api/v1/documents/{safe_id(args['document_id'], field='document id')}/revisions/{safe_id(args['revision_id'], field='revision id')}/restore"
         return await backend.post(path, {})
 
     raise ValueError(f"Unknown documentation tool: {name}")

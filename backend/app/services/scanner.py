@@ -26,6 +26,13 @@ from app.services.mac_utils import normalize_mac
 
 logger = logging.getLogger(__name__)
 
+
+def _normalized_ip(value: str) -> str | None:
+    try:
+        return str(ipaddress.ip_address(value.strip()))
+    except ValueError:
+        return None
+
 # Run IDs that have been requested to cancel (thread-safe via lock)
 _cancelled_runs: set[str] = set()
 _cancelled_lock = threading.Lock()
@@ -336,7 +343,15 @@ def _nmap_scan_single(
                fails (e.g. a TLS port stalls plaintext probes), the Pass A ports
                are kept with empty banners instead of the whole host being lost.
     """
-    ip = host_dict["ip"]
+    raw_ip = host_dict.get("ip")
+    if not isinstance(raw_ip, str):
+        logger.warning("[Phase 2] refusing invalid single-IP target %r", raw_ip)
+        return host_dict
+    try:
+        ip = str(ipaddress.ip_address(raw_ip))
+    except ValueError:
+        logger.warning("[Phase 2] refusing invalid single-IP target %r", raw_ip)
+        return host_dict
     logger.info("[Phase 2] Scanning %s ...", ip)
 
     if not _NMAP_AVAILABLE:
@@ -946,8 +961,18 @@ async def run_device_scan(
         if device is None or not device.ip:
             raise ValueError("Device has no IP to scan")
 
+        device_ip = next(
+            (
+                normalized
+                for candidate in ip_tokens(device.ip)
+                if (normalized := _normalized_ip(candidate)) is not None
+            ),
+            None,
+        )
+        if device_ip is None:
+            raise ValueError("Device has no valid IP to scan")
         host: dict[str, Any] = {
-            "ip": device.ip,
+            "ip": device_ip,
             "mac": device.mac,
             "hostname": device.hostname,
             "os": device.os,
