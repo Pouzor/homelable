@@ -71,7 +71,7 @@ RUN set -eu; \
         "/tmp/nginx-conf/${variant}.subpath.conf.template" > "$out"; \
     fi; \
     if [ "$variant" = "nginx" ]; then \
-      BACKEND_UPSTREAM=backend:8000 envsubst '${BACKEND_UPSTREAM}' \
+      BACKEND_UPSTREAM=backend:8000 envsubst "\${BACKEND_UPSTREAM}" \
         < "$out" > /etc/nginx/conf.d/homelable.conf; \
       install -m 0755 /tmp/nginx-conf/18-homelable-config.envsh /docker-entrypoint.d/; \
     fi; \
