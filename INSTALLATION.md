@@ -94,10 +94,31 @@ then `docker compose up -d`. Caveats:
 - The backend binds `8000` directly on the host, with no port mapping and no
   network isolation from other host services.
 - `frontend` and `mcp` reach the backend at `http://backend:8000` over the
-  `homelable` bridge; once the backend leaves that network they need
-  `http://127.0.0.1:8000` instead. Set `BACKEND_URL` on `mcp`, and for the front
-  end either give it `network_mode: host` too or point its nginx proxy at the
-  host address.
+  `homelable` bridge. Once the backend leaves that network the name `backend`
+  no longer resolves — nginx refuses to start with
+  `host not found in upstream "backend"` and the frontend restart-loops. Keep
+  both services on the bridge and point them at the host instead; the compose
+  files carry these lines commented out under each service:
+
+  ```yaml
+    frontend:
+      environment:
+        BACKEND_UPSTREAM: "host.docker.internal:8000"
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+
+    mcp:
+      environment:
+        BACKEND_URL: "http://host.docker.internal:8000"
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+  ```
+
+  `BACKEND_UPSTREAM` (default `backend:8000`) is the `host:port` the frontend's
+  nginx proxies `/api`, `/ws`, `/docs`, `/redoc` and `/openapi.json` to; it is
+  read at container start, so the prebuilt image honours it. The UI stays on
+  port `3000`. A host firewall that drops traffic from Docker subnets to the
+  host (some `ufw` setups) must allow port `8000` from them.
 
 The alternative, if you would rather keep the backend isolated, is a **macvlan**
 network, which gives the container its own MAC and IP on your physical LAN.

@@ -4,6 +4,9 @@
 # __BASE__ is the prefix with its trailing slash, __BASE_NO_SLASH__ without it. A
 # default build keeps docker/nginx.conf and this file is never read.
 #
+# Like docker/nginx.conf, the result is installed as an nginx template, so
+# ${BACKEND_UPSTREAM} is only rendered at container start (see Dockerfile.frontend).
+#
 # The static build is copied to /usr/share/nginx/html__BASE__, so every block below
 # uses plain `root` semantics — `alias` plus `try_files` mis-resolves $uri.
 #
@@ -26,7 +29,7 @@ server {
 
     # WebSocket (must come before the API block to take priority)
     location __BASE__api/v1/status/ws/ {
-        proxy_pass http://backend:8000/api/v1/status/ws/;
+        proxy_pass http://${BACKEND_UPSTREAM}/api/v1/status/ws/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -35,7 +38,7 @@ server {
     }
 
     location __BASE__api/ {
-        proxy_pass http://backend:8000/api/;
+        proxy_pass http://${BACKEND_UPSTREAM}/api/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
@@ -44,26 +47,26 @@ server {
     # the origin root (/openapi.json), which the stripped-prefix block below
     # serves, so the page works under the prefix too.
     location __BASE__docs {
-        proxy_pass http://backend:8000/docs;
+        proxy_pass http://${BACKEND_UPSTREAM}/docs;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     location __BASE__redoc {
-        proxy_pass http://backend:8000/redoc;
+        proxy_pass http://${BACKEND_UPSTREAM}/redoc;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     location = __BASE__openapi.json {
-        proxy_pass http://backend:8000/openapi.json;
+        proxy_pass http://${BACKEND_UPSTREAM}/openapi.json;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     # Legacy /ws/ path
     location __BASE__ws/ {
-        proxy_pass http://backend:8000/ws/;
+        proxy_pass http://${BACKEND_UPSTREAM}/ws/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -78,7 +81,7 @@ server {
     # --- prefix already stripped by the front proxy -----------------------------
     # No redirect to __BASE__ here: the front proxy would strip it again and loop.
     location /api/v1/status/ws/ {
-        proxy_pass http://backend:8000;
+        proxy_pass http://${BACKEND_UPSTREAM};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -87,31 +90,31 @@ server {
     }
 
     location /api/ {
-        proxy_pass http://backend:8000;
+        proxy_pass http://${BACKEND_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     location /docs {
-        proxy_pass http://backend:8000;
+        proxy_pass http://${BACKEND_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     location /redoc {
-        proxy_pass http://backend:8000;
+        proxy_pass http://${BACKEND_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     location = /openapi.json {
-        proxy_pass http://backend:8000;
+        proxy_pass http://${BACKEND_UPSTREAM};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     location /ws/ {
-        proxy_pass http://backend:8000;
+        proxy_pass http://${BACKEND_UPSTREAM};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
