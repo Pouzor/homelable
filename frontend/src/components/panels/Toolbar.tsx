@@ -1,17 +1,18 @@
-import { useRef } from 'react'
-import { Save, LayoutDashboard, Download, Palette, Undo2, Redo2, HelpCircle, FileDown, Upload, Eye } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Save, LayoutDashboard, ChevronDown, Download, Palette, Undo2, Redo2, HelpCircle, FileDown, Upload, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/ui/Logo'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import { useRackStore } from '@/rack/store'
 import { RackToolbarActions } from './RackToolbarActions'
+import type { AutoLayoutMode } from '@/utils/zoneGrouping'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 interface ToolbarProps {
   onSave: () => void
-  onAutoLayout: () => void
+  onAutoLayout: (mode: AutoLayoutMode) => void
   onExport: () => void
   onChangeStyle: () => void
   onUndo: () => void
@@ -72,9 +73,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       {isRack && <RackToolbarActions />}
       {!isRack && (
       <>
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onAutoLayout}>
-        <LayoutDashboard size={14} /> Auto Layout
-      </Button>
+      <AutoLayoutButton onAutoLayout={onAutoLayout} />
       <Button data-tour="style" size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onChangeStyle}>
         <Palette size={14} /> Style
       </Button>
@@ -123,5 +122,73 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
         <Save size={14} /> Save
       </Button>
     </header>
+  )
+}
+
+const LAYOUT_MODES: { mode: Exclude<AutoLayoutMode, 'hierarchy'>; label: string; hint: string }[] = [
+  { mode: 'type', label: 'Group by device type', hint: 'One zone per family: hardware, virtualization, IoT…' },
+  { mode: 'subnet', label: 'Group by subnet', hint: 'One zone per /24; devices without an IP stay loose' },
+]
+
+/**
+ * Auto Layout as a split button: the main half runs the plain hierarchy, the
+ * chevron offers the zone-grouping modes (#326).
+ */
+function AutoLayoutButton({ onAutoLayout }: { onAutoLayout: (mode: AutoLayoutMode) => void }) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onPointer = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as globalThis.Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('pointerdown', onPointer)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onPointer)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const pick = (mode: AutoLayoutMode) => {
+    setOpen(false)
+    onAutoLayout(mode)
+  }
+
+  return (
+    <div ref={rootRef} className="relative flex items-center">
+      <Button size="sm" variant="ghost" className="gap-1.5 pr-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={() => pick('hierarchy')}>
+        <LayoutDashboard size={14} /> Auto Layout
+      </Button>
+      <Button
+        size="sm" variant="ghost"
+        className="px-1 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="More layout options"
+        title="More layout options"
+      >
+        <ChevronDown size={12} />
+      </Button>
+      {open && (
+        <div role="menu" className="absolute left-0 top-full mt-1 z-50 w-64 rounded-md border border-border bg-card p-1 shadow-lg">
+          {LAYOUT_MODES.map(({ mode, label, hint }) => (
+            <button
+              key={mode}
+              type="button"
+              role="menuitem"
+              className="w-full rounded px-2 py-1.5 text-left cursor-pointer hover:bg-[#21262d]"
+              onClick={() => pick(mode)}
+            >
+              <div className="text-xs text-foreground">{label}</div>
+              <div className="text-[11px] text-muted-foreground">{hint}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
