@@ -2,6 +2,7 @@ import { useEffect, useCallback, useMemo, useRef, useState, lazy, Suspense } fro
 import { ReactFlowProvider, type Connection, type Edge } from '@xyflow/react'
 import { type Node } from '@xyflow/react'
 import { applyDagreLayout } from '@/utils/layout'
+import { groupIntoZones, liftEdgesToTopLevel, type AutoLayoutMode } from '@/utils/zoneGrouping'
 import { serializeNode, serializeEdge, deserializeApiNode, deserializeApiEdge, migrateClusterHandles, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { generateUUID } from '@/utils/uuid'
 import { getCenteredPosition } from '@/utils/viewportCenter'
@@ -799,12 +800,30 @@ export default function App() {
     setEditNodeId(null)
   }, [editNodeId, updateNode, setProxmoxContainerMode, nodes, edges, deleteEdge, onConnect, snapshotHistory])
 
-  const handleAutoLayout = useCallback(() => {
-    const laid = applyDagreLayout(nodes, edges)
-    // applyLayout keeps undo history so the user can revert an accidental
-    // Auto Layout (#280); loadCanvas would wipe it.
+  const handleAutoLayout = useCallback((mode: AutoLayoutMode) => {
+    if (mode === 'hierarchy') {
+      const laid = applyDagreLayout(nodes, edges)
+      // applyLayout keeps undo history so the user can revert an accidental
+      // Auto Layout (#280); loadCanvas would wipe it.
+      applyLayout(laid, edges)
+      toast.success('Canvas auto-arranged')
+      return
+    }
+    const grouped = groupIntoZones(nodes, mode)
+    if (grouped.moved === 0) {
+      toast.info(mode === 'subnet' ? 'No free device with an IPv4 address to group' : 'No free device to group')
+      return
+    }
+    // Dagre sees top-level boxes only: the edges are lifted onto the zones for
+    // the layout pass, the canvas keeps the real ones. One applyLayout, so a
+    // single undo reverts the zones, the moves and the arrangement together.
+    const laid = applyDagreLayout(grouped.nodes, liftEdgesToTopLevel(grouped.nodes, edges))
     applyLayout(laid, edges)
-    toast.success('Canvas auto-arranged')
+    const zones = grouped.zonesCreated
+    toast.success(
+      `Grouped ${grouped.moved} device${grouped.moved > 1 ? 's' : ''}`
+      + (zones > 0 ? ` into ${zones} new zone${zones > 1 ? 's' : ''}` : ' into existing zones'),
+    )
   }, [nodes, edges, applyLayout])
 
   const handleExportYaml = useCallback(() => {
