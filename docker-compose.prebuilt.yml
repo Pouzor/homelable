@@ -29,6 +29,13 @@ services:
       - backend
     networks:
       - homelable
+    # Backend on network_mode: host (see INSTALLATION.md, "Scanning from Docker")?
+    # `backend` no longer resolves from this network; keep the frontend here and
+    # point nginx at the host instead:
+    # environment:
+    #   BACKEND_UPSTREAM: "host.docker.internal:8000"
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
 
   mcp:
     image: ghcr.io/pouzor/homelable-mcp:latest
@@ -43,6 +50,10 @@ services:
       - backend
     networks:
       - homelable
+    # Backend on network_mode: host? Use BACKEND_URL "http://host.docker.internal:8000"
+    # above, and uncomment:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
 
 volumes:
   backend_data:

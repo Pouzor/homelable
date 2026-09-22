@@ -59,6 +59,32 @@ jobs:
           STATUS=$(curl -so /dev/null -w "%{http_code}" http://localhost:3000/)
           [ "$STATUS" = "200" ] || { echo "Frontend returned $STATUS"; exit 1; }
 
+      # ── Smoke: nginx proxies the API to the default upstream (backend:8000) ───
+      - name: Smoke — frontend proxies /api to the backend
+        run: |
+          STATUS=$(curl -so /dev/null -w "%{http_code}" http://localhost:3000/api/v1/health)
+          [ "$STATUS" = "200" ] || { echo "Proxied health returned $STATUS"; exit 1; }
+
+      # ── Smoke: BACKEND_UPSTREAM reaches a backend off the compose network ─────
+      # The backend-on-network_mode:host setup (#512): `backend` does not resolve,
+      # so the frontend must proxy to the host. Same image, run outside compose.
+      - name: Smoke — BACKEND_UPSTREAM overrides the proxy target
+        run: |
+          IMAGE=$(docker inspect --format '{{.Image}}' \
+            "$(docker compose -f docker-compose.yml -f docker-compose.ci.yml ps -q frontend)")
+          docker run -d --name frontend-upstream \
+            --add-host host.docker.internal:host-gateway \
+            -e BACKEND_UPSTREAM=host.docker.internal:8000 \
+            -p 3001:80 "$IMAGE"
+          for i in $(seq 1 15); do
+            STATUS=$(curl -so /dev/null -w "%{http_code}" http://localhost:3001/api/v1/health || true)
+            [ "$STATUS" = "200" ] && exit 0
+            sleep 1
+          done
+          echo "Proxied health via BACKEND_UPSTREAM returned $STATUS" >&2
+          docker logs frontend-upstream
+          exit 1
+
       # ── Tier 3: integration tests against the live stack ──────────────────────
       - uses: actions/setup-python@v5
         with:
@@ -83,4 +109,6 @@ jobs:
 
       - name: Stop stack
         if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+        run: |
+          docker rm -f frontend-upstream 2>/dev/null || true
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
