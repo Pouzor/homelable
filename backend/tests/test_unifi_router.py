@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.unifi import _find_existing, _persist_devices
 from app.core.config import settings
-from app.db.models import InventoryDevice
+from app.db.models import InventoryDevice, ScanRun
 
 
 @pytest.fixture(autouse=True)
@@ -485,3 +485,96 @@ async def test_a_merged_row_gains_the_controller_properties(
     assert by_key == {
         "VMID": "129", "Kind": "LXC", "Connection": "wired", "Switch port": "7",
     }
+
+
+# --- scan history -----------------------------------------------------------
+# The manual import runs inline, so nothing else writes its run row. Without one
+# a finished import left no trace in Scan History at all.
+
+_IMPORT_BODY = {
+    "host": "unifi.local",
+    "port": 8443,
+    "username": "admin",
+    "password": "pw",
+    "modes": {"infrastructure": True, "known_clients": False, "active_clients": False},
+}
+
+_ONE_DEVICE = [
+    {
+        "ieee_address": "unifi-00:27:22:e0:00:09",
+        "mac": "00:27:22:e0:00:09",
+        "ip": "192.168.1.109",
+        "hostname": "USW Lite",
+        "label": "USW Lite",
+        "type": "switch",
+        "vendor": "Ubiquiti",
+        "properties": [],
+        "source": "unifi",
+    }
+]
+
+
+@pytest.mark.asyncio
+async def test_import_pending_records_a_scan_run(
+    client: AsyncClient, headers: dict, db_session: AsyncSession, monkeypatch
+) -> None:
+    async def _fake_fetch(**_kwargs):
+        return _ONE_DEVICE
+
+    monkeypatch.setattr("app.api.routes.unifi.fetch_unifi_inventory", _fake_fetch)
+
+    res = await client.post("/api/v1/unifi/import-pending", headers=headers, json=_IMPORT_BODY)
+    assert res.status_code == 200
+
+    runs = (await db_session.execute(select(ScanRun))).scalars().all()
+    assert len(runs) == 1
+    run = runs[0]
+    assert run.kind == "unifi"
+    assert run.status == "done"
+    assert run.devices_found == 1
+    assert run.ranges == ["unifi.local:8443"]
+    # Written already terminal — there is no background job to finish it later.
+    assert run.finished_at is not None
+    assert run.error is None
+
+
+@pytest.mark.asyncio
+async def test_a_failed_import_is_recorded_as_an_error_run(
+    client: AsyncClient, headers: dict, db_session: AsyncSession, monkeypatch
+) -> None:
+    async def _fake_fetch(**_kwargs):
+        raise ConnectionError("controller unreachable")
+
+    monkeypatch.setattr("app.api.routes.unifi.fetch_unifi_inventory", _fake_fetch)
+
+    res = await client.post("/api/v1/unifi/import-pending", headers=headers, json=_IMPORT_BODY)
+    assert res.status_code == 502
+
+    runs = (await db_session.execute(select(ScanRun))).scalars().all()
+    assert len(runs) == 1
+    assert runs[0].status == "error"
+    assert runs[0].error == "controller unreachable"
+    assert runs[0].devices_found == 0
+
+
+@pytest.mark.asyncio
+async def test_sync_now_records_a_scan_run(
+    client: AsyncClient, headers: dict, db_session: AsyncSession, monkeypatch
+) -> None:
+    monkeypatch.setattr(settings, "unifi_host", "10.0.0.5")
+    monkeypatch.setattr(settings, "unifi_username", "admin")
+    monkeypatch.setattr(settings, "unifi_password", "pw")
+
+    async def _fake_fetch(**_kwargs):
+        return _ONE_DEVICE
+
+    monkeypatch.setattr("app.api.routes.unifi.fetch_unifi_inventory", _fake_fetch)
+
+    res = await client.post("/api/v1/unifi/sync-now", headers=headers)
+    assert res.status_code == 200
+
+    runs = (await db_session.execute(select(ScanRun))).scalars().all()
+    assert len(runs) == 1
+    assert runs[0].kind == "unifi"
+    assert runs[0].status == "done"
+    assert runs[0].devices_found == 1

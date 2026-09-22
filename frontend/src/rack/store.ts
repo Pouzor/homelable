@@ -20,7 +20,7 @@ import {
   toRack,
   toRackDevice,
 } from '@/utils/rackSerializer'
-import { getFaceplate, suggestFaceplate } from './faceplates'
+import { deviceTypeForFaceplate, getFaceplate, suggestFaceplate } from './faceplates'
 import { canPlace, clamp, findSlot, type Placement } from './layout'
 import {
   RACK_COLUMNS,
@@ -39,6 +39,7 @@ import {
   DEFAULT_RACK_STYLE,
   MAX_RACK_U,
   MIN_RACK_U,
+  PATCH_PANEL_PORT_CABLES,
   PORT_CABLE_TYPE,
 } from './rackDefaults'
 
@@ -53,6 +54,13 @@ interface CableDraft {
   deviceId: string
   portId: string
 }
+
+/**
+ * Outcome of releasing a patch: it landed, it was refused (the port is full),
+ * or the release was not a patch at all — a cancel, or the first click of a
+ * click-then-click.
+ */
+export type PatchResult = 'patched' | 'refused' | 'none'
 
 export interface Viewport {
   x: number
@@ -236,10 +244,15 @@ interface RackState {
    * Press on a port: arms it as the cable source, or — when another port is
    * already armed — closes the patch, so click-then-click still works.
    */
-  startCableDrag: (deviceId: string, portId: string) => void
+  startCableDrag: (deviceId: string, portId: string) => PatchResult
   moveCableDrag: (pointer: { x: number; y: number }) => void
-  /** Release: patch onto `target`, or drop the draft if the pointer travelled. */
-  endCableDrag: (target: CableDraft | null) => void
+  /**
+   * Release: patch onto `target`, or drop the draft if the pointer travelled.
+   *
+   * Reports what the release did so the UI can say why nothing appeared — a
+   * refused patch used to vanish without a word.
+   */
+  endCableDrag: (target: CableDraft | null) => PatchResult
   cancelCableDraft: () => void
   openDeviceEditor: (deviceId?: string | null) => void
   closeDeviceEditor: () => void
@@ -819,14 +832,23 @@ export const useRackStore = create<RackState>((set, get) => {
         devices.some((d) => d.id === ref.deviceId && d.ports.some((p) => p.id === ref.portId))
       if (!hasPort(from) || !hasPort(to)) return null
 
-      // A physical port takes one cable.
-      const taken = (ref: CableDraft) =>
-        cables.some(
+      // A physical port takes one cable — except a patch panel's, which is a
+      // pass-through: the run from the wall lands on the rear of the port and
+      // the patch to the switch on its front. The canvas draws one face, so
+      // both sides hang off the same port and the limit is two.
+      const cablesOn = (ref: CableDraft) =>
+        cables.filter(
           (c) =>
             (c.from.deviceId === ref.deviceId && c.from.portId === ref.portId) ||
             (c.to.deviceId === ref.deviceId && c.to.portId === ref.portId),
-        )
-      if (taken(from) || taken(to)) return null
+        ).length
+      const portLimit = (ref: CableDraft) => {
+        const device = devices.find((d) => d.id === ref.deviceId)!
+        return deviceTypeForFaceplate(device.faceplateId) === 'patch_panel'
+          ? PATCH_PANEL_PORT_CABLES
+          : 1
+      }
+      if (cablesOn(from) >= portLimit(from) || cablesOn(to) >= portLimit(to)) return null
 
       // Fibre vs copper follows the port the patch starts from.
       const fromPort = devices
@@ -950,11 +972,15 @@ export const useRackStore = create<RackState>((set, get) => {
         const samePort = cableDraft.deviceId === deviceId && cableDraft.portId === portId
         // Pressing the armed port again disarms it; pressing another closes the
         // patch — that is the click-then-click flow, kept alongside dragging.
-        if (!samePort) get().addCable(cableDraft, { deviceId, portId })
+        // The press is where that patch is made, so it is also where a refusal
+        // has to be reported; the release that follows has nothing left to do.
+        const id = samePort ? null : get().addCable(cableDraft, { deviceId, portId })
         set({ cableDraft: null, cableDrag: null })
-        return
+        if (samePort) return 'none'
+        return id ? 'patched' : 'refused'
       }
       set({ cableDraft: { deviceId, portId }, cableDrag: { pointer: null, moved: false } })
+      return 'none'
     },
 
     moveCableDrag: (pointer) => {
@@ -964,19 +990,20 @@ export const useRackStore = create<RackState>((set, get) => {
 
     endCableDrag: (target) => {
       const { cableDrag, cableDraft } = get()
-      if (!cableDrag) return
+      if (!cableDrag) return 'none'
       const onAnotherPort =
         target &&
         cableDraft &&
         (target.deviceId !== cableDraft.deviceId || target.portId !== cableDraft.portId)
       if (onAnotherPort) {
-        get().addCable(cableDraft, target)
+        const id = get().addCable(cableDraft, target)
         set({ cableDraft: null, cableDrag: null })
-        return
+        return id ? 'patched' : 'refused'
       }
       // A drag released on nothing is a cancel; a press that never moved is the
       // first half of a click-then-click patch, so the source stays armed.
       set(cableDrag.moved ? { cableDraft: null, cableDrag: null } : { cableDrag: null })
+      return 'none'
     },
 
     cancelCableDraft: () => set({ cableDraft: null, cableDrag: null }),

@@ -199,27 +199,55 @@ def merge_properties(base: list[Any] | None, incoming: list[Any] | None) -> list
     return out
 
 
+def _service_slot(svc: Any) -> tuple[str, str]:
+    """What tells two services on the same port apart: the host and the path.
+
+    Both are the user's own writing — the scanner emits neither, it only ever
+    reports a port, a protocol and a guess at the name — so widening identity
+    with them cannot resurrect issue #469: a rename still touches nothing the
+    key reads. A node fronted by a reverse proxy serves several sites on 443,
+    and each is its own service (issue #503).
+
+    Normalized the way :func:`getServiceUrl` renders them, so two entries the
+    UI would send to the same URL are one service: the host is a hostname and
+    case-insensitive, and a path is anchored at ``/`` whether or not it was
+    typed that way.
+    """
+    if not isinstance(svc, dict):
+        return ("", "")
+    host = str(svc.get("host") or "").strip().lower()
+    path = str(svc.get("path") or "").strip()
+    if path and path != "/" and not path.startswith("/"):
+        path = f"/{path}"
+    return (host, path)
+
+
 def _service_identity_key(svc: Any) -> Any:
     """What makes two service entries *the same service*, for merging.
 
-    A port is the identity: one port on one protocol is one service, whatever it
-    is called. The name is a label on it — the scanner guesses it from a banner
-    and the user corrects it — so keying identity on the name made a rename look
-    like a second service, and the next scan re-added the original under its own
-    guess (issue #469). :func:`_service_view_key` renders the same identity, so
-    the two never disagree about what one service is; keys already persisted in
-    node views are narrowed to it on read by :func:`normalize_view_key`.
+    A port is the identity, qualified by the host and the path it is served on:
+    one port on one protocol is one service *per site*, whatever it is called.
+    The name is a label on it — the scanner guesses it from a banner and the
+    user corrects it — so keying identity on the name made a rename look like a
+    second service, and the next scan re-added the original under its own guess
+    (issue #469). Keying on the port alone made the opposite mistake: two sites
+    behind one reverse proxy collapsed into one entry and the second was lost on
+    the next save (issue #503). :func:`_service_view_key` renders the same
+    identity, so the two never disagree about what one service is; keys already
+    persisted in node views are narrowed to it on read by
+    :func:`normalize_view_key`.
 
     Only a service with no port falls back to the name, because nothing else
     tells two of them apart — a hand-added entry that names a host rather than a
-    port, say. Those still key exactly as they did.
+    port, say. Those keep the name and are qualified the same way.
     """
     if not isinstance(svc, dict):
         return repr(svc)
+    host, path = _service_slot(svc)
     port = svc.get("port")
     if port in (None, ""):
-        return (None, svc.get("protocol"), (svc.get("service_name") or "").lower())
-    return (port, svc.get("protocol"))
+        return (None, svc.get("protocol"), (svc.get("service_name") or "").lower(), host, path)
+    return (port, svc.get("protocol"), host, path)
 
 
 # --- Per-node view of the device's list facts -----------------------------
@@ -231,24 +259,73 @@ def _service_identity_key(svc: Any) -> Any:
 VIEW_LISTS = ("services", "properties")
 
 
+def _esc(part: str) -> str:
+    """``|`` separates a view key's parts, so a value carrying one is spelled out."""
+    return part.replace("|", "%7C")
+
+
 def _service_view_key(svc: Any) -> str:
     """This service's address in a node's view.
 
     Same identity as the merge uses, so a rename does not move a service out
     from under the view that addresses it: before #469 the key carried the name,
     and renaming a service in the inventory modal made every canvas already
-    drawing it lose track and redraw it hidden.
+    drawing it lose track and redraw it hidden. It carries the host and the path
+    for the opposite reason — without them two sites on one port share one
+    address, and a view can only speak about one of them (issue #503).
 
-    A port-less service keeps the three-part form it always had, name included —
-    it is the only thing that identifies one, and rendering ``None`` for the
-    absent port is what the stored keys look like.
+    A port-less service keeps the name it always had, it being the only thing
+    that tells two of them apart, and renders its absent port as ``None`` —
+    which is what the stored keys look like.
     """
     if not isinstance(svc, dict):
         return f"None|None|{repr(svc)}"
-    key = _service_identity_key(svc)
-    if len(key) == 2:
-        return f"{key[0]}|{key[1]}"
-    return f"{key[0]}|{key[1]}|{key[2]}"
+    return "|".join(
+        "None" if part is None else _esc(str(part)) for part in _service_identity_key(svc)
+    )
+
+
+def _legacy_service_key(svc: Any) -> str:
+    """How a view written before #503 addressed this service: without the site.
+
+    Such a key names a port and nothing else, so on a row that now holds two
+    services on that port it cannot say which — :func:`apply_view` hands it the
+    first one not already claimed, and the other is appended hidden as any
+    service the row gained since would be.
+    """
+    if not isinstance(svc, dict):
+        return f"None|None|{repr(svc)}"
+    port = svc.get("port")
+    if port in (None, ""):
+        return f"None|{svc.get('protocol')}|{(svc.get('service_name') or '').lower()}"
+    return f"{port}|{svc.get('protocol')}"
+
+
+def view_key_port(key: str) -> str:
+    """``key`` reduced to the port it names, the form a pre-#503 view stored.
+
+    What a view addresses can move: editing a service's host or path in the
+    Device Inventory rewrites its key, and the canvases drawing it still hold
+    the old one. Both spell the same port, so that is what they are matched on
+    once the exact key misses. A port-less service has no such form — its name
+    is all it has — and keeps its key.
+    """
+    parts = key.split("|")
+    if len(parts) < 2 or parts[0] in ("", "None"):
+        return key
+    return f"{parts[0]}|{parts[1]}"
+
+
+def _is_current_service_key(key: str) -> bool:
+    """Whether ``key`` is already written the way :func:`_service_view_key` writes one.
+
+    A current key ends with the path, which is rendered anchored at ``/`` or
+    empty; a legacy key ends with a service name. That is what keeps a
+    pre-#469 ``port|protocol|name`` whose name happens to carry a ``|`` from
+    reading as a current key — today's are escaped, so they never carry one.
+    """
+    parts = key.split("|")
+    return len(parts) in (4, 5) and (parts[-1] == "" or parts[-1].startswith("/"))
 
 
 def normalize_view_key(key: str, kind: str) -> str:
@@ -266,10 +343,15 @@ def normalize_view_key(key: str, kind: str) -> str:
     the same absent port, so the empty one is spelled the new way rather than
     left to miss.
 
+    What comes back is the narrowest form the key itself can justify: a view
+    written before #503 names no host and no path, and nothing here can invent
+    the one it meant. :func:`apply_view` finishes the job against the row, which
+    is the only place that knows what services there are to choose between.
+
     Applied on read, so a view migrates the next time its node is saved rather
     than needing a migration of its own.
     """
-    if kind != "services":
+    if kind != "services" or _is_current_service_key(key):
         return key
     parts = key.split("|", 2)
     if len(parts) != 3:
@@ -373,6 +455,13 @@ def apply_view(items: list[Any] | None, entries: Any, kind: str) -> list[Any]:
     view does not list is appended hidden rather than dropped, so a service a
     scan added is one toggle away instead of invisible.
 
+    Entries are claimed one item at a time rather than looked up by key, because
+    a key no longer has to name exactly one item: a view written before #503
+    addresses a service by its port alone, and the row may now hold two on that
+    port. The first unclaimed match wins and the rest are appended hidden, which
+    is what an upgrade looks like — the second site shows again with one toggle,
+    and the view is rewritten in today's form on the next save.
+
     A *non-empty* view that matches nothing the row still holds is treated as
     having no view at all. It means the row was replaced wholesale under the
     node — every key gone, every key new — and hiding the lot would leave a node
@@ -385,25 +474,38 @@ def apply_view(items: list[Any] | None, entries: Any, kind: str) -> list[Any]:
     if not isinstance(entries, list):
         return facts
 
-    by_key: dict[str, Any] = {}
-    for item in facts:
-        by_key.setdefault(key_of(item), item)
+    # Every address an item answers to: its own key, and — for a service — the
+    # port alone, which is both what a view written before #503 stored and what
+    # is left to match on once the host or the path has been edited. Each pool
+    # holds its items in the row's own order.
+    pools: dict[str, list[int]] = {}
+    for at, item in enumerate(facts):
+        key = key_of(item)
+        pools.setdefault(key, []).append(at)
+        if kind == "services":
+            legacy = _legacy_service_key(item)
+            if legacy != key:
+                pools.setdefault(legacy, []).append(at)
 
     out: list[Any] = []
-    taken: set[str] = set()
+    claimed: set[int] = set()
     for entry in entries:
         if not isinstance(entry, dict):
             continue
         key = normalize_view_key(str(entry.get("key")), kind)
-        item = by_key.get(key)
-        if item is None or key in taken:
+        pos: int | None = next((p for p in pools.get(key, ()) if p not in claimed), None)
+        if pos is None and kind == "services":
+            pos = next(
+                (p for p in pools.get(view_key_port(key), ()) if p not in claimed), None
+            )
+        if pos is None:
             continue  # Deleted from the row since — the view catches up on write.
-        taken.add(key)
-        out.append(_stamped(item, bool(entry.get("visible", True))))
-    if entries and not taken:
+        claimed.add(pos)
+        out.append(_stamped(facts[pos], bool(entry.get("visible", True))))
+    if entries and not claimed:
         return facts
-    for item in facts:
-        if key_of(item) not in taken:
+    for at, item in enumerate(facts):
+        if at not in claimed:
             out.append(_stamped(item, False))
     return out
 
@@ -431,18 +533,46 @@ def _stamped(item: Any, visible: bool) -> Any:
 _CURATED_SERVICE_FIELDS = ("icon", "category", "service_name")
 
 
+def _port_key(svc: Any) -> Any:
+    """The port alone — all a scan knows about where a service is served.
+
+    Identity carries the host and the path, which a fingerprint never reports,
+    so this is what matches its finding against a service the user has already
+    documented on that port. A row holding several of them hands over the first
+    one not already spoken for, in its own order.
+    """
+    if not isinstance(svc, dict):
+        return None
+    port = svc.get("port")
+    return None if port in (None, "") else (port, svc.get("protocol"))
+
+
 def merge_services(
     base: list[Any] | None,
     incoming: list[Any] | None,
     *,
     discovered: bool = False,
 ) -> list[Any]:
-    """Union two service lists on (port, protocol); incoming wins.
+    """Union two service lists on (port, protocol, host, path); incoming wins.
 
     ``discovered`` marks ``incoming`` as scanner output rather than a user edit:
     it still adds services and refreshes facts, but leaves an established icon
     and category alone. Either way a blank incoming value never clears one that
     is already set — an absent field is silence, not a reset.
+
+    A discovered entry whose key matches nothing falls back to the port: a scan
+    reports a port and never the site served on it, so without that every
+    "Scan network" would append a bare second entry under any service carrying a
+    host override — issue #469 wearing a different hat. It takes the sites on
+    that port in order and adds nothing once they are all spoken for.
+
+    An *edit* gets no such fallback, because at this level it cannot be told
+    from an addition: one entry on 443 arriving over one entry on 443 is either
+    a host being corrected or a second site being added, and guessing "edit"
+    would swallow the second site this issue is about (#503). Nothing is lost by
+    choosing the addition — every path where the user edits a service replaces
+    the list wholesale rather than merging into it, and the node-level matching
+    in :func:`apply_view` is where an edit has to be recognized as one.
 
     ``base`` is collapsed on the same key as it is copied, so a row that already
     holds the pre-#469 duplicates heals on the next merge instead of needing a
@@ -451,19 +581,35 @@ def merge_services(
     """
     out: list[Any] = []
     index: dict[Any, int] = {}
+    by_port: dict[Any, list[int]] = {}
+    used: set[int] = set()
+
+    def _record(pos: int, svc: Any, key: Any) -> None:
+        index[key] = pos
+        port_key = _port_key(svc)
+        if port_key is not None:
+            by_port.setdefault(port_key, []).append(pos)
+
     for svc in base or []:
         key = _service_identity_key(svc)
         if key in index:
             continue
         out.append(dict(svc) if isinstance(svc, dict) else svc)
-        index[key] = len(out) - 1
+        _record(len(out) - 1, svc, key)
+
     for svc in incoming or []:
         key = _service_identity_key(svc)
         pos = index.get(key)
+        if pos is None and discovered:
+            pos = next((p for p in by_port.get(_port_key(svc), ()) if p not in used), None)
         if pos is None:
             out.append(dict(svc) if isinstance(svc, dict) else svc)
-            index[key] = len(out) - 1
-        elif isinstance(svc, dict) and isinstance(out[pos], dict):
+            pos = len(out) - 1
+            _record(pos, svc, key)
+            used.add(pos)
+            continue
+        used.add(pos)
+        if isinstance(svc, dict) and isinstance(out[pos], dict):
             merged = {**out[pos], **svc}
             for field_name in _CURATED_SERVICE_FIELDS:
                 established = out[pos].get(field_name)
@@ -472,6 +618,8 @@ def merge_services(
             out[pos] = merged
         else:
             out[pos] = svc
+        # The entry may have moved to a new site, so it answers to a new key.
+        index[_service_identity_key(out[pos])] = pos
     return out
 
 

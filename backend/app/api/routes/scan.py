@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.db.database import AsyncSessionLocal, get_db
 from app.db.models import (
     Design,
+    Document,
     Edge,
     InventoryDevice,
     InventoryDeviceLink,
@@ -541,10 +542,16 @@ async def clear_pending(
     _: str = Depends(get_current_user),
 ) -> dict[str, int]:
     from sqlalchemy import delete as sa_delete
-    pending_ids = (
-        await db.execute(select(InventoryDevice.id).where(InventoryDevice.status == "pending"))
-    ).scalars().all()
-    await unlink_documents(db, device_ids=list(pending_ids))
+    from sqlalchemy import update as sa_update
+
+    # Unlink by subquery, not by a list of ids read beforehand: a device approved
+    # between that read and the delete would lose its documents without being
+    # deleted. The UPDATE takes SQLite's write lock, so the set it unlinks is the
+    # set the DELETE removes. (#444)
+    pending = select(InventoryDevice.id).where(InventoryDevice.status == "pending")
+    await db.execute(
+        sa_update(Document).where(Document.device_id.in_(pending)).values(device_id=None)
+    )
     result = await db.execute(sa_delete(InventoryDevice).where(InventoryDevice.status == "pending"))
     await db.commit()
     return {"deleted": result.rowcount}

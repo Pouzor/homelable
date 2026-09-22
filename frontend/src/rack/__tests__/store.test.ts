@@ -620,6 +620,35 @@ describe('cables', () => {
     expect(store().addCable(existing.from, b)).toBeNull()
   })
 
+  // A patch panel port is a pass-through: the wall run lands on its rear and
+  // the patch to the switch on its front. Refusing the second one made the
+  // panel decorative (issue #482).
+  it('takes a second cable on a patch panel port', () => {
+    const patched = store().cables.find((c) => c.from.deviceId === 'dev-patch')!
+    const { b } = freePorts()
+    const id = store().addCable(patched.from, b)
+    expect(id).not.toBeNull()
+    expect(store().cables.filter((c) => c.from.portId === patched.from.portId)).toHaveLength(2)
+  })
+
+  it('refuses a third cable on a patch panel port', () => {
+    const patched = store().cables.find((c) => c.from.deviceId === 'dev-patch')!
+    const { b } = freePorts()
+    expect(store().addCable(patched.from, b)).not.toBeNull()
+    const spare = store()
+      .devices.find((d) => d.id === 'dev-pve2')!
+      .ports[0]
+    expect(
+      store().addCable(patched.from, { deviceId: 'dev-pve2', portId: spare.id }),
+    ).toBeNull()
+  })
+
+  it('keeps the one-cable limit on gear that is not a patch panel', () => {
+    const existing = store().cables.find((c) => c.from.deviceId === 'dev-sw24')!
+    const { b } = freePorts()
+    expect(store().addCable(existing.from, b)).toBeNull()
+  })
+
   it('refuses a port patched to itself', () => {
     const { a } = freePorts()
     expect(store().addCable(a, a)).toBeNull()
@@ -651,6 +680,38 @@ describe('cables', () => {
     expect(store().cables).toHaveLength(before + 1)
     expect(store().cableDraft).toBeNull()
     expect(store().cableDrag).toBeNull()
+  })
+
+  // The second click is what makes the cable, so it is what has to report.
+  it('reports what a click-then-click press did', () => {
+    const { a, b } = freePorts()
+    expect(store().startCableDrag(a.deviceId, a.portId)).toBe('none')
+    expect(store().startCableDrag(a.deviceId, a.portId)).toBe('none')
+
+    store().startCableDrag(a.deviceId, a.portId)
+    expect(store().startCableDrag(b.deviceId, b.portId)).toBe('patched')
+
+    const full = store().cables.find((c) => c.from.deviceId === 'dev-sw24')!
+    const spare = store().devices.find((d) => d.id === 'dev-pve2')!.ports[0]
+    store().startCableDrag(full.from.deviceId, full.from.portId)
+    expect(store().startCableDrag('dev-pve2', spare.id)).toBe('refused')
+  })
+
+  // The refusal used to be silent — the run simply vanished on release.
+  it('reports what a release did, so a refused patch can be explained', () => {
+    const { a, b } = freePorts()
+    store().startCableDrag(a.deviceId, a.portId)
+    expect(store().endCableDrag(b)).toBe('patched')
+
+    const full = store().cables.find((c) => c.from.deviceId === 'dev-sw24')!
+    const spare = store().devices.find((d) => d.id === 'dev-pve2')!.ports[0]
+    store().startCableDrag(full.from.deviceId, full.from.portId)
+    expect(store().endCableDrag({ deviceId: 'dev-pve2', portId: spare.id })).toBe('refused')
+
+    store().startCableDrag(a.deviceId, a.portId)
+    store().moveCableDrag({ x: 10, y: 10 })
+    expect(store().endCableDrag(null)).toBe('none')
+    expect(store().endCableDrag(b)).toBe('none')
   })
 
   it('drops the draft when a drag is released on nothing', () => {

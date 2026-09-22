@@ -101,6 +101,10 @@ export function CableLayer() {
     visible.push({ cable, from, to })
   }
 
+  // A port is armed: the next release belongs to the plates, not to the runs
+  // drawn over them.
+  const patching = cableDraft !== null
+
   // Rubber band: the patch being dragged out of its source port.
   const dragFrom = cableDraft && resolve(cableDraft.deviceId, cableDraft.portId)
   const dragTo = cableDrag?.pointer ?? null
@@ -158,7 +162,14 @@ export function CableLayer() {
               />
               {/* Fat invisible hit area — a 1.8px path is hard to hit at low
                   zoom. Clickable outside patch mode too: a cable is selected to
-                  read and edit it, not only to unplug it. */}
+                  read and edit it, not only to unplug it.
+
+                  It steps aside while a patch is in flight: the overlay paints
+                  above the plates and this stroke is 14 wide around a run's own
+                  end point, so it covered the very socket the cable is plugged
+                  into. Releasing a second patch on a patch panel port landed on
+                  the cable instead of the port, and the canvas read it as a
+                  drop on nothing. */}
               <path
                 data-testid={`cable-hit-${cable.id}`}
                 d={d}
@@ -166,7 +177,7 @@ export function CableLayer() {
                 stroke="transparent"
                 strokeWidth={14}
                 strokeLinecap="round"
-                style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
+                style={{ pointerEvents: patching ? 'none' : 'stroke', cursor: 'pointer' }}
                 onClick={(e) => {
                   // The pane click behind would clear the selection again.
                   e.stopPropagation()
