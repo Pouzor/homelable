@@ -88,6 +88,8 @@ jobs:
       # ── Smoke: a user's own conf.d/default.conf is left alone ─────────────────
       # The start-time render must never write over a bind-mounted config: a
       # read-write mount would be clobbered on the host, a :ro one would crash-loop.
+      # Run off the compose network on purpose: the user's config replaces
+      # homelable.conf, so nothing may still need `backend` to resolve.
       - name: Smoke — a bind-mounted default.conf is served and untouched
         run: |
           IMAGE=$(docker inspect --format '{{.Image}}' \
