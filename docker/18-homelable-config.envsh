@@ -1,0 +1,28 @@
+#!/bin/sh
+# Sourced by the nginx entrypoint just before 20-envsubst-on-templates.sh, which
+# renders templates/homelable.conf.template into conf.d/homelable.conf (see
+# Dockerfile.frontend). Exporting NGINX_ENVSUBST_TEMPLATE_DIR to a missing path
+# makes that script skip the render; the export reaches it because .envsh files
+# share the entrypoint's shell.
+#
+# Two cases where the render must not run:
+#   - conf.d/default.conf exists. The image ships none, so it is the user's own,
+#     bind-mounted: it replaces ours, exactly as it did before homelable.conf
+#     existed. Leaving ours beside it would still need `backend` to resolve, and
+#     a frontend on network_mode: host has no such name.
+#   - conf.d is not writable (read_only container). The render would abort the
+#     entrypoint; the homelable.conf pre-rendered at build time is kept instead.
+
+homelable_conf=/etc/nginx/conf.d/homelable.conf
+
+if [ -e /etc/nginx/conf.d/default.conf ]; then
+    entrypoint_log "18-homelable-config.envsh: info: conf.d/default.conf provided, using it instead of homelable.conf"
+    export NGINX_ENVSUBST_TEMPLATE_DIR=/nonexistent
+    rm -f "$homelable_conf" 2>/dev/null \
+        || entrypoint_log "18-homelable-config.envsh: warning: could not remove $homelable_conf (read-only file system?)"
+elif ! touch "$homelable_conf" 2>/dev/null; then
+    entrypoint_log "18-homelable-config.envsh: info: conf.d is read-only, keeping the built-in homelable.conf (BACKEND_UPSTREAM ignored)"
+    export NGINX_ENVSUBST_TEMPLATE_DIR=/nonexistent
+fi
+
+unset homelable_conf
