@@ -85,6 +85,55 @@ jobs:
           docker logs frontend-upstream
           exit 1
 
+      # ── Smoke: a user's own conf.d/default.conf is left alone ─────────────────
+      # The start-time render must never write over a bind-mounted config: a
+      # read-write mount would be clobbered on the host, a :ro one would crash-loop.
+      - name: Smoke — a bind-mounted default.conf is served and untouched
+        run: |
+          IMAGE=$(docker inspect --format '{{.Image}}' \
+            "$(docker compose -f docker-compose.yml -f docker-compose.ci.yml ps -q frontend)")
+          mkdir -p "$RUNNER_TEMP/custom-conf"
+          printf 'server {\n    listen 80;\n    server_name _;\n    location / { return 200 "custom"; }\n}\n' \
+            > "$RUNNER_TEMP/custom-conf/default.conf"
+          BEFORE=$(sha256sum "$RUNNER_TEMP/custom-conf/default.conf")
+          docker run -d --name frontend-custom-rw \
+            -v "$RUNNER_TEMP/custom-conf/default.conf:/etc/nginx/conf.d/default.conf" \
+            -p 3002:80 "$IMAGE"
+          docker run -d --name frontend-custom-ro \
+            -v "$RUNNER_TEMP/custom-conf/default.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -p 3003:80 "$IMAGE"
+          for port in 3002 3003; do
+            BODY=""
+            for i in $(seq 1 15); do
+              BODY=$(curl -s "http://localhost:$port/" || true)
+              [ "$BODY" = "custom" ] && break
+              sleep 1
+            done
+            [ "$BODY" = "custom" ] || { echo "Port $port served '$BODY', not the mounted config" >&2; docker logs frontend-custom-rw; docker logs frontend-custom-ro; exit 1; }
+          done
+          AFTER=$(sha256sum "$RUNNER_TEMP/custom-conf/default.conf")
+          [ "$BEFORE" = "$AFTER" ] || { echo "Mounted default.conf was rewritten" >&2; cat "$RUNNER_TEMP/custom-conf/default.conf"; exit 1; }
+
+      # ── Smoke: read-only container keeps the pre-rendered default config ──────
+      # conf.d is not writable, so the entrypoint skips the render; the copy baked
+      # at build time (upstream backend:8000) must still proxy the API.
+      - name: Smoke — read-only container falls back to the built-in config
+        run: |
+          FRONTEND=$(docker compose -f docker-compose.yml -f docker-compose.ci.yml ps -q frontend)
+          IMAGE=$(docker inspect --format '{{.Image}}' "$FRONTEND")
+          NETWORK=$(docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$FRONTEND")
+          docker run -d --name frontend-readonly --read-only \
+            --tmpfs /var/cache/nginx --tmpfs /var/run \
+            --network "$NETWORK" -p 3004:80 "$IMAGE"
+          for i in $(seq 1 15); do
+            STATUS=$(curl -so /dev/null -w "%{http_code}" http://localhost:3004/api/v1/health || true)
+            [ "$STATUS" = "200" ] && exit 0
+            sleep 1
+          done
+          echo "Read-only frontend returned $STATUS" >&2
+          docker logs frontend-readonly
+          exit 1
+
       # ── Tier 3: integration tests against the live stack ──────────────────────
       - uses: actions/setup-python@v5
         with:
@@ -110,5 +159,5 @@ jobs:
       - name: Stop stack
         if: always()
         run: |
-          docker rm -f frontend-upstream 2>/dev/null || true
+          docker rm -f frontend-upstream frontend-custom-rw frontend-custom-ro frontend-readonly 2>/dev/null || true
           docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
