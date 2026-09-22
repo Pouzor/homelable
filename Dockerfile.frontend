@@ -42,12 +42,21 @@ SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 # the upstream is a runtime setting: with the backend on network_mode: host, run the
 # frontend with BACKEND_UPSTREAM=host.docker.internal:8000. The standalone config
 # has no upstream and stays a plain conf.d file.
+#
+# The full config lives in conf.d/homelable.conf, never default.conf: the entrypoint
+# writes its output without looking at what is there, so rendering onto default.conf
+# would clobber a config a user bind-mounts over it (or crash-loop on a :ro mount).
+# The stock default.conf is removed; a mounted one still sorts first and stays the
+# default server on :80. A copy pre-rendered with the default upstream ships in
+# conf.d, so a container that cannot write conf.d (read_only, non-root user) keeps
+# serving exactly what it did before the upstream became configurable.
 RUN set -eu; \
     if [ "$VITE_STANDALONE" = "true" ]; then \
       variant=nginx.standalone; out=/etc/nginx/conf.d/default.conf; \
     else \
-      variant=nginx; out=/etc/nginx/templates/default.conf.template; \
+      variant=nginx; out=/etc/nginx/templates/homelable.conf.template; \
       mkdir -p /etc/nginx/templates; \
+      rm -f /etc/nginx/conf.d/default.conf; \
     fi; \
     base=$(printf '%s' "${VITE_BASE_PATH:-/}" | sed -e 's#^/*#/#' -e 's#/*$#/#' -e 's#//*#/#g'); \
     [ -n "$base" ] || base=/; \
@@ -58,6 +67,10 @@ RUN set -eu; \
     else \
       sed -e "s#__BASE_NO_SLASH__#${base%/}#g" -e "s#__BASE__#${base}#g" \
         "/tmp/nginx-conf/${variant}.subpath.conf.template" > "$out"; \
+    fi; \
+    if [ "$variant" = "nginx" ]; then \
+      BACKEND_UPSTREAM=backend:8000 envsubst '${BACKEND_UPSTREAM}' \
+        < "$out" > /etc/nginx/conf.d/homelable.conf; \
     fi; \
     rm -rf /tmp/dist /tmp/nginx-conf
 
