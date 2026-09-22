@@ -167,4 +167,59 @@ describe('applyDagreLayout', () => {
     const sw2 = result.find((n) => n.id === 'sw2')!
     expect(sw1.position.y).toBe(sw2.position.y)
   })
+
+  describe('zones (#326)', () => {
+    function sized(id: string, type: string, width: number, height: number): Node<NodeData> {
+      return { ...makeNode(id, type), width, height }
+    }
+    function box(n: Node<NodeData>, w: number, h: number) {
+      return { l: n.position.x, r: n.position.x + w, t: n.position.y, b: n.position.y + h }
+    }
+    function overlaps(a: ReturnType<typeof box>, b: ReturnType<typeof box>) {
+      return a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b
+    }
+
+    it('keeps two large unconnected zones from overlapping', () => {
+      const nodes = [sized('z1', 'groupRect', 600, 400), sized('z2', 'groupRect', 600, 400)]
+      const result = applyDagreLayout(nodes, [])
+      const [a, b] = result.map((n) => box(n, 600, 400))
+      expect(overlaps(a, b)).toBe(false)
+    })
+
+    it('places a node linked below a zone under the zone bottom edge', () => {
+      const nodes = [sized('z', 'groupRect', 500, 300), makeNode('srv', 'server')]
+      const result = applyDagreLayout(nodes, [makeEdge('z', 'srv')])
+      const z = result.find((n) => n.id === 'z')!
+      const srv = result.find((n) => n.id === 'srv')!
+      expect(srv.position.y).toBeGreaterThanOrEqual(z.position.y + 300)
+    })
+
+    it('sizes a group box from its own dimensions too', () => {
+      const nodes = [sized('g1', 'group', 500, 350), sized('g2', 'group', 500, 350)]
+      const result = applyDagreLayout(nodes, [])
+      const [a, b] = result.map((n) => box(n, 500, 350))
+      expect(overlaps(a, b)).toBe(false)
+    })
+
+    it('falls back to the measured size when width/height are unset', () => {
+      const nodes = [
+        { ...makeNode('z1', 'groupRect'), measured: { width: 700, height: 300 } },
+        { ...makeNode('z2', 'groupRect'), measured: { width: 700, height: 300 } },
+      ]
+      const result = applyDagreLayout(nodes, [])
+      const [a, b] = result.map((n) => box(n, 700, 300))
+      expect(overlaps(a, b)).toBe(false)
+    })
+
+    it('still lays plain nodes out at the fixed node size, ignoring measured', () => {
+      const nodes = [
+        { ...makeNode('a', 'server'), measured: { width: 900, height: 900 } },
+        { ...makeNode('b', 'server'), measured: { width: 900, height: 900 } },
+      ]
+      const result = applyDagreLayout(nodes, [])
+      const xs = result.map((n) => n.position.x).sort((p, q) => p - q)
+      // 180 px node + 60 px nodesep: the pair sits 240 px apart.
+      expect(xs[1] - xs[0]).toBe(240)
+    })
+  })
 })

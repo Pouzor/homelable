@@ -8,6 +8,24 @@ const NODE_HEIGHT = 52
 
 const PEER_TYPES = new Set(['proxmox', 'switch'])
 
+// Boxes whose footprint is their own size, not the fixed node card: a proxmox
+// host and the two zone kinds. Dagre must see the real box or it packs them
+// on top of each other (#326). The fallbacks match the store's defaults.
+const BOX_DEFAULT_SIZE: Record<string, { w: number; h: number }> = {
+  proxmox: { w: 300, h: 200 },
+  groupRect: { w: 360, h: 240 },
+  group: { w: 360, h: 240 },
+}
+
+function layoutSize(node: Node<NodeData>): { w: number; h: number } {
+  const box = BOX_DEFAULT_SIZE[node.type ?? '']
+  if (!box) return { w: NODE_WIDTH, h: NODE_HEIGHT }
+  return {
+    w: node.width ?? node.measured?.width ?? box.w,
+    h: node.height ?? node.measured?.height ?? box.h,
+  }
+}
+
 /**
  * Port index encoded by a bottom source handle:
  *   'bottom' → 0, 'bottom-2' → 1, 'bottom-3' → 2, ...
@@ -91,8 +109,7 @@ export function applyDagreLayout(
   g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80 })
 
   for (const node of topLevel) {
-    const w = node.type === 'proxmox' ? (node.width ?? 300) : NODE_WIDTH
-    const h = node.type === 'proxmox' ? (node.height ?? 200) : NODE_HEIGHT
+    const { w, h } = layoutSize(node)
     g.setNode(node.id, { width: w, height: h })
   }
   for (const edge of edges) {
@@ -117,8 +134,7 @@ export function applyDagreLayout(
   const positions = new Map<string, { x: number; y: number; w: number; h: number }>()
   for (const node of topLevel) {
     const pos = g.node(node.id)
-    const w = node.type === 'proxmox' ? (node.width ?? 300) : NODE_WIDTH
-    const h = node.type === 'proxmox' ? (node.height ?? 200) : NODE_HEIGHT
+    const { w, h } = layoutSize(node)
     positions.set(node.id, { x: pos.x - w / 2, y: pos.y - h / 2, w, h })
   }
 
