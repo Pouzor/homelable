@@ -738,7 +738,6 @@ async def test_env_token_used_for_configured_host(client: AsyncClient, headers: 
 @pytest.mark.parametrize("override", [
     {"host": "attacker.example"},
     {"port": 443},
-    {"verify_tls": False},
 ])
 async def test_env_token_never_sent_to_another_endpoint(
     client: AsyncClient, headers: dict, override: dict
@@ -751,6 +750,44 @@ async def test_env_token_never_sent_to_another_endpoint(
     assert res.status_code == 400
     assert res.json()["detail"] == "Custom Proxmox hosts require an explicit API token"
     probe.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_env_proxmox")
+async def test_env_token_refused_when_request_turns_tls_off(
+    client: AsyncClient, headers: dict
+) -> None:
+    """The server verifies TLS; a request turning it off never gets the env token."""
+    probe = AsyncMock(return_value=(True, "ok"))
+    with patch("app.api.routes.proxmox.test_proxmox_connection", new=probe):
+        res = await client.post(
+            "/api/v1/proxmox/test-connection",
+            json={"host": "pve.lan", "port": 8006, "verify_tls": False},
+            headers=headers,
+        )
+    assert res.status_code == 400
+    assert res.json()["detail"] == "The server-configured Proxmox token requires TLS verification"
+    probe.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_env_proxmox")
+async def test_env_token_used_when_request_verifies_more_strictly(
+    client: AsyncClient, headers: dict
+) -> None:
+    """Regression: a self-signed env setup (verify off) broke the import modal,
+    whose TLS checkbox defaults to on — a stricter request is always safe."""
+    settings.proxmox_verify_tls = False
+    probe = AsyncMock(return_value=(True, "ok"))
+    with patch("app.api.routes.proxmox.test_proxmox_connection", new=probe):
+        res = await client.post(
+            "/api/v1/proxmox/test-connection",
+            json={"host": "pve.lan", "port": 8006, "verify_tls": True},
+            headers=headers,
+        )
+    assert res.status_code == 200, res.text
+    assert probe.call_args.kwargs["token_secret"] == "env-secret"
+    assert probe.call_args.kwargs["verify_tls"] is True
 
 
 @pytest.mark.asyncio
