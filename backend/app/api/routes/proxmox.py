@@ -4,7 +4,9 @@ Fetches hosts/VMs/LXC from the Proxmox REST API and upserts them into the
 pending inventory (same review→approve flow as scans and mesh imports).
 
 Credentials: the API token comes from the request body when provided, else
-falls back to the server-configured env token (``settings.proxmox_token_*``).
+falls back to the server-configured env token (``settings.proxmox_token_*``) —
+only for the configured host and port, and never with TLS verification off
+when the server keeps it on.
 The token is never persisted by the app and never returned by any endpoint.
 """
 
@@ -76,11 +78,18 @@ def _resolve_credentials(payload: ProxmoxConnectionRequest) -> tuple[str, str]:
         not configured_host
         or request_host != configured_host
         or payload.port != settings.proxmox_port
-        or payload.verify_tls != settings.proxmox_verify_tls
     ):
         raise HTTPException(
             status_code=400,
             detail="Custom Proxmox hosts require an explicit API token",
+        )
+    # Verifying more strictly than configured is fine (the modal's checkbox
+    # defaults to on, over a self-signed env setup); turning off verification
+    # the server keeps on would hand the env token to an unverified peer.
+    if settings.proxmox_verify_tls and not payload.verify_tls:
+        raise HTTPException(
+            status_code=400,
+            detail="The server-configured Proxmox token requires TLS verification",
         )
     if not settings.proxmox_token_id or not settings.proxmox_token_secret:
         raise HTTPException(
