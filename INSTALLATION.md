@@ -388,11 +388,11 @@ All configuration is done via `.env` (copied from `.env.example`):
 
 ```env
 # Generate with: python3 -c "import secrets; print(secrets.token_hex(32))"
-SECRET_KEY=<random-secret-at-least-32-bytes>
+SECRET_KEY=change_me_in_production
 
-# Auth — set a username and a bcrypt hash for your own password.
-AUTH_USERNAME=<your-username>
-AUTH_PASSWORD_HASH='<bcrypt-hash>'   # keep single quotes
+# Auth — default: admin / admin
+AUTH_USERNAME=admin
+AUTH_PASSWORD_HASH='$2b$12$...'   # bcrypt hash — keep single quotes
 
 # CIDR ranges to scan
 SCANNER_RANGES=["192.168.1.0/24"]

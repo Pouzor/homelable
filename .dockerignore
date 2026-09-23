@@ -4,14 +4,18 @@
 .env.*
 **/.env
 **/.env.*
-*.db
-*.sqlite
-*.sqlite3
+# Patterns match from the build-context root; **/ reaches into subfolders.
+# Do not use **/data/: backend/app/data and frontend/src/data are source.
+**/*.db
+**/*.sqlite
+**/*.sqlite3
 data/
-uploads/
-node_modules/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+backend/data/
+**/uploads/
+**/node_modules/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
