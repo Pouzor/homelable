@@ -421,7 +421,7 @@ async def _dispatch(name: str, args: dict) -> dict:
 
     if name == "update_node":
         node_id = safe_id(args.pop("id"), field="node id")
-        return await backend.patch(f"/api/v1/nodes/{safe_id(node_id, field='node id')}", args)
+        return await backend.patch(f"/api/v1/nodes/{node_id}", args)
 
     if name == "delete_node":
         return await backend.delete(f"/api/v1/nodes/{safe_id(args['id'], field='node id')}")

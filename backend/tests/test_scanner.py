@@ -1774,3 +1774,59 @@ async def test_process_host_never_deletes_a_second_approved_row(mem_db):
     assert sorted(d.id for d in devices) == ["a", "b"]
     # The oldest approved row is the merge target.
     assert oldest is not None and oldest.hostname == "claimed.lan"
+
+
+@pytest.mark.asyncio
+async def test_run_device_scan_scans_the_first_valid_ip(mem_db):
+    from app.services.scanner import run_device_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(ScanRun(id=run_id, status="running", kind="device", ranges=["192.168.1.9/32"]))
+        session.add(InventoryDevice(id="d1", ip="bogus, 192.168.1.9 , 192.168.1.10", status="pending", services=[]))
+        await session.commit()
+
+    seen_ips = []
+
+    def _scanned(host_dict, port_spec, bounded=False):
+        seen_ips.append(host_dict["ip"])
+        return host_dict
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan_single", side_effect=_scanned), \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_device_scan("d1", session, run_id, ports="22")
+
+    assert seen_ips == ["192.168.1.9"]
+
+
+@pytest.mark.asyncio
+async def test_run_device_scan_errors_when_no_ip_is_valid(mem_db):
+    from app.services.scanner import run_device_scan
+
+    run_id = _make_run_id()
+    async with mem_db() as session:
+        session.add(ScanRun(id=run_id, status="running", kind="device", ranges=[]))
+        session.add(InventoryDevice(id="d1", ip="-oN /tmp/x", status="pending", services=[]))
+        await session.commit()
+
+    async with mem_db() as session:
+        with patch("app.services.scanner._nmap_scan_single") as scan, \
+             patch("app.api.routes.status.broadcast_scan_update", new_callable=AsyncMock):
+            await run_device_scan("d1", session, run_id)
+
+    async with mem_db() as session:
+        run = await session.get(ScanRun, run_id)
+    scan.assert_not_called()
+    assert run is not None and run.status == "error"
+    assert run.error == "Device has no valid IP to scan"
+
+
+@pytest.mark.parametrize("bad", ["-iL /etc/passwd", "192.168.1.0/24", "", None, 42])
+def test_nmap_scan_single_refuses_non_ip_target(bad):
+    from app.services.scanner import _nmap_scan_single
+
+    host = {"ip": bad, "open_ports": []}
+    with patch("app.services.scanner.nmap.PortScanner") as scanner:
+        assert _nmap_scan_single(host) is host
+    scanner.assert_not_called()

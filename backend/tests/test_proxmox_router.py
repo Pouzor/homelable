@@ -700,3 +700,85 @@ async def test_canvas_import_points_at_the_row_matched_by_ip(
         )
     ).scalars().all()
     assert len(rows) == 1
+
+
+# --- credential binding: the env token only goes to the configured host ------
+
+@pytest.fixture
+def _env_proxmox():
+    """Configure an env token for pve:8006 (TLS on); restore afterwards."""
+    saved = (settings.proxmox_host, settings.proxmox_port, settings.proxmox_verify_tls)
+    settings.proxmox_host = "pve.lan"
+    settings.proxmox_port = 8006
+    settings.proxmox_verify_tls = True
+    settings.proxmox_token_id = "env@pam!t"
+    settings.proxmox_token_secret = "env-secret"
+    yield
+    settings.proxmox_host, settings.proxmox_port, settings.proxmox_verify_tls = saved
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_env_proxmox")
+async def test_env_token_used_for_configured_host(client: AsyncClient, headers: dict) -> None:
+    probe = AsyncMock(return_value=(True, "ok"))
+    with patch("app.api.routes.proxmox.test_proxmox_connection", new=probe):
+        res = await client.post(
+            "/api/v1/proxmox/test-connection",
+            # Case and a trailing dot name the same host.
+            json={"host": "PVE.lan.", "port": 8006, "verify_tls": True},
+            headers=headers,
+        )
+    assert res.status_code == 200, res.text
+    assert probe.call_args.kwargs["token_id"] == "env@pam!t"
+    assert probe.call_args.kwargs["token_secret"] == "env-secret"
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_env_proxmox")
+@pytest.mark.parametrize("override", [
+    {"host": "attacker.example"},
+    {"port": 443},
+    {"verify_tls": False},
+])
+async def test_env_token_never_sent_to_another_endpoint(
+    client: AsyncClient, headers: dict, override: dict
+) -> None:
+    """Regression: a caller-chosen host received the server's env token."""
+    body = {"host": "pve.lan", "port": 8006, "verify_tls": True, **override}
+    probe = AsyncMock(return_value=(True, "ok"))
+    with patch("app.api.routes.proxmox.test_proxmox_connection", new=probe):
+        res = await client.post("/api/v1/proxmox/test-connection", json=body, headers=headers)
+    assert res.status_code == 400
+    assert res.json()["detail"] == "Custom Proxmox hosts require an explicit API token"
+    probe.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_env_proxmox")
+async def test_body_token_allowed_for_any_host(client: AsyncClient, headers: dict) -> None:
+    probe = AsyncMock(return_value=(True, "ok"))
+    with patch("app.api.routes.proxmox.test_proxmox_connection", new=probe):
+        res = await client.post(
+            "/api/v1/proxmox/test-connection",
+            json={"host": "other", "port": 8006, "token_id": "u@pam!t", "token_secret": "s"},
+            headers=headers,
+        )
+    assert res.status_code == 200
+    assert probe.call_args.kwargs["token_id"] == "u@pam!t"
+    assert probe.call_args.kwargs["token_secret"] == "s"
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("_env_proxmox")
+@pytest.mark.parametrize("partial", [{"token_id": "u@pam!t"}, {"token_secret": "s"}])
+async def test_half_a_body_token_is_rejected(
+    client: AsyncClient, headers: dict, partial: dict
+) -> None:
+    """Half a token is never completed from the env one."""
+    res = await client.post(
+        "/api/v1/proxmox/test-connection",
+        json={"host": "pve.lan", "port": 8006, **partial},
+        headers=headers,
+    )
+    assert res.status_code == 400
+    assert res.json()["detail"] == "Provide both Proxmox token fields"

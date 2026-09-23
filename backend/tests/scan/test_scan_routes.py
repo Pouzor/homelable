@@ -636,3 +636,33 @@ async def test_clear_pending_keeps_documents_of_a_device_approved_mid_clear(clie
     ).scalar_one()
     assert status == "approved"
     assert (await db_session.get(Document, doc_id)).device_id == device_id
+
+
+@pytest.mark.asyncio
+async def test_rescan_device_targets_first_valid_ip(client: AsyncClient, headers, db_session):
+    """A multi-address row scans one validated host, never the raw field."""
+    device = InventoryDevice(
+        id=str(uuid.uuid4()), ip="not-an-ip, 192.168.1.50, 192.168.1.51", status="pending"
+    )
+    db_session.add(device)
+    await db_session.commit()
+    with patch("app.api.routes.scan._background_device_scan", new_callable=AsyncMock):
+        res = await client.post(f"/api/v1/scan/pending/{device.id}/rescan", headers=headers)
+    assert res.status_code == 200, res.text
+    assert res.json()["ranges"] == ["192.168.1.50/32"]
+
+
+@pytest.mark.asyncio
+async def test_rescan_device_rejects_ip_field_with_no_valid_address(
+    client: AsyncClient, headers, db_session
+):
+    """Regression: the raw ip field went to nmap as the target, so a value shaped
+    like an nmap option reached the command line."""
+    device = InventoryDevice(id=str(uuid.uuid4()), ip="-iL /etc/passwd", status="pending")
+    db_session.add(device)
+    await db_session.commit()
+    with patch("app.api.routes.scan._background_device_scan", new_callable=AsyncMock) as bg:
+        res = await client.post(f"/api/v1/scan/pending/{device.id}/rescan", headers=headers)
+    assert res.status_code == 409
+    assert res.json()["detail"] == "Device has no valid IP address to scan"
+    bg.assert_not_called()
