@@ -5,6 +5,23 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.5.1] - 2026-09-25
+
+### Features
+
+- Auto Layout can sort devices into zones before arranging the canvas, by device type (one zone per type-picker family) or by subnet (one zone per /24). The Auto Layout button becomes a split button; only top-level devices move, an existing zone with the same label is reused so a second run changes nothing, and a single undo reverts the whole pass. Nothing is saved automatically. (#516, closes #326)
+- Zigbee auto-sync and **Re-sync now** can import mesh links, not just the parent tree. A new **Import mesh links** toggle under Settings → Zigbee auto-sync, off by default, so an existing setup keeps importing the parent tree only. (#527, closes #519)
+
+### Fixes
+
+- Security hardening of the network and MCP boundaries: MCP identifier path segments reject traversal and unsafe separators, the Proxmox token from `.env` is bound to the configured host and port instead of being reused for a caller-chosen endpoint (only a TLS downgrade is refused), a deep rescan accepts a single validated IP, and `.dockerignore` keeps databases, uploads and virtualenvs out of the images. Thanks @syscod3! (#513)
+- With the backend on `network_mode: host`, the frontend container restart-looped on `host not found in upstream "backend"`. The nginx upstream is now a runtime setting, `BACKEND_UPSTREAM` (default `backend:8000`); a user-mounted `default.conf` or a read-only `conf.d` still works. (#517, closes #512)
+- The bare-metal installer fails fast, before anything is installed, on Python 3.14 (set `PYTHON=python3.13`) and when RAM + swap is below `BUILD_MEMORY_MB` (default 1536), instead of dying mid-build with a bare `Killed` and no service or nginx site. A venv built by another Python version is rebuilt. (#528, refs #511)
+- In the read-only live view, nodes inside a zone lost their parent and piled up near the top-left of the canvas. (#525, closes #524)
+- Device Inventory search now matches the name shown on the card (the curated label) and the device type. (#526, closes #522)
+- Clearing pending scan results could strip the documents of a device approved at the same moment. (#509, closes #444)
+- OIDC error handling moved from the deprecated `authlib.jose` to `joserfc`, silencing the deprecation warning on every boot. Thanks @slmingol! (#515)
+
 ## [3.5.0] - 2026-09-21
 
 ### Features
