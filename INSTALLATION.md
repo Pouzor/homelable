@@ -387,10 +387,10 @@ uvicorn on `:8000`.
 All configuration is done via `.env` (copied from `.env.example`):
 
 ```env
-# Generate with: python3 -c "import secrets; print(secrets.token_hex(32))"
-SECRET_KEY=change_me_in_production
+# install.sh generates this automatically. Required for manual setup.
+SECRET_KEY=<generated-secret>
 
-# Auth — default: admin / admin
+# Auth — install.sh prompts for the initial password
 AUTH_USERNAME=admin
 AUTH_PASSWORD_HASH='$2b$12$...'   # bcrypt hash — keep single quotes
 

@@ -270,9 +270,11 @@ Widget snippet lives in the [README](./README.md#gethomepage-widget-read-only-st
 **Use:**
 1. Add the keys to `.env`:
    ```env
-   MCP_API_KEY=mcp_sk_changeme      # AI client -> MCP server
-   MCP_SERVICE_KEY=svc_changeme     # MCP server -> backend (internal only)
-   # generate: python3 -c "import secrets; print(secrets.token_hex(32))"
+   MCP_API_KEY=<generated-by-install.sh>  # AI client -> MCP server
+   MCP_SERVICE_KEY=<generated-by-install.sh> # MCP server -> backend (internal only)
+   # manual setup:
+   # python3 -c "import secrets; print('mcp_sk_' + secrets.token_hex(24))"
+   # python3 -c "import secrets; print('svc_' + secrets.token_hex(24))"
    ```
 2. `docker compose up -d mcp` (listens on `:8001`). No Docker? `sudo bash scripts/lxc-mcp-install.sh`.
 3. Point your client at `http://<your-homelab-ip>:8001/mcp` with header `X-API-Key: <your key>`.

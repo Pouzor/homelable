@@ -22,12 +22,12 @@
 #   BASE_PATH       serve under a subpath instead of the root of the origin,
 #                   e.g. BASE_PATH=/homelab/ (default: /). Baked into the
 #                   frontend build and into the generated nginx site.
-#   ADMIN_PASSWORD  initial admin password (default: prompt, "admin" on empty)
+#   ADMIN_PASSWORD  initial admin password (default: prompt; required without a TTY)
 #   SCANNER_RANGES  JSON array of CIDRs to scan (default: prompt, guessed from
 #                   the primary interface)
 #
 # The two prompts are skipped when stdin is not a TTY (`curl … | sudo bash`);
-# set the matching variables to control them there, or take the defaults.
+# set the matching variables to control them there.
 #   SKIP_NGINX=1    do not install or touch nginx (bring your own reverse proxy)
 set -euo pipefail
 
@@ -122,11 +122,13 @@ else
   admin_password="${ADMIN_PASSWORD:-}"
   if [[ -z "$admin_password" ]]; then
     if [[ -t 0 ]]; then
-      read -rsp "Initial admin password [default: admin]: " admin_password; echo
+      read -rsp "Initial admin password: " admin_password; echo
     else
-      warn "No TTY (piped install) and ADMIN_PASSWORD unset — defaulting to 'admin'."
+      fail "No TTY (piped install) and ADMIN_PASSWORD unset — set ADMIN_PASSWORD."
     fi
-    admin_password="${admin_password:-admin}"
+  fi
+  if [[ -z "$admin_password" ]]; then
+    fail "The initial admin password cannot be empty."
   fi
 
   scanner_ranges="${SCANNER_RANGES:-}"

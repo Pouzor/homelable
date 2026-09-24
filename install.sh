@@ -50,11 +50,42 @@ else
   else
     if [ ! -f .env ]; then
       cp .env.example .env
+      admin_password="${ADMIN_PASSWORD:-}"
+      if [ -z "$admin_password" ]; then
+        if [ -t 0 ]; then
+          read -rsp "Initial admin password: " admin_password
+          echo
+        else
+          echo "Set ADMIN_PASSWORD when running the installer without a terminal." >&2
+          exit 1
+        fi
+      fi
+      if [ -z "$admin_password" ]; then
+        echo "The initial admin password cannot be empty." >&2
+        exit 1
+      fi
+
+      secret_key="$(openssl rand -hex 32)"
+      mcp_api_key="mcp_sk_$(openssl rand -hex 24)"
+      mcp_service_key="svc_$(openssl rand -hex 24)"
+      sed -i.bak \
+        -e "s|^SECRET_KEY=.*|SECRET_KEY=${secret_key}|" \
+        -e "s|^MCP_API_KEY=.*|MCP_API_KEY=${mcp_api_key}|" \
+        -e "s|^MCP_SERVICE_KEY=.*|MCP_SERVICE_KEY=${mcp_service_key}|" \
+        .env
+      rm -f .env.bak
+
+      password_hash="$(ADMIN_PASSWORD="$admin_password" docker compose run --rm --no-deps -T \
+        -e ADMIN_PASSWORD backend python -c \
+        'import os, bcrypt; print(bcrypt.hashpw(os.environ["ADMIN_PASSWORD"].encode(), bcrypt.gensalt()).decode())')"
+      sed -i.bak \
+        -e "s|^AUTH_PASSWORD_HASH=.*|AUTH_PASSWORD_HASH='${password_hash}'|" \
+        .env
+      rm -f .env.bak
     fi
     echo ""
-    echo "  Edit .env if needed (default login: admin / admin):"
-    echo "    - Set SECRET_KEY to a random string"
-    echo "    - Change AUTH_PASSWORD_HASH before exposing on a network"
+    echo "  Initial admin credentials were generated in .env."
+    echo "  Change them later by updating AUTH_PASSWORD_HASH and restarting the backend."
     echo ""
     echo "  Run:"
     echo "    cd ${INSTALL_DIR} && docker compose up -d"
