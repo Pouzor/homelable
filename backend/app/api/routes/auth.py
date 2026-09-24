@@ -4,8 +4,9 @@ from collections.abc import Mapping
 from typing import cast
 
 from authlib.integrations.base_client.errors import OAuthError
-from authlib.jose.errors import JoseError
+from authlib.jose.errors import JoseError as _AuthlibJoseError  # authlib 1.7.x still raises this; drop after 2.0
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from joserfc.errors import JoseError
 from pydantic import BaseModel
 from starlette.responses import RedirectResponse
 
@@ -87,7 +88,7 @@ async def oidc_callback(request: Request) -> Response:
     client = get_oidc_client()
     try:
         token = await client.authorize_access_token(request)
-    except (OAuthError, JoseError) as exc:
+    except (OAuthError, JoseError, _AuthlibJoseError) as exc:
         logger.warning("OIDC callback rejected: %s", exc.error)
         request.session.clear()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="OIDC authentication failed") from None
