@@ -212,6 +212,28 @@ describe('DeviceInventoryModal', () => {
     expect(screen.getByTestId('pending-card-dev-b')).toBeInTheDocument()
   })
 
+  it('finds a device by the curated label shown on its card', async () => {
+    // Regression #522: a canvas-imported device carries only `label` — no
+    // hostname or friendly_name — and searching its visible name found nothing.
+    const named = { ...DEVICE_IP, id: 'dev-named', hostname: null, label: 'Router', discovery_source: 'canvas' }
+    mockPending.mockResolvedValue({ data: [DEVICE_IP, named] })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-named')).toBeInTheDocument())
+    fireEvent.change(screen.getByPlaceholderText(/Search/), { target: { value: 'router' } })
+    expect(screen.getByTestId('pending-card-dev-named')).toBeInTheDocument()
+    expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
+  })
+
+  it('finds a device by its type', async () => {
+    const nas = { ...DEVICE_IP, id: 'dev-nas', hostname: 'box', type: 'nas' }
+    mockPending.mockResolvedValue({ data: [DEVICE_IP, nas] })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-nas')).toBeInTheDocument())
+    fireEvent.change(screen.getByPlaceholderText(/Search/), { target: { value: 'nas' } })
+    expect(screen.getByTestId('pending-card-dev-nas')).toBeInTheDocument()
+    expect(screen.queryByTestId('pending-card-dev-a')).not.toBeInTheDocument()
+  })
+
   it('filters by source (zigbee only)', async () => {
     render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())

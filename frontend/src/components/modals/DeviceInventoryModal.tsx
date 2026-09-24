@@ -237,7 +237,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       if (rackableOnly && !isRackable(d)) return false
       if (q) {
         const hay = [
-          d.friendly_name, d.hostname, d.ip, d.mac, d.ieee_address, d.vendor, d.model,
+          d.label, d.friendly_name, d.hostname, deviceType(d), d.ip, d.mac, d.ieee_address, d.vendor, d.model,
           ...d.services.map((s) => s.service_name),
         ].filter(Boolean).join(' ').toLowerCase()
         if (!hay.includes(q)) return false
