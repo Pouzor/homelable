@@ -41,6 +41,10 @@ DOCUMENT_DDL: tuple[tuple[str, str], ...] = (
     ("documents.facts_snapshot", "ALTER TABLE documents ADD COLUMN facts_snapshot JSON"),
     ("documents.facts_synced_at", "ALTER TABLE documents ADD COLUMN facts_synced_at DATETIME"),
     ("documents.reviewed_at", "ALTER TABLE documents ADD COLUMN reviewed_at DATETIME"),
+    # The generated body as it was when the document was scaffolded or last
+    # reconciled. Three-way update-from-device compares `current <-> baseline <-
+    # fresh-generate`; NULL means "no baseline yet", which forces the safe side.
+    ("documents.baseline_body", "ALTER TABLE documents ADD COLUMN baseline_body TEXT"),
     # Set only when a body is edited, so "never touched since it was generated"
     # is distinguishable from "edited" — `created_at` and `updated_at` are two
     # separate clock reads on insert and are never equal.
