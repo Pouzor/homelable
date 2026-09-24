@@ -62,7 +62,11 @@ fail() { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
 # `set -e` exits on the first failing command, and everything after it — the
 # systemd unit, the nginx site — never gets written. Say so, instead of leaving
 # a half-installed host that looks like the later steps are broken.
-trap 'rc=$?; printf "\033[1;31mxx\033[0m Installer stopped at line %s (exit %s). The steps after it did not run — no service or nginx site was installed. Fix the error above and re-run.\n" "$LINENO" "$rc" >&2' ERR
+on_error() {
+  local rc=$?
+  printf '\033[1;31mxx\033[0m Installer stopped at line %s (exit %s). The steps after it did not run — no service or nginx site was installed. Fix the error above and re-run.\n' "$1" "$rc" >&2
+}
+trap 'on_error $LINENO' ERR
 
 [[ $EUID -eq 0 ]] || fail "Run as root (sudo bash $0)."
 command -v apt-get >/dev/null || fail "This script targets Debian/Ubuntu (apt-get not found)."
