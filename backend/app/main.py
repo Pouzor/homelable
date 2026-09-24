@@ -21,6 +21,7 @@ from app.api.routes import (
     proxmox,
     racks,
     scan,
+    snmp,
     stats,
     status,
     unifi,
@@ -99,6 +100,7 @@ app.include_router(zigbee.router, prefix="/api/v1/zigbee", tags=["zigbee"])
 app.include_router(zwave.router, prefix="/api/v1/zwave", tags=["zwave"])
 app.include_router(proxmox.router, prefix="/api/v1/proxmox", tags=["proxmox"])
 app.include_router(unifi.router, prefix="/api/v1/unifi", tags=["unifi"])
+app.include_router(snmp.router, prefix="/api/v1/snmp", tags=["snmp"])
 app.include_router(stats.router, prefix="/api/v1/stats", tags=["stats"])
 app.include_router(media.router, prefix="/api/v1/media", tags=["media"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])

@@ -289,6 +289,14 @@ class Settings(BaseSettings):
             return parsed.port or self.unifi_port
         return self.unifi_port
 
+    # SNMP periodic polling of approved devices.
+    snmp_poll_enabled: bool = False
+    snmp_poll_interval: int = 300
+
+    # LLDP/CDP topology discovery via SNMP walk.
+    lldp_discovery_enabled: bool = False
+    lldp_discovery_interval: int = 3600
+
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"
 
@@ -352,6 +360,14 @@ class Settings(BaseSettings):
                 self.unifi_site = str(data["unifi_site"])
             if "unifi_verify_tls" in data:
                 self.unifi_verify_tls = bool(data["unifi_verify_tls"])
+            if "snmp_poll_enabled" in data:
+                self.snmp_poll_enabled = bool(data["snmp_poll_enabled"])
+            if "snmp_poll_interval" in data:
+                self.snmp_poll_interval = int(data["snmp_poll_interval"])
+            if "lldp_discovery_enabled" in data:
+                self.lldp_discovery_enabled = bool(data["lldp_discovery_enabled"])
+            if "lldp_discovery_interval" in data:
+                self.lldp_discovery_interval = int(data["lldp_discovery_interval"])
         except Exception:
             pass
 
@@ -388,6 +404,10 @@ class Settings(BaseSettings):
             "unifi_port": self.unifi_port,
             "unifi_site": self.unifi_site,
             "unifi_verify_tls": self.unifi_verify_tls,
+            "snmp_poll_enabled": self.snmp_poll_enabled,
+            "snmp_poll_interval": self.snmp_poll_interval,
+            "lldp_discovery_enabled": self.lldp_discovery_enabled,
+            "lldp_discovery_interval": self.lldp_discovery_interval,
         }))
 
 
