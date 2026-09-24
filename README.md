@@ -439,13 +439,14 @@ Homelable can exposes a [Model Context Protocol](https://modelcontextprotocol.io
 
 ```env
 # Authenticates AI clients (Claude Code, etc.) → MCP server
-MCP_API_KEY=mcp_sk_changeme
+MCP_API_KEY=<generated-by-install.sh>
 
 # Authenticates MCP server → backend (internal Docker network only, never exposed)
-MCP_SERVICE_KEY=svc_changeme
+MCP_SERVICE_KEY=<generated-by-install.sh>
 
-# Generate both with:
-# python3 -c "import secrets; print(secrets.token_hex(32))"
+# install.sh generates both values. For manual setup:
+# python3 -c "import secrets; print('mcp_sk_' + secrets.token_hex(24))"
+# python3 -c "import secrets; print('svc_' + secrets.token_hex(24))"
 ```
 
 No plain-text passwords involved — `AUTH_PASSWORD_HASH` is only used for the web UI login.
