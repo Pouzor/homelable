@@ -18,6 +18,7 @@ from app.api.routes import (
     liveview,
     media,
     nodes,
+    observatory,
     proxmox,
     racks,
     scan,
@@ -108,3 +109,5 @@ app.include_router(docsview.router, prefix="/api/v1/docsview", tags=["docsview"]
 @app.get("/api/v1/health")
 async def health() -> dict[str, Any]:
     return {"status": "ok"}
+
+app.include_router(observatory.router, prefix="/api/v1/observatory", tags=["observatory"])
