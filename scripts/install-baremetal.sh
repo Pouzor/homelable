@@ -25,6 +25,10 @@
 #   ADMIN_PASSWORD  initial admin password (default: prompt, "admin" on empty)
 #   SCANNER_RANGES  JSON array of CIDRs to scan (default: prompt, guessed from
 #                   the primary interface)
+#   PYTHON          interpreter the venv is built from (default: python3). Must
+#                   be 3.13 or older — pydantic-core has no 3.14 build yet.
+#   BUILD_MEMORY_MB free RAM + swap required before the frontend build
+#                   (default: 1536; 0 skips the check)
 #
 # The two prompts are skipped when stdin is not a TTY (`curl … | sudo bash`);
 # set the matching variables to control them there, or take the defaults.
@@ -40,6 +44,10 @@ BACKEND_PORT="${BACKEND_PORT:-8000}"
 HTTP_PORT="${HTTP_PORT:-3000}"
 SERVER_NAME="${SERVER_NAME:-_}"
 SKIP_NGINX="${SKIP_NGINX:-0}"
+PYTHON="${PYTHON:-python3}"
+# The build peaks at ~750 MB in a single node process (tsc, then vite), on top
+# of npm and whatever else the host runs.
+BUILD_MEMORY_MB="${BUILD_MEMORY_MB:-1536}"
 # Normalized to a leading + trailing slash ('/' when unset), mirroring
 # normalizeBasePath() in frontend/src/utils/basePath.ts.
 BASE_PATH="$(printf '%s' "${BASE_PATH:-/}" | sed -e 's#^/*#/#' -e 's#/*$#/#' -e 's#//*#/#g')"
@@ -50,6 +58,11 @@ NODE_MAJOR=20
 log()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
+
+# `set -e` exits on the first failing command, and everything after it — the
+# systemd unit, the nginx site — never gets written. Say so, instead of leaving
+# a half-installed host that looks like the later steps are broken.
+trap 'rc=$?; printf "\033[1;31mxx\033[0m Installer stopped at line %s (exit %s). The steps after it did not run — no service or nginx site was installed. Fix the error above and re-run.\n" "$LINENO" "$rc" >&2' ERR
 
 [[ $EUID -eq 0 ]] || fail "Run as root (sudo bash $0)."
 command -v apt-get >/dev/null || fail "This script targets Debian/Ubuntu (apt-get not found)."
@@ -62,6 +75,22 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
 
 if [[ "$SKIP_NGINX" != "1" ]]; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx >/dev/null
+fi
+
+# Fail fast, before minutes of pip and npm: both checks below otherwise surface
+# as a crash halfway through.
+command -v "$PYTHON" >/dev/null || fail "Python interpreter '$PYTHON' not found."
+py_version="$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+if [[ "${py_version#3.}" -ge 14 ]]; then
+  fail "Python $py_version is not supported yet (pydantic-core has no 3.14 build). Install Python 3.13 with its venv module (e.g. python3.13 + python3.13-venv, from the deadsnakes PPA on Ubuntu) and re-run with PYTHON=python3.13."
+fi
+
+if [[ "$BUILD_MEMORY_MB" -gt 0 ]]; then
+  # MemAvailable, not MemTotal: what the build can actually get right now.
+  free_mb="$(awk '/^(MemAvailable|SwapFree):/ {kb += $2} END {print int(kb / 1024)}' /proc/meminfo)"
+  if [[ "$free_mb" -lt "$BUILD_MEMORY_MB" ]]; then
+    fail "Only ${free_mb} MB of RAM + swap available; the frontend build needs about ${BUILD_MEMORY_MB} MB and would be killed by the kernel (out of memory). Give the VM/LXC more RAM or add swap, then re-run. BUILD_MEMORY_MB=0 skips this check."
+  fi
 fi
 
 # Node 20+ — Debian 12 ships 18, too old for Vite 7 / React 19.
@@ -104,9 +133,18 @@ DATA_DIR="$INSTALL_DIR/data"
 mkdir -p "$DATA_DIR"
 
 VENV="$BACKEND_DIR/.venv"
+# A venv left by an earlier run on another interpreter (a failed 3.14 attempt,
+# or before PYTHON was set) would keep that version — rebuild it.
+if [[ -x "$VENV/bin/python" ]]; then
+  venv_version="$("$VENV/bin/python" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
+  if [[ "$venv_version" != "$py_version" ]]; then
+    log "Rebuilding venv: it runs Python ${venv_version:-unknown}, $PYTHON is $py_version"
+    rm -rf "$VENV"
+  fi
+fi
 if [[ ! -d "$VENV" ]]; then
-  log "Creating venv at $VENV"
-  python3 -m venv "$VENV"
+  log "Creating venv at $VENV (Python $py_version)"
+  "$PYTHON" -m venv "$VENV"
 fi
 log "Installing Python deps (this takes a few minutes)"
 "$VENV/bin/pip" install --quiet --upgrade pip
@@ -188,7 +226,12 @@ if [[ -f "$FRONTEND_DIR/package-lock.json" ]]; then
 else
   ( cd "$FRONTEND_DIR" && npm install --silent )
 fi
-( cd "$FRONTEND_DIR" && VITE_BASE_PATH="$BASE_PATH" npm run build )
+build_rc=0
+( cd "$FRONTEND_DIR" && VITE_BASE_PATH="$BASE_PATH" npm run build ) || build_rc=$?
+if [[ "$build_rc" -ne 0 ]]; then
+  # A bare "Killed" above (exit 137) is the kernel's OOM killer, not a code error.
+  fail "Frontend build failed (exit $build_rc). If the output above ends in 'Killed', the host ran out of memory: the build needs about 1.5 GB of RAM + swap. Give the VM/LXC more RAM or add swap, then re-run — no service or nginx site was installed yet."
+fi
 [[ -d "$FRONTEND_DIR/dist" ]] || fail "Frontend build produced no $FRONTEND_DIR/dist."
 
 chown -R "$SERVICE_USER":"$SERVICE_USER" "$INSTALL_DIR"

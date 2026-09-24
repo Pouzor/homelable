@@ -159,6 +159,17 @@ Ubuntu 22.04+ host (physical, VM or LXC): a Python venv and a `homelable`
 systemd unit for the backend on `127.0.0.1:8000`, the built frontend served by
 nginx on port 3000.
 
+**Requirements** — the script checks both up front and stops before installing
+anything if either is missing:
+
+- **Python 3.13 or older.** pydantic-core has no Python 3.14 build yet, so hosts
+  whose `python3` is 3.14 (Ubuntu 26.04) need a separate 3.13 — e.g. `python3.13`
+  and `python3.13-venv` from the deadsnakes PPA — passed as
+  `PYTHON=python3.13`.
+- **About 1.5 GB of free RAM + swap** for the frontend build. Below that the
+  kernel kills the build (the output ends in a bare `Killed`). Give the VM/LXC
+  more memory or add swap for the install; the running app needs far less.
+
 ```bash
 git clone https://github.com/Pouzor/homelable.git /opt/homelable
 sudo bash /opt/homelable/scripts/install-baremetal.sh
@@ -211,6 +222,8 @@ sudo HTTP_PORT=8080 ADMIN_PASSWORD=hunter2 SCANNER_RANGES='["10.0.0.0/24"]' \
 | `SCANNER_RANGES` | prompt, else guessed | JSON array of CIDRs |
 | `SKIP_NGINX=1` | off | Do not install or touch nginx |
 | `BASE_PATH` | `/` | Serve under a subpath — see [Serving under a subpath](#serving-under-a-subpath) |
+| `PYTHON` | `python3` | Interpreter the venv is built from; must be 3.13 or older. Changing it rebuilds the venv on the next run |
+| `BUILD_MEMORY_MB` | `1536` | Free RAM + swap required before the frontend build; `0` skips the check |
 
 ### Afterwards
 
