@@ -3,7 +3,7 @@ import { ReactFlowProvider, type Connection, type Edge } from '@xyflow/react'
 import { type Node } from '@xyflow/react'
 import { applyDagreLayout } from '@/utils/layout'
 import { groupIntoZones, liftEdgesToTopLevel, type AutoLayoutMode } from '@/utils/zoneGrouping'
-import { serializeNode, serializeEdge, deserializeApiNode, deserializeApiEdge, migrateClusterHandles, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
+import { serializeNode, serializeEdge, deserializeApiCanvas, migrateClusterHandles, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { generateUUID } from '@/utils/uuid'
 import { getCenteredPosition } from '@/utils/viewportCenter'
 import { resolveVirtualEdgeParent } from '@/utils/virtualEdgeParent'
@@ -242,17 +242,9 @@ export default function App() {
     const { nodes: apiNodes, edges: apiEdges } = res.data
     const mode = decideCanvasLoad(apiNodes.length > 0, res.data.initialized === true)
     if (mode === 'real') {
-      const proxmoxContainerMap = new Map<string, boolean>(
-        (apiNodes as ApiNode[])
-          .filter((n) => n.type === 'group' || n.container_mode === true)
-          .map((n) => [n.id, true])
-      )
-      const zoneIds = new Set(
-        (apiNodes as ApiNode[]).filter((n) => n.type === 'groupRect').map((n) => n.id)
-      )
-      const { nodes: rfNodes, edges: rfEdges } = migrateClusterHandles(
-        (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxContainerMap, zoneIds)),
-        (apiEdges as ApiEdge[]).map(deserializeApiEdge),
+      const { nodes: rfNodes, edges: rfEdges } = deserializeApiCanvas(
+        apiNodes as ApiNode[],
+        apiEdges as ApiEdge[],
       )
       const savedTheme = res.data.viewport?.theme_id
       if (savedTheme) setTheme(savedTheme)

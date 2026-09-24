@@ -326,3 +326,25 @@ export function migrateClusterHandles(
 
   return { nodes: migratedNodes, edges: migratedEdges }
 }
+
+/**
+ * Turn a canvas API payload into React Flow nodes/edges. The single entry point
+ * for every view that renders a saved canvas (editor, live view), so the
+ * parent maps a node needs to keep its `parentId` — containers and zones —
+ * cannot drift between them.
+ */
+export function deserializeApiCanvas(
+  apiNodes: ApiNode[],
+  apiEdges: ApiEdge[],
+): { nodes: Node<NodeData>[]; edges: Edge<EdgeData>[] } {
+  const proxmoxContainerMap = new Map<string, boolean>(
+    apiNodes
+      .filter((n) => n.type === 'group' || n.container_mode === true)
+      .map((n) => [n.id, true])
+  )
+  const zoneIds = new Set(apiNodes.filter((n) => n.type === 'groupRect').map((n) => n.id))
+  return migrateClusterHandles(
+    apiNodes.map((n) => deserializeApiNode(n, proxmoxContainerMap, zoneIds)),
+    apiEdges.map(deserializeApiEdge),
+  )
+}
