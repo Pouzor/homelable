@@ -193,9 +193,9 @@ def env_import_request() -> ZigbeeImportRequest:
         base_topic=settings.zigbee_base_topic,
         mqtt_tls=settings.zigbee_mqtt_tls,
         mqtt_tls_insecure=settings.zigbee_mqtt_tls_insecure,
-        # The scheduled auto-sync keeps the readable parent tree. Importing the
-        # full mesh is a deliberate, per-import choice made in the UI.
-        include_mesh_links=False,
+        # Parent tree only unless the user opted into the mesh in Settings —
+        # the neighbour links multiply the edge count.
+        include_mesh_links=settings.zigbee_sync_include_mesh_links,
     )
 
 
@@ -416,6 +416,7 @@ async def get_zigbee_config(_: str = Depends(get_current_user)) -> ZigbeeConfig:
         mqtt_tls=settings.zigbee_mqtt_tls,
         sync_enabled=settings.zigbee_sync_enabled,
         sync_interval=settings.zigbee_sync_interval,
+        include_mesh_links=settings.zigbee_sync_include_mesh_links,
         host_configured=bool(settings.zigbee_mqtt_host),
     )
 
@@ -425,7 +426,7 @@ async def save_zigbee_config(
     payload: ZigbeeSyncConfig,
     _: str = Depends(get_current_user),
 ) -> ZigbeeConfig:
-    """Persist the auto-sync activation (enabled + interval) and apply it live.
+    """Persist the auto-sync activation (enabled, interval, mesh links) and apply it live.
 
     This is the ONLY Zigbee config the app writes. Connection settings
     (host/port/credentials/topic/tls) are env-only and are never accepted or
@@ -440,6 +441,7 @@ async def save_zigbee_config(
     try:
         settings.zigbee_sync_enabled = payload.sync_enabled
         settings.zigbee_sync_interval = payload.sync_interval
+        settings.zigbee_sync_include_mesh_links = payload.include_mesh_links
         settings.save_overrides()
         set_zigbee_sync_enabled(payload.sync_enabled)
         if payload.sync_enabled:

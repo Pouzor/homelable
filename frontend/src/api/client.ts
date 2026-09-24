@@ -414,6 +414,7 @@ export interface ZigbeeConfigData {
   mqtt_tls: boolean
   sync_enabled: boolean
   sync_interval: number
+  include_mesh_links: boolean
   host_configured: boolean
 }
 
@@ -500,7 +501,7 @@ export const zigbeeApi = {
   getConfig: () => api.get<ZigbeeConfigData>('/zigbee/config'),
   // Only the auto-sync activation is persisted. MQTT connection config
   // (host/port/credentials/topic/tls) is env-only and never sent.
-  saveConfig: (data: { sync_enabled: boolean; sync_interval: number }) =>
+  saveConfig: (data: { sync_enabled: boolean; sync_interval: number; include_mesh_links: boolean }) =>
     api.post<ZigbeeConfigData>('/zigbee/config', data),
   syncNow: () => api.post<ScanRunResult>('/zigbee/sync-now'),
 }

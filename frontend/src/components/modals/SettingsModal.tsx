@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import {
@@ -48,6 +48,8 @@ interface MeshAutoSyncProps {
   description: string
   syncing: boolean
   onSyncNow: () => void
+  /** Source-specific import options, applied to auto-sync and Re-sync now alike. */
+  options?: ReactNode
 }
 
 /**
@@ -58,7 +60,7 @@ interface MeshAutoSyncProps {
  */
 function MeshAutoSync({
   title, accent, hostConfigured, envHostVar, enabled, onEnabledChange,
-  interval, onIntervalChange, description, syncing, onSyncNow,
+  interval, onIntervalChange, description, syncing, onSyncNow, options,
 }: MeshAutoSyncProps) {
   return (
     <div className="pt-3 border-t border-border space-y-2">
@@ -96,6 +98,7 @@ function MeshAutoSync({
             </div>
             <p className="text-[10px] text-muted-foreground leading-tight">{description}</p>
           </div>
+          {options}
           <div className="flex items-center gap-2 pt-1">
             <Button
               variant="outline"
@@ -139,6 +142,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [zbConfig, setZbConfig] = useState<ZigbeeConfigData | null>(null)
   const [zbSyncEnabled, setZbSyncEnabled] = useState(false)
   const [zbInterval, setZbInterval] = useState(3600)
+  const [zbMeshLinks, setZbMeshLinks] = useState(false)
   const [zbSyncing, setZbSyncing] = useState(false)
   const [zwConfig, setZwConfig] = useState<ZwaveConfigData | null>(null)
   const [zwSyncEnabled, setZwSyncEnabled] = useState(false)
@@ -183,6 +187,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setZbConfig(res.data)
         setZbSyncEnabled(res.data.sync_enabled)
         setZbInterval(res.data.sync_interval)
+        setZbMeshLinks(res.data.include_mesh_links)
       })
       .catch(() => {/* zigbee not configured */})
     zwaveApi.getConfig()
@@ -293,6 +298,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         await zigbeeApi.saveConfig({
           sync_enabled: zbSyncEnabled,
           sync_interval: zbInterval,
+          include_mesh_links: zbMeshLinks,
         })
       }
       if (zwConfig) {
@@ -495,6 +501,24 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               description="Re-imports the Zigbee mesh into the pending inventory. Min 300s (5 min)."
               syncing={zbSyncing}
               onSyncNow={handleZbSyncNow}
+              options={
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">
+                    Import mesh links
+                    <span className="block text-[10px] text-muted-foreground leading-tight">
+                      Neighbour links too, not only the parent tree — many more edges.
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={zbMeshLinks}
+                    onChange={(e) => setZbMeshLinks(e.target.checked)}
+                    className="cursor-pointer"
+                    style={{ accentColor: '#39d353' }}
+                    aria-label="Import Zigbee mesh links"
+                  />
+                </label>
+              }
             />
           )}
 

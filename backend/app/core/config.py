@@ -232,6 +232,9 @@ class Settings(BaseSettings):
     zigbee_mqtt_tls_insecure: bool = False
     zigbee_sync_enabled: bool = False
     zigbee_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+    # Also import the neighbour (mesh) links on auto-sync / sync-now, not only the
+    # parent tree. Off by default — a mesh multiplies the edge count ~3x.
+    zigbee_sync_include_mesh_links: bool = False
     # Seconds to wait for the Z2M bridge to answer a networkmap request. A mesh
     # of 200+ devices can take several minutes to build the map, so raise this
     # if imports fail with "Timed out waiting for networkmap response".
@@ -332,6 +335,8 @@ class Settings(BaseSettings):
                 self.zigbee_sync_enabled = bool(data["zigbee_sync_enabled"])
             if "zigbee_sync_interval" in data:
                 self.zigbee_sync_interval = int(data["zigbee_sync_interval"])
+            if "zigbee_sync_include_mesh_links" in data:
+                self.zigbee_sync_include_mesh_links = bool(data["zigbee_sync_include_mesh_links"])
             if "zwave_sync_enabled" in data:
                 self.zwave_sync_enabled = bool(data["zwave_sync_enabled"])
             if "zwave_sync_interval" in data:
@@ -375,6 +380,7 @@ class Settings(BaseSettings):
             # connection config (host/port/credentials/topic/tls) is env-only.
             "zigbee_sync_enabled": self.zigbee_sync_enabled,
             "zigbee_sync_interval": self.zigbee_sync_interval,
+            "zigbee_sync_include_mesh_links": self.zigbee_sync_include_mesh_links,
             "zwave_sync_enabled": self.zwave_sync_enabled,
             "zwave_sync_interval": self.zwave_sync_interval,
             # UniFi: non-secret connection config + auto-sync activation persisted.

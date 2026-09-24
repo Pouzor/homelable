@@ -969,6 +969,56 @@ async def test_save_config_persists_only_sync_fields(
     assert saved == {"host": "broker", "enabled": True, "interval": 900}
 
 
+
+@pytest.mark.asyncio
+async def test_save_config_persists_mesh_links_opt_in(
+    client: AsyncClient, headers: dict, _restore_zigbee_env, monkeypatch
+) -> None:
+    settings.zigbee_mqtt_host = "broker"
+    monkeypatch.setattr(settings, "zigbee_sync_include_mesh_links", False)
+    with patch.object(type(settings), "save_overrides", lambda self: None), \
+            patch("app.api.routes.zigbee.set_zigbee_sync_enabled"), \
+            patch("app.api.routes.zigbee.reschedule_zigbee_sync"):
+        res = await client.post(
+            "/api/v1/zigbee/config",
+            json={"sync_enabled": True, "sync_interval": 900, "include_mesh_links": True},
+            headers=headers,
+        )
+    assert res.status_code == 200
+    assert res.json()["include_mesh_links"] is True
+    assert settings.zigbee_sync_include_mesh_links is True
+    res = await client.get("/api/v1/zigbee/config", headers=headers)
+    assert res.json()["include_mesh_links"] is True
+
+
+@pytest.mark.asyncio
+async def test_save_config_mesh_links_defaults_off(
+    client: AsyncClient, headers: dict, _restore_zigbee_env, monkeypatch
+) -> None:
+    settings.zigbee_mqtt_host = "broker"
+    monkeypatch.setattr(settings, "zigbee_sync_include_mesh_links", True)
+    with patch.object(type(settings), "save_overrides", lambda self: None), \
+            patch("app.api.routes.zigbee.set_zigbee_sync_enabled"), \
+            patch("app.api.routes.zigbee.reschedule_zigbee_sync"):
+        res = await client.post(
+            "/api/v1/zigbee/config",
+            json={"sync_enabled": False, "sync_interval": 900},
+            headers=headers,
+        )
+    assert res.status_code == 200
+    assert settings.zigbee_sync_include_mesh_links is False
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_env_import_request_follows_mesh_links_setting(monkeypatch, enabled: bool) -> None:
+    """Auto-sync and /sync-now both build their request here, so the Settings
+    toggle reaches the scheduled job and the manual re-sync alike."""
+    from app.api.routes.zigbee import env_import_request
+
+    monkeypatch.setattr(settings, "zigbee_mqtt_host", "broker")
+    monkeypatch.setattr(settings, "zigbee_sync_include_mesh_links", enabled)
+    assert env_import_request().include_mesh_links is enabled
+
 @pytest.mark.asyncio
 async def test_sync_now_creates_scan_run(
     client: AsyncClient, headers: dict, _restore_zigbee_env

@@ -196,6 +196,18 @@ def test_save_overrides_omits_mesh_credentials(tmp_path):
     assert written["zwave_sync_interval"] == 1200
 
 
+
+def test_zigbee_mesh_links_setting_round_trips(tmp_path):
+    """The auto-sync mesh-links opt-in is a UI setting: it must survive a restart."""
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    assert s.zigbee_sync_include_mesh_links is False
+    s.zigbee_sync_include_mesh_links = True
+    s.save_overrides()
+    assert json.loads((tmp_path / "scan_config.json").read_text())["zigbee_sync_include_mesh_links"] is True
+    fresh = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    fresh.load_overrides()
+    assert fresh.zigbee_sync_include_mesh_links is True
+
 def _valid_oidc_settings(**overrides):
     values = {
         "secret_key": "test-secret-key-that-is-at-least-32-bytes",
