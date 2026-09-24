@@ -194,6 +194,35 @@ describe('SettingsModal', () => {
     })
   })
 
+  it('hydrates the Zigbee mesh-links opt-in and persists a change on Save', async () => {
+    vi.mocked(zigbeeApi.getConfig).mockResolvedValue(zbConfig({ sync_enabled: true, sync_interval: 1800, include_mesh_links: false }) as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await screen.findByDisplayValue('60')
+    await waitFor(() => expect(screen.getByLabelText('Toggle Zigbee auto-sync')).toBeChecked())
+    const mesh = screen.getByLabelText('Import Zigbee mesh links')
+    expect(mesh).not.toBeChecked()
+    fireEvent.click(mesh)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(zigbeeApi.saveConfig).toHaveBeenCalledWith({ sync_enabled: true, sync_interval: 1800, include_mesh_links: true })
+    })
+  })
+
+  it('shows a saved Zigbee mesh-links opt-in as checked, even with auto-sync off', async () => {
+    vi.mocked(zigbeeApi.getConfig).mockResolvedValue(zbConfig({ sync_enabled: false, include_mesh_links: true }) as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    // Re-sync now honours it too, so it stays usable while auto-sync is off.
+    await waitFor(() => expect(screen.getByLabelText('Import Zigbee mesh links')).toBeChecked())
+    expect(screen.getByLabelText('Import Zigbee mesh links')).toBeEnabled()
+  })
+
+  it('offers the mesh-links option on Zigbee only, not Z-Wave', async () => {
+    vi.mocked(zwaveApi.getConfig).mockResolvedValue(zwConfig() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await screen.findByText('Z-Wave auto-sync')
+    expect(screen.queryByLabelText('Import Zigbee mesh links')).toBeNull()
+  })
+
   it('triggers an immediate Z-Wave sync from its Re-sync now button', async () => {
     vi.mocked(zwaveApi.getConfig).mockResolvedValue(zwConfig() as never)
     render(<SettingsModal open onClose={vi.fn()} />)

@@ -142,6 +142,7 @@ class ZigbeeConfig(BaseModel):
     mqtt_tls: bool = False
     sync_enabled: bool = False
     sync_interval: int = Field(3600, ge=300)
+    include_mesh_links: bool = False
     host_configured: bool = False
 
 
@@ -152,3 +153,5 @@ class ZigbeeSyncConfig(BaseModel):
 
     sync_enabled: bool = False
     sync_interval: int = Field(3600, ge=300)
+    # Import the neighbour (mesh) links too, like the manual dialog's checkbox.
+    include_mesh_links: bool = False
