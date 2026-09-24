@@ -323,6 +323,43 @@ def _add_unifi_sync_job() -> None:
     )
 
 
+async def _run_xcpng_sync() -> None:
+    """Fetch the XCP-ng inventory and upsert it into pending (auto-sync)."""
+    if not settings.xcpng_sync_enabled:
+        return
+    if not (settings.xcpng_host and settings.xcpng_username and settings.xcpng_password):
+        logger.warning("XCP-ng auto-sync enabled but host/credentials not configured — skipping")
+        return
+    from app.api.routes.xcpng import _background_xcpng_import
+    from app.db.models import ScanRun
+
+    async with AsyncSessionLocal() as db:
+        run = ScanRun(status="running", kind="xcpng", ranges=[settings.xcpng_host])
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    await _background_xcpng_import(
+        run_id,
+        settings.xcpng_host,
+        settings.xcpng_username,
+        settings.xcpng_password,
+        settings.xcpng_verify_tls,
+    )
+
+
+def _add_xcpng_sync_job() -> None:
+    scheduler.add_job(
+        _run_xcpng_sync,
+        "interval",
+        seconds=settings.xcpng_sync_interval,
+        id="xcpng_sync",
+        max_instances=1,
+        coalesce=True,
+    )
+
+
 def start_scheduler() -> None:
     global scheduler
     if scheduler.running:
@@ -349,6 +386,8 @@ def start_scheduler() -> None:
         _add_zwave_sync_job()
     if settings.unifi_sync_enabled:
         _add_unifi_sync_job()
+    if settings.xcpng_sync_enabled:
+        _add_xcpng_sync_job()
     scheduler.start()
     logger.info("Scheduler started — status checks every %ds", settings.status_checker_interval)
 
@@ -485,6 +524,31 @@ def set_unifi_sync_enabled(enabled: bool) -> None:
     elif not enabled and job:
         scheduler.remove_job("unifi_sync")
         logger.info("UniFi auto-sync disabled")
+
+
+def reschedule_xcpng_sync(interval_seconds: int) -> None:
+    """Update the XCP-ng auto-sync interval on the running scheduler (if enabled)."""
+    if interval_seconds < 300:
+        raise ValueError(f"interval_seconds must be >= 300, got {interval_seconds}")
+    if not scheduler.running:
+        logger.warning("Scheduler not running, skipping reschedule")
+        return
+    if scheduler.get_job("xcpng_sync"):
+        scheduler.reschedule_job("xcpng_sync", trigger="interval", seconds=interval_seconds)
+        logger.info("XCP-ng auto-sync rescheduled to every %ds", interval_seconds)
+
+
+def set_xcpng_sync_enabled(enabled: bool) -> None:
+    """Add or remove the XCP-ng auto-sync job on the running scheduler."""
+    if not scheduler.running:
+        return
+    job = scheduler.get_job("xcpng_sync")
+    if enabled and not job:
+        _add_xcpng_sync_job()
+        logger.info("XCP-ng auto-sync enabled — every %ds", settings.xcpng_sync_interval)
+    elif not enabled and job:
+        scheduler.remove_job("xcpng_sync")
+        logger.info("XCP-ng auto-sync disabled")
 
 
 def stop_scheduler() -> None:
