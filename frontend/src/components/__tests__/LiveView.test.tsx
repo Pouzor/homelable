@@ -182,6 +182,38 @@ describe('LiveView (non-standalone)', () => {
     expect(ctr?.extent).toBe('parent')
   })
 
+  // ── Zone children (#524) ─────────────────────────────────────────────────
+
+  it('keeps a node parented to its zone, unclamped, like the editor does', async () => {
+    setSearch('?key=valid')
+    const zonePayload = {
+      data: {
+        nodes: [
+          {
+            id: 'zone', type: 'groupRect', label: 'Heimkino', status: 'unknown',
+            services: [], pos_x: 600, pos_y: 400, width: 200, height: 300,
+            created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-01T00:00:00Z',
+          },
+          {
+            id: 'avr', type: 'server', label: 'Denon AVR', status: 'online',
+            services: [], pos_x: 10, pos_y: 30, parent_id: 'zone',
+            created_at: '2024-01-01T00:00:00Z', updated_at: '2024-01-01T00:00:00Z',
+          },
+        ],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      },
+    }
+    vi.mocked(liveviewApi.load).mockResolvedValue(zonePayload as never)
+    render(<LiveView />)
+    await waitFor(() => expect(screen.getByTestId('react-flow')).toBeDefined())
+    const avr = useCanvasStore.getState().nodes.find((n) => n.id === 'avr')
+    // Without parentId the zone-relative position renders as absolute.
+    expect(avr?.parentId).toBe('zone')
+    expect(avr?.extent).toBeUndefined()
+    expect(avr?.position).toEqual({ x: 10, y: 30 })
+  })
+
   // ── Theme + custom_style applied from payload ────────────────────────────
 
   it('applies viewport.theme_id and custom_style from the payload', async () => {

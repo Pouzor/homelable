@@ -7,6 +7,7 @@ import {
   deserializeApiNode,
   deserializeApiEdge,
   migrateClusterHandles,
+  deserializeApiCanvas,
   type ApiNode,
   type ApiEdge,
 } from '@/utils/canvasSerializer'
@@ -604,6 +605,52 @@ describe('migrateClusterHandles', () => {
     const out = migrateClusterHandles(nodes, edges)
     expect(out.nodes).toBe(nodes)
     expect(out.edges[0].sourceHandle).toBe('bottom')
+  })
+})
+
+describe('deserializeApiCanvas', () => {
+  it('parents a zone child without clamping it (#524)', () => {
+    const { nodes } = deserializeApiCanvas([
+      makeApiNode({ id: 'zone', type: 'groupRect', width: 200, height: 300 }),
+      makeApiNode({ id: 'child', parent_id: 'zone', pos_x: 10, pos_y: 30 }),
+    ], [])
+    const child = nodes.find((n) => n.id === 'child')!
+    expect(child.parentId).toBe('zone')
+    expect(child.extent).toBeUndefined()
+    expect(child.position).toEqual({ x: 10, y: 30 })
+  })
+
+  it('parents and clamps a container child (group or container_mode)', () => {
+    const { nodes } = deserializeApiCanvas([
+      makeApiNode({ id: 'grp', type: 'group' }),
+      makeApiNode({ id: 'host', type: 'proxmox', container_mode: true }),
+      makeApiNode({ id: 'a', parent_id: 'grp' }),
+      makeApiNode({ id: 'b', type: 'vm', parent_id: 'host' }),
+    ], [])
+    for (const id of ['a', 'b']) {
+      const n = nodes.find((x) => x.id === id)!
+      expect(n.extent).toBe('parent')
+    }
+    expect(nodes.find((n) => n.id === 'a')!.parentId).toBe('grp')
+    expect(nodes.find((n) => n.id === 'b')!.parentId).toBe('host')
+  })
+
+  it('drops a parent_id that points at neither a container nor a zone', () => {
+    const { nodes } = deserializeApiCanvas([
+      makeApiNode({ id: 'srv' }),
+      makeApiNode({ id: 'child', parent_id: 'srv' }),
+    ], [])
+    expect(nodes.find((n) => n.id === 'child')!.parentId).toBeUndefined()
+  })
+
+  it('deserializes edges and migrates legacy cluster handles', () => {
+    const { edges, nodes } = deserializeApiCanvas(
+      [makeApiNode({ id: 'p1', type: 'proxmox' }), makeApiNode({ id: 'p2', type: 'proxmox' })],
+      [makeApiEdge({ id: 'c1', source: 'p1', target: 'p2', type: 'cluster', source_handle: 'cluster-right', target_handle: 'cluster-left' })],
+    )
+    expect(edges[0].sourceHandle).toBe('right')
+    expect(edges[0].targetHandle).toBe('left')
+    expect(nodes.find((n) => n.id === 'p1')!.data.right_handles).toBe(1)
   })
 })
 
