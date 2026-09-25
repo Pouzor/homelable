@@ -772,7 +772,10 @@ async def bulk_approve_devices(
         elif not device.check_method:
             # Default to ping so the status checker actually polls it. Without
             # this the scheduler skips it (check_method NULL -> no check).
-            device.check_method = "ping" if device.ip else None
+            # With the checker switched off there is nothing to poll for: keep
+            # it NULL rather than store a probe that would start the moment the
+            # switch is flipped back.
+            device.check_method = "ping" if device.ip and settings.status_checker_enabled else None
         node = Node(
             label=device.label,
             type=device.type,
@@ -954,7 +957,7 @@ async def approve_device(
         device.status_live = "online"
     else:
         device.check_method = node_data.check_method or device.check_method or (
-            "ping" if device.ip else None
+            "ping" if device.ip and settings.status_checker_enabled else None
         )
         device.check_target = node_data.check_target or device.check_target
         if node_data.status:
