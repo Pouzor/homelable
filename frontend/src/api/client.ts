@@ -260,9 +260,15 @@ export interface AppSettings {
   service_check_interval: number
 }
 
+/** What the server returns: the editable settings plus the env-only
+ *  STATUS_CHECKER_ENABLED switch (absent on older backends = enabled). */
+export interface AppSettingsResponse extends AppSettings {
+  status_checker_enabled?: boolean
+}
+
 export const settingsApi = {
-  get: () => api.get<AppSettings>('/settings'),
-  save: (data: AppSettings) => api.post<AppSettings>('/settings', data),
+  get: () => api.get<AppSettingsResponse>('/settings'),
+  save: (data: AppSettings) => api.post<AppSettingsResponse>('/settings', data),
 }
 
 export interface ProxmoxConnection {

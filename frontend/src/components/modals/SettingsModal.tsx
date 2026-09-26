@@ -134,6 +134,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [interval, setIntervalValue] = useState(60)
   const [serviceCheckEnabled, setServiceCheckEnabled] = useState(false)
   const [serviceInterval, setServiceInterval] = useState(300)
+  // STATUS_CHECKER_ENABLED=false on the server: no check job runs, so the
+  // controls below would change nothing until it is switched back on.
+  const [checkerEnabled, setCheckerEnabled] = useState(true)
   const [saving, setSaving] = useState(false)
   const [pmConfig, setPmConfig] = useState<ProxmoxConfigData | null>(null)
   const [pmSyncEnabled, setPmSyncEnabled] = useState(false)
@@ -173,6 +176,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setIntervalValue(res.data.interval_seconds)
         setServiceCheckEnabled(res.data.service_check_enabled)
         setServiceInterval(res.data.service_check_interval)
+        setCheckerEnabled(res.data.status_checker_enabled !== false)
       })
       .catch(() => {/* use default */})
     proxmoxApi.getConfig()
@@ -344,11 +348,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           {!STANDALONE && (
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">Status check interval (s)</label>
-            <div className="flex items-center gap-2">
+            {!checkerEnabled && (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                Status checks are disabled on the server (STATUS_CHECKER_ENABLED=false): nodes and
+                services are not probed. These settings apply once it is switched back on.
+              </p>
+            )}
+            <div className={checkerEnabled ? 'flex items-center gap-2' : 'flex items-center gap-2 opacity-50'}>
               <input
                 type="number"
                 min={10}
                 max={3600}
+                disabled={!checkerEnabled}
+                aria-label="Status check interval"
                 value={interval}
                 onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setIntervalValue(v) }}
                 className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
@@ -364,19 +376,21 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <input
                 type="checkbox"
                 checked={serviceCheckEnabled}
+                disabled={!checkerEnabled}
                 onChange={(e) => setServiceCheckEnabled(e.target.checked)}
                 className="cursor-pointer accent-[#00d4ff]"
                 aria-label="Toggle per-service status checks"
               />
             </label>
 
-            <div className={serviceCheckEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+            <div className={serviceCheckEnabled && checkerEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
               <label className="text-xs text-muted-foreground">Service check interval (s)</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
                   min={30}
                   max={3600}
+                  disabled={!checkerEnabled}
                   value={serviceInterval}
                   onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setServiceInterval(v) }}
                   className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
