@@ -86,6 +86,8 @@ async def _run_status_checks() -> None:
     monitoring the host. `hide` (or clearing the check method) is what ends the
     checks; the broadcast simply carries an empty `node_ids`.
     """
+    if not settings.status_checker_enabled:
+        return
     async with AsyncSessionLocal() as db:
         devices = (
             await db.execute(
@@ -127,7 +129,7 @@ async def _run_service_checks() -> None:
     Device-scoped for the same reason as the status check: the services belong
     to the device, so one pass serves every canvas showing it.
     """
-    if not settings.service_check_enabled:
+    if not (settings.status_checker_enabled and settings.service_check_enabled):
         return
     from app.api.routes.status import broadcast_service_status  # avoid circular import
 
@@ -331,16 +333,17 @@ def start_scheduler() -> None:
         except Exception as exc:
             logger.warning("Failed to shut down previous scheduler instance: %s", exc)
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        _run_status_checks,
-        "interval",
-        seconds=settings.status_checker_interval,
-        id="status_checks",
-        max_instances=1,
-        coalesce=True,
-    )
-    if settings.service_check_enabled:
-        _add_service_check_job()
+    if settings.status_checker_enabled:
+        scheduler.add_job(
+            _run_status_checks,
+            "interval",
+            seconds=settings.status_checker_interval,
+            id="status_checks",
+            max_instances=1,
+            coalesce=True,
+        )
+        if settings.service_check_enabled:
+            _add_service_check_job()
     if settings.proxmox_sync_enabled:
         _add_proxmox_sync_job()
     if settings.zigbee_sync_enabled:
@@ -350,7 +353,10 @@ def start_scheduler() -> None:
     if settings.unifi_sync_enabled:
         _add_unifi_sync_job()
     scheduler.start()
-    logger.info("Scheduler started — status checks every %ds", settings.status_checker_interval)
+    if settings.status_checker_enabled:
+        logger.info("Scheduler started — status checks every %ds", settings.status_checker_interval)
+    else:
+        logger.info("Scheduler started — status checks disabled (STATUS_CHECKER_ENABLED=false)")
 
 
 def reschedule_status_checks(interval_seconds: int) -> None:
@@ -359,6 +365,9 @@ def reschedule_status_checks(interval_seconds: int) -> None:
         raise ValueError(f"interval_seconds must be >= 10, got {interval_seconds}")
     if not scheduler.running:
         logger.warning("Scheduler not running, skipping reschedule")
+        return
+    if not scheduler.get_job("status_checks"):
+        logger.info("Status checks disabled — nothing to reschedule")
         return
     scheduler.reschedule_job("status_checks", trigger="interval", seconds=interval_seconds)
     logger.info("Status checks rescheduled to every %ds", interval_seconds)
@@ -379,6 +388,9 @@ def reschedule_service_checks(interval_seconds: int) -> None:
 def set_service_checks_enabled(enabled: bool) -> None:
     """Add or remove the service-check job on the running scheduler."""
     if not scheduler.running:
+        return
+    if enabled and not settings.status_checker_enabled:
+        logger.info("Service checks stay off: STATUS_CHECKER_ENABLED=false")
         return
     job = scheduler.get_job("service_checks")
     if enabled and not job:

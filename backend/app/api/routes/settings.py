@@ -21,19 +21,30 @@ class AppSettings(BaseModel):
     service_check_interval: int = Field(default=300, ge=30)
 
 
-@router.get("", response_model=AppSettings)
-async def get_settings(_: str = Depends(get_current_user)) -> AppSettings:
-    return AppSettings(
+class AppSettingsOut(AppSettings):
+    # Read-only: STATUS_CHECKER_ENABLED is env-only, so the UI can show that
+    # checks are switched off server-side instead of offering controls that do
+    # nothing. Not accepted on POST (AppSettings ignores unknown fields).
+    status_checker_enabled: bool = True
+
+
+def _out(payload: AppSettings) -> AppSettingsOut:
+    return AppSettingsOut(**payload.model_dump(), status_checker_enabled=settings.status_checker_enabled)
+
+
+@router.get("", response_model=AppSettingsOut)
+async def get_settings(_: str = Depends(get_current_user)) -> AppSettingsOut:
+    return _out(AppSettings(
         interval_seconds=settings.status_checker_interval,
         service_check_enabled=settings.service_check_enabled,
         service_check_interval=settings.service_check_interval,
-    )
+    ))
 
 
-@router.post("", response_model=AppSettings)
+@router.post("", response_model=AppSettingsOut)
 async def update_settings(
     payload: AppSettings, _: str = Depends(get_current_user)
-) -> AppSettings:
+) -> AppSettingsOut:
     try:
         settings.status_checker_interval = payload.interval_seconds
         settings.service_check_enabled = payload.service_check_enabled
@@ -47,6 +58,6 @@ async def update_settings(
         set_service_checks_enabled(payload.service_check_enabled)
         if payload.service_check_enabled:
             reschedule_service_checks(payload.service_check_interval)
-        return payload
+        return _out(payload)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -132,6 +132,25 @@ describe('SettingsModal', () => {
     })
   })
 
+  it('shows that status checks are off server-side and disables their controls', async () => {
+    vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: true, service_check_interval: 300, status_checker_enabled: false } } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    expect(await screen.findByText(/STATUS_CHECKER_ENABLED=false/)).toBeDefined()
+    expect((screen.getByLabelText('Status check interval') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Toggle per-service status checks') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Service check interval') as HTMLInputElement).disabled).toBe(true)
+  })
+
+  it('leaves the check controls enabled when the server runs status checks', async () => {
+    vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: true, service_check_interval: 300, status_checker_enabled: true } } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await waitFor(() => expect(settingsApi.get).toHaveBeenCalledOnce())
+    await screen.findByDisplayValue('300')
+    expect(screen.queryByText(/STATUS_CHECKER_ENABLED=false/)).toBeNull()
+    expect((screen.getByLabelText('Status check interval') as HTMLInputElement).disabled).toBe(false)
+    expect((screen.getByLabelText('Toggle per-service status checks') as HTMLInputElement).disabled).toBe(false)
+  })
+
   it('persists only sync fields (not connection config) on Save', async () => {
     vi.mocked(proxmoxApi.getConfig).mockResolvedValue({
       data: { host: 'pve', port: 8006, verify_tls: true, sync_enabled: true, sync_interval: 3600, token_configured: true },

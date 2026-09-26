@@ -321,3 +321,36 @@ def test_secret_key_length_is_checked_after_unwrapping():
 def test_quoted_oidc_client_secret_is_unwrapped():
     configured = _valid_oidc_settings(oidc_client_secret="'sup3r$ecret'")
     assert configured.oidc_client_secret == "sup3r$ecret"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_get_settings_reports_the_status_checker_switch(client: AsyncClient, headers, enabled):
+    with patch("app.api.routes.settings.settings") as mock_settings:
+        mock_settings.status_checker_enabled = enabled
+        mock_settings.status_checker_interval = 60
+        mock_settings.service_check_enabled = True
+        mock_settings.service_check_interval = 300
+        res = await client.get("/api/v1/settings", headers=headers)
+    assert res.status_code == 200
+    assert res.json()["status_checker_enabled"] is enabled
+
+
+@pytest.mark.asyncio
+async def test_update_settings_cannot_change_the_env_only_switch(client: AsyncClient, headers):
+    """STATUS_CHECKER_ENABLED is env-only: a POST carrying the field neither
+    persists it nor echoes it back as changed."""
+    with patch("app.api.routes.settings.settings") as mock_settings, \
+            patch("app.api.routes.settings.reschedule_status_checks"), \
+            patch("app.api.routes.settings.set_service_checks_enabled"):
+        mock_settings.status_checker_enabled = False
+        mock_settings.save_overrides = lambda: None
+        res = await client.post(
+            "/api/v1/settings",
+            json={"interval_seconds": 60, "service_check_enabled": False,
+                  "service_check_interval": 300, "status_checker_enabled": True},
+            headers=headers,
+        )
+        assert mock_settings.status_checker_enabled is False
+    assert res.status_code == 200
+    assert res.json()["status_checker_enabled"] is False

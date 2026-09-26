@@ -179,6 +179,13 @@ class Settings(BaseSettings):
 
     # Status checker
     status_checker_interval: int = 60
+    # Master switch for node and service status checks. False = the checker
+    # jobs are never registered and approvals stop defaulting a device to
+    # `ping`, so the backend sends no reachability probes at all (for installs
+    # where another system owns monitoring). Env-only (STATUS_CHECKER_ENABLED):
+    # deliberately not in load_overrides/save_overrides, so the UI cannot
+    # switch it back on through scan_config.json.
+    status_checker_enabled: bool = True
 
     # Per-service status checker (independent of node checks). Off by default.
     service_check_enabled: bool = False
