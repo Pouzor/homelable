@@ -1,18 +1,21 @@
 """API + persistence tests for /api/v1/opnsense/* and /api/v1/pfsense/*."""
+
 from __future__ import annotations
 
+from contextlib import suppress
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.routes.opnsense import _find_existing as opn_find_existing
 from app.api.routes.opnsense import _persist_devices as opn_persist_devices
 from app.api.routes.pfsense import _find_existing as pfs_find_existing
 from app.api.routes.pfsense import _persist_devices as pfs_persist_devices
 from app.core.config import settings
-from app.db.models import InventoryDevice, ScanRun
+from app.db.models import InventoryDevice
 
 
 # ---------------------------------------------------------------------------
@@ -36,10 +39,8 @@ def _clear_opnsense_settings():
     }
     yield
     for k, v in orig.items():
-        try:
+        with suppress(Exception):
             setattr(settings, k, v)
-        except Exception:
-            pass
 
 
 def _set_opnsense_creds(url: str = "https://opnsense.local") -> None:
