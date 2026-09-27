@@ -407,7 +407,7 @@ async def _build_topology(
     # --- B. SNMP/LLDP — infrastructure devices only -------------------------
     snmp_infra = [
         d for d in devices
-        if d.snmp_enabled and d.ip
+        if getattr(d, "snmp_enabled", False) and d.ip
         and _dev_in_types(d, _INFRA_TYPES)
     ]
 
