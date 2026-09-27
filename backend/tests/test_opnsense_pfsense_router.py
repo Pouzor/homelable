@@ -7,7 +7,6 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.routes.opnsense import _find_existing as opn_find_existing
 from app.api.routes.opnsense import _persist_devices as opn_persist_devices
 from app.api.routes.pfsense import _find_existing as pfs_find_existing
