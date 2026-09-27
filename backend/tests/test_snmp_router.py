@@ -1,4 +1,5 @@
 """API tests for /api/v1/snmp/* endpoints."""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -7,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.routes.snmp import _match_neighbor_to_device, _norm_mac
 from app.core.config import settings
 from app.db.models import InventoryDevice, Node, SnmpMetric
