@@ -152,7 +152,7 @@ async def test_test_connection_failure(client: AsyncClient, headers: dict) -> No
     ):
         res = await client.post(
             "/api/v1/xcpng/test-connection",
-            json={"host": "xo.local"},
+            json={"host": "xo.local", "username": "u", "password": "p"},
             headers=headers,
         )
     assert res.status_code == 200
@@ -213,7 +213,7 @@ async def test_import_502_on_connection_error(client: AsyncClient, headers: dict
     ):
         res = await client.post(
             "/api/v1/xcpng/import",
-            json={"host": "xo.local"},
+            json={"host": "xo.local", "username": "u", "password": "p"},
             headers=headers,
         )
     assert res.status_code == 502
@@ -227,7 +227,7 @@ async def test_import_422_on_value_error(client: AsyncClient, headers: dict) -> 
     ):
         res = await client.post(
             "/api/v1/xcpng/import",
-            json={"host": "xo.local"},
+            json={"host": "xo.local", "username": "u", "password": "p"},
             headers=headers,
         )
     assert res.status_code == 422
