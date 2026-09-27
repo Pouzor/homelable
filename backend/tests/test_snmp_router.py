@@ -6,12 +6,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.routes.snmp import _match_neighbor_to_device, _norm_mac
 from app.core.config import settings
-from app.db.models import Edge, InventoryDevice, Node, SnmpMetric
+from app.db.models import InventoryDevice, Node, SnmpMetric
 
 
 # ---------------------------------------------------------------------------
