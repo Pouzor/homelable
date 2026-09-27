@@ -9,11 +9,9 @@ Covers:
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from app.db.models import InventoryDevice, Node
 from app.services.auto_place import (
     CLIENT_NODE_HEIGHT,
-    CLIENT_NODE_WIDTH,
     INFRA_NODE_WIDTH,
     INFRA_TIER_HEIGHT,
     _client_grid_shape,
