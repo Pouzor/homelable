@@ -6,9 +6,11 @@ Covers:
   - _compute_tree_layout  Reingold-Tilford infra + client layout
   - run_auto_place      DB integration with mocked _build_topology
 """
+
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from app.db.models import InventoryDevice, Node
 from app.services.auto_place import (
     CLIENT_NODE_HEIGHT,
