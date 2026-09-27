@@ -415,8 +415,8 @@ async def _build_topology(
             neighbors = await asyncio.wait_for(
                 discover_neighbors(
                     host=dev.ip,
-                    community=dev.snmp_community or "public",
-                    port=dev.snmp_port or 161,
+                    community=getattr(dev, "snmp_community", None) or "public",
+                    port=getattr(dev, "snmp_port", None) or 161,
                 ),
                 timeout=LLDP_TIMEOUT,
             )
@@ -427,7 +427,7 @@ async def _build_topology(
     if snmp_infra:
         results = await asyncio.gather(*[_walk(d) for d in snmp_infra], return_exceptions=True)
         for result in results:
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 continue
             dev_id, neighbors = result
             for n in neighbors:
@@ -462,11 +462,13 @@ async def run_auto_place(
     # resolution.  Using status != "hidden" (rather than status == "approved")
     # makes auto-place resilient to devices reverting to "pending" — e.g. after
     # a scan re-import — without breaking the layout.
-    all_devices: list[InventoryDevice] = (
-        await db.execute(
-            select(InventoryDevice).where(InventoryDevice.status != "hidden")
-        )
-    ).scalars().all()
+    all_devices: list[InventoryDevice] = list(
+        (
+            await db.execute(
+                select(InventoryDevice).where(InventoryDevice.status != "hidden")
+            )
+        ).scalars().all()
+    )
 
     approved_devices = all_devices  # placement uses same set as topology build
 
@@ -474,9 +476,9 @@ async def run_auto_place(
         return {"nodes_placed": 0, "nodes_moved": 0, "edges_created": 0, "skipped": 0}
 
     # --- 2. Find which devices already have a node on this design ----------
-    existing_nodes: list[Node] = (
-        await db.execute(select(Node).where(Node.design_id == design_id))
-    ).scalars().all()
+    existing_nodes: list[Node] = list(
+        (await db.execute(select(Node).where(Node.design_id == design_id))).scalars().all()
+    )
 
     placed_device_ids: set[str] = {
         n.device_id for n in existing_nodes if n.device_id
@@ -864,9 +866,9 @@ async def run_auto_place(
     await db.flush()
 
     # --- 7. Create Edge rows for topology pairs ----------------------------
-    existing_edges: list[Edge] = (
-        await db.execute(select(Edge).where(Edge.design_id == design_id))
-    ).scalars().all()
+    existing_edges: list[Edge] = list(
+        (await db.execute(select(Edge).where(Edge.design_id == design_id))).scalars().all()
+    )
 
     # On force re-layout, wipe all existing edges and redraw only infra edges.
     # This removes the old client→AP spider-web lines left from prior runs.
