@@ -17,7 +17,6 @@ from app.api.routes.pfsense import _persist_devices as pfs_persist_devices
 from app.core.config import settings
 from app.db.models import InventoryDevice
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
