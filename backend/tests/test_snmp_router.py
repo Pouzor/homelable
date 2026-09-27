@@ -13,7 +13,6 @@ from app.api.routes.snmp import _match_neighbor_to_device, _norm_mac
 from app.core.config import settings
 from app.db.models import InventoryDevice, Node, SnmpMetric
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
