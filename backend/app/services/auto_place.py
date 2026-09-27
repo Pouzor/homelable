@@ -9,7 +9,6 @@ import logging
 import math
 import uuid
 from typing import Any
-from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -197,7 +196,7 @@ def _compute_tree_layout(
     if placed:
         # Shift the whole root row so its centre matches the centre of the wanted xs.
         shift = (sum(w for w, _ in wanted) - sum(placed)) / len(placed)
-        for (_, r), x in zip(wanted, placed):
+        for (_, r), x in zip(wanted, placed, strict=False):
             cx[r] = x + shift
 
     # -- emit positions ------------------------------------------------------

@@ -1,7 +1,7 @@
 import {
   IspNode, RouterNode, FirewallNode, SwitchNode, ServerNode, VmNode, LxcNode,
   NasNode, KvmNode, IotNode, ApNode, CameraNode, PrinterNode, ComputerNode, LaptopNode,
-  MobileNode, CplNode, DockerHostNode, DockerContainerNode, GenericNode,
+  MobileNode, CplNode, DockerHostNode, DockerContainerNode, HubNode, GenericNode,
   ZigbeeCoordinatorNode, ZigbeeRouterNode, ZigbeeEndDeviceNode,
   ZwaveCoordinatorNode, ZwaveRouterNode, ZwaveEndDeviceNode,
   GridNode, UpsNode, BatteryNode, GeneratorNode, SolarPanelNode, InverterNode,
@@ -34,6 +34,7 @@ export const nodeTypes = {
   cpl: CplNode,
   docker_host: DockerHostNode,
   docker_container: DockerContainerNode,
+  hub: HubNode,
   generic: GenericNode,
   groupRect: GroupRectNode,
   group: GroupNode,
