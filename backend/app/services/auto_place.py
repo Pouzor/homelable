@@ -9,32 +9,15 @@ import logging
 import math
 import uuid
 from typing import Any
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings as app_settings
 from app.db.models import Edge, InventoryDevice, InventoryDeviceLink, Node
-
-try:
-    from app.services.unifi_service import fetch_unifi_topology
-except ImportError:
-    async def fetch_unifi_topology(
-        host: str, port: int, site: str, username: str, password: str, verify_tls: bool = False
-    ) -> dict[str, Any]:
-        return {}
-
-try:
-    from app.services.pfsense_service import fetch_dhcp_hostname_macs
-except ImportError:
-    async def fetch_dhcp_hostname_macs(*args: Any, **kwargs: Any) -> dict[str, str]:
-        return {}
-
-try:
-    from app.services.lldp import discover_neighbors
-except ImportError:
-    async def discover_neighbors(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
-        return []
+from app.services.lldp import discover_neighbors
+from app.services.unifi_service import fetch_unifi_topology
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +197,7 @@ def _compute_tree_layout(
     if placed:
         # Shift the whole root row so its centre matches the centre of the wanted xs.
         shift = (sum(w for w, _ in wanted) - sum(placed)) / len(placed)
-        for (_, r), x in zip(wanted, placed, strict=False):
+        for (_, r), x in zip(wanted, placed):
             cx[r] = x + shift
 
     # -- emit positions ------------------------------------------------------
@@ -284,44 +267,19 @@ async def _build_topology(
             adjacency.setdefault(dev_a, set()).add(dev_b)
             adjacency.setdefault(dev_b, set()).add(dev_a)
 
-    # --- A0. OPNsense DHCP lease aliases ------------------------------------
-    # Devices with MAC randomization appear under a different MAC in UniFi
-    # client_uplinks than the hardware MAC stored in the inventory. DHCP leases
-    # include hostname + current MAC, so we can add the randomized MAC as an
-    # alias pointing to the same device_id before processing client_uplinks.
     s = app_settings
-    pfsense_url: str = getattr(s, "pfsense_url", "")
-    pfsense_api_key: str = getattr(s, "pfsense_api_key", "")
-    if pfsense_url and pfsense_api_key:
-        dhcp_aliases = await fetch_dhcp_hostname_macs(
-            base_url=pfsense_url,
-            api_key=pfsense_api_key,
-            verify_tls=getattr(s, "pfsense_verify_tls", True),
-        )
-        aliases_added = 0
-        for lease_mac, hostname in dhcp_aliases.items():
-            if lease_mac not in mac_to_dev:
-                dev_id = name_to_dev.get(hostname.lower())
-                if dev_id:
-                    mac_to_dev[lease_mac] = dev_id
-                    aliases_added += 1
-        if aliases_added:
-            logger.info("auto_place: added %d DHCP MAC aliases for randomized-MAC devices", aliases_added)
-
     # --- A. UniFi topology ---------------------------------------------------
-    host: str = getattr(s, "unifi_effective_host", getattr(s, "unifi_host", ""))
-    port: int = getattr(s, "unifi_effective_port", getattr(s, "unifi_port", 443))
-    unifi_username: str = getattr(s, "unifi_username", "")
-    unifi_password: str = getattr(s, "unifi_password", "")
-    if host and unifi_username and unifi_password:
+    host = s.unifi_effective_host
+    port = s.unifi_effective_port
+    if host and s.unifi_username and s.unifi_password:
         try:
             topo = await fetch_unifi_topology(
                 host=host,
                 port=port,
-                site=getattr(s, "unifi_site", "") or "default",
-                username=unifi_username,
-                password=unifi_password,
-                verify_tls=getattr(s, "unifi_verify_tls", True),
+                site=s.unifi_site or "default",
+                username=s.unifi_username,
+                password=s.unifi_password,
+                verify_tls=s.unifi_verify_tls,
             )
             # Infrastructure LLDP links
             resolved_lldp: list[str] = []
@@ -449,7 +407,7 @@ async def _build_topology(
     # --- B. SNMP/LLDP — infrastructure devices only -------------------------
     snmp_infra = [
         d for d in devices
-        if getattr(d, "snmp_enabled", False) and d.ip
+        if d.snmp_enabled and d.ip
         and _dev_in_types(d, _INFRA_TYPES)
     ]
 
@@ -458,8 +416,8 @@ async def _build_topology(
             neighbors = await asyncio.wait_for(
                 discover_neighbors(
                     host=dev.ip,
-                    community=getattr(dev, "snmp_community", None) or "public",
-                    port=getattr(dev, "snmp_port", None) or 161,
+                    community=dev.snmp_community or "public",
+                    port=dev.snmp_port or 161,
                 ),
                 timeout=LLDP_TIMEOUT,
             )
@@ -470,7 +428,7 @@ async def _build_topology(
     if snmp_infra:
         results = await asyncio.gather(*[_walk(d) for d in snmp_infra], return_exceptions=True)
         for result in results:
-            if isinstance(result, BaseException):
+            if isinstance(result, Exception):
                 continue
             dev_id, neighbors = result
             for n in neighbors:
@@ -505,11 +463,11 @@ async def run_auto_place(
     # resolution.  Using status != "hidden" (rather than status == "approved")
     # makes auto-place resilient to devices reverting to "pending" — e.g. after
     # a scan re-import — without breaking the layout.
-    all_devices: list[InventoryDevice] = list((
+    all_devices: list[InventoryDevice] = (
         await db.execute(
             select(InventoryDevice).where(InventoryDevice.status != "hidden")
         )
-    ).scalars().all())
+    ).scalars().all()
 
     approved_devices = all_devices  # placement uses same set as topology build
 
@@ -517,9 +475,9 @@ async def run_auto_place(
         return {"nodes_placed": 0, "nodes_moved": 0, "edges_created": 0, "skipped": 0}
 
     # --- 2. Find which devices already have a node on this design ----------
-    existing_nodes: list[Node] = list((
+    existing_nodes: list[Node] = (
         await db.execute(select(Node).where(Node.design_id == design_id))
-    ).scalars().all())
+    ).scalars().all()
 
     placed_device_ids: set[str] = {
         n.device_id for n in existing_nodes if n.device_id
@@ -907,9 +865,9 @@ async def run_auto_place(
     await db.flush()
 
     # --- 7. Create Edge rows for topology pairs ----------------------------
-    existing_edges: list[Edge] = list((
+    existing_edges: list[Edge] = (
         await db.execute(select(Edge).where(Edge.design_id == design_id))
-    ).scalars().all())
+    ).scalars().all()
 
     # On force re-layout, wipe all existing edges and redraw only infra edges.
     # This removes the old client→AP spider-web lines left from prior runs.
