@@ -119,6 +119,120 @@ async def test_enable_sync_without_credentials_rejected(client: AsyncClient, hea
     assert res.status_code == 400
 
 
+# --- test-connection -------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_requires_auth_test_connection(client: AsyncClient) -> None:
+    res = await client.post("/api/v1/xcpng/test-connection", json={"host": "xo.local"})
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_test_connection_success(client: AsyncClient, headers: dict) -> None:
+    with patch(
+        "app.api.routes.xcpng.test_xcpng_connection",
+        new=AsyncMock(return_value=(True, "Connected")),
+    ):
+        res = await client.post(
+            "/api/v1/xcpng/test-connection",
+            json={"host": "xo.local", "username": "u", "password": "p"},
+            headers=headers,
+        )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["connected"] is True
+    assert body["message"] == "Connected"
+
+
+@pytest.mark.asyncio
+async def test_test_connection_failure(client: AsyncClient, headers: dict) -> None:
+    with patch(
+        "app.api.routes.xcpng.test_xcpng_connection",
+        new=AsyncMock(return_value=(False, "Connection refused")),
+    ):
+        res = await client.post(
+            "/api/v1/xcpng/test-connection",
+            json={"host": "xo.local"},
+            headers=headers,
+        )
+    assert res.status_code == 200
+    assert res.json()["connected"] is False
+
+
+# --- /import ---------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_requires_auth_import(client: AsyncClient) -> None:
+    res = await client.post("/api/v1/xcpng/import", json={"host": "xo.local"})
+    assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_import_returns_nodes_and_edges(client: AsyncClient, headers: dict) -> None:
+    fake_nodes = [
+        {
+            "id": "xcpng-host-uuid-001",
+            "label": "xcp-host",
+            "type": "xcpng",
+            "ieee_address": "xcpng-host-uuid-001",
+            "hostname": "xcp-host",
+            "ip": "10.0.0.1",
+            "mac": None,
+            "status": "online",
+            "cpu_count": 8,
+            "ram_gb": 32.0,
+            "vendor": "XCP-ng",
+            "model": "Hypervisor",
+            "vmid": None,
+            "parent_ieee": None,
+        }
+    ]
+    fake_edges: list = []
+    with patch(
+        "app.api.routes.xcpng.fetch_xcpng_inventory",
+        new=AsyncMock(return_value=(fake_nodes, fake_edges)),
+    ):
+        res = await client.post(
+            "/api/v1/xcpng/import",
+            json={"host": "xo.local", "username": "u", "password": "p"},
+            headers=headers,
+        )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["device_count"] == 1
+    assert len(body["nodes"]) == 1
+    assert body["nodes"][0]["label"] == "xcp-host"
+    assert body["edges"] == []
+
+
+@pytest.mark.asyncio
+async def test_import_502_on_connection_error(client: AsyncClient, headers: dict) -> None:
+    with patch(
+        "app.api.routes.xcpng.fetch_xcpng_inventory",
+        new=AsyncMock(side_effect=ConnectionError("refused")),
+    ):
+        res = await client.post(
+            "/api/v1/xcpng/import",
+            json={"host": "xo.local"},
+            headers=headers,
+        )
+    assert res.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_import_422_on_value_error(client: AsyncClient, headers: dict) -> None:
+    with patch(
+        "app.api.routes.xcpng.fetch_xcpng_inventory",
+        new=AsyncMock(side_effect=ValueError("bad payload")),
+    ):
+        res = await client.post(
+            "/api/v1/xcpng/import",
+            json={"host": "xo.local"},
+            headers=headers,
+        )
+    assert res.status_code == 422
+
+
 # --- _find_pending ---------------------------------------------------------
 
 @pytest.mark.asyncio
