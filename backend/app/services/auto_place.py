@@ -15,8 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings as app_settings
 from app.db.models import Edge, InventoryDevice, InventoryDeviceLink, Node
-from app.services.lldp import discover_neighbors
 from app.services.unifi_service import fetch_unifi_topology
+
+try:
+    from app.services.lldp import discover_neighbors
+except ImportError:
+    async def discover_neighbors(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:  # type: ignore[misc]
+        return []
 
 logger = logging.getLogger(__name__)
 
