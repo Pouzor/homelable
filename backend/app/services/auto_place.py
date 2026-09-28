@@ -20,7 +20,7 @@ from app.services.unifi_service import fetch_unifi_topology
 try:
     from app.services.lldp import discover_neighbors
 except ImportError:
-    async def discover_neighbors(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:  # type: ignore[misc]
+    async def discover_neighbors(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
         return []
 
 logger = logging.getLogger(__name__)
