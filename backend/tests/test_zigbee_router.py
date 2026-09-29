@@ -1230,3 +1230,65 @@ async def test_resolve_links_targets_the_card_just_placed(db_session) -> None:
     assert [(e["source"], e["target"]) for e in created] == [(router.id, placed.id)]
     edges = (await db_session.execute(select(Edge))).scalars().all()
     assert {(e.source, e.target) for e in edges} == {(router.id, linked.id), (router.id, placed.id)}
+
+
+@pytest.mark.asyncio
+async def test_second_card_is_linked_after_the_canvas_was_saved(
+    client: AsyncClient, headers: dict, db_session
+) -> None:
+    """Regression for #532 as reported: approve, save the canvas, add the device
+    again. The save used to detach the cards from their rows, so the second
+    approve found no coordinator to link to.
+    """
+    import uuid
+
+    from app.db.models import Design, InventoryDevice, InventoryDeviceLink
+
+    design = Design(id=str(uuid.uuid4()), name="Zigbee")
+    db_session.add_all([
+        design,
+        InventoryDevice(id="d-coord", ieee_address="0xCOORD", status="pending"),
+        InventoryDevice(id="d-lidl", ieee_address="0xLIDL", status="pending"),
+        InventoryDeviceLink(
+            id=str(uuid.uuid4()), source_ieee="0xCOORD", target_ieee="0xLIDL",
+            discovery_source="zigbee",
+        ),
+    ])
+    await db_session.commit()
+
+    async def approve(device_id: str, node_type: str, force: bool = False) -> dict:
+        res = await client.post(
+            f"/api/v1/scan/pending/{device_id}/approve",
+            json={"type": node_type, "label": device_id, "design_id": design.id, "force": force},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        body: dict = res.json()
+        return body
+
+    coord = await approve("d-coord", "zigbee_coordinator")
+    first = await approve("d-lidl", "zigbee_router")
+    # What a client that never learned the device ids sends: no device_id.
+    nodes = [
+        {"id": coord["node_id"], "type": "zigbee_coordinator", "label": "Coordinator"},
+        {"id": first["node_id"], "type": "zigbee_router", "label": "Lidl PC"},
+    ]
+    edge = first["edges"][0]
+    res = await client.post(
+        "/api/v1/canvas/save",
+        json={
+            "design_id": design.id,
+            "nodes": nodes,
+            "edges": [{"id": edge["id"], "source": edge["source"], "target": edge["target"], "type": "iot"}],
+            "viewport": {},
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+
+    second = await approve("d-lidl", "zigbee_router", force=True)
+
+    assert second["edges_created"] == 1
+    assert (second["edges"][0]["source"], second["edges"][0]["target"]) == (
+        coord["node_id"], second["node_id"],
+    )

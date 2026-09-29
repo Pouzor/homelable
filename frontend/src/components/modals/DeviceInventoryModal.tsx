@@ -136,6 +136,10 @@ function inventoryNodeData(d: InventoryEntry) {
     data: {
       label: deviceLabel(d),
       type,
+      // The row this card draws. Without it the next canvas save would re-match
+      // the node by ip/mac, which a Zigbee or Z-Wave device does not have, and
+      // mint a stray row instead.
+      device_id: d.id,
       ip: d.ip ?? undefined,
       mac: d.mac ?? undefined,
       hostname: d.hostname ?? undefined,
@@ -388,7 +392,11 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
         id: nodeId,
         type: nodeData.type,
         position: getCenteredPosition(),
-        data: { ...nodeData, status: wireless ? ('online' as const) : ('unknown' as const) },
+        data: {
+          ...nodeData,
+          device_id: device.id,
+          status: wireless ? ('online' as const) : ('unknown' as const),
+        },
       })
       injectAutoEdges(res.data.edges)
       const extra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
