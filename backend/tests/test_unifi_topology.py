@@ -13,8 +13,11 @@ _CALL_KWARGS = dict(host="unifi.local", port=8443, site="default", username="adm
 _EMPTY = {"lldp_edges": [], "client_uplinks": {}, "infra_macs": {}, "device_uplinks": {}, "stp_priorities": {}}
 
 
-def _patch(login_return=None, devices=None, clients=None):
-    if login_return is None:
+_LOGIN_OK = object()
+
+
+def _patch(login_return=_LOGIN_OK, devices=None, clients=None):
+    if login_return is _LOGIN_OK:
         login_return = {"token": "x"}
     return (
         patch("app.services.unifi_service._login", new_callable=AsyncMock, return_value=login_return),
@@ -28,19 +31,16 @@ def _patch(login_return=None, devices=None, clients=None):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_login_failure_returns_empty() -> None:
-    p_login, p_dev, p_cli = _patch(login_return={})
-    with p_login, p_dev, p_cli:
+@pytest.mark.parametrize("login_return", [{}, None])
+async def test_failed_login_returns_empty_without_fetching(login_return) -> None:
+    devices = [{"mac": "aa:bb:cc:dd:ee:01", "type": "usw", "name": "sw"}]
+    clients = [{"mac": "11:22:33:44:55:66", "ap_mac": "aa:bb:cc:dd:ee:01"}]
+    p_login, p_dev, p_cli = _patch(login_return=login_return, devices=devices, clients=clients)
+    with p_login, p_dev as m_dev, p_cli as m_cli:
         result = await fetch_unifi_topology(**_CALL_KWARGS)
     assert result == _EMPTY
-
-
-@pytest.mark.asyncio
-async def test_login_none_returns_empty() -> None:
-    p_login, p_dev, p_cli = _patch(login_return=None)
-    with p_login, p_dev, p_cli:
-        result = await fetch_unifi_topology(**_CALL_KWARGS)
-    assert result == _EMPTY
+    m_dev.assert_not_awaited()
+    m_cli.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +317,31 @@ async def test_client_without_mac_skipped() -> None:
     with p_login, p_dev, p_cli:
         result = await fetch_unifi_topology(**_CALL_KWARGS)
     assert result["client_uplinks"] == {}
+
+
+# ---------------------------------------------------------------------------
+# MAC normalization
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_uppercase_macs_are_lowercased() -> None:
+    devices = [
+        {
+            "mac": "AA:BB:CC:DD:EE:01", "type": "USW", "name": "sw",
+            "lldp_table": [{"chassis_id": "AA:BB:CC:DD:EE:02"}],
+            "uplink": {"mac": "AA:BB:CC:DD:EE:02"},
+            "stp_priority": 8192,
+        },
+    ]
+    clients = [{"mac": "11:22:33:AA:BB:CC", "ap_mac": "AA:BB:CC:DD:EE:03"}]
+    p_login, p_dev, p_cli = _patch(devices=devices, clients=clients)
+    with p_login, p_dev, p_cli:
+        result = await fetch_unifi_topology(**_CALL_KWARGS)
+    assert result["infra_macs"] == {"aa:bb:cc:dd:ee:01": {"type": "switch", "name": "sw"}}
+    assert result["lldp_edges"] == [("aa:bb:cc:dd:ee:01", "aa:bb:cc:dd:ee:02")]
+    assert result["device_uplinks"] == {"aa:bb:cc:dd:ee:01": "aa:bb:cc:dd:ee:02"}
+    assert result["stp_priorities"] == {"aa:bb:cc:dd:ee:01": 8192}
+    assert result["client_uplinks"] == {"11:22:33:aa:bb:cc": "aa:bb:cc:dd:ee:03"}
 
 
 # ---------------------------------------------------------------------------
