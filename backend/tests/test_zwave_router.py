@@ -677,3 +677,26 @@ async def test_import_reuses_the_existing_inventory_row(
         n for n in res.json()["nodes"] if n["ieee_address"] == "zwave-0xh-1"
     )
     assert coordinator["device_id"] == existing_id
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_records_its_source(db_session) -> None:
+    """A row the import creates lists it among its sources, and a re-import puts
+    it back on a row a canvas save left as ["canvas"] alone (#532) — the UI files
+    a device by that list."""
+    from sqlalchemy import select
+
+    from app.api.routes.zwave import _persist_pending_import
+    from app.db.models import InventoryDevice
+
+    await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert rows and all(r.discovery_sources == ["zwave"] for r in rows)
+
+    for row in rows:
+        row.discovery_sources = ["canvas"]
+    await db_session.commit()
+    await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert all(r.discovery_sources == ["canvas", "zwave"] for r in rows)

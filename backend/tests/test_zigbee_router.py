@@ -1292,3 +1292,26 @@ async def test_second_card_is_linked_after_the_canvas_was_saved(
     assert (second["edges"][0]["source"], second["edges"][0]["target"]) == (
         coord["node_id"], second["node_id"],
     )
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_records_its_source(db_session) -> None:
+    """A row the import creates lists it among its sources, and a re-import puts
+    it back on a row a canvas save left as ["canvas"] alone (#532) — the UI files
+    a device by that list."""
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import InventoryDevice
+
+    await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert rows and all(r.discovery_sources == ["zigbee"] for r in rows)
+
+    for row in rows:
+        row.discovery_sources = ["canvas"]
+    await db_session.commit()
+    await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert all(r.discovery_sources == ["canvas", "zigbee"] for r in rows)

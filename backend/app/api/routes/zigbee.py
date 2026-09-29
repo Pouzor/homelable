@@ -29,6 +29,7 @@ from app.schemas.zigbee import (
     ZigbeeTestConnectionRequest,
     ZigbeeTestConnectionResponse,
 )
+from app.services.discovery_sources import add_source
 from app.services.import_jobs import create_job, fail_job, finish_job, get_job
 from app.services.inventory_sync import attach_device_ids
 from app.services.node_dedupe import dedupe_nodes_by_device
@@ -315,6 +316,7 @@ async def _persist_pending_import(
                     properties=props,
                     status="pending",
                     discovery_source="zigbee",
+                    discovery_sources=["zigbee"],
                 )
             )
             pending_created += 1
@@ -327,6 +329,10 @@ async def _persist_pending_import(
             if n.get("lqi") is not None:
                 pending.lqi = n.get("lqi")
             pending.properties = merge_zigbee_properties(list(pending.properties or []), props)
+            # Record the import among the row's sources: the UI files a device
+            # by that list, so a row a canvas save listed as ["canvas"] only
+            # would otherwise stay out of the zigbee filter for good.
+            pending.discovery_sources = add_source(pending.discovery_sources, "zigbee")
             if pending.status == "approved" and not await _is_drawn(db, pending.id):
                 # Approved earlier but no canvas draws it any more — the node was
                 # deleted. Revive the row to "pending" so it reappears in the list

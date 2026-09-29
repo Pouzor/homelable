@@ -27,6 +27,7 @@ from app.schemas.zwave import (
     ZwaveTestConnectionRequest,
     ZwaveTestConnectionResponse,
 )
+from app.services.discovery_sources import add_source
 from app.services.inventory_sync import attach_device_ids
 from app.services.node_dedupe import dedupe_nodes_by_device
 from app.services.zwave_service import (
@@ -247,6 +248,7 @@ async def _persist_pending_import(
                     properties=props,
                     status="pending",
                     discovery_source="zwave",
+                    discovery_sources=["zwave"],
                 )
             )
             pending_created += 1
@@ -257,6 +259,10 @@ async def _persist_pending_import(
             pending.model = n.get("model") or pending.model
             pending.vendor = n.get("vendor") or pending.vendor
             pending.properties = merge_zwave_properties(list(pending.properties or []), props)
+            # Record the import among the row's sources: the UI files a device
+            # by that list, so a row a canvas save listed as ["canvas"] only
+            # would otherwise stay out of the zwave filter for good.
+            pending.discovery_sources = add_source(pending.discovery_sources, "zwave")
             if pending.status == "approved" and not await _is_drawn(db, pending.id):
                 # Approved earlier but no canvas draws it any more (the node was
                 # deleted) — revive to "pending" so it reappears in the list.
