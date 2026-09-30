@@ -196,6 +196,53 @@ def test_save_overrides_omits_mesh_credentials(tmp_path):
     assert written["zwave_sync_interval"] == 1200
 
 
+def test_unifi_connection_config_is_env_only_never_from_overrides(tmp_path):
+    """Regression #538: a scan_config.json written before UNIFI_* was set holds
+    an empty host and the default port. It must not clobber the env values.
+    Only the auto-sync activation and import modes are read back."""
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    s.unifi_host = "unifi.lan"  # as if set from env
+    s.unifi_port = 443
+    s.unifi_site = "home"
+    s.unifi_verify_tls = True
+    (tmp_path / "scan_config.json").write_text(json.dumps({
+        "unifi_host": "",
+        "unifi_port": 8443,
+        "unifi_site": "default",
+        "unifi_verify_tls": False,
+        "unifi_sync_enabled": True,
+        "unifi_sync_interval": 600,
+        "unifi_import_known_clients": True,
+    }))
+    s.load_overrides()
+    assert s.unifi_host == "unifi.lan"
+    assert s.unifi_port == 443
+    assert s.unifi_site == "home"
+    assert s.unifi_verify_tls is True
+    assert s.unifi_effective_host == "unifi.lan"
+    assert s.unifi_sync_enabled is True
+    assert s.unifi_sync_interval == 600
+    assert s.unifi_import_known_clients is True
+
+
+def test_save_overrides_omits_unifi_connection_config(tmp_path):
+    """Saving any settings section must not freeze the UniFi connection config
+    (nor the credentials) into scan_config.json."""
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    s.unifi_host = "unifi.lan"
+    s.unifi_password = "secret"
+    s.unifi_sync_enabled = True
+    s.unifi_sync_interval = 900
+    s.save_overrides()
+    raw = (tmp_path / "scan_config.json").read_text()
+    assert "secret" not in raw
+    written = json.loads(raw)
+    for key in ("unifi_host", "unifi_port", "unifi_site", "unifi_verify_tls", "unifi_url"):
+        assert key not in written
+    assert written["unifi_sync_enabled"] is True
+    assert written["unifi_sync_interval"] == 900
+
+
 
 def test_zigbee_mesh_links_setting_round_trips(tmp_path):
     """The auto-sync mesh-links opt-in is a UI setting: it must survive a restart."""
