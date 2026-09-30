@@ -746,11 +746,19 @@ async def process_host(
         .where(or_(*match_cond), InventoryDevice.status != "hidden")
         .order_by(InventoryDevice.discovered_at)
     )).scalars().all()
-    existing_rows = [
+        existing_rows = [
         row for row in candidates
-        if ip in ip_tokens(row.ip) or (norm_mac is not None and row.mac == norm_mac)
+        if (norm_mac is not None and row.mac == norm_mac)
+        or (
+            ip in ip_tokens(row.ip)
+            # homelable#466: a bare IP match is not enough to claim a row that
+            # already has a different MAC on file -- DHCP leases get reused
+            # for a new device. Only trust the IP-only match when the row has
+            # no MAC yet, or this scan couldn't determine one either.
+            and (not row.mac or norm_mac is None)
+        )
     ]
-
+        
     if existing_rows:
         # Prefer an approved row (it owns the canvas link semantics),
         # otherwise the oldest. Collapse any leftover duplicates created
