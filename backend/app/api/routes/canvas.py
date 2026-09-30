@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.database import get_db
-from app.db.models import CanvasState, Design, Edge, Node
+from app.db.models import CanvasState, Design, Edge, InventoryDevice, Node
 from app.schemas.canvas import CanvasSaveRequest, CanvasStateResponse
 from app.schemas.edges import EdgeResponse
 from app.schemas.nodes import NodeResponse
@@ -94,6 +94,16 @@ async def save_canvas(
         payload["design_id"] = design_id
         facts = facts_from_payload(payload, label=node_data.label, node_type=node_data.type)
         columns = node_columns(payload)
+        if db_node and db_node.device_id and not columns.get("device_id"):
+            # A node linked to an IEEE-identified row (an approve or import of a
+            # Zigbee/Z-Wave/Proxmox device) keeps it when the client sent none.
+            # The save payload carries no IEEE, so link_facts could never match
+            # that row again: it would mint a stray IEEE-less one on every save,
+            # and the mesh links, resolved by IEEE, would lose the node.
+            # Furniture is still detached, by link_facts below.
+            row = await db.get(InventoryDevice, db_node.device_id)
+            if row is not None and row.ieee_address:
+                columns["device_id"] = db_node.device_id
         if db_node:
             for field, value in columns.items():
                 setattr(db_node, field, value)

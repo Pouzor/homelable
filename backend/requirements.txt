@@ -6,7 +6,7 @@ aiosqlite==0.20.0
 alembic==1.13.3
 pydantic==2.9.2
 pydantic-settings==2.5.2
-PyJWT==2.13.0
+PyJWT==2.14.0
 bcrypt==4.2.1
 authlib==1.7.2
 joserfc==1.7.4

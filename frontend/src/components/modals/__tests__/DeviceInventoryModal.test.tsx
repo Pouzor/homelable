@@ -512,6 +512,32 @@ describe('DeviceInventoryModal', () => {
     expect(zbNode.data.properties.some((p: { key: string }) => p.key === 'MAC')).toBe(false)
   })
 
+  // A Zigbee card has no ip/mac, so a canvas save cannot find its row again: the
+  // card must carry device_id from the moment it is placed, or the save detaches
+  // it and mints a stray row (#532).
+  it('single approve places a card that points at its inventory row', async () => {
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-b')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('pending-card-dev-b'))
+    fireEvent.click(screen.getByTestId('do-approve'))
+    await waitFor(() => expect(mockAddNode).toHaveBeenCalledTimes(1))
+    expect(mockAddNode.mock.calls[0][0].data.device_id).toBe('dev-b')
+  })
+
+  it('bulk approve places cards that point at their inventory rows', async () => {
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Select mode' }))
+    fireEvent.click(screen.getByTestId('pending-card-dev-a'))
+    fireEvent.click(screen.getByTestId('pending-card-dev-b'))
+    fireEvent.click(screen.getByRole('button', { name: /Put in current Canvas \(2\)/ }))
+    await waitFor(() => expect(mockAddNode).toHaveBeenCalledTimes(2))
+    const byNode = Object.fromEntries(
+      mockAddNode.mock.calls.map((c) => [c[0].id, c[0].data.device_id]),
+    )
+    expect(byNode).toEqual({ n1: 'dev-a', n2: 'dev-b' })
+  })
+
   it('bulk hide calls API with selected ids', async () => {
     render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-dev-a')).toBeInTheDocument())

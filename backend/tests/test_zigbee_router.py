@@ -1133,3 +1133,185 @@ async def test_canvas_import_failure_is_reported_on_the_job(
     res = await client.get(f"/api/v1/zigbee/import/{job_id}", headers=headers)
     assert res.status_code == 422
     assert "inventory write failed" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_approving_a_device_twice_links_the_second_card(
+    client: AsyncClient, headers: dict, db_session
+) -> None:
+    """Regression for #532: a device drawn twice on one canvas gets its mesh
+    link on both cards.
+
+    The second card is a confirmed duplicate (force=True). Resolving the link by
+    ieee alone could land on the first card, whose edge already exists, so the
+    new card was left without its route.
+    """
+    import uuid
+
+    from sqlalchemy import select
+
+    from app.db.models import Design, Edge, InventoryDevice, InventoryDeviceLink
+
+    design = Design(id=str(uuid.uuid4()), name="Zigbee")
+    db_session.add_all([
+        design,
+        InventoryDevice(id="d-router", ieee_address="0xROUTER", status="pending"),
+        InventoryDevice(id="d-sensor", ieee_address="0xSENSOR", status="pending"),
+        InventoryDeviceLink(
+            id=str(uuid.uuid4()), source_ieee="0xROUTER", target_ieee="0xSENSOR",
+            discovery_source="zigbee",
+        ),
+    ])
+    await db_session.commit()
+
+    async def approve(device_id: str, node_type: str, force: bool = False) -> dict:
+        res = await client.post(
+            f"/api/v1/scan/pending/{device_id}/approve",
+            json={"type": node_type, "label": device_id, "design_id": design.id, "force": force},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        body: dict = res.json()
+        return body
+
+    router = await approve("d-router", "zigbee_router")
+    first = await approve("d-sensor", "zigbee_enddevice")
+    second = await approve("d-sensor", "zigbee_enddevice", force=True)
+
+    assert first["edges_created"] == 1
+    assert second["edges_created"] == 1
+    assert second["edges"][0]["source"] == router["node_id"]
+    assert second["edges"][0]["target"] == second["node_id"]
+    edges = (await db_session.execute(select(Edge))).scalars().all()
+    assert {(e.source, e.target) for e in edges} == {
+        (router["node_id"], first["node_id"]),
+        (router["node_id"], second["node_id"]),
+    }
+
+
+@pytest.mark.asyncio
+async def test_resolve_links_targets_the_card_just_placed(db_session) -> None:
+    """Regression for #532, pinned at the helper: with two cards for one device,
+    the lookup by ieee is free to return the card that is already linked. The
+    card just placed must be the one that gets the edge.
+    """
+    import uuid
+
+    from sqlalchemy import select
+
+    from app.api.routes.scan import _resolve_pending_links_for_ieee
+    from app.db.models import Design, Edge, InventoryDevice, InventoryDeviceLink, Node
+
+    design = Design(id=str(uuid.uuid4()), name="Zigbee")
+    db_session.add_all([
+        design,
+        InventoryDevice(id="d-router", ieee_address="0xROUTER", status="approved"),
+        InventoryDevice(id="d-sensor", ieee_address="0xSENSOR", status="approved"),
+        InventoryDeviceLink(
+            id=str(uuid.uuid4()), source_ieee="0xROUTER", target_ieee="0xSENSOR",
+            discovery_source="zigbee",
+        ),
+    ])
+    await db_session.flush()
+    router = Node(type="zigbee_router", label="router", device_id="d-router", design_id=design.id)
+    placed = Node(type="zigbee_enddevice", label="new", device_id="d-sensor", design_id=design.id)
+    # Inserted after the new card, so an unordered lookup by ieee lands on it.
+    linked = Node(type="zigbee_enddevice", label="old", device_id="d-sensor", design_id=design.id)
+    for node in (router, placed, linked):
+        db_session.add(node)
+        await db_session.flush()
+    db_session.add(Edge(source=router.id, target=linked.id, type="iot", design_id=design.id))
+    await db_session.commit()
+
+    created = await _resolve_pending_links_for_ieee(
+        db_session, "0xSENSOR", design.id, self_node=placed
+    )
+
+    assert [(e["source"], e["target"]) for e in created] == [(router.id, placed.id)]
+    edges = (await db_session.execute(select(Edge))).scalars().all()
+    assert {(e.source, e.target) for e in edges} == {(router.id, linked.id), (router.id, placed.id)}
+
+
+@pytest.mark.asyncio
+async def test_second_card_is_linked_after_the_canvas_was_saved(
+    client: AsyncClient, headers: dict, db_session
+) -> None:
+    """Regression for #532 as reported: approve, save the canvas, add the device
+    again. The save used to detach the cards from their rows, so the second
+    approve found no coordinator to link to.
+    """
+    import uuid
+
+    from app.db.models import Design, InventoryDevice, InventoryDeviceLink
+
+    design = Design(id=str(uuid.uuid4()), name="Zigbee")
+    db_session.add_all([
+        design,
+        InventoryDevice(id="d-coord", ieee_address="0xCOORD", status="pending"),
+        InventoryDevice(id="d-lidl", ieee_address="0xLIDL", status="pending"),
+        InventoryDeviceLink(
+            id=str(uuid.uuid4()), source_ieee="0xCOORD", target_ieee="0xLIDL",
+            discovery_source="zigbee",
+        ),
+    ])
+    await db_session.commit()
+
+    async def approve(device_id: str, node_type: str, force: bool = False) -> dict:
+        res = await client.post(
+            f"/api/v1/scan/pending/{device_id}/approve",
+            json={"type": node_type, "label": device_id, "design_id": design.id, "force": force},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        body: dict = res.json()
+        return body
+
+    coord = await approve("d-coord", "zigbee_coordinator")
+    first = await approve("d-lidl", "zigbee_router")
+    # What a client that never learned the device ids sends: no device_id.
+    nodes = [
+        {"id": coord["node_id"], "type": "zigbee_coordinator", "label": "Coordinator"},
+        {"id": first["node_id"], "type": "zigbee_router", "label": "Lidl PC"},
+    ]
+    edge = first["edges"][0]
+    res = await client.post(
+        "/api/v1/canvas/save",
+        json={
+            "design_id": design.id,
+            "nodes": nodes,
+            "edges": [{"id": edge["id"], "source": edge["source"], "target": edge["target"], "type": "iot"}],
+            "viewport": {},
+        },
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+
+    second = await approve("d-lidl", "zigbee_router", force=True)
+
+    assert second["edges_created"] == 1
+    assert (second["edges"][0]["source"], second["edges"][0]["target"]) == (
+        coord["node_id"], second["node_id"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_import_records_its_source(db_session) -> None:
+    """A row the import creates lists it among its sources, and a re-import puts
+    it back on a row a canvas save left as ["canvas"] alone (#532) — the UI files
+    a device by that list."""
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import InventoryDevice
+
+    await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert rows and all(r.discovery_sources == ["zigbee"] for r in rows)
+
+    for row in rows:
+        row.discovery_sources = ["canvas"]
+    await db_session.commit()
+    await _persist_pending_import(db_session, _PENDING_NODES, _PENDING_EDGES)
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert all(r.discovery_sources == ["canvas", "zigbee"] for r in rows)

@@ -802,9 +802,11 @@ async def bulk_approve_devices(
         entry["existing_node_id"] = ref.id if isinstance(ref, Node) else ref
 
     all_edges: list[dict[str, Any]] = []
-    for device in approved_devices:
+    for device, node in zip(approved_devices, created_nodes, strict=True):
         all_edges.extend(
-            await _resolve_pending_links_for_ieee(db, device.ieee_address, default_design_id)
+            await _resolve_pending_links_for_ieee(
+                db, device.ieee_address, default_design_id, self_node=node
+            )
         )
 
     await db.commit()
@@ -974,7 +976,9 @@ async def approve_device(
     await db.flush()
     node_id = node.id
 
-    edges = await _resolve_pending_links_for_ieee(db, device.ieee_address, node_design_id)
+    edges = await _resolve_pending_links_for_ieee(
+        db, device.ieee_address, node_design_id, self_node=node
+    )
 
     await db.commit()
     return {
@@ -1008,7 +1012,10 @@ async def _is_proxmox_cluster_member(db: AsyncSession, ieee: str | None) -> bool
 
 
 async def _resolve_pending_links_for_ieee(
-    db: AsyncSession, ieee: str | None, design_id: str | None
+    db: AsyncSession,
+    ieee: str | None,
+    design_id: str | None,
+    self_node: Node | None = None,
 ) -> list[dict[str, Any]]:
     """Materialize edges for any device_inventory_links involving ``ieee`` on the
     canvas identified by ``design_id``.
@@ -1019,6 +1026,11 @@ async def _resolve_pending_links_for_ieee(
     cluster topology and are wiped+reinserted wholesale on the next import
     (zigbee/zwave/proxmox). Keeping them lets the same devices be re-approved
     onto a second canvas with their edges intact.
+
+    ``self_node`` is the node just placed for ``ieee``. Pass it whenever the
+    caller has it: a device drawn twice on one design has two nodes for the same
+    ieee, and looking it up again could land on the older card — whose edges
+    already exist — leaving the new one unlinked.
     """
     if not ieee:
         return []
@@ -1052,6 +1064,8 @@ async def _resolve_pending_links_for_ieee(
     )
     by_ieee = {row_ieee: node for row_ieee, node in nodes_q.all() if row_ieee}
 
+    if self_node is not None:
+        by_ieee[ieee] = self_node
     self_node = by_ieee.get(ieee)
     if self_node is None:
         return []

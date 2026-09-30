@@ -277,7 +277,7 @@ Widget snippet lives in the [README](./README.md#gethomepage-widget-read-only-st
 2. `docker compose up -d mcp` (listens on `:8001`). No Docker? `sudo bash scripts/lxc-mcp-install.sh`.
 3. Point your client at `http://<your-homelab-ip>:8001/mcp` with header `X-API-Key: <your key>`.
 
-The AI can list nodes/edges/canvas/zones/designs/inventory/scans, add/update/delete nodes, edges and zones, kick off scans, triage and edit inventory entries, and work a rack canvas — create racks, mount and move gear, patch cables. Keep port 8001 firewalled to your LAN. Full setup in the [README](./README.md#mcp-server-ai-integration-optional).
+The AI can list nodes/edges/canvas/zones/designs/inventory/scans, add/update/delete nodes, edges and zones, kick off scans, triage and edit inventory entries, and work a rack canvas — create racks, mount and move gear, patch cables. Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`), so a client can let reads run freely and ask before a delete or a network scan. Keep port 8001 firewalled to your LAN. Full setup in the [README](./README.md#mcp-server-ai-integration-optional).
 
 ---
 
