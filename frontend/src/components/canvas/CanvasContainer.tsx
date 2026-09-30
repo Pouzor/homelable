@@ -41,6 +41,7 @@ interface CanvasContainerProps {
 
 export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDoubleClick, onNodeDragStart, onRequestAddToGroup, onRequestAddToContainer, onRequestAddToZone, onOpenInventory }: CanvasContainerProps) {
   const [lassoMode, setLassoMode] = useState(true)
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const {
     nodes, edges,
     onNodesChange, onEdgesChange,
@@ -123,6 +124,41 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     [edges, nodes, collapseInfo],
   )
 
+  // Hover highlight: dim nodes and edges not connected to the hovered node.
+  const hoveredConnected = useMemo(() => {
+    if (!hoveredNodeId) return null
+    const nodeIds = new Set<string>([hoveredNodeId])
+    const edgeIds = new Set<string>()
+    for (const e of visibleEdges) {
+      if (e.source === hoveredNodeId || e.target === hoveredNodeId) {
+        edgeIds.add(e.id)
+        nodeIds.add(e.source)
+        nodeIds.add(e.target)
+      }
+    }
+    return { nodeIds, edgeIds }
+  }, [hoveredNodeId, visibleEdges])
+
+  const displayNodes = useMemo(
+    () => hoveredConnected
+      ? visibleNodes.map((n) => ({
+          ...n,
+          style: { ...n.style, opacity: hoveredConnected.nodeIds.has(n.id) ? 1 : 0.12, transition: 'opacity 0.15s' },
+        }))
+      : visibleNodes,
+    [visibleNodes, hoveredConnected],
+  )
+
+  const displayEdges = useMemo(
+    () => hoveredConnected
+      ? visibleEdges.map((e) => ({
+          ...e,
+          style: { ...e.style, opacity: hoveredConnected.edgeIds.has(e.id) ? 1 : 0.08, transition: 'opacity 0.15s' },
+        }))
+      : visibleEdges,
+    [visibleEdges, hoveredConnected],
+  )
+
   const onNodeClick = useCallback((e: React.MouseEvent, node: Node<NodeData>) => {
     if (e.ctrlKey || e.metaKey) {
       setSelectedNode(null)
@@ -158,6 +194,14 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     (connection: { source: string | null; target: string | null }) => connection.source !== connection.target,
     []
   )
+
+  const handleNodeMouseEnter = useCallback((_: React.MouseEvent, node: Node<NodeData>) => {
+    setHoveredNodeId(node.id)
+  }, [])
+
+  const handleNodeMouseLeave = useCallback(() => {
+    setHoveredNodeId(null)
+  }, [])
 
   const { guides, onNodeDrag, onNodeDragStop } = useAlignmentGuides()
 
@@ -220,8 +264,8 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
   return (
     <div ref={wrapperRef} className="w-full h-full" style={{ background: theme.colors.canvasBackground }} onMouseMove={onMouseMove}>
       <ReactFlow
-        nodes={visibleNodes}
-        edges={visibleEdges}
+        nodes={displayNodes}
+        edges={displayEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnectProp}
@@ -234,6 +278,8 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         onNodeDragStop={handleNodeDragStop}
         onMoveEnd={handleMoveEnd}
         defaultViewport={initialViewport ?? undefined}
+        onNodeMouseEnter={handleNodeMouseEnter}
+        onNodeMouseLeave={handleNodeMouseLeave}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         deleteKeyCode={['Backspace', 'Delete']}
