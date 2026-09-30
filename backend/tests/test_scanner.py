@@ -1830,3 +1830,126 @@ def test_nmap_scan_single_refuses_non_ip_target(bad):
     with patch("app.services.scanner.nmap.PortScanner") as scanner:
         assert _nmap_scan_single(host) is host
     scanner.assert_not_called()
+
+# ---------------------------------------------------------------------------
+# homelable#466 — a bare IP match must not overwrite a row's MAC when the row
+# already has a different MAC on file (DHCP lease reuse claiming an old row's
+# identity). Same guard class as #419/#420, applied to the scan match itself.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_process_host_does_not_overwrite_mac_on_lease_reuse(mem_db):
+    """A device reassigned an IP a moment ago must not claim the old row."""
+    from app.services.scanner import DeepScanOptions, process_host
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="d1", ip="192.168.1.50", mac="aa:bb:cc:dd:ee:01",
+            hostname="old-device", status="approved", label="NAS",
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        outcome = await process_host(
+            session, _host("192.168.1.50", mac="aa:bb:cc:dd:ee:02", hostname="new-device"),
+            hidden_ips=set(), deep_scan=DeepScanOptions(),
+        )
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert outcome == "created"
+    assert len(devices) == 2
+    old = next(d for d in devices if d.id == "d1")
+    assert old.mac == "aa:bb:cc:dd:ee:01"
+    assert old.hostname == "old-device"
+    assert old.label == "NAS"
+    new = next(d for d in devices if d.id != "d1")
+    assert new.mac == "aa:bb:cc:dd:ee:02"
+    assert new.status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_process_host_still_fills_in_a_mac_first_seen(mem_db):
+    """A row with no MAC yet (e.g. a Proxmox import) still picks one up from
+    an IP-matched scan — not the bug case, must keep working."""
+    from app.services.scanner import DeepScanOptions, process_host
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="d1", ip="192.168.1.60", mac=None, status="approved", label="vm-host",
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        outcome = await process_host(
+            session, _host("192.168.1.60", mac="aa:bb:cc:dd:ee:03", hostname="vm-host.lan"),
+            hidden_ips=set(), deep_scan=DeepScanOptions(),
+        )
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert outcome == "updated"
+    assert len(devices) == 1
+    assert devices[0].mac == "aa:bb:cc:dd:ee:03"
+    assert devices[0].hostname == "vm-host.lan"
+
+
+@pytest.mark.asyncio
+async def test_process_host_still_updates_by_ip_when_scan_has_no_mac(mem_db):
+    """A scan that found no MAC at all (mDNS-only, etc.) can't detect a
+    conflict, so it must keep refreshing the row by IP as before."""
+    from app.services.scanner import DeepScanOptions, process_host
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="d1", ip="192.168.1.70", mac="aa:bb:cc:dd:ee:04",
+            hostname="old-name", status="approved",
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        outcome = await process_host(
+            session, _host("192.168.1.70", mac=None, hostname="refreshed-name"),
+            hidden_ips=set(), deep_scan=DeepScanOptions(),
+        )
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert outcome == "updated"
+    assert len(devices) == 1
+    assert devices[0].mac == "aa:bb:cc:dd:ee:04"
+    assert devices[0].hostname == "refreshed-name"
+
+
+@pytest.mark.asyncio
+async def test_process_host_still_updates_by_mac_when_ip_changed(mem_db):
+    """A device that moves to a new IP but reports the same MAC still matches
+    its existing row by MAC — DHCP moved it, it's the same physical device —
+    rather than spawning a duplicate pending row. (Note: `keep.ip = keep.ip or
+    ip` means the ip column itself isn't refreshed here; that's pre-existing
+    behavior unrelated to #466 and out of scope for this fix.)"""
+    from app.services.scanner import DeepScanOptions, process_host
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="d1", ip="192.168.1.80", mac="aa:bb:cc:dd:ee:05", status="approved",
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        outcome = await process_host(
+            session, _host("192.168.1.81", mac="aa:bb:cc:dd:ee:05"),
+            hidden_ips=set(), deep_scan=DeepScanOptions(),
+        )
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert outcome == "updated"
+    assert len(devices) == 1
+    assert devices[0].id == "d1"
+    assert devices[0].mac == "aa:bb:cc:dd:ee:05"
+
