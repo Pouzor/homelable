@@ -10,8 +10,9 @@
 import { useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { t, useLocale } from '@/i18n'
 import { Faceplate } from './Faceplate'
-import { faceplateGroups } from '../faceplates'
+import { faceplateGroupLabel, faceplateGroups, faceplateLabel } from '../faceplates'
 import { useRackPalette } from '../rackTheme'
 import { RACK_COLUMNS, type FaceplateKind, type FaceplateTemplate, type Port } from '@/types'
 
@@ -25,6 +26,9 @@ const PREVIEW_U = 34
  */
 const PREVIEW_MIN = 2 * PREVIEW_U
 
+/** Width captions, keyed on the column span. The values are translated where
+ *  the same words are listed as options (the width selects in the device and
+ *  faceplate editors), so the keys there keep them from going stale. */
 const WIDTH_LABEL: Record<number, string> = {
   [RACK_COLUMNS]: 'Full width',
   [RACK_COLUMNS / 2]: 'Half width',
@@ -51,13 +55,14 @@ interface TileProps {
 }
 
 function FaceplateTile({ plate, selected, onPick }: TileProps) {
+  useLocale()
   const palette = useRackPalette()
   const ports = useMemo(() => previewPorts(plate), [plate])
 
   return (
     <button
       type="button"
-      aria-label={plate.label}
+      aria-label={faceplateLabel(plate)}
       aria-pressed={selected}
       onClick={() => onPick(plate.id)}
       className={`flex cursor-pointer flex-col gap-2 rounded border p-2 text-left transition-colors ${
@@ -79,7 +84,7 @@ function FaceplateTile({ plate, selected, onPick }: TileProps) {
         >
           <Faceplate
             faceplateId={plate.id}
-            label={plate.label}
+            label={faceplateLabel(plate)}
             status="unknown"
             ports={ports}
             width={(PREVIEW_WIDTH * plate.colSpan) / RACK_COLUMNS}
@@ -89,10 +94,13 @@ function FaceplateTile({ plate, selected, onPick }: TileProps) {
         </div>
       </div>
       <div className="flex flex-col gap-0.5">
-        <span className="text-xs text-foreground">{plate.label}</span>
+        <span className="text-xs text-foreground">{faceplateLabel(plate)}</span>
         <span className="font-mono text-[10px] text-muted-foreground">
-          {plate.uHeight}U · {WIDTH_LABEL[plate.colSpan] ?? `${plate.colSpan}/${RACK_COLUMNS}`} ·{' '}
-          {plate.ports.length} port{plate.ports.length === 1 ? '' : 's'}
+          {plate.uHeight}U · {t(WIDTH_LABEL[plate.colSpan] ?? `${plate.colSpan}/${RACK_COLUMNS}`)} ·{' '}
+          {t('{count} port{plural}', {
+            count: plate.ports.length,
+            plural: plate.ports.length === 1 ? '' : 's',
+          })}
         </span>
       </div>
     </button>
@@ -110,6 +118,7 @@ interface Props {
 }
 
 export function FaceplatePicker({ open, value, kind, onPick, onClose }: Props) {
+  useLocale()
   const [query, setQuery] = useState('')
 
   const groups = useMemo(
@@ -129,7 +138,7 @@ export function FaceplatePicker({ open, value, kind, onPick, onClose }: Props) {
           plain `max-w-*` here — the override has to carry the same prefix. */}
       <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-[1440px] border-[#30363d] bg-[#161b22] text-foreground max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-sm font-semibold">Choose a faceplate</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">{t('Choose a faceplate')}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">
@@ -139,10 +148,10 @@ export function FaceplatePicker({ open, value, kind, onPick, onClose }: Props) {
           />
           <input
             autoFocus
-            aria-label="Search faceplates"
+            aria-label={t('Search faceplates')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name or category…"
+            placeholder={t('Search by name or category…')}
             className="w-full rounded border border-[#30363d] bg-[#21262d] py-1 pl-7 pr-2 text-sm text-foreground outline-none focus:border-[#00d4ff]"
           />
         </div>
@@ -151,7 +160,7 @@ export function FaceplatePicker({ open, value, kind, onPick, onClose }: Props) {
           {groups.map(({ group, items }) => (
             <section key={group} className="flex flex-col gap-2">
               <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {group}
+                {faceplateGroupLabel(group)}
               </h3>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {items.map((plate) => (
@@ -170,7 +179,7 @@ export function FaceplatePicker({ open, value, kind, onPick, onClose }: Props) {
           ))}
           {groups.length === 0 && (
             <p className="py-6 text-center text-xs text-muted-foreground">
-              No faceplate matches “{query}”.
+              {t('No faceplate matches “{query}”.', { query })}
             </p>
           )}
         </div>

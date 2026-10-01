@@ -1,34 +1,6 @@
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-
-const SHORTCUTS = [
-  {
-    group: 'Canvas',
-    items: [
-      { keys: ['Ctrl', 'S'], description: 'Save canvas' },
-      { keys: ['Ctrl', 'Z'], description: 'Undo' },
-      { keys: ['Ctrl', 'Y'], description: 'Redo' },
-      { keys: ['Ctrl', 'K'], description: 'Search nodes' },
-      { keys: ['?'], description: 'Show this help' },
-    ],
-  },
-  {
-    group: 'Nodes',
-    items: [
-      { keys: ['Ctrl', 'C'], description: 'Copy selected nodes' },
-      { keys: ['Ctrl', 'V'], description: 'Paste nodes' },
-      { keys: ['Del'], description: 'Delete selected node/edge' },
-    ],
-  },
-  {
-    group: 'Navigation',
-    items: [
-      { keys: ['Scroll'], description: 'Zoom in / out' },
-      { keys: ['Space', '+', 'Drag'], description: 'Pan canvas' },
-      { keys: ['Ctrl', 'Shift', 'F'], description: 'Fit view' },
-    ],
-  },
-]
+import { t, useLocale } from '@/i18n'
 
 interface ShortcutsModalProps {
   open: boolean
@@ -36,7 +8,40 @@ interface ShortcutsModalProps {
 }
 
 export function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
+  useLocale()
   if (!open) return null
+
+  // Built inside the component so the labels go through `t`; a module-level
+  // table would be created once at import, before the locale is known. The
+  // `keys` stay verbatim — they are the key bindings themselves.
+  const shortcuts = [
+    {
+      group: t('Canvas'),
+      items: [
+        { keys: ['Ctrl', 'S'], description: t('Save canvas') },
+        { keys: ['Ctrl', 'Z'], description: t('Undo') },
+        { keys: ['Ctrl', 'Y'], description: t('Redo') },
+        { keys: ['Ctrl', 'K'], description: t('Search nodes') },
+        { keys: ['?'], description: t('Show this help') },
+      ],
+    },
+    {
+      group: t('Nodes'),
+      items: [
+        { keys: ['Ctrl', 'C'], description: t('Copy selected nodes') },
+        { keys: ['Ctrl', 'V'], description: t('Paste nodes') },
+        { keys: ['Del'], description: t('Delete selected node/edge') },
+      ],
+    },
+    {
+      group: t('Navigation'),
+      items: [
+        { keys: ['Scroll'], description: t('Zoom in / out') },
+        { keys: ['Space', '+', 'Drag'], description: t('Pan canvas') },
+        { keys: ['Ctrl', 'Shift', 'F'], description: t('Fit view') },
+      ],
+    },
+  ]
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
@@ -45,14 +50,14 @@ export function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h2 className="text-sm font-semibold text-foreground">Keyboard Shortcuts</h2>
+          <h2 className="text-sm font-semibold text-foreground">{t('Keyboard Shortcuts')}</h2>
           <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={onClose}>
             <X size={14} />
           </Button>
         </div>
 
         <div className="p-4 space-y-4">
-          {SHORTCUTS.map((group) => (
+          {shortcuts.map((group) => (
             <div key={group.group}>
               <p className="text-xs text-[#00d4ff] font-semibold mb-2 uppercase tracking-wide">
                 {group.group}

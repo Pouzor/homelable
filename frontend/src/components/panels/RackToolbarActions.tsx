@@ -14,6 +14,7 @@ import { useRackStore } from '@/rack/store'
 import { useRackPalette } from '@/rack/rackTheme'
 import { loadNetworkLinks } from '@/rack/networkLinks'
 import { useDesignStore } from '@/stores/designStore'
+import { t, useLocale } from '@/i18n'
 import type { CableVisibility } from '@/types'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
@@ -24,14 +25,16 @@ const ghost =
 const triggerClass =
   'gap-1.5 border-transparent bg-transparent px-2 text-xs font-medium text-muted-foreground hover:bg-[#21262d] hover:text-foreground dark:bg-transparent dark:hover:bg-[#21262d] cursor-pointer'
 
-const VISIBILITY_OPTIONS: { value: CableVisibility; label: string; icon: typeof Eye }[] = [
-  { value: 'hover', label: 'Cables on hover', icon: MousePointer2 },
-  { value: 'always', label: 'Cables always', icon: Eye },
-  { value: 'hidden', label: 'Cables hidden', icon: EyeOff },
-]
-
 export function RackToolbarActions() {
+  useLocale()
   const palette = useRackPalette()
+  // Built inside the component so the labels go through `t`; a module-level
+  // table would be created once at import, before the locale is known.
+  const visibilityOptions: { value: CableVisibility; label: string; icon: typeof Eye }[] = [
+    { value: 'hover', label: t('Cables on hover'), icon: MousePointer2 },
+    { value: 'always', label: t('Cables always'), icon: Eye },
+    { value: 'hidden', label: t('Cables hidden'), icon: EyeOff },
+  ]
   const addRack = useRackStore((s) => s.addRack)
   const cableMode = useRackStore((s) => s.cableMode)
   const toggleCableMode = useRackStore((s) => s.toggleCableMode)
@@ -52,8 +55,8 @@ export function RackToolbarActions() {
       const created = importCables(hints)
       toast[created > 0 ? 'success' : 'info'](
         created > 0
-          ? `${created} cable${created > 1 ? 's' : ''} imported from the network canvas`
-          : 'No matching link found — rack the devices first',
+          ? t('{count} cable{plural} imported from the network canvas', { count: created, plural: created > 1 ? 's' : '' })
+          : t('No matching link found — rack the devices first'),
       )
     } finally {
       setImporting(false)
@@ -63,7 +66,7 @@ export function RackToolbarActions() {
   return (
     <>
       <Button size="sm" variant="ghost" className={ghost} onClick={() => addRack({ style: palette.defaultRackStyle })}>
-        <Plus size={14} /> Rack
+        <Plus size={14} /> {t('Rack')}
       </Button>
 
       <Button
@@ -71,9 +74,9 @@ export function RackToolbarActions() {
         variant="ghost"
         className={`${ghost} ${cableMode ? 'text-[#00d4ff]' : ''}`}
         onClick={toggleCableMode}
-        title="Drag from one port to another to patch, or click both in turn. Click a cable to select it, then Delete to unplug."
+        title={t('Drag from one port to another to patch, or click both in turn. Click a cable to select it, then Delete to unplug.')}
       >
-        <Cable size={14} /> {cableMode ? 'Exit patching' : 'Patch'}
+        <Cable size={14} /> {cableMode ? t('Exit patching') : t('Patch')}
       </Button>
 
       {cableMode && cableDraft && (
@@ -83,7 +86,7 @@ export function RackToolbarActions() {
           className={`${ghost} text-[#e3b341]`}
           onClick={cancelCableDraft}
         >
-          <X size={14} /> Cancel cable
+          <X size={14} /> {t('Cancel cable')}
         </Button>
       )}
 
@@ -93,23 +96,23 @@ export function RackToolbarActions() {
           variant="ghost"
           className={`${ghost} text-[#f85149]`}
           onClick={removeSelectedCable}
-          title="Unplug the selected cable (Delete)"
+          title={t('Unplug the selected cable (Delete)')}
         >
-          <Trash2 size={14} /> Unplug
+          <Trash2 size={14} /> {t('Unplug')}
         </Button>
       )}
 
       <Select value={cableVisibility} onValueChange={(v) => setCableVisibility(v as CableVisibility)}>
-        <SelectTrigger size="sm" className={triggerClass} aria-label="Cable visibility">
+        <SelectTrigger size="sm" className={triggerClass} aria-label={t('Cable visibility')}>
           <SelectValue>
             {(() => {
-              const { icon: Icon, label } = VISIBILITY_OPTIONS.find((o) => o.value === cableVisibility)!
+              const { icon: Icon, label } = visibilityOptions.find((o) => o.value === cableVisibility)!
               return <><Icon size={14} /> {label}</>
             })()}
           </SelectValue>
         </SelectTrigger>
         <SelectContent className="bg-[#21262d] border-[#30363d]">
-          {VISIBILITY_OPTIONS.map(({ value, icon: Icon, label }) => (
+          {visibilityOptions.map(({ value, icon: Icon, label }) => (
             <SelectItem key={value} value={value} className="text-xs">
               <Icon size={14} /> {label}
             </SelectItem>
@@ -124,9 +127,9 @@ export function RackToolbarActions() {
           className={ghost}
           disabled={importing}
           onClick={() => void handleImport()}
-          title="One-shot: derive patches from the links already drawn on the logical canvases"
+          title={t('One-shot: derive patches from the links already drawn on the logical canvases')}
         >
-          <Link2 size={14} /> Import links
+          <Link2 size={14} /> {t('Import links')}
         </Button>
       )}
     </>

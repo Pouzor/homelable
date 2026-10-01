@@ -9,6 +9,7 @@
  * Templates only seed the ports — the user edits the port list afterwards.
  */
 import { RACK_COLUMNS, type FaceplateTemplate, type Port, type PortType } from '@/types'
+import { t } from '@/i18n'
 
 interface BankOptions {
   type: PortType
@@ -464,6 +465,59 @@ const BY_ID = new Map(FACEPLATES.map((f) => [f.id, f]))
 
 export function getFaceplate(id: string): FaceplateTemplate {
   return BY_ID.get(id) ?? FACEPLATES[0]
+}
+
+/**
+ * Localised captions for the catalog.
+ *
+ * `FACEPLATES` is a module-level table built at import, before the locale is
+ * known, so its `label` and `group` stay English — they are also what the
+ * picker's search matches against, and what a saved device falls back to for
+ * its name. These two tables hold thunks rather than strings, so the lookup
+ * happens per call and the caption follows a language switch; the English
+ * inside `t()` is the same text as the table entry it stands for, which is
+ * what an English user reads.
+ */
+const LABEL_BY_ID: Record<string, () => string> = {
+  'server-1u': () => t('Server 1U'),
+  'server-1u-bays': () => t('Server 1U — 4 bays'),
+  'server-2u-bays': () => t('Server 2U — 8 bays'),
+  'server-4u-storage': () => t('Storage 4U — 12 bays'),
+  'sff-half': () => t('SFF / mini PC (half width)'),
+  'mini-third': () => t('Mini node (third width)'),
+  'switch-8': () => t('Switch 8 ports'),
+  'switch-24': () => t('Switch 24 ports + 2 SFP'),
+  'switch-48': () => t('Switch 48 ports + 4 SFP+'),
+  'router-1u': () => t('Router / firewall 1U'),
+  'patch-24': () => t('Patch panel 24'),
+  'patch-fiber-12': () => t('Fiber panel 12 (LC)'),
+  'nas-2u': () => t('NAS 2U — 8 bays'),
+  'nas-desktop-2': () => t('Desktop NAS — 2 bays'),
+  'nas-desktop-4': () => t('Desktop NAS — 4 bays'),
+  'nas-desktop-5': () => t('Desktop NAS — 5 bays'),
+  'ups-2u': () => t('UPS 2U'),
+  'pdu-1u': () => t('PDU 1U — 8 outlets'),
+  'blank-1u': () => t('Blank panel 1U'),
+  'shelf-1u': () => t('Shelf 1U'),
+  'cable-manager-1u': () => t('Cable manager 1U'),
+}
+
+const GROUP_BY_NAME: Record<string, () => string> = {
+  Servers: () => t('Servers'),
+  Network: () => t('Network'),
+  Storage: () => t('Storage'),
+  Power: () => t('Power'),
+  Accessories: () => t('Accessories'),
+}
+
+/** The plate's name as a caption: picker tile, accessory tray, change button. */
+export function faceplateLabel(plate: FaceplateTemplate): string {
+  return LABEL_BY_ID[plate.id]?.() ?? plate.label
+}
+
+/** Category heading above a group of plates. */
+export function faceplateGroupLabel(group: string): string {
+  return GROUP_BY_NAME[group]?.() ?? group
 }
 
 /**

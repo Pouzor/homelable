@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { unifiApi, type UnifiImportModes } from '@/api/client'
+import { t, useLocale } from '@/i18n'
 import { toast } from 'sonner'
 
 const ACCENT = '#0559c9'
@@ -39,43 +40,48 @@ const DEFAULT_MODES: UnifiImportModes = {
   active_clients: false,
 }
 
-/**
- * The controller holds three inventories and they are not interchangeable, so
- * each is its own opt-in rather than one "import everything" button.
- */
-const SOURCES: {
-  key: keyof UnifiImportModes
-  label: string
-  endpoint: string
-  hint: string
-}[] = [
-  {
-    key: 'infrastructure',
-    label: 'Infrastructure',
-    endpoint: 'stat/device',
-    hint: 'Adopted APs, switches and gateways — with IP, model and firmware.',
-  },
-  {
-    key: 'known_clients',
-    label: 'Known clients',
-    endpoint: 'list/user',
-    hint: 'Every client the controller has ever recorded. No IP address, and long on a busy site.',
-  },
-  {
-    key: 'active_clients',
-    label: 'Active clients',
-    endpoint: 'stat/sta',
-    hint: 'Clients connected right now — carries the IP and the switch port or AP.',
-  },
-]
-
 export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiImportModalProps) {
+  useLocale()
   const [form, setForm] = useState<ConnectionForm>(DEFAULT_FORM)
   const [modes, setModes] = useState<UnifiImportModes>(DEFAULT_MODES)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [connectionMsg, setConnectionMsg] = useState('')
   const [counts, setCounts] = useState<Record<string, number>>({})
   const [importing, setImporting] = useState(false)
+
+  /**
+   * The controller holds three inventories and they are not interchangeable, so
+   * each is its own opt-in rather than one "import everything" button.
+   *
+   * Built inside the component so the labels and hints go through `t`; a
+   * module-level table would be created once at import, before the locale is
+   * known. The keys and endpoints are the wire values and stay untranslated.
+   */
+  const sources: {
+    key: keyof UnifiImportModes
+    label: string
+    endpoint: string
+    hint: string
+  }[] = [
+    {
+      key: 'infrastructure',
+      label: t('Infrastructure'),
+      endpoint: 'stat/device',
+      hint: t('Adopted APs, switches and gateways — with IP, model and firmware.'),
+    },
+    {
+      key: 'known_clients',
+      label: t('Known clients'),
+      endpoint: 'list/user',
+      hint: t('Every client the controller has ever recorded. No IP address, and long on a busy site.'),
+    },
+    {
+      key: 'active_clients',
+      label: t('Active clients'),
+      endpoint: 'stat/sta',
+      hint: t('Clients connected right now — carries the IP and the switch port or AP.'),
+    },
+  ]
 
   const anyMode = modes.infrastructure || modes.known_clients || modes.active_clients
 
@@ -106,7 +112,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
   }
 
   const handleTestConnection = async () => {
-    if (!form.host.trim()) { toast.error('Enter a controller host'); return }
+    if (!form.host.trim()) { toast.error(t('Enter a controller host')); return }
     setConnectionStatus('testing')
     try {
       const res = await unifiApi.testConnection(buildPayload())
@@ -115,26 +121,30 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
       setCounts(res.data.counts || {})
     } catch (e) {
       setConnectionStatus('fail')
-      setConnectionMsg(e instanceof Error ? e.message : 'Connection failed')
+      setConnectionMsg(e instanceof Error ? e.message : t('Connection failed'))
       setCounts({})
     }
   }
 
   const handleImport = async () => {
-    if (!form.host.trim()) { toast.error('Enter a controller host'); return }
-    if (!anyMode) { toast.error('Select at least one source'); return }
+    if (!form.host.trim()) { toast.error(t('Enter a controller host')); return }
+    if (!anyMode) { toast.error(t('Select at least one source')); return }
     setImporting(true)
     try {
       const res = await unifiApi.importToPending(buildPayload())
       const { pending_created, pending_updated, infra_count, client_count } = res.data
       toast.success(
-        `Imported ${infra_count} device(s) and ${client_count} client(s) — ` +
-        `${pending_created} new, ${pending_updated} updated`,
+        t('Imported {devices} device(s) and {clients} client(s) — {created} new, {updated} updated', {
+          devices: infra_count,
+          clients: client_count,
+          created: pending_created,
+          updated: pending_updated,
+        }),
       )
       onInventoryImported?.()
       handleClose()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'UniFi import failed')
+      toast.error(e instanceof Error ? e.message : t('UniFi import failed'))
     } finally {
       setImporting(false)
     }
@@ -146,7 +156,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Wifi size={16} style={{ color: ACCENT }} />
-            UniFi Import
+            {t('UniFi Import')}
           </DialogTitle>
         </DialogHeader>
 
@@ -154,7 +164,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
               <div className="col-span-2 space-y-1">
-                <Label className="text-xs text-muted-foreground">Controller Host</Label>
+                <Label className="text-xs text-muted-foreground">{t('Controller Host')}</Label>
                 <Input
                   value={form.host}
                   onChange={(e) => updateField('host', e.target.value)}
@@ -163,7 +173,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Port</Label>
+                <Label className="text-xs text-muted-foreground">{t('Port')}</Label>
                 <Input
                   value={form.port}
                   onChange={(e) => updateField('port', e.target.value)}
@@ -173,7 +183,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Site</Label>
+                <Label className="text-xs text-muted-foreground">{t('Site')}</Label>
                 <Input
                   value={form.site}
                   onChange={(e) => updateField('site', e.target.value)}
@@ -182,7 +192,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Username (optional)</Label>
+                <Label className="text-xs text-muted-foreground">{t('Username (optional)')}</Label>
                 <Input
                   value={form.username}
                   onChange={(e) => updateField('username', e.target.value)}
@@ -191,7 +201,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Password (optional)</Label>
+                <Label className="text-xs text-muted-foreground">{t('Password (optional)')}</Label>
                 <Input
                   value={form.password}
                   onChange={(e) => updateField('password', e.target.value)}
@@ -210,8 +220,8 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                     className="w-3 h-3 cursor-pointer"
                     style={{ accentColor: ACCENT }}
                   />
-                  Verify TLS certificate
-                  <span className="text-muted-foreground/50">(off for a self-signed controller)</span>
+                  {t('Verify TLS certificate')}
+                  <span className="text-muted-foreground/50">{t('(off for a self-signed controller)')}</span>
                 </label>
               </div>
             </div>
@@ -227,14 +237,14 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 {connectionStatus === 'testing' && <Loader2 size={12} className="animate-spin" />}
                 {connectionStatus === 'ok' && <CheckCircle2 size={12} />}
                 {connectionStatus === 'fail' && <XCircle size={12} />}
-                <span>{connectionStatus === 'testing' ? 'Testing…' : connectionMsg}</span>
+                <span>{connectionStatus === 'testing' ? t('Testing…') : connectionMsg}</span>
               </div>
             )}
 
             <div className="space-y-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5">
-              <span className="block text-xs text-muted-foreground">Import from</span>
+              <span className="block text-xs text-muted-foreground">{t('Import from')}</span>
               <div className="space-y-2">
-                {SOURCES.map((s) => (
+                {sources.map((s) => (
                   <label
                     key={s.key}
                     className="flex items-start gap-2 text-xs cursor-pointer text-foreground"
@@ -252,7 +262,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                         {s.label}
                         <code className="font-mono text-[10px] text-muted-foreground/70">{s.endpoint}</code>
                         {counts[s.key] !== undefined && (
-                          <span style={{ color: ACCENT }}>{counts[s.key]} found</span>
+                          <span style={{ color: ACCENT }}>{t('{count} found', { count: counts[s.key] })}</span>
                         )}
                       </span>
                       <span className="block text-muted-foreground/60">{s.hint}</span>
@@ -261,7 +271,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 ))}
               </div>
               {!anyMode && (
-                <span className="block text-xs text-[#e3b341]">Select at least one source.</span>
+                <span className="block text-xs text-[#e3b341]">{t('Select at least one source.')}</span>
               )}
             </div>
 
@@ -276,7 +286,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 {connectionStatus === 'testing'
                   ? <Loader2 size={13} className="animate-spin" />
                   : <CheckCircle2 size={13} />}
-                Test Connection
+                {t('Test Connection')}
               </Button>
               <Button
                 size="sm"
@@ -286,19 +296,17 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 disabled={!anyMode || importing || connectionStatus === 'testing'}
               >
                 {importing ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-                Import to Inventory
+                {t('Import to Inventory')}
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground italic">
-              Leave the credentials blank to use the ones in the server .env. Everything lands
-              in the device inventory as pending, to approve onto a canvas like any other
-              discovery.
+              {t('Leave the credentials blank to use the ones in the server .env. Everything lands in the device inventory as pending, to approve onto a canvas like any other discovery.')}
             </p>
           </div>
         </div>
 
         <DialogFooter className="gap-2 shrink-0 pt-2 border-t border-border">
-          <Button variant="ghost" onClick={handleClose}>Cancel</Button>
+          <Button variant="ghost" onClick={handleClose}>{t('Cancel')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

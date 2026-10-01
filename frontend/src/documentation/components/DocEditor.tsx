@@ -5,6 +5,7 @@ import { documentsApi } from '@/api/client'
 import { caretPoint, placeMenu, type CaretPoint, type Placement } from '@/documentation/caret'
 import { useDocHistory } from '@/documentation/history'
 import { Button } from '@/components/ui/button'
+import { t, useLocale } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { Markdown } from '../markdown/Markdown'
 import type { LinkableDevice, LinkableDoc } from '../wikilinks'
@@ -41,24 +42,6 @@ interface Props {
   devices?: LinkableDevice[]
 }
 
-const GENERATED_BLOCKS: { id: string; label: string; hint: string; block: string }[] = [
-  { id: 'device', label: '/device', hint: 'Device Information table, from the current facts', block: 'device-info' },
-  { id: 'services', label: '/services', hint: 'One section per fingerprinted service', block: 'services' },
-  { id: 'hardware', label: '/hardware', hint: 'CPU, RAM and disk', block: 'hardware' },
-  { id: 'network', label: '/network', hint: 'Subnet, neighbours, exposure', block: 'network' },
-  { id: 'rack', label: '/rack', hint: 'Rack and zone placement', block: 'rack' },
-  { id: 'properties', label: '/properties', hint: 'The device custom properties', block: 'properties' },
-]
-
-const PLAIN_SNIPPETS: SlashCommand[] = [
-  { id: 'table', label: '/table', hint: 'An empty three-column table', insert: () => '| | | |\n|---|---|---|\n| | | |\n' },
-  { id: 'task', label: '/task', hint: 'A checklist', insert: () => '- [ ] \n- [ ] \n' },
-  { id: 'callout', label: '/callout', hint: 'A highlighted note', insert: () => '> [!note]\n> \n' },
-  { id: 'link', label: '/link', hint: 'A link to another document', insert: () => '[[doc:]]' },
-  { id: 'device-link', label: '/device-link', hint: 'A link to a device document', insert: () => '[[device:]]' },
-  { id: 'date', label: '/date', hint: "Today's date", insert: () => new Date().toISOString().slice(0, 10) },
-]
-
 export function DocEditor({
   body,
   onChange,
@@ -71,6 +54,7 @@ export function DocEditor({
   docs = [],
   devices = [],
 }: Props) {
+  useLocale()
   const textarea = useRef<HTMLTextAreaElement>(null)
   const pane = useRef<HTMLDivElement>(null)
   const caretRef = useRef<CaretPoint | null>(null)
@@ -95,9 +79,29 @@ export function DocEditor({
 
   const history = useDocHistory({ body, onChange, textarea })
 
+  // Both menus are built inside the component so their hints go through `t`; a
+  // module-level table would be created once at import, before the locale is
+  // known. The labels are the literal commands the user types, so they stay
+  // untranslated.
   const commands = useMemo<SlashCommand[]>(() => {
+    const generatedBlocks: { id: string; label: string; hint: string; block: string }[] = [
+      { id: 'device', label: '/device', hint: t('Device Information table, from the current facts'), block: 'device-info' },
+      { id: 'services', label: '/services', hint: t('One section per fingerprinted service'), block: 'services' },
+      { id: 'hardware', label: '/hardware', hint: t('CPU, RAM and disk'), block: 'hardware' },
+      { id: 'network', label: '/network', hint: t('Subnet, neighbours, exposure'), block: 'network' },
+      { id: 'rack', label: '/rack', hint: t('Rack and zone placement'), block: 'rack' },
+      { id: 'properties', label: '/properties', hint: t('The device custom properties'), block: 'properties' },
+    ]
+    const plainSnippets: SlashCommand[] = [
+      { id: 'table', label: '/table', hint: t('An empty three-column table'), insert: () => '| | | |\n|---|---|---|\n| | | |\n' },
+      { id: 'task', label: '/task', hint: t('A checklist'), insert: () => '- [ ] \n- [ ] \n' },
+      { id: 'callout', label: '/callout', hint: t('A highlighted note'), insert: () => '> [!note]\n> \n' },
+      { id: 'link', label: '/link', hint: t('A link to another document'), insert: () => '[[doc:]]' },
+      { id: 'device-link', label: '/device-link', hint: t('A link to a device document'), insert: () => '[[device:]]' },
+      { id: 'date', label: '/date', hint: t("Today's date"), insert: () => new Date().toISOString().slice(0, 10) },
+    ]
     const generated: SlashCommand[] = deviceId
-      ? GENERATED_BLOCKS.map((entry) => ({
+      ? generatedBlocks.map((entry) => ({
           id: entry.id,
           label: entry.label,
           hint: entry.hint,
@@ -107,7 +111,7 @@ export function DocEditor({
           },
         }))
       : []
-    return [...generated, ...PLAIN_SNIPPETS]
+    return [...generated, ...plainSnippets]
   }, [deviceId])
 
   const visible = useMemo(() => {
@@ -140,7 +144,7 @@ export function DocEditor({
       return {
         id: doc.id,
         label: doc.title,
-        hint: device ? `Device · ${device}` : doc.slug,
+        hint: device ? t('Device · {device}', { device }) : doc.slug,
         text: unique ? `[[${doc.title}]]` : `[[doc:${doc.id}]]`,
       }
     })
@@ -350,35 +354,35 @@ export function DocEditor({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 border-b border-border px-3 py-1.5">
-        <Button size="icon-xs" variant="ghost" title="Bold" onClick={() => wrapSelection('**')}>
+        <Button size="icon-xs" variant="ghost" title={t('Bold')} onClick={() => wrapSelection('**')}>
           <Bold />
         </Button>
-        <Button size="icon-xs" variant="ghost" title="Italic" onClick={() => wrapSelection('_')}>
+        <Button size="icon-xs" variant="ghost" title={t('Italic')} onClick={() => wrapSelection('_')}>
           <Italic />
         </Button>
-        <Button size="icon-xs" variant="ghost" title="Bullet list" onClick={() => insertAtCursor('\n- ', null)}>
+        <Button size="icon-xs" variant="ghost" title={t('Bullet list')} onClick={() => insertAtCursor('\n- ', null)}>
           <List />
         </Button>
-        <Button size="icon-xs" variant="ghost" title="Checklist" onClick={() => insertAtCursor('\n- [ ] ', null)}>
+        <Button size="icon-xs" variant="ghost" title={t('Checklist')} onClick={() => insertAtCursor('\n- [ ] ', null)}>
           <ListChecks />
         </Button>
-        <Button size="icon-xs" variant="ghost" title="Table" onClick={() => insertAtCursor('\n| | |\n|---|---|\n| | |\n', null)}>
+        <Button size="icon-xs" variant="ghost" title={t('Table')} onClick={() => insertAtCursor('\n| | |\n|---|---|\n| | |\n', null)}>
           <Table />
         </Button>
-        <Button size="icon-xs" variant="ghost" title="Link to a document" onClick={() => insertAtCursor('[[doc:]]', null)}>
+        <Button size="icon-xs" variant="ghost" title={t('Link to a document')} onClick={() => insertAtCursor('[[doc:]]', null)}>
           <Link2 />
         </Button>
         <span className="ml-2 text-[10px] text-muted-foreground/70">
-          <kbd className="rounded border border-border px-1">/</kbd> on a new line to insert,{' '}
-          <kbd className="rounded border border-border px-1">[[</kbd> to link
+          <kbd className="rounded border border-border px-1">/</kbd> {t('on a new line to insert')},{' '}
+          <kbd className="rounded border border-border px-1">[[</kbd> {t('to link')}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          {dirty && <span className="text-[10px] text-muted-foreground">Unsaved</span>}
+          {dirty && <span className="text-[10px] text-muted-foreground">{t('Unsaved')}</span>}
           <Button size="sm" variant="ghost" onClick={onCancel} className="cursor-pointer gap-1">
-            <X size={13} /> Cancel
+            <X size={13} /> {t('Cancel')}
           </Button>
           <Button size="sm" onClick={onSave} disabled={!dirty || saving} className="cursor-pointer gap-1">
-            <Save size={13} /> {saving ? 'Saving…' : 'Save'}
+            <Save size={13} /> {saving ? t('Saving…') : t('Save')}
           </Button>
         </div>
       </div>
@@ -388,7 +392,7 @@ export function DocEditor({
           <textarea
             ref={textarea}
             value={body}
-            aria-label="Document source"
+            aria-label={t('Document source')}
             spellCheck={false}
             onChange={(event) => {
               history.record('type')
@@ -402,9 +406,9 @@ export function DocEditor({
               items={visible}
               query={slashQuery}
               onQuery={setSlashQuery}
-              placeholder="Insert…"
-              ariaLabel="Insert a block"
-              emptyText="Nothing matches."
+              placeholder={t('Insert…')}
+              ariaLabel={t('Insert a block')}
+              emptyText={t('Nothing matches.')}
               at={slashAt}
               menuRef={menu}
               monoLabels
@@ -420,9 +424,9 @@ export function DocEditor({
               items={linkVisible}
               query={linkQuery}
               onQuery={setLinkQuery}
-              placeholder="Link to…"
-              ariaLabel="Link to a document"
-              emptyText="No document to link to yet."
+              placeholder={t('Link to…')}
+              ariaLabel={t('Link to a document')}
+              emptyText={t('No document to link to yet.')}
               at={linkAt}
               menuRef={linkMenu}
               onPick={runLink}
@@ -430,7 +434,7 @@ export function DocEditor({
             />
           )}
           {inserting && (
-            <span className="absolute bottom-2 right-3 text-[10px] text-muted-foreground">Inserting…</span>
+            <span className="absolute bottom-2 right-3 text-[10px] text-muted-foreground">{t('Inserting…')}</span>
           )}
         </div>
         <div className={cn('min-h-0 overflow-y-auto p-4 text-sm', 'hidden lg:block')}>

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { brandIconUrl, BRAND_ICON_PREFIX, LOCAL_BRAND_ICONS } from '@/utils/nodeIcons'
 import dashboardIcons from '@/data/dashboardIcons.json'
+import { t, useLocale } from '@/i18n'
 
 // Locally-served logos first, then the generated dashboard-icons manifest.
 const SLUGS: string[] = [
@@ -16,6 +17,7 @@ interface BrandIconPickerProps {
 }
 
 export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
+  useLocale()
   const [query, setQuery] = useState('')
   const [limit, setLimit] = useState(PAGE)
 
@@ -34,12 +36,15 @@ export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
         type="text"
         value={query}
         onChange={(e) => { setQuery(e.target.value); setLimit(PAGE) }}
-        placeholder={`Search ${SLUGS.length} brand icons...`}
+        placeholder={t('Search {count} brand icons...', { count: SLUGS.length })}
         className="bg-[#0d1117] border-[#30363d] text-xs h-7"
-        aria-label="Brand icon search"
+        aria-label={t('Brand icon search')}
       />
       <div className="text-[10px] text-muted-foreground/60">
-        {filtered.length} match{filtered.length === 1 ? '' : 'es'} · icons served via jsDelivr CDN
+        {t('{count} match{plural} · icons served via jsDelivr CDN', {
+          count: filtered.length,
+          plural: filtered.length === 1 ? '' : 'es',
+        })}
       </div>
       <div className="max-h-52 overflow-y-auto pr-1">
         <div className="grid grid-cols-7 gap-1">
@@ -77,11 +82,11 @@ export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
             onClick={() => setLimit((l) => l + PAGE)}
             className="mt-2 w-full text-[11px] text-muted-foreground hover:text-foreground py-1"
           >
-            Load more ({filtered.length - limit} remaining)
+            {t('Load more ({count} remaining)', { count: filtered.length - limit })}
           </button>
         )}
         {filtered.length === 0 && (
-          <div className="text-center text-[11px] text-muted-foreground py-4">No icons match.</div>
+          <div className="text-center text-[11px] text-muted-foreground py-4">{t('No icons match.')}</div>
         )}
       </div>
     </div>

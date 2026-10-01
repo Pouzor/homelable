@@ -15,6 +15,7 @@ import {
   clampWidthMult, dashArrayFor,
 } from '@/utils/edgeLineStyle'
 import { MarkerShapePicker } from './MarkerShapePicker'
+import { t, useLocale } from '@/i18n'
 
 const EDGE_TYPES = Object.entries(EDGE_TYPE_LABELS) as [EdgeType, string][]
 
@@ -38,6 +39,7 @@ interface EdgeModalProps {
 }
 
 export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints, initial, title = 'Connect Nodes' }: EdgeModalProps) {
+  useLocale()
   const [type, setType] = useState<EdgeType>(initial?.type ?? 'ethernet')
   const [label, setLabel] = useState(initial?.label ?? '')
   const [vlanId, setVlanId] = useState(initial?.vlan_id?.toString() ?? '')
@@ -80,14 +82,14 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-xs">
         <DialogHeader>
-          <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">{t(title)}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3 mt-2">
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Link Type</Label>
+            <Label className="text-xs text-muted-foreground">{t('Link Type')}</Label>
             <Select value={type} onValueChange={(v) => setType(v as EdgeType)}>
-              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Edge type selector">
+              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label={t('Edge type selector')}>
                 <SelectValue>{EDGE_TYPE_LABELS[type]}</SelectValue>
               </SelectTrigger>
               <SelectContent className="bg-[#21262d] border-[#30363d]">
@@ -100,7 +102,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
 
           {type === 'vlan' && (
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">VLAN ID</Label>
+              <Label className="text-xs text-muted-foreground">{t('VLAN ID')}</Label>
               <Input
                 type="number"
                 min={1}
@@ -114,7 +116,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
           )}
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Label <span className="text-muted-foreground/50">(optional, multi-line)</span></Label>
+            <Label className="text-xs text-muted-foreground">{t('Label')} <span className="text-muted-foreground/50">{t('(optional, multi-line)')}</span></Label>
             <Textarea
               value={label}
               onChange={(e) => setLabel(e.target.value)}
@@ -125,8 +127,8 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Path Style</Label>
-            <div className={`flex rounded-md overflow-hidden border border-[#30363d] ${modalStyles['modal-interactive']}`}> 
+            <Label className="text-xs text-muted-foreground">{t('Path Style')}</Label>
+            <div className={`flex rounded-md overflow-hidden border border-[#30363d] ${modalStyles['modal-interactive']}`}>
               {(['bezier', 'smooth'] as EdgePathStyle[]).map((style) => (
                 <button
                   key={style}
@@ -134,14 +136,14 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
                   onClick={() => setPathStyle(style)}
                   className="flex-1 py-1 text-xs capitalize transition-colors cursor-pointer"
                   tabIndex={0}
-                  aria-label={`Path style ${style}`}
+                  aria-label={t('Path style {style}', { style })}
                   style={{
                     background: pathStyle === style ? '#00d4ff22' : '#21262d',
                     color: pathStyle === style ? '#00d4ff' : '#8b949e',
                     borderRight: style === 'bezier' ? '1px solid #30363d' : undefined,
                   }}
                 >
-                  {style === 'bezier' ? 'Bezier' : 'Smooth step'}
+                  {style === 'bezier' ? t('Bezier') : t('Smooth step')}
                 </button>
               ))}
             </div>
@@ -149,7 +151,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
 
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">Line Style</Label>
+              <Label className="text-xs text-muted-foreground">{t('Line Style')}</Label>
               <svg width={56} height={12} aria-hidden>
                 <line
                   x1={2}
@@ -171,14 +173,14 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
                   onClick={() => setLineStyle(ls)}
                   className="flex-1 py-1 text-xs transition-colors cursor-pointer"
                   tabIndex={0}
-                  aria-label={`Line style ${ls}`}
+                  aria-label={t('Line style {style}', { style: ls })}
                   style={{
                     background: effectiveLineStyle === ls ? '#00d4ff22' : '#21262d',
                     color: effectiveLineStyle === ls ? '#00d4ff' : '#8b949e',
                     borderRight: i < EDGE_LINE_STYLES.length - 1 ? '1px solid #30363d' : undefined,
                   }}
                 >
-                  {EDGE_LINE_STYLE_LABELS[ls]}
+                  {t(EDGE_LINE_STYLE_LABELS[ls])}
                 </button>
               ))}
             </div>
@@ -186,7 +188,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
 
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">Line Width</Label>
+              <Label className="text-xs text-muted-foreground">{t('Line Width')}</Label>
               <span className="text-xs text-muted-foreground">{widthMult}×</span>
             </div>
             <input
@@ -196,13 +198,13 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
               step={1}
               value={widthMult}
               onChange={(e) => setWidthMult(clampWidthMult(parseInt(e.target.value, 10)))}
-              aria-label="Line width multiplier"
+              aria-label={t('Line width multiplier')}
               className="w-full h-1 accent-[#00d4ff]"
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Animation</Label>
+            <Label className="text-xs text-muted-foreground">{t('Animation')}</Label>
             <div className={`flex rounded-md overflow-hidden border border-[#30363d] ${modalStyles['modal-interactive']}`}> 
               {(['none', 'basic', 'snake', 'flow'] as AnimMode[]).map((mode, i) => (
                 <button
@@ -211,37 +213,37 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
                   onClick={() => setAnimation(mode)}
                   className="flex-1 py-1 text-xs capitalize transition-colors cursor-pointer"
                   tabIndex={0}
-                  aria-label={`Animation mode ${mode}`}
+                  aria-label={t('Animation mode {mode}', { mode })}
                   style={{
                     background: animation === mode ? '#00d4ff22' : '#21262d',
                     color: animation === mode ? '#00d4ff' : '#8b949e',
                     borderRight: i < 3 ? '1px solid #30363d' : undefined,
                   }}
                 >
-                  {mode === 'none' ? 'None' : mode === 'basic' ? 'Basic' : mode === 'snake' ? 'Snake' : 'Flow'}
+                  {mode === 'none' ? t('None') : mode === 'basic' ? t('Basic') : mode === 'snake' ? t('Snake') : t('Flow')}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Endpoints</Label>
+            <Label className="text-xs text-muted-foreground">{t('Endpoints')}</Label>
             <div className="flex flex-col gap-1.5">
-              <MarkerShapePicker label="Start" value={markerStart} onChange={setMarkerStart} />
-              <MarkerShapePicker label="End" value={markerEnd} onChange={setMarkerEnd} />
+              <MarkerShapePicker label={t('Start')} value={markerStart} onChange={setMarkerStart} />
+              <MarkerShapePicker label={t('End')} value={markerEnd} onChange={setMarkerEnd} />
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">Color</Label>
+              <Label className="text-xs text-muted-foreground">{t('Color')}</Label>
               {customColor && (
                 <button
                   type="button"
                   onClick={() => setCustomColor(undefined)}
                   className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                 >
-                  <RotateCcw size={10} /> Reset
+                  <RotateCcw size={10} /> {t('Reset')}
                 </button>
               )}
             </div>
@@ -249,7 +251,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
               className={`relative flex items-center gap-2.5 px-2.5 h-8 rounded-md border cursor-pointer ${modalStyles['modal-interactive']}`}
               style={{ borderColor: customColor ? effectiveColor : '#30363d', background: '#21262d' }}
               tabIndex={0}
-              aria-label="Edge color picker"
+              aria-label={t('Edge color picker')}
             >
               <input
                 type="color"
@@ -261,7 +263,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
               <span className="font-mono text-xs" style={{ color: customColor ? effectiveColor : '#8b949e' }}>
                 {effectiveColor}
               </span>
-              {!customColor && <span className="text-[10px] text-muted-foreground/50 ml-auto">default</span>}
+              {!customColor && <span className="text-[10px] text-muted-foreground/50 ml-auto">{t('default')}</span>}
             </label>
           </div>
 
@@ -270,13 +272,13 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
               overwritten by the next import — `EdgeUpdate` omits it too. */}
           {initial?.lqi != null && (
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Link Quality (LQI)</Label>
+              <Label className="text-xs text-muted-foreground">{t('Link Quality (LQI)')}</Label>
               <div
                 className="flex items-center gap-2 px-2.5 h-8 rounded-md border"
                 style={{ borderColor: '#30363d', background: '#21262d' }}
               >
                 <span className="font-mono text-xs" style={{ color: '#8b949e' }}>{initial.lqi}</span>
-                <span className="text-[10px] text-muted-foreground/50 ml-auto">measured</span>
+                <span className="text-[10px] text-muted-foreground/50 ml-auto">{t('measured')}</span>
               </div>
             </div>
           )}
@@ -287,20 +289,23 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
               onClick={() => { onClearWaypoints(); onClose() }}
               className="text-[10px] text-muted-foreground hover:text-[#e3b341] transition-colors text-left"
             >
-              Clear path ({initial.waypoints.length} point{initial.waypoints.length !== 1 ? 's' : ''})
+              {t('Clear path ({count} point{plural})', {
+                count: initial.waypoints.length,
+                plural: initial.waypoints.length !== 1 ? 's' : '',
+              })}
             </button>
           )}
 
           <div className="flex justify-between gap-2 pt-1">
             {onDelete ? (
               <Button type="button" variant="ghost" size="sm" className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10 cursor-pointer" onClick={handleDelete}>
-                Delete
+                {t('Delete')}
               </Button>
             ) : <span />}
             <div className="flex gap-2">
-              <Button type="button" variant="ghost" size="sm" className="cursor-pointer" onClick={onClose}>Cancel</Button>
+              <Button type="button" variant="ghost" size="sm" className="cursor-pointer" onClick={onClose}>{t('Cancel')}</Button>
               <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer">
-                {onDelete ? 'Save' : 'Connect'}
+                {onDelete ? t('Save') : t('Connect')}
               </Button>
             </div>
           </div>

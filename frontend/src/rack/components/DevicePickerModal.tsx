@@ -15,11 +15,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { t, useLocale } from '@/i18n'
 import { useRackStore } from '../store'
 import { useRackPalette } from '../rackTheme'
 import type { InventoryDevice } from '@/types'
 
-/** Discovery labels, as the Device Inventory prints them. */
+/**
+ * Discovery labels, as the Device Inventory prints them — the same wording the
+ * inventory uses for its own source filter, and the values the search below
+ * matches against, so they stay as one stream wrote them.
+ */
 const SOURCE_LABELS: Record<string, string> = {
   arp: 'Network scan',
   proxmox: 'Proxmox',
@@ -57,6 +62,7 @@ interface Props {
 }
 
 export function DevicePickerModal({ open, value, onPick, onClose }: Props) {
+  useLocale()
   const palette = useRackPalette()
   const inventory = useRackStore((s) => s.inventory)
   const refreshInventory = useRackStore((s) => s.refreshInventory)
@@ -79,7 +85,7 @@ export function DevicePickerModal({ open, value, onPick, onClose }: Props) {
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="border-[#30363d] bg-[#161b22] text-foreground max-w-[calc(100%-2rem)] sm:max-w-xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-sm font-semibold">Link to an inventory device</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">{t('Link to an inventory device')}</DialogTitle>
         </DialogHeader>
 
         <div className="relative">
@@ -89,10 +95,10 @@ export function DevicePickerModal({ open, value, onPick, onClose }: Props) {
           />
           <input
             autoFocus
-            aria-label="Search devices"
+            aria-label={t('Search devices')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, IP, hostname or source…"
+            placeholder={t('Search by name, IP, hostname or source…')}
             className="w-full rounded border border-[#30363d] bg-[#21262d] py-1 pl-7 pr-2 text-sm text-foreground outline-none focus:border-[#00d4ff]"
           />
         </div>
@@ -100,8 +106,8 @@ export function DevicePickerModal({ open, value, onPick, onClose }: Props) {
         {visible.length === 0 && (
           <p className="text-[11px] text-muted-foreground">
             {inventory.length === 0
-              ? 'The Device Inventory is empty. Run a scan or add a device by hand.'
-              : 'No device matches that search.'}
+              ? t('The Device Inventory is empty. Run a scan or add a device by hand.')
+              : t('No device matches that search.')}
           </p>
         )}
 

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { t, useLocale } from '@/i18n'
 import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod, type NodeTypeStyle } from '@/types'
 import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
@@ -27,6 +28,9 @@ const SIDE_STYLE_KEY: Record<Side, keyof NodeTypeStyle> = {
 /**
  * Compact per-side connection-point control: [− N +] with a typable value.
  * Placed spatially around a node preview (see the Connection Points section).
+ *
+ * `label` arrives already translated — the caller owns the literal, so this
+ * stays a plain presentational component.
  */
 function CPStepper({ label, side, value, onChange }: {
   label: string
@@ -34,6 +38,7 @@ function CPStepper({ label, side, value, onChange }: {
   value: number
   onChange: (v: number) => void
 }) {
+  useLocale()
   const min = MIN_HANDLES
   const labelEl = <span className="text-[10px] text-muted-foreground/80 leading-none">{label}</span>
   const belowLabel = side === 'bottom'
@@ -44,7 +49,7 @@ function CPStepper({ label, side, value, onChange }: {
       <div className="flex items-center h-7 rounded-md border border-[#30363d] bg-[#0d1117] overflow-hidden">
         <button
           type="button"
-          aria-label={`Decrease ${label} connection points`}
+          aria-label={t('Decrease {label} connection points', { label })}
           onClick={() => onChange(clampHandles(side, value - 1))}
           disabled={value <= min}
           className={btn}
@@ -56,13 +61,13 @@ function CPStepper({ label, side, value, onChange }: {
           min={min}
           max={MAX_HANDLES}
           value={value}
-          aria-label={`${label} connection points`}
+          aria-label={t('{label} connection points', { label })}
           onChange={(e) => onChange(clampHandles(side, Number(e.target.value)))}
           className="w-9 h-full bg-transparent text-center text-xs font-mono text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
         <button
           type="button"
-          aria-label={`Increase ${label} connection points`}
+          aria-label={t('Increase {label} connection points', { label })}
           onClick={() => onChange(clampHandles(side, value + 1))}
           disabled={value >= MAX_HANDLES}
           className={btn}
@@ -126,9 +131,35 @@ interface NodeModalProps {
   onEditTypeStyle?: (type: NodeType) => void
 }
 
+/**
+ * Captions for the `NODE_TYPE_GROUPS` categories. Written out as literals so the
+ * zh-CN dictionary can be checked against them; Zigbee / Z-Wave are protocol
+ * names and stay verbatim. Defined per-hook because it needs the component `t`.
+ */
+function useTypeGroupLabel() {
+  useLocale()
+  return (label: string) => {
+    switch (label) {
+      case 'Hardware': return t('Hardware')
+      case 'Virtualization': return t('Virtualization')
+      case 'IoT': return t('IoT')
+      case 'Zigbee': return t('Zigbee')
+      case 'Z-Wave': return t('Z-Wave')
+      case 'Personal': return t('Personal')
+      case 'Electrical': return t('Electrical')
+      default: return t('Generic')
+    }
+  }
+}
+
 // NodeModal is always mounted with a key that changes on open/edit, so useState
 // initial value is enough - no need for a reset effect.
+//
+// `title` stays untranslated: callers pass it in and it is compared with `===`
+// against the 'Add Node' default below to pick the add/edit button set.
 export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node', parentCandidates = [], currentNodeId, onEditTypeStyle }: NodeModalProps) {
+  useLocale()
+  const typeGroupLabel = useTypeGroupLabel()
   const merged = { ...DEFAULT_DATA, ...initial }
   if (MESH_TYPES.includes((merged.type ?? '') as NodeType)) merged.check_method = 'none'
   const [form, setForm] = useState<Partial<NodeData>>(merged)
@@ -200,11 +231,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
             {/* ── LEFT column: identity & network ── */}
             <div className="flex flex-col gap-4 min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 pb-1 border-b border-[#30363d]">Information</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 pb-1 border-b border-[#30363d]">{t('Information')}</div>
             <div className="grid grid-cols-2 gap-3">
             {/* Type + Icon on the same row */}
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Type</Label>
+              <Label className="text-xs text-muted-foreground">{t('Type')}</Label>
               <Select value={form.type} onValueChange={(v) => {
                 const t = v as NodeType
                 setForm((f) => {
@@ -219,7 +250,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   return next
                 })
               }}>
-                <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Node type selector">
+                <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label={t('Node type selector')}>
                   <SelectValue>{NODE_TYPE_LABELS[(form.type ?? 'server') as NodeType]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
@@ -228,7 +259,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                       {i > 0 && <SelectSeparator className="bg-[#30363d]" />}
                       <SelectGroup>
                         <SelectLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 px-2 py-1">
-                          {group.label}
+                          {typeGroupLabel(group.label)}
                         </SelectLabel>
                         {group.types.map((type) => (
                           <SelectItem key={type} value={type} className="text-sm pl-4">
@@ -245,14 +276,14 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {/* Icon */}
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">Icon</Label>
+                <Label className="text-xs text-muted-foreground">{t('Icon')}</Label>
                 {form.custom_icon && (
                   <button
                     type="button"
                     onClick={() => { set('custom_icon', undefined); setIconPickerOpen(false) }}
                     className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                   >
-                    <RotateCcw size={10} /> Reset
+                    <RotateCcw size={10} /> {t('Reset')}
                   </button>
                 )}
               </div>
@@ -261,7 +292,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 type="button"
                 onClick={() => setIconPickerOpen((o) => !o)}
                 className={`flex items-center justify-between gap-2 h-8 px-3 bg-[#21262d] border border-[#30363d] text-sm transition-colors w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
-                aria-label="Icon picker trigger"
+                aria-label={t('Icon picker trigger')}
               >
                 <span className="flex items-center gap-2 min-w-0">
                   {(() => {
@@ -274,7 +305,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                       return <>{createElement(entry.icon, { size: 13, className: 'text-[#00d4ff] shrink-0' })}<span className="text-foreground truncate">{entry.label}</span></>
                     }
                     const defaultIcon = NODE_TYPE_DEFAULT_ICONS[form.type as NodeType] ?? NODE_TYPE_DEFAULT_ICONS.generic
-                    return <>{createElement(defaultIcon, { size: 13, className: 'text-muted-foreground shrink-0' })}<span className="text-muted-foreground truncate">Default</span></>
+                    return <>{createElement(defaultIcon, { size: 13, className: 'text-muted-foreground shrink-0' })}<span className="text-muted-foreground truncate">{t('Default')}</span></>
                   })()}
                 </span>
                 <ChevronDown size={12} className="text-muted-foreground shrink-0" style={{ transform: iconPickerOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }} />
@@ -295,20 +326,20 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
 
             {/* Label */}
             <div className="flex flex-col gap-1.5 col-span-2">
-              <Label className="text-xs text-muted-foreground">Label *</Label>
+              <Label className="text-xs text-muted-foreground">{t('Label *')}</Label>
               <Input
                 value={form.label ?? ''}
                 onChange={(e) => { set('label', e.target.value); if (labelError) setLabelError(false) }}
                 placeholder="My Server"
                 className={`bg-[#21262d] text-sm h-8 ${labelError ? 'border-[#f85149] focus-visible:ring-[#f85149]' : 'border-[#30363d]'} ${modalStyles['modal-radius']}`}
               />
-              {labelError && <p className="text-[11px] text-[#f85149]">Label is required</p>}
+              {labelError && <p className="text-[11px] text-[#f85149]">{t('Label is required')}</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
             {/* Hostname */}
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Hostname</Label>
+              <Label className="text-xs text-muted-foreground">{t('Hostname')}</Label>
               <Input
                 value={form.hostname ?? ''}
                 onChange={(e) => set('hostname', e.target.value)}
@@ -319,14 +350,14 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
 
             {/* IP */}
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">IP Address</Label>
+              <Label className="text-xs text-muted-foreground">{t('IP Address')}</Label>
               <Input
                 value={form.ip ?? ''}
                 onChange={(e) => set('ip', e.target.value)}
                 placeholder="192.168.1.x, 2001:db8::1"
                 className={`bg-[#21262d] border-[#30363d] font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
               />
-              <span className="text-[10px] text-muted-foreground/50">comma-separated</span>
+              <span className="text-[10px] text-muted-foreground/50">{t('comma-separated')}</span>
             </div>
             </div>{/* end Hostname/IP subgrid */}
 
@@ -334,14 +365,18 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {/* Check method — hidden for zigbee nodes (always none/online) */}
             {!ZIGBEE_TYPES.includes((form.type ?? '') as NodeType) && (
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs text-muted-foreground">Check Method</Label>
+                <Label className="text-xs text-muted-foreground">{t('Check Method')}</Label>
                 <Select value={form.check_method ?? 'ping'} onValueChange={(v) => set('check_method', v as CheckMethod)}>
-                  <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Check method selector">
-                    <SelectValue>{CHECK_METHOD_LABELS[(form.check_method ?? 'ping') as CheckMethod]}</SelectValue>
+                  <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label={t('Check method selector')}>
+                    <SelectValue>
+                      {(form.check_method ?? 'ping') === 'health' ? t('Health') : CHECK_METHOD_LABELS[(form.check_method ?? 'ping') as CheckMethod]}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="bg-[#21262d] border-[#30363d]">
                     {CHECK_METHODS.map((m) => (
-                      <SelectItem key={m} value={m} className="text-sm">{CHECK_METHOD_LABELS[m]}</SelectItem>
+                      <SelectItem key={m} value={m} className="text-sm">
+                        {m === 'health' ? t('Health') : CHECK_METHOD_LABELS[m]}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -351,7 +386,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {/* Check target — hidden for zigbee nodes */}
             {!ZIGBEE_TYPES.includes((form.type ?? '') as NodeType) && (
               <div className="flex flex-col gap-1.5">
-                <Label className="text-xs text-muted-foreground">Check Target</Label>
+                <Label className="text-xs text-muted-foreground">{t('Check Target')}</Label>
                 <Input
                   value={form.check_target ?? ''}
                   onChange={(e) => set('check_target', e.target.value)}
@@ -376,20 +411,20 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               if (validParents.length === 0) return null
               return (
                 <div className="flex flex-col gap-1.5 col-span-2">
-                  <Label className="text-xs text-muted-foreground">Parent Container</Label>
+                  <Label className="text-xs text-muted-foreground">{t('Parent Container')}</Label>
                   <Select
                     value={form.parent_id ?? 'none'}
                     onValueChange={(v) => set('parent_id', v === 'none' ? undefined : v)}
                   >
-                    <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Parent container selector">
+                    <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label={t('Parent container selector')}>
                       <SelectValue>
                         {form.parent_id
-                          ? (validParents.find((n) => n.id === form.parent_id)?.label ?? 'None')
-                          : 'None'}
+                          ? (validParents.find((n) => n.id === form.parent_id)?.label ?? t('None'))
+                          : t('None')}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent className="bg-[#21262d] border-[#30363d]">
-                      <SelectItem value="none" className="text-sm">None</SelectItem>
+                      <SelectItem value="none" className="text-sm">{t('None')}</SelectItem>
                       {validParents.map((n) => (
                         <SelectItem key={n.id} value={n.id} className="text-sm">{n.label}</SelectItem>
                       ))}
@@ -403,16 +438,16 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {CONTAINER_MODE_TYPES.includes((form.type ?? 'generic') as NodeType) && (
               <div className="flex items-center justify-between col-span-2 py-1">
                 <div className="flex flex-col gap-0.5">
-                  <Label className="text-xs text-muted-foreground">Container Mode</Label>
+                  <Label className="text-xs text-muted-foreground">{t('Container Mode')}</Label>
                   <span className="text-[10px] text-muted-foreground/60">
-                    Allow other nodes to nest inside this node
+                    {t('Allow other nodes to nest inside this node')}
                   </span>
                 </div>
 
                 <button
                   type="button"
                   role="switch"
-                  aria-label="Container Mode"
+                  aria-label={t('Container Mode')}
                   aria-checked={!!form.container_mode}
                   onClick={() => set('container_mode', !form.container_mode)}
                   className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors focus:outline-none ${modalStyles['modal-interactive']}`}
@@ -431,11 +466,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 Furniture draws no device, so it has no inventory row to keep
                 `notes` on; its text lives on the node's own `description`. */}
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">{isFurniture ? 'Description' : 'Notes'}</Label>
+              <Label className="text-xs text-muted-foreground">{isFurniture ? t('Description') : t('Notes')}</Label>
               <Textarea
                 value={(isFurniture ? form.description : form.notes) ?? ''}
                 onChange={(e) => set(isFurniture ? 'description' : 'notes', e.target.value)}
-                placeholder={isFurniture ? 'What this is for' : 'Optional notes'}
+                placeholder={isFurniture ? t('What this is for') : t('Optional notes')}
                 rows={3}
                 className={`bg-[#21262d] border-[#30363d] text-sm resize-y min-h-16 ${modalStyles['modal-radius']}`}
               />
@@ -444,18 +479,18 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
 
             {/* ── RIGHT column: display ── */}
             <div className="flex flex-col gap-4 min-w-0">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 pb-1 border-b border-[#30363d]">Design</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 pb-1 border-b border-[#30363d]">{t('Design')}</div>
             {/* Service visibility */}
             {form.type !== 'groupRect' && form.type !== 'group' && (
               <div className="flex items-start justify-between col-span-2 py-1">
                 <div className="flex flex-col gap-0.5">
-                  <Label className="text-xs text-muted-foreground">Show Services</Label>
-                  <span className="text-[10px] text-muted-foreground/60">Display discovered services on the node card</span>
+                  <Label className="text-xs text-muted-foreground">{t('Show Services')}</Label>
+                  <span className="text-[10px] text-muted-foreground/60">{t('Display discovered services on the node card')}</span>
                 </div>
                 <button
                   type="button"
                   role="switch"
-                  aria-label="Show Services"
+                  aria-label={t('Show Services')}
                   aria-checked={showServicesEnabled}
                   onClick={() => set('custom_colors', {
                     ...form.custom_colors,
@@ -475,7 +510,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {/* Appearance */}
             <div className="flex flex-col gap-2 col-span-2">
               <div className="flex items-center justify-between">
-                <Label className="text-xs text-muted-foreground">Appearance</Label>
+                <Label className="text-xs text-muted-foreground">{t('Appearance')}</Label>
                 {hasAppearanceOverrides && (
                   <button
                     type="button"
@@ -492,7 +527,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                     })}
                     className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                   >
-                    <RotateCcw size={10} /> Reset to defaults
+                    <RotateCcw size={10} /> {t('Reset to defaults')}
                   </button>
                 )}
               </div>
@@ -508,7 +543,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                         style={{ borderColor: isCustom ? currentValue : '#30363d' }}
                         title={`${key.charAt(0).toUpperCase() + key.slice(1)}: ${currentValue}`}
                         tabIndex={0}
-                        aria-label={`Color picker for ${key}`}
+                        aria-label={t('Color picker for {name}', { name: key })}
                       >
                         <input
                           type="color"
@@ -525,7 +560,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               </div>
               <div className="min-h-3.5">
                 {!hasAppearanceOverrides && (
-                  <p className="text-[10px] text-muted-foreground/50">Using default colors for {NODE_TYPE_LABELS[form.type ?? 'generic']}. Click a swatch to customize.</p>
+                  <p className="text-[10px] text-muted-foreground/50">{t('Using default colors for {type}. Click a swatch to customize.', { type: NODE_TYPE_LABELS[form.type ?? 'generic'] })}</p>
                 )}
               </div>
               {onEditTypeStyle && form.type !== 'group' && form.type !== 'groupRect' && (
@@ -534,7 +569,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   onClick={() => onEditTypeStyle((form.type ?? 'generic') as NodeType)}
                   className="flex items-center gap-1 self-start text-[10px] text-[#00d4ff] hover:underline"
                 >
-                  <Palette size={10} /> Edit {NODE_TYPE_LABELS[form.type ?? 'generic']} style for all nodes on the canvas
+                  <Palette size={10} /> {t('Edit {type} style for all nodes on the canvas', { type: NODE_TYPE_LABELS[form.type ?? 'generic'] })}
                 </button>
               )}
             </div>
@@ -542,15 +577,15 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
             {/* Connection points per side (not for group containers) */}
             {form.type !== 'groupRect' && form.type !== 'group' && (
               <div className="flex flex-col gap-2.5 col-span-2">
-                <Label className="text-xs text-muted-foreground">Connection Points</Label>
+                <Label className="text-xs text-muted-foreground">{t('Connection Points')}</Label>
                 {/* Spatial cross: each side's stepper sits where that side is. */}
                 <div className="grid grid-cols-[1fr_auto_1fr] items-center justify-items-center gap-x-2 gap-y-2 py-1">
                   <div />
-                  <CPStepper label="Top" side="top" value={sideValue('top')}
+                  <CPStepper label={t('Top')} side="top" value={sideValue('top')}
                     onChange={(v) => set('top_handles', v)} />
                   <div />
 
-                  <CPStepper label="Left" side="left" value={sideValue('left')}
+                  <CPStepper label={t('Left')} side="left" value={sideValue('left')}
                     onChange={(v) => set('left_handles', v)} />
                   <div
                     className="flex items-center justify-center rounded-md border text-[9px] uppercase tracking-wide font-medium select-none"
@@ -561,20 +596,20 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                       color: resolvedNodeColors.icon,
                     }}
                   >
-                    node
+                    {t('node')}
                   </div>
-                  <CPStepper label="Right" side="right" value={sideValue('right')}
+                  <CPStepper label={t('Right')} side="right" value={sideValue('right')}
                     onChange={(v) => set('right_handles', v)} />
 
                   <div />
-                  <CPStepper label="Bottom" side="bottom" value={sideValue('bottom')}
+                  <CPStepper label={t('Bottom')} side="bottom" value={sideValue('bottom')}
                     onChange={(v) => set('bottom_handles', v)} />
                   <div />
                 </div>
                 <div className="flex items-center justify-between pt-1">
                   <div className="flex flex-col gap-0.5">
-                    <Label className="text-xs text-muted-foreground">Show Port Numbers</Label>
-                    <span className="text-[10px] text-muted-foreground/60">Label each connection point</span>
+                    <Label className="text-xs text-muted-foreground">{t('Show Port Numbers')}</Label>
+                    <span className="text-[10px] text-muted-foreground/60">{t('Label each connection point')}</span>
                   </div>
                   <button
                     type="button"
@@ -583,7 +618,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                     onClick={() => set('show_port_numbers', !form.show_port_numbers)}
                     className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors focus:outline-none ${modalStyles['modal-interactive']}`}
                     tabIndex={0}
-                    aria-label="Toggle port numbers"
+                    aria-label={t('Toggle port numbers')}
                     style={{ background: form.show_port_numbers ? '#ff6e00' : '#30363d' }}
                   >
                     <span
@@ -607,26 +642,26 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 size="sm"
                 className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10 cursor-pointer"
                 onClick={() => {
-                  if (window.confirm('Delete this node?')) {
+                  if (window.confirm(t('Delete this node?'))) {
                     onSubmit({ ...form, _delete: true })
                     onClose()
                   }
                 }}
                 style={{ minWidth: 64 }}
               >
-                Delete
+                {t('Delete')}
               </Button>
             ) : <span />}
             <div className="flex gap-2">
               <Button type="button" variant="ghost" size="sm" className={`cursor-pointer ${modalStyles['modal-cancel-hover']}`} onClick={onClose}>
-                Cancel
+                {t('Cancel')}
               </Button>
               <Button
                 type="submit"
                 size="sm"
                 className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer"
               >
-                {title === 'Add Node' ? 'Add' : 'Save'}
+                {title === 'Add Node' ? t('Add') : t('Save')}
               </Button>
             </div>
           </div>

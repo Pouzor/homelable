@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ArrowLeft, ArrowRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useWalkthroughStore } from '@/stores/walkthroughStore'
+import { t, useLocale } from '@/i18n'
 import { useWalkthroughActions } from './actions'
 import { getSteps, type StepPlacement } from './steps'
 import './walkthrough.css'
@@ -54,9 +55,15 @@ function dialogCardPosition(rect: DOMRect): { left: number; top: number } {
 }
 
 export function WalkthroughOverlay() {
+  const locale = useLocale()
   const { isActive, stepIndex, total, setTotal, next, prev, skip } = useWalkthroughStore()
   const actions = useWalkthroughActions()
-  const steps = useMemo(() => getSteps(STANDALONE), [])
+  // The step table translates its own text inside getSteps(), so it must be
+  // rebuilt when the language changes. The lint rule cannot see that — `locale`
+  // is not read in this callback — but dropping it would freeze the tour in the
+  // language that happened to be active when the overlay mounted.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const steps = useMemo(() => getSteps(STANDALONE), [locale])
   const step = steps[stepIndex]
 
   // anchorRect: the element the step rings (sidebar/toolbar button). dialogRect:
@@ -179,7 +186,7 @@ export function WalkthroughOverlay() {
       <div
         role="dialog"
         aria-modal="false"
-        aria-label="Getting started walkthrough"
+        aria-label={t('Getting started walkthrough')}
         className="walkthrough-card-enter absolute pointer-events-auto rounded-xl border border-[#30363d] bg-[#161b22] p-4 shadow-2xl"
         style={{ left: pos.left, top: pos.top, width: CARD_W, transition: 'left 0.25s, top 0.25s' }}
       >
@@ -187,7 +194,7 @@ export function WalkthroughOverlay() {
           <h3 className="text-sm font-semibold text-foreground">{step.title}</h3>
           <button
             onClick={skip}
-            aria-label="Skip walkthrough"
+            aria-label={t('Skip walkthrough')}
             className="shrink-0 text-muted-foreground hover:text-foreground p-0.5 rounded transition-colors"
           >
             <X size={14} />
@@ -227,7 +234,7 @@ export function WalkthroughOverlay() {
             <Button
               variant="ghost"
               size="sm"
-              aria-label="Previous step"
+              aria-label={t('Previous step')}
               className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40"
               onClick={prev}
               disabled={stepIndex === 0}
@@ -239,7 +246,7 @@ export function WalkthroughOverlay() {
               className="h-7 px-3 text-xs bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
               onClick={next}
             >
-              {isLast ? 'Finish' : <>Next <ArrowRight size={13} className="ml-1" /></>}
+              {isLast ? t('Finish') : <>{t('Next')} <ArrowRight size={13} className="ml-1" /></>}
             </Button>
           </div>
         </div>

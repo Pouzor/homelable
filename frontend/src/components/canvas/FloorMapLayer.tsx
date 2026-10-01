@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ViewportPortal, useReactFlow, useStore } from '@xyflow/react'
 import { useCanvasStore } from '@/stores/canvasStore'
+import { t, useLocale } from '@/i18n'
 import { resolveServerPath } from '@/utils/basePath'
 
 interface ResizeState {
@@ -24,6 +25,7 @@ interface ResizeState {
  * plan opens its edit modal.
  */
 export function FloorMapLayer() {
+  useLocale()
   const floorMap = useCanvasStore((s) => s.floorMap)
   const updateFloorMap = useCanvasStore((s) => s.updateFloorMap)
   const requestFloorMapEdit = useCanvasStore((s) => s.requestFloorMapEdit)
@@ -154,7 +156,7 @@ export function FloorMapLayer() {
       >
         <img
           src={resolveServerPath(imageData)}
-          alt="Floor plan"
+          alt={t('Floor plan')}
           draggable={false}
           style={{
             width: '100%',

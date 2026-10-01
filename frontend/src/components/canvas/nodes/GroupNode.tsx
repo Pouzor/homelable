@@ -3,10 +3,12 @@ import { type NodeProps, type Node, NodeResizer, Handle, Position } from '@xyflo
 import { Layers, Pencil, Check, X, ChevronDown } from 'lucide-react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useThemeStore } from '@/stores/themeStore'
+import { t, useLocale } from '@/i18n'
 import { THEMES } from '@/utils/themes'
 import { STATUS_COLORS, type NodeData } from '@/types'
 
 export function GroupNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
+  useLocale()
   const { nodes, updateNode, snapshotHistory, toggleNodeCollapsed } = useCanvasStore()
   const isCollapsed = data.collapsed ?? false
   const activeTheme = useThemeStore((s) => s.activeTheme)
@@ -133,7 +135,7 @@ export function GroupNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
               className="nodrag"
               onClick={() => { setLabelDraft(data.label); setEditing(true) }}
               style={{ color: '#8b949e', background: 'none', border: 'none', cursor: 'pointer', padding: 1, opacity: selected ? 1 : 0 }}
-              title="Rename group"
+              title={t('Rename group')}
             >
               <Pencil size={10} />
             </button>
@@ -144,7 +146,9 @@ export function GroupNode({ id, data, selected }: NodeProps<Node<NodeData>>) {
             <button
               className="nodrag"
               onClick={(e) => { e.stopPropagation(); toggleNodeCollapsed(id) }}
-              title={isCollapsed ? `Show ${children.length} hidden items` : `Hide ${children.length} items`}
+              title={isCollapsed
+                ? t('Show {count} hidden items', { count: children.length })
+                : t('Hide {count} items', { count: children.length })}
               style={{
                 color: '#00d4ff',
                 background: 'none',

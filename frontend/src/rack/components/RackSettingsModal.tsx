@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { t, useLocale } from '@/i18n'
 import { useRackStore } from '../store'
 import { freeUnits } from '../layout'
 import { MAX_RACK_U, MIN_RACK_U } from '../rackDefaults'
@@ -27,6 +28,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function RackSettingsModal() {
+  useLocale()
   const rackId = useRackStore((s) => s.rackEditorId)
   const close = useRackStore((s) => s.closeRackEditor)
   const rack = useRackStore((s) => s.racks.find((r) => r.id === s.rackEditorId))
@@ -42,63 +44,69 @@ export function RackSettingsModal() {
     <Dialog open onOpenChange={(o) => !o && close()}>
       <DialogContent className="max-w-md border-[#30363d] bg-[#161b22] text-foreground max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-sm font-semibold">Rack settings</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">{t('Rack settings')}</DialogTitle>
         </DialogHeader>
 
         <div className="mt-2 flex flex-col gap-3">
-          <Field label="Name">
+          <Field label={t('Name')}>
             <input
               className={inputClass}
-              aria-label="Rack name"
+              aria-label={t('Rack name')}
               value={rack.name}
               onChange={(e) => updateRack(rack.id, { name: e.target.value })}
             />
           </Field>
-          <Field label="Location">
+          <Field label={t('Location')}>
             <input
               className={inputClass}
-              aria-label="Location"
+              aria-label={t('Location')}
               value={rack.location ?? ''}
               onChange={(e) => updateRack(rack.id, { location: e.target.value })}
             />
           </Field>
-          <Field label={`Height — ${used}U used of ${rack.uHeight}U`}>
+          <Field label={t('Height — {used}U used of {total}U', { used, total: rack.uHeight })}>
             <HeightField rackId={rack.id} uHeight={rack.uHeight} />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Width standard">
+            <Field label={t('Width standard')}>
               <select
                 className={inputClass}
-                aria-label="Width standard"
+                aria-label={t('Width standard')}
                 value={rack.widthStandard}
                 onChange={(e) =>
                   updateRack(rack.id, { widthStandard: e.target.value as RackWidthStandard })
                 }
               >
-                <option value="19">19 inch</option>
-                <option value="10">10 inch (mini)</option>
+                <option value="19">{t('19 inch')}</option>
+                <option value="10">{t('10 inch (mini)')}</option>
               </select>
             </Field>
-            <Field label="U numbering">
+            <Field label={t('U numbering')}>
               <select
                 className={inputClass}
-                aria-label="U numbering"
+                aria-label={t('U numbering')}
                 value={rack.numbering}
                 onChange={(e) => updateRack(rack.id, { numbering: e.target.value as RackNumbering })}
               >
-                <option value="bottom-up">1 at the bottom</option>
-                <option value="top-down">1 at the top</option>
+                <option value="bottom-up">{t('1 at the bottom')}</option>
+                <option value="top-down">{t('1 at the top')}</option>
               </select>
             </Field>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            {(['frame', 'rail', 'interior'] as const).map((key) => (
-              <Field key={key} label={key}>
+            {/* The colour keys are the rack-style property names, and they are
+                what English users read here, so they double as the captions. */}
+            {([
+              ['frame', t('frame')],
+              ['rail', t('rail')],
+              ['interior', t('interior')],
+            ] as const).map(([key, caption]) => (
+              <Field key={key} label={caption}>
                 <input
                   type="color"
-                  aria-label={key}
+                  aria-label={caption}
                   className="h-8 w-full cursor-pointer rounded border border-[#30363d] bg-[#21262d]"
                   value={rack.style[key]}
                   onChange={(e) => updateRackStyle(rack.id, { [key]: e.target.value })}
@@ -113,7 +121,7 @@ export function RackSettingsModal() {
               checked={rack.style.showNumbers}
               onChange={(e) => updateRackStyle(rack.id, { showNumbers: e.target.checked })}
             />
-            Show U numbers
+            {t('Show U numbers')}
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -121,7 +129,7 @@ export function RackSettingsModal() {
               checked={rack.style.enclosed}
               onChange={(e) => updateRackStyle(rack.id, { enclosed: e.target.checked })}
             />
-            Enclosed cabinet
+            {t('Enclosed cabinet')}
           </label>
 
           <div className="mt-1 flex items-center gap-2">
@@ -133,18 +141,22 @@ export function RackSettingsModal() {
                 // the rack canvas has no undo. Ask first.
                 const mounted = devices.filter((d) => d.rackId === rack.id).length
                 const warning = mounted
-                  ? `Delete "${rack.name}" and unmount ${mounted} device${mounted > 1 ? 's' : ''}? Their cabling is removed too. The Device Inventory is untouched.`
-                  : `Delete "${rack.name}"?`
+                  ? t('Delete "{name}" and unmount {count} device{plural}? Their cabling is removed too. The Device Inventory is untouched.', {
+                      name: rack.name,
+                      count: mounted,
+                      plural: mounted > 1 ? 's' : '',
+                    })
+                  : t('Delete "{name}"?', { name: rack.name })
                 if (!confirm(warning)) return
                 removeRack(rack.id)
                 close()
               }}
               className="cursor-pointer text-[#f85149] hover:bg-[#f8514922] hover:text-[#f85149]"
             >
-              Delete rack
+              {t('Delete rack')}
             </Button>
             <Button type="button" onClick={close} className="ml-auto cursor-pointer">
-              Done
+              {t('Done')}
             </Button>
           </div>
         </div>
@@ -163,6 +175,7 @@ export function RackSettingsModal() {
  * rearranged the rack. Only the settled value reaches the store.
  */
 function HeightField({ rackId, uHeight }: { rackId: string; uHeight: number }) {
+  useLocale()
   const updateRack = useRackStore((s) => s.updateRack)
   const [draft, setDraft] = useState(String(uHeight))
 
@@ -185,7 +198,7 @@ function HeightField({ rackId, uHeight }: { rackId: string; uHeight: number }) {
       return
     }
     if (!updateRack(rackId, { uHeight: next })) {
-      toast.error('Not enough room to shrink the rack — unmount something first')
+      toast.error(t('Not enough room to shrink the rack — unmount something first'))
       setDraft(String(uHeight))
     }
   }
@@ -196,7 +209,7 @@ function HeightField({ rackId, uHeight }: { rackId: string; uHeight: number }) {
       min={MIN_RACK_U}
       max={MAX_RACK_U}
       className={inputClass}
-      aria-label="Rack height"
+      aria-label={t('Rack height')}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}

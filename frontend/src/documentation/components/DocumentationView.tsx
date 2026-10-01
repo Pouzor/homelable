@@ -3,6 +3,7 @@ import { Archive, BookOpen, ChevronDown, ChevronRight, FilePlus, FolderPlus, Lin
 import { toast } from 'sonner'
 
 import { docsviewApi, scanApi } from '@/api/client'
+import { t, useLocale } from '@/i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -43,6 +44,7 @@ const GROUP_OPTIONS = Object.keys(GROUP_BY_LABELS) as GroupBy[]
  * beside the canvas rather than inside a design.
  */
 export function DocumentationView() {
+  useLocale()
   const {
     docs,
     loaded,
@@ -344,10 +346,9 @@ export function DocumentationView() {
       <div className="flex flex-1 items-center justify-center p-8 text-center">
         <div className="max-w-md">
           <BookOpen className="mx-auto mb-3 opacity-40" size={28} />
-          <h2 className="mb-1 text-sm font-semibold">Documentation needs the backend</h2>
+          <h2 className="mb-1 text-sm font-semibold">{t('Documentation needs the backend')}</h2>
           <p className="text-xs text-muted-foreground">
-            Standalone mode keeps canvases in the browser and has nowhere to store documents or
-            search them. Run Homelable with its API to use this section.
+            {t('Standalone mode keeps canvases in the browser and has nowhere to store documents or search them. Run Homelable with its API to use this section.')}
           </p>
         </div>
       </div>
@@ -365,12 +366,12 @@ export function DocumentationView() {
           <Input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            placeholder="Filter documents"
-            aria-label="Filter documents"
+            placeholder={t('Filter documents')}
+            aria-label={t('Filter documents')}
             className="h-6 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
           />
           {filter && (
-            <Button size="icon-xs" variant="ghost" aria-label="Clear filter" onClick={() => setFilter('')}>
+            <Button size="icon-xs" variant="ghost" aria-label={t('Clear filter')} onClick={() => setFilter('')}>
               <X />
             </Button>
           )}
@@ -415,8 +416,8 @@ export function DocumentationView() {
                 <Button
                   size="icon-xs"
                   variant="ghost"
-                  aria-label="New document"
-                  title="New document"
+                  aria-label={t('New document')}
+                  title={t('New document')}
                   data-tour="docs-new"
                 >
                   <FilePlus />
@@ -426,8 +427,8 @@ export function DocumentationView() {
             <Button
               size="icon-xs"
               variant="ghost"
-              aria-label="New folder"
-              title="New folder"
+              aria-label={t('New folder')}
+              title={t('New folder')}
               onClick={async () => {
                 const title = window.prompt('Folder name')
                 if (title?.trim()) await create({ title: title.trim(), kind: 'folder' })
@@ -499,7 +500,7 @@ export function DocumentationView() {
             size="xs"
             variant="ghost"
             className="cursor-pointer gap-1 px-1.5"
-            title="Download every document as a zip of Markdown files"
+            title={t('Download every document as a zip of Markdown files')}
             disabled={exporting || docs.length === 0}
             onClick={() => void handleExportAll()}
           >
@@ -511,7 +512,7 @@ export function DocumentationView() {
               size="xs"
               variant="ghost"
               className="cursor-pointer gap-1 px-1.5"
-              title="Copy the read-only link — anyone holding it reads every document"
+              title={t('Copy the read-only link — anyone holding it reads every document')}
               onClick={async () => {
                 if (await copyToClipboard(docsLink)) toast.success('Read-only link copied')
                 else toast.error('Could not copy the link')
@@ -535,7 +536,7 @@ export function DocumentationView() {
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize the document tree"
+        aria-label={t('Resize the document tree')}
         onMouseDown={() => {
           dragging.current = true
         }}

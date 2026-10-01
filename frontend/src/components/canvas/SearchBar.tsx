@@ -3,6 +3,7 @@ import { useReactFlow } from '@xyflow/react'
 import { Search, X } from 'lucide-react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { scanApi } from '@/api/client'
+import { t, useLocale } from '@/i18n'
 import { NODE_TYPE_LABELS } from '@/types'
 import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 
@@ -11,6 +12,7 @@ interface SearchBarProps {
 }
 
 export function SearchBar({ onOpenInventory }: SearchBarProps) {
+  useLocale()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [inventoryDevices, setInventoryEntrys] = useState<InventoryEntry[]>([])
@@ -146,7 +148,7 @@ export function SearchBar({ onOpenInventory }: SearchBarProps) {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, IP, hostname or service…"
+            placeholder={t('Search by name, IP, hostname or service…')}
             style={{
               flex: 1,
               background: 'transparent',
@@ -158,12 +160,12 @@ export function SearchBar({ onOpenInventory }: SearchBarProps) {
           />
           {query && (
             <span style={{ fontSize: 11, color: '#6e7681', flexShrink: 0 }}>
-              {totalResults} result{totalResults !== 1 ? 's' : ''}
+              {t('{count} result{plural}', { count: totalResults, plural: totalResults !== 1 ? 's' : '' })}
             </span>
           )}
           <button
             onClick={() => { setOpen(false); setQuery('') }}
-            aria-label="Close search"
+            aria-label={t('Close search')}
             style={{ color: '#8b949e', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}
           >
             <X size={14} />
@@ -230,9 +232,9 @@ export function SearchBar({ onOpenInventory }: SearchBarProps) {
                   onMouseEnter={(e) => (e.currentTarget.style.background = '#21262d')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
                 >
-                  <span style={{ fontSize: 10, color: '#e3b341', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 }}>pending</span>
+                  <span style={{ fontSize: 10, color: '#e3b341', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 }}>{t('pending')}</span>
                   <span style={{ fontSize: 12, fontWeight: 600, color: '#e6edf3', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {d.friendly_name ?? d.hostname ?? d.ip ?? d.ieee_address ?? 'device'}
+                    {d.friendly_name ?? d.hostname ?? d.ip ?? d.ieee_address ?? t('device')}
                   </span>
                   <span style={{ fontSize: 11, color: '#8b949e', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 }}>
                     {serviceName ?? d.ip ?? d.ieee_address ?? ''}
@@ -245,7 +247,7 @@ export function SearchBar({ onOpenInventory }: SearchBarProps) {
 
         {q && totalResults === 0 && (
           <div style={{ borderTop: '1px solid #30363d', padding: '10px 12px', fontSize: 12, color: '#6e7681', textAlign: 'center' }}>
-            No results for &ldquo;{query}&rdquo;
+            {t('No results for “{query}”', { query })}
           </div>
         )}
       </div>

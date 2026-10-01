@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { zwaveApi } from '@/api/client'
+import { t, useLocale } from '@/i18n'
 import { toast } from 'sonner'
 import type { ZwaveNode, ZwaveEdge } from './types'
 
@@ -51,12 +52,6 @@ const DEVICE_TYPE_ICON = {
   zwave_enddevice: Cpu,
 } as const
 
-const DEVICE_TYPE_LABEL = {
-  zwave_coordinator: 'Controller',
-  zwave_router: 'Router',
-  zwave_enddevice: 'End Device',
-} as const
-
 const DEVICE_TYPE_COLOR = {
   zwave_coordinator: '#ff6e00',
   zwave_router: '#39d353',
@@ -64,6 +59,7 @@ const DEVICE_TYPE_COLOR = {
 } as const
 
 export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImported }: ZwaveImportModalProps) {
+  useLocale()
   const [form, setForm] = useState<ConnectionForm>(DEFAULT_FORM)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [connectionMsg, setConnectionMsg] = useState('')
@@ -72,6 +68,13 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
   const [edges, setEdges] = useState<ZwaveEdge[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [importMode, setImportMode] = useState<ImportMode>('pending')
+  // Built inside the component so the labels go through `t`; a module-level
+  // table would be created once at import, before the locale is known.
+  const deviceTypeLabel = {
+    zwave_coordinator: t('Controller'),
+    zwave_router: t('Router'),
+    zwave_enddevice: t('End Device'),
+  } as const
 
   const updateField = (field: keyof ConnectionForm, value: string) =>
     setForm((f) => ({
@@ -107,7 +110,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
   })
 
   const handleTestConnection = async () => {
-    if (!form.mqtt_host.trim()) { toast.error('Enter a broker hostname'); return }
+    if (!form.mqtt_host.trim()) { toast.error(t('Enter a broker hostname')); return }
     setConnectionStatus('testing')
     try {
       const res = await zwaveApi.testConnection({
@@ -127,7 +130,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
       }
     } catch {
       setConnectionStatus('fail')
-      setConnectionMsg('Request failed — check broker address')
+      setConnectionMsg(t('Request failed — check broker address'))
     }
   }
 
@@ -139,12 +142,12 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
   }
 
   const handleFetchDevices = async () => {
-    if (!form.mqtt_host.trim()) { toast.error('Enter a broker hostname'); return }
+    if (!form.mqtt_host.trim()) { toast.error(t('Enter a broker hostname')); return }
     setLoading(true)
     try {
       if (importMode === 'pending') {
         await zwaveApi.importToPending(buildPayload())
-        toast.success('Z-Wave import started — track progress in Scan History')
+        toast.success(t('Z-Wave import started — track progress in Scan History'))
         onInventoryImported?.(null)
         handleClose()
       } else {
@@ -153,13 +156,16 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
         setEdges(res.data.edges)
         setChecked(new Set(res.data.nodes.map((n) => n.id)))
         if (res.data.device_count === 0) {
-          toast.info('No Z-Wave devices found')
+          toast.info(t('No Z-Wave devices found'))
         } else {
-          toast.success(`Found ${res.data.device_count} device${res.data.device_count !== 1 ? 's' : ''}`)
+          toast.success(t('Found {count} device{plural}', {
+            count: res.data.device_count,
+            plural: res.data.device_count !== 1 ? 's' : '',
+          }))
         }
       }
     } catch (err: unknown) {
-      toast.error(extractError(err) ?? 'Failed to fetch Z-Wave devices')
+      toast.error(extractError(err) ?? t('Failed to fetch Z-Wave devices'))
     } finally {
       setLoading(false)
     }
@@ -181,7 +187,10 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
     const selectedIds = new Set(selectedDevices.map((d) => d.id))
     const selectedEdges = edges.filter((e) => selectedIds.has(e.source) && selectedIds.has(e.target))
     onAddToCanvas(selectedDevices, selectedEdges)
-    toast.success(`Added ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''} to canvas`)
+    toast.success(t('Added {count} device{plural} to canvas', {
+      count: selectedDevices.length,
+      plural: selectedDevices.length !== 1 ? 's' : '',
+    }))
     onClose()
   }
 
@@ -207,7 +216,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <RadioTower size={16} style={{ color: ACCENT }} />
-            Z-Wave Import
+            {t('Z-Wave Import')}
           </DialogTitle>
         </DialogHeader>
 
@@ -216,7 +225,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
               <div className="col-span-2 space-y-1">
-                <Label className="text-xs text-muted-foreground">Broker Host</Label>
+                <Label className="text-xs text-muted-foreground">{t('Broker Host')}</Label>
                 <Input
                   value={form.mqtt_host}
                   onChange={(e) => updateField('mqtt_host', e.target.value)}
@@ -225,7 +234,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Port</Label>
+                <Label className="text-xs text-muted-foreground">{t('Port')}</Label>
                 <Input
                   value={form.mqtt_port}
                   onChange={(e) => updateField('mqtt_port', e.target.value)}
@@ -235,7 +244,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">MQTT Prefix</Label>
+                <Label className="text-xs text-muted-foreground">{t('MQTT Prefix')}</Label>
                 <Input
                   value={form.prefix}
                   onChange={(e) => updateField('prefix', e.target.value)}
@@ -244,7 +253,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Gateway Name</Label>
+                <Label className="text-xs text-muted-foreground">{t('Gateway Name')}</Label>
                 <Input
                   value={form.gateway_name}
                   onChange={(e) => updateField('gateway_name', e.target.value)}
@@ -253,7 +262,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Username (optional)</Label>
+                <Label className="text-xs text-muted-foreground">{t('Username (optional)')}</Label>
                 <Input
                   value={form.mqtt_username}
                   onChange={(e) => updateField('mqtt_username', e.target.value)}
@@ -262,7 +271,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Password (optional)</Label>
+                <Label className="text-xs text-muted-foreground">{t('Password (optional)')}</Label>
                 <Input
                   value={form.mqtt_password}
                   onChange={(e) => updateField('mqtt_password', e.target.value)}
@@ -281,7 +290,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                     className="w-3 h-3 cursor-pointer"
                     style={{ accentColor: ACCENT }}
                   />
-                  Use TLS (port 8883)
+                  {t('Use TLS (port 8883)')}
                 </label>
                 <label
                   className={`flex items-center gap-1.5 text-xs cursor-pointer ${
@@ -297,7 +306,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                     }
                     className="w-3 h-3 accent-[#f85149] cursor-pointer disabled:cursor-not-allowed"
                   />
-                  Skip cert verify (self-signed only)
+                  {t('Skip cert verify (self-signed only)')}
                 </label>
               </div>
             </div>
@@ -314,12 +323,12 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                 {connectionStatus === 'testing' && <Loader2 size={12} className="animate-spin" />}
                 {connectionStatus === 'ok' && <CheckCircle2 size={12} />}
                 {connectionStatus === 'fail' && <XCircle size={12} />}
-                <span>{connectionStatus === 'testing' ? 'Testing…' : connectionMsg}</span>
+                <span>{connectionStatus === 'testing' ? t('Testing…') : connectionMsg}</span>
               </div>
             )}
 
             <div className="space-y-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5">
-              <span className="block text-xs text-muted-foreground">Send devices to</span>
+              <span className="block text-xs text-muted-foreground">{t('Send devices to')}</span>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
                 <label className="flex items-center gap-1.5 cursor-pointer text-foreground">
                   <input
@@ -330,7 +339,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                     className="cursor-pointer"
                     style={{ accentColor: ACCENT }}
                   />
-                  Device inventory only
+                  {t('Device inventory only')}
                 </label>
                 <label className="flex items-center gap-1.5 cursor-pointer text-foreground">
                   <input
@@ -341,7 +350,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                     className="cursor-pointer"
                     style={{ accentColor: ACCENT }}
                   />
-                  Inventory + canvas
+                  {t('Inventory + canvas')}
                 </label>
               </div>
             </div>
@@ -356,7 +365,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                 {connectionStatus === 'testing'
                   ? <Loader2 size={13} className="animate-spin" />
                   : <CheckCircle2 size={13} />}
-                Test Connection
+                {t('Test Connection')}
               </Button>
               <Button
                 size="sm"
@@ -366,11 +375,11 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                 disabled={loading || connectionStatus === 'testing'}
               >
                 {loading ? <Loader2 size={13} className="animate-spin" /> : <RadioTower size={13} />}
-                {importMode === 'pending' ? 'Import to Inventory' : 'Fetch Devices'}
+                {importMode === 'pending' ? t('Import to Inventory') : t('Fetch Devices')}
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground italic">
-              Make sure the gateway name matches your Z-Wave JS UI configuration.
+              {t('Make sure the gateway name matches your Z-Wave JS UI configuration.')}
             </p>
           </div>
 
@@ -386,10 +395,10 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                     onChange={toggleAll}
                     className="w-3 h-3 cursor-pointer"
                     style={{ accentColor: ACCENT }}
-                    title="Select all"
+                    title={t('Select all')}
                   />
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Devices ({checked.size}/{devices.length} selected)
+                    {t('Devices ({checked}/{total} selected)', { checked: checked.size, total: devices.length })}
                   </span>
                 </div>
               </div>
@@ -404,7 +413,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                       <div className="flex items-center gap-1.5 mb-1">
                         <Icon size={11} style={{ color }} />
                         <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color }}>
-                          {DEVICE_TYPE_LABEL[type]} ({group.length})
+                          {deviceTypeLabel[type]} ({group.length})
                         </span>
                       </div>
                       {group.map((device) => (
@@ -444,7 +453,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
         </div>
 
         <DialogFooter className="gap-2 shrink-0 pt-2 border-t border-border">
-          <Button variant="ghost" onClick={handleClose}>Cancel</Button>
+          <Button variant="ghost" onClick={handleClose}>{t('Cancel')}</Button>
           {devices.length > 0 && (
             <Button
               onClick={handleAddToCanvas}
@@ -453,7 +462,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
               className="gap-1.5"
             >
               <Plus size={13} />
-              Add {checked.size} to Canvas
+              {t('Add {count} to Canvas', { count: checked.size })}
             </Button>
           )}
         </DialogFooter>

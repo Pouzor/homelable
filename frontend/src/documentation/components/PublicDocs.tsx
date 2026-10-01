@@ -16,6 +16,7 @@ import { BookOpen, Search, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { t, useLocale } from '@/i18n'
 import { isOverdue } from '../frontmatter'
 import { usePublicDocsStore, type PublicGroupBy } from '../publicStore'
 import { buildLibraryTree, buildLinkedDocTree, filterGroups, filterTree } from '../tree'
@@ -53,6 +54,7 @@ function Centered({ title, detail }: { title: string; detail?: string }) {
 }
 
 export default function PublicDocs() {
+  useLocale()
   const {
     docs,
     loaded,
@@ -133,7 +135,7 @@ export default function PublicDocs() {
   if (STANDALONE) {
     return (
       <Centered
-        title="Documentation needs the backend"
+        title={t('Documentation needs the backend')}
         detail="This build runs without one, so there is nothing to share."
       />
     )
@@ -141,13 +143,13 @@ export default function PublicDocs() {
   if (!boot.key) {
     return (
       <Centered
-        title="This link is missing its key"
+        title={t('This link is missing its key')}
         detail="A documentation link looks like /docs?key=…"
       />
     )
   }
   if (error) return <Centered title={error} />
-  if (loading || !loaded) return <Centered title="Loading…" />
+  if (loading || !loaded) return <Centered title={t('Loading…')} />
 
   return (
     <div className="flex h-screen min-h-0 bg-background text-foreground">
@@ -157,12 +159,12 @@ export default function PublicDocs() {
           <Input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            placeholder="Filter documents"
-            aria-label="Filter documents"
+            placeholder={t('Filter documents')}
+            aria-label={t('Filter documents')}
             className="h-6 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
           />
           {filter && (
-            <Button size="icon-xs" variant="ghost" aria-label="Clear filter" onClick={() => setFilter('')}>
+            <Button size="icon-xs" variant="ghost" aria-label={t('Clear filter')} onClick={() => setFilter('')}>
               <X />
             </Button>
           )}
@@ -194,7 +196,7 @@ export default function PublicDocs() {
             Library
           </p>
           {libraryItems.length === 0 ? (
-            <p className="px-3 py-1 text-xs text-muted-foreground/60">Nothing filed here.</p>
+            <p className="px-3 py-1 text-xs text-muted-foreground/60">{t('Nothing filed here.')}</p>
           ) : (
             libraryItems.map((leaf) => (
               <DocTreeItem

@@ -2,6 +2,7 @@
 import { useCallback, useState } from 'react'
 import { useReactFlow, type NodeProps } from '@xyflow/react'
 import { toast } from 'sonner'
+import { t } from '@/i18n'
 import { patchedPortIds } from '../cableVisibility'
 import { getFaceplate } from '../faceplates'
 import {
@@ -38,7 +39,7 @@ interface DropPreview {
 
 /** A patch the store turned down used to vanish without a word. */
 function reportPatch(result: PatchResult) {
-  if (result === 'refused') toast.error('That port is already patched — unplug a cable first')
+  if (result === 'refused') toast.error(t('That port is already patched — unplug a cable first'))
 }
 
 export function RackFlowNode({ id }: NodeProps) {
