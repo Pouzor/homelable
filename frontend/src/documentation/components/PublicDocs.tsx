@@ -83,7 +83,7 @@ export default function PublicDocs() {
   useEffect(() => {
     // Nothing here should ever be indexed: it is somebody's homelab, published
     // to whoever holds one link.
-    document.title = 'Documentation'
+    document.title = t('Documentation')
     const meta = document.createElement('meta')
     meta.name = 'robots'
     meta.content = 'noindex, nofollow'
@@ -136,7 +136,7 @@ export default function PublicDocs() {
     return (
       <Centered
         title={t('Documentation needs the backend')}
-        detail="This build runs without one, so there is nothing to share."
+        detail={t('This build runs without one, so there is nothing to share.')}
       />
     )
   }
@@ -144,7 +144,7 @@ export default function PublicDocs() {
     return (
       <Centered
         title={t('This link is missing its key')}
-        detail="A documentation link looks like /docs?key=…"
+        detail={t('A documentation link looks like /docs?key=…')}
       />
     )
   }
@@ -262,8 +262,8 @@ export default function PublicDocs() {
           />
         ) : (
           <Centered
-            title={docs.length === 0 ? 'Nothing is documented yet' : 'Pick a document'}
-            detail={docs.length === 0 ? undefined : 'Everything here is read-only.'}
+            title={docs.length === 0 ? t('Nothing is documented yet') : t('Pick a document')}
+            detail={docs.length === 0 ? undefined : t('Everything here is read-only.')}
           />
         )}
       </div>

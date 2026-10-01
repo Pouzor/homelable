@@ -74,7 +74,7 @@ const part: Record<string, string> = {
   'Display discovered services on the node card': '在节点卡片上显示已发现的服务',
   'Display name': '显示名称',
   'Documented directly on a canvas — no scan ever saw it': '直接在画布上记录 —— 扫描从未发现过它',
-  'Documentation': '文档',
+  'Documentation': '文档中心',
   'Drawn on {count} canvas{plural}': '绘制在 {count} 个画布上',
   'e.g. router': '例如 router',
   'edge type': '连线类型',

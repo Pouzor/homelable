@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Translations for the panels / canvas chrome owned by the `components-panels`
  * work stream. Sourced from ../GLOSSARY.md.
  */
@@ -49,7 +49,7 @@ const part: Record<string, string> = {
   'Description': '描述',
   'Device Inventory': '设备清单',
   'Distance at which dragged nodes snap to neighbours. Hold Alt while dragging to disable.': '拖动时节点吸附到邻近节点的距离。拖动时按住 Alt 可关闭吸附。',
-  'Documentation': '文档',
+  'Documentation': '文档中心',
   'Download canvas as PNG': '将画布下载为 PNG',
   'Drag from one port to another to patch, or click both in turn. Click a cable to select it, then Delete to unplug.': '从一个端口拖到另一个端口即可跳线，也可以依次点击两个端口。先点击线缆选中，再按 Delete 拔掉。',
   'Drag to move · Double-click to remove': '拖动以移动 · 双击以删除',

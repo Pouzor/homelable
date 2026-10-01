@@ -17,6 +17,7 @@ import { MousePointer2, Hand } from 'lucide-react'
 import '@xyflow/react/dist/style.css'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useThemeStore } from '@/stores/themeStore'
+import { t, useLocale } from '@/i18n'
 import { THEMES } from '@/utils/themes'
 import { computeCollapseInfo, rewireEdgesForCollapse } from '@/utils/collapseFilter'
 import { nodeTypes } from './nodes/nodeTypes'
@@ -40,6 +41,7 @@ interface CanvasContainerProps {
 }
 
 export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDoubleClick, onNodeDragStart, onRequestAddToGroup, onRequestAddToContainer, onRequestAddToZone, onOpenInventory }: CanvasContainerProps) {
+  useLocale()
   const [lassoMode, setLassoMode] = useState(true)
   const {
     nodes, edges,
@@ -265,7 +267,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         <Controls>
           <ControlButton
             onClick={() => setLassoMode((m) => !m)}
-            title={lassoMode ? 'Switch to pan mode (Space to pan)' : 'Switch to lasso mode'}
+            title={lassoMode ? t('Switch to pan mode (Space to pan)') : t('Switch to lasso mode')}
           >
             {lassoMode ? <MousePointer2 size={12} /> : <Hand size={12} />}
           </ControlButton>

@@ -505,7 +505,7 @@ export function DocumentationView() {
             onClick={() => void handleExportAll()}
           >
             <Archive size={12} />
-            {exporting ? 'Exporting…' : 'Export all'}
+            {exporting ? t('Exporting…') : t('Export all')}
           </Button>
           {docsLink && (
             <Button
@@ -567,11 +567,10 @@ export function DocumentationView() {
             <div className="max-w-sm">
               <BookOpen className="mx-auto mb-3 opacity-30" size={26} />
               <p className="text-sm font-medium">
-                {loaded && docs.length === 0 ? 'Nothing is documented yet' : 'Pick a document'}
+                {loaded && docs.length === 0 ? t('Nothing is documented yet') : t('Pick a document')}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Selecting a device with no document creates one from its scanned facts, filled in
-                for you and yours to maintain from there.
+                {t('Selecting a device with no document creates one from its scanned facts, filled in for you and yours to maintain from there.')}
               </p>
             </div>
           </div>
