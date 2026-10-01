@@ -1,6 +1,7 @@
 import { Network, RadioTower, Server, Wifi, ArrowRight, Clock } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import { t, useLocale } from '@/i18n'
 import { brandIconUrl } from '@/utils/nodeIcons'
 
 export type ImportSourceKey = 'zigbee' | 'zwave' | 'proxmox' | 'unifi'
@@ -81,6 +82,7 @@ const SOURCES: ImportSource[] = [
  * links reads worse the longer it gets.
  */
 export function ImportSourceModal({ open, onClose, onPick }: ImportSourceModalProps) {
+  useLocale()
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       {/* The dialog primitive pins `sm:max-w-sm`, and a variant utility outranks
@@ -91,10 +93,11 @@ export function ImportSourceModal({ open, onClose, onPick }: ImportSourceModalPr
         style={{ maxWidth: 'min(1120px, calc(100vw - 3rem))' }}
       >
         <DialogHeader>
-          <DialogTitle className="text-foreground">Import from…</DialogTitle>
+          <DialogTitle className="text-foreground">{t('Import from…')}</DialogTitle>
           <DialogDescription>
-            Pick a source to pull devices from. Everything lands in the Device Inventory first — nothing
-            touches the canvas until you approve it.
+            {t(
+              'Pick a source to pull devices from. Everything lands in the Device Inventory first — nothing touches the canvas until you approve it.',
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -111,6 +114,7 @@ export function ImportSourceModal({ open, onClose, onPick }: ImportSourceModalPr
 }
 
 function ImportSourceTile({ source, onPick }: { source: ImportSource; onPick: () => void }) {
+  useLocale()
   const Fallback = source.fallbackIcon
 
   return (
@@ -118,7 +122,7 @@ function ImportSourceTile({ source, onPick }: { source: ImportSource; onPick: ()
       type="button"
       onClick={onPick}
       data-tour={source.dataTour}
-      aria-label={`Import from ${source.label}`}
+      aria-label={t('Import from {source}', { source: source.label })}
       className="group relative flex flex-col gap-3 rounded-lg border border-border bg-[#21262d] p-4 text-left transition-colors cursor-pointer hover:bg-[#2a313a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00d4ff]"
     >
       {/* The accent only shows on hover/focus — four saturated brand colors side
@@ -144,7 +148,7 @@ function ImportSourceTile({ source, onPick }: { source: ImportSource; onPick: ()
 
       <div className="space-y-1">
         <div className="text-sm font-medium text-foreground">{source.label}</div>
-        <p className="text-xs leading-relaxed text-muted-foreground">{source.description}</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">{t(source.description)}</p>
       </div>
 
       <div className="mt-auto space-y-2 pt-1">
@@ -154,15 +158,15 @@ function ImportSourceTile({ source, onPick }: { source: ImportSource; onPick: ()
               key={item}
               className="rounded border border-border bg-[#161b22] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
             >
-              {item}
+              {t(item)}
             </span>
           ))}
         </div>
         <div className="flex items-start gap-1 text-[11px] text-muted-foreground">
           <Clock size={11} className="mt-0.5 shrink-0" />
           <span>
-            {source.duration}
-            {source.durationNote && <span className="text-muted-foreground/70"> · {source.durationNote}</span>}
+            {t(source.duration)}
+            {source.durationNote && <span className="text-muted-foreground/70"> · {t(source.durationNote)}</span>}
           </span>
         </div>
       </div>

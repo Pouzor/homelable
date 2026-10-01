@@ -151,7 +151,7 @@ export function DocumentationView() {
 
   const handleSelect = useCallback(
     async (leaf: TreeLeaf) => {
-      if (dirty && !window.confirm('Discard the unsaved changes to this document?')) return
+      if (dirty && !window.confirm(t('Discard the unsaved changes to this document?'))) return
       if (leaf.docId) {
         await open(leaf.docId)
         return
@@ -165,7 +165,7 @@ export function DocumentationView() {
       })
       if (doc) {
         await open(doc.id)
-        toast.success('Document created from the device facts')
+        toast.success(t('Document created from the device facts'))
       }
     },
     [create, devices, dirty, open],
@@ -197,16 +197,20 @@ export function DocumentationView() {
       const target = targetId ? docs.find((d) => d.id === targetId) : null
       if (targetId && !target) return
       const question = target
-        ? `Move \u201c${doc.title}\u201d into \u201c${target.title}\u201d?`
-        : `Move \u201c${doc.title}\u201d out to the top of the Library?`
+        ? t('Move “{doc}” into “{target}”?', { doc: doc.title, target: target.title })
+        : t('Move “{doc}” out to the top of the Library?', { doc: doc.title })
       if (!window.confirm(question)) return
       try {
         await move(doc.id, targetId)
         // Land somewhere the user can see: a closed folder would swallow it.
         if (targetId && !expanded.includes(targetId)) setExpanded([...expanded, targetId])
-        toast.success(target ? `Moved into \u201c${target.title}\u201d` : 'Moved to the top of the Library')
+        toast.success(
+      target
+        ? t('Moved into “{target}”', { target: target.title })
+        : t('Moved to the top of the Library'),
+    )
       } catch {
-        toast.error('Could not move that document')
+        toast.error(t('Could not move that document'))
       }
     },
     [docs, dragged, expanded, move, setExpanded],
@@ -235,9 +239,9 @@ export function DocumentationView() {
 
   const handleDelete = useCallback(async () => {
     if (!openDoc) return
-    if (!window.confirm(`Delete “${openDoc.title}”? Its history goes with it.`)) return
+    if (!window.confirm(t('Delete “{title}”? Its history goes with it.', { title: openDoc.title }))) return
     await remove(openDoc.id)
-    toast.success('Document deleted')
+    toast.success(t('Document deleted'))
   }, [openDoc, remove])
 
   // The whole space, zipped server-side: the tree only holds summaries, so the
@@ -246,9 +250,9 @@ export function DocumentationView() {
     setExporting(true)
     try {
       await downloadAllDocs()
-      toast.success('Documentation exported')
+      toast.success(t('Documentation exported'))
     } catch {
-      toast.error('Could not export the documentation')
+      toast.error(t('Could not export the documentation'))
     } finally {
       setExporting(false)
     }
@@ -260,11 +264,11 @@ export function DocumentationView() {
     const ok = await regenerate(openDoc.id)
     setRegenerating(false)
     if (!ok) {
-      toast.error('Could not regenerate that document')
+      toast.error(t('Could not regenerate that document'))
       return
     }
     setRegenerateOpen(false)
-    toast.success('Document regenerated — the old body is in its history')
+    toast.success(t('Document regenerated — the old body is in its history'))
   }, [openDoc, regenerate])
 
   // The rail is loaded when it is opened, and again whenever the document it is
@@ -289,12 +293,16 @@ export function DocumentationView() {
     async (revisionId: string) => {
       if (!openDoc) return
       const revision = revisions.find((r) => r.id === revisionId)
-      const when = revision ? formatRelative(revision.saved_at) : 'that version'
-      if (!window.confirm(`Restore the version from ${when}? The current body is saved to the history first.`)) {
+      const when = revision ? formatRelative(revision.saved_at) : t('that version')
+      if (
+        !window.confirm(
+          t('Restore the version from {when}? The current body is saved to the history first.', { when }),
+        )
+      ) {
         return
       }
       await restore(openDoc.id, revisionId)
-      toast.success('Version restored — the body it replaced is in the history')
+      toast.success(t('Version restored — the body it replaced is in the history'))
     },
     [openDoc, restore, revisions],
   )
@@ -389,7 +397,7 @@ export function DocumentationView() {
           >
             {GROUP_OPTIONS.map((option) => (
               <option key={option} value={option}>
-                {GROUP_BY_LABELS[option]}
+                {t(GROUP_BY_LABELS[option])}
               </option>
             ))}
           </select>
@@ -430,7 +438,7 @@ export function DocumentationView() {
               aria-label={t('New folder')}
               title={t('New folder')}
               onClick={async () => {
-                const title = window.prompt('Folder name')
+                const title = window.prompt(t('Folder name'))
                 if (title?.trim()) await create({ title: title.trim(), kind: 'folder' })
               }}
             >
@@ -514,8 +522,8 @@ export function DocumentationView() {
               className="cursor-pointer gap-1 px-1.5"
               title={t('Copy the read-only link — anyone holding it reads every document')}
               onClick={async () => {
-                if (await copyToClipboard(docsLink)) toast.success('Read-only link copied')
-                else toast.error('Could not copy the link')
+                if (await copyToClipboard(docsLink)) toast.success(t('Read-only link copied'))
+                else toast.error(t('Could not copy the link'))
               }}
             >
               <Link2 size={12} />

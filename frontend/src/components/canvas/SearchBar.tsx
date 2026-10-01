@@ -205,7 +205,7 @@ export function SearchBar({ onOpenInventory }: SearchBarProps) {
                   </span>
                 )}
                 <span style={{ fontSize: 10, color: '#6e7681', flexShrink: 0 }}>
-                  {NODE_TYPE_LABELS[n.node.data.type] ?? n.node.data.type}
+                  {t(NODE_TYPE_LABELS[n.node.data.type] ?? n.node.data.type)}
                 </span>
               </button>
             ))}

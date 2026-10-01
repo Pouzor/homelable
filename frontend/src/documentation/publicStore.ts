@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { t } from '@/i18n'
 
 import { docsviewApi } from '@/api/client'
 import type { Doc, DocRevision, DocumentSummary } from './types'
@@ -92,7 +93,7 @@ export const usePublicDocsStore = create<PublicDocsState>()((set, get) => ({
         loading: false,
         loaded: true,
         docs: [],
-        error: message(error, 'Could not load the documentation'),
+        error: message(error, t('Could not load the documentation')),
       })
     }
   },
@@ -111,7 +112,7 @@ export const usePublicDocsStore = create<PublicDocsState>()((set, get) => ({
       const { data } = await docsviewApi.get(get().key, id)
       set({ openDoc: data, openLoading: false })
     } catch (error) {
-      set({ openLoading: false, error: message(error, 'Could not open that document') })
+      set({ openLoading: false, error: message(error, t('Could not open that document')) })
     }
   },
 

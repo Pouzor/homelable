@@ -185,7 +185,7 @@ export default function PublicDocs() {
           >
             {GROUP_OPTIONS.map((option) => (
               <option key={option} value={option}>
-                {GROUP_BY_LABELS[option]}
+                {t(GROUP_BY_LABELS[option])}
               </option>
             ))}
           </select>

@@ -275,7 +275,7 @@ export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel
           onChange={(e) => onChange({ ...form, visible: e.target.checked })}
           className="accent-[#00d4ff] w-3 h-3"
         />
-        <span className="text-[10px] text-muted-foreground">{visibleLabel}</span>
+        <span className="text-[10px] text-muted-foreground">{t(visibleLabel)}</span>
       </label>
       <div className="flex gap-1.5">
         <Button size="sm" className="flex-1 h-6 text-[10px] bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90" onClick={onConfirm}>
@@ -334,7 +334,7 @@ export function PropertyBadge({ prop, visibleLabel = 'node', draggable, isDraggi
       <div className="flex items-center gap-1 shrink-0">
         <button
           onClick={onToggleVisible}
-          title={prop.visible ? t('Hide on {where}', { where: visibleLabel }) : t('Show on {where}', { where: visibleLabel })}
+          title={prop.visible ? t('Hide on {where}', { where: t(visibleLabel) }) : t('Show on {where}', { where: t(visibleLabel) })}
           className="text-[#8b949e] hover:text-[#00d4ff] transition-colors"
         >
           {prop.visible ? <Eye size={10} /> : <EyeOff size={10} />}

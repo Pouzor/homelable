@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { t } from '@/i18n'
 
 import { documentsApi } from '@/api/client'
 import { isOverdue, withTags } from './frontmatter'
@@ -225,7 +226,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       const { data } = await documentsApi.list()
       set({ docs: data, loaded: true, loading: false })
     } catch (error) {
-      set({ loading: false, loaded: true, loadError: message(error, 'Could not load documents') })
+      set({ loading: false, loaded: true, loadError: message(error, t('Could not load documents')) })
     }
   },
 
@@ -256,7 +257,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       // Not awaited: the document renders now, the "Linked from" block fills in.
       void get().loadBacklinks(id)
     } catch (error) {
-      set({ openLoading: false, loadError: message(error, 'Could not open that document') })
+      set({ openLoading: false, loadError: message(error, t('Could not open that document')) })
     }
   },
 
@@ -274,7 +275,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       return true
     }
     const created = await get().create({
-      title: fallbackTitle?.trim() || 'Untitled device',
+      title: fallbackTitle?.trim() || t('Untitled device'),
       kind: 'device',
       deviceId,
     })
@@ -328,7 +329,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       }))
       return true
     } catch (error) {
-      set({ saving: false, loadError: message(error, 'Could not save') })
+      set({ saving: false, loadError: message(error, t('Could not save')) })
       return false
     }
   },
@@ -358,7 +359,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       set((state) => ({ docs: [...state.docs, data], openDoc: data }))
       return data
     } catch (error) {
-      set({ loadError: message(error, 'Could not create that document') })
+      set({ loadError: message(error, t('Could not create that document')) })
       return null
     }
   },
@@ -421,7 +422,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       })
       return true
     } catch (error) {
-      set({ loadError: message(error, 'Could not save the tags') })
+      set({ loadError: message(error, t('Could not save the tags')) })
       return false
     }
   },
@@ -471,7 +472,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       set({ revisions: data, revisionsLoading: false })
     } catch (error) {
       if (get().openDoc?.id !== id) return
-      set({ revisionsLoading: false, loadError: message(error, 'Could not load the history') })
+      set({ revisionsLoading: false, loadError: message(error, t('Could not load the history')) })
     }
   },
 
@@ -485,7 +486,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       const { data } = await documentsApi.revision(revisionId)
       set({ revisionPreview: { revision, body: data.body } })
     } catch (error) {
-      set({ loadError: message(error, 'Could not read that version') })
+      set({ loadError: message(error, t('Could not read that version')) })
     }
   },
 
@@ -522,7 +523,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       if (get().openDoc?.id === id && get().revisions.length > 0) await get().loadRevisions(id)
       return true
     } catch (error) {
-      set({ loadError: message(error, 'Could not regenerate that document') })
+      set({ loadError: message(error, t('Could not regenerate that document')) })
       return false
     }
   },
@@ -576,7 +577,7 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       const { data } = await documentsApi.search(query)
       set({ search: data, searching: false })
     } catch (error) {
-      set({ searching: false, loadError: message(error, 'Search failed') })
+      set({ searching: false, loadError: message(error, t('Search failed')) })
     }
   },
 

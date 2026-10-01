@@ -190,7 +190,7 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
       </div>
 
       <div className="flex flex-col gap-3 px-4 py-3 text-sm">
-        <DetailRow label={t('Type')} value={NODE_TYPE_LABELS[data.type]} />
+        <DetailRow label={t('Type')} value={t(NODE_TYPE_LABELS[data.type])} />
         {data.hostname && (
           <div className="flex justify-between gap-2 items-baseline">
             <span className="text-muted-foreground text-xs shrink-0">{t('Hostname')}</span>
@@ -443,7 +443,7 @@ function MultiSelectPanel({ nodeIds, nodes, groupName, setGroupName, creatingGro
           <div key={n.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-[#21262d] text-xs">
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[n.data.status] }} />
             <span className="truncate text-foreground font-medium">{n.data.label}</span>
-            <span className="ml-auto text-muted-foreground shrink-0">{NODE_TYPE_LABELS[n.data.type] ?? n.data.type}</span>
+            <span className="ml-auto text-muted-foreground shrink-0">{t(NODE_TYPE_LABELS[n.data.type] ?? n.data.type)}</span>
           </div>
         ))}
       </div>
@@ -576,7 +576,7 @@ function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescr
             >
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[child.data.status] }} />
               <span className="truncate text-foreground font-medium">{child.data.label}</span>
-              <span className="ml-auto text-muted-foreground shrink-0">{NODE_TYPE_LABELS[child.data.type] ?? child.data.type}</span>
+              <span className="ml-auto text-muted-foreground shrink-0">{t(NODE_TYPE_LABELS[child.data.type] ?? child.data.type)}</span>
             </button>
             <button
               onClick={() => onRemoveChild(child.id)}

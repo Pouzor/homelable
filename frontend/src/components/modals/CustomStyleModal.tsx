@@ -182,7 +182,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="text-sm font-semibold text-[#e6edf3]">{NODE_TYPE_LABELS[nodeType]}</div>
+      <div className="text-sm font-semibold text-[#e6edf3]">{t(NODE_TYPE_LABELS[nodeType])}</div>
       <div className="flex flex-col gap-3">
         <ColorRow
           label={t('Border')}
@@ -238,7 +238,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
 
       <div className="border-t border-[#30363d] pt-3">
         <div className="text-xs text-[#8b949e] mb-1">{t('Default connection points')}</div>
-        <div className="text-xs text-[#8b949e]/60 mb-2">{t('New {type} nodes start with these (0–64 per side)', { type: NODE_TYPE_LABELS[nodeType] })}</div>
+        <div className="text-xs text-[#8b949e]/60 mb-2">{t('New {type} nodes start with these (0–64 per side)', { type: t(NODE_TYPE_LABELS[nodeType]) })}</div>
         <div className="grid grid-cols-2 gap-2">
           {([
             [t('Top'), 'top', 'topHandles'],
@@ -268,7 +268,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
         className="self-start bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
         onClick={onApplyToExisting}
       >
-        {t('Apply to existing {type} nodes', { type: NODE_TYPE_LABELS[nodeType] })}
+        {t('Apply to existing {type} nodes', { type: t(NODE_TYPE_LABELS[nodeType]) })}
       </Button>
     </div>
   )
@@ -481,7 +481,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
   // Params are `type`, not `t`: `t` is the translator inside this component.
   const handleApplyNodeType = (type: NodeType) => {
     applyTypeNodeStyle(type, getNodeStyle(type))
-    toast.success(t('Applied style to all {type} nodes', { type: NODE_TYPE_LABELS[type] }))
+    toast.success(t('Applied style to all {type} nodes', { type: t(NODE_TYPE_LABELS[type]) }))
   }
 
   const handleApplyEdgeType = (type: EdgeType) => {
@@ -562,7 +562,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
                         }}
                       >
                         <Icon size={13} />
-                        <span className="flex-1 truncate">{NODE_TYPE_LABELS[nodeType]}</span>
+                        <span className="flex-1 truncate">{t(NODE_TYPE_LABELS[nodeType])}</span>
                         <span
                           className="w-2.5 h-2.5 rounded-full shrink-0"
                           style={{ background: swatchColor }}

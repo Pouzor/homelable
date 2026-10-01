@@ -15,14 +15,29 @@ import {
   LOCALE_LABELS,
 } from '../index'
 import zhCN from '../locales/zh-CN'
+import { DIALOG_TITLES, DYNAMIC_TABLES, valuesOf } from '../dynamicTables'
 import { LanguageSwitcher } from '../LanguageSwitcher'
 
-// core.ts and index.ts document the API with `t('…')` examples in comments, so
-// scanning them would invent keys that are never rendered. The switcher is kept
-// in scope: its `t('Language')` is real. The dictionary is data and holds no call
-// sites at all, only doc examples.
-const SCAN_SKIP = new Set([path.resolve(__dirname, '../core.ts'), path.resolve(__dirname, '../index.ts')])
-const SCAN_SKIP_DIRS = new Set([path.resolve(__dirname, '../locales')])
+// __dirname is src/i18n/__tests__, so `../..` is already `src`.
+const SRC_ROOT = path.resolve(__dirname, '../..')
+
+// core.ts, index.ts and dynamicTables.ts document the API with `t('…')` examples
+// in comments, so scanning them would invent keys that are never rendered. The
+// switcher is kept in scope: its `t('Language')` is real. The dictionary is data
+// and holds no call sites at all, only doc examples.
+const SCAN_SKIP = new Set([
+  path.join(SRC_ROOT, 'i18n/core.ts'),
+  path.join(SRC_ROOT, 'i18n/index.ts'),
+  path.join(SRC_ROOT, 'i18n/dynamicTables.ts'),
+])
+const SCAN_SKIP_DIRS = new Set([path.join(SRC_ROOT, 'i18n/locales')])
+
+/**
+ * Tables whose values are handed to `t()` at the render site, so their keys are
+ * dynamic and never appear as a literal call site. The list itself lives in
+ * ../dynamicTables so coverage.test.ts can share it without importing this file
+ * (which would re-run every suite in it).
+ */
 
 function resetLocale() {
   setLocaleForTest(DEFAULT_LOCALE)
@@ -156,7 +171,6 @@ describe('LanguageSwitcher', () => {
  * hand-maintained list.
  */
 describe('zh-CN dictionary completeness', () => {
-  const SRC_ROOT = path.resolve(__dirname, '../..')
 
   // The unit tests above call registerDictionary(), which mutates the imported
   // zh-CN object in place. Reload the module in a fresh registry so these checks
@@ -234,8 +248,20 @@ describe('zh-CN dictionary completeness', () => {
   it('has no translation for a key the code no longer uses', () => {
     // Guards the opposite drift: a stale entry is dead weight and hides the fact
     // that its source string was reworded, which would silently untranslate it.
+    //
+    // Exempt: keys that belong to a table whose values reach t() at runtime
+    // (`t(NODE_TYPE_LABELS[...])`, `t(entry.label)`). Those never appear as a
+    // literal call site, so the scan cannot see them being used — and declaring
+    // them stale would make this test contradict the coverage test that exists
+    // precisely to guard them.
+    const dynamicKeys = new Set<string>(DIALOG_TITLES)
+    for (const table of DYNAMIC_TABLES) {
+      const src = fs.readFileSync(path.join(SRC_ROOT, table.file), 'utf8')
+      for (const v of valuesOf(src, table)) dynamicKeys.add(v)
+    }
+
     const { used } = collectKeys()
-    const stale = Object.keys(fileDict).filter((k) => !used.has(k))
+    const stale = Object.keys(fileDict).filter((k) => !used.has(k) && !dynamicKeys.has(k))
     expect(stale, `Stale zh-CN entries:\n${stale.join('\n')}`).toEqual([])
   })
 
@@ -245,12 +271,16 @@ describe('zh-CN dictionary completeness', () => {
     // definition, so two parts disagreeing is a real (and invisible) defect.
     const partNames = [
       'root',
+      'common',
       'components-modals-1',
       'components-modals-2',
       'components-panels',
       'components-integrations',
       'documentation',
       'rack',
+      'node-types',
+      'icons',
+      'doc-templates',
     ]
     const seen = new Map<string, Map<string, string>>() // key -> value -> part
     for (const name of partNames) {

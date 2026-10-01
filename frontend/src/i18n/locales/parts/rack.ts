@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Translations for the rack feature area: the rack canvas, its modals, the
  * faceplate catalog and the patch-cable panel. Sourced from GLOSSARY.md.
  * Merged into ../zh-CN.ts.
@@ -18,6 +18,7 @@ const part: Record<string, string> = {
   'Add a rack': '添加机柜',
   'Add a rack first': '请先添加机柜',
   'Add port': '添加端口',
+  'Added by hand': '手动添加',
   'Always': '始终',
   'Automatic (switches and patch panels)': '自动（交换机和配线架）',
   'Blank panel 1U': '盲板 1U',
@@ -68,6 +69,7 @@ const part: Record<string, string> = {
   'Load a sample rack': '加载示例机柜',
   'Location': '位置',
   'Mini node (third width)': '迷你节点（三分之一宽）',
+  'Move port {label}': '移动端口 {label}',
   'NAS 2U — 8 bays': 'NAS 2U —— 8 盘位',
   'Name the device first': '请先为设备命名',
   'Network': '网络',
@@ -96,7 +98,9 @@ const part: Record<string, string> = {
   'Position ports': '摆放端口',
   'Power': '供电',
   'Quarter width': '四分之一宽',
+  'Rack {n}': '机柜 {n}',
   'Rack canvas could not be loaded.': '无法加载机柜画布。',
+  'Rack device': '机柜设备',
   'Rack height': '机柜高度',
   'Rack name': '机柜名称',
   'Rack settings': '机柜设置',

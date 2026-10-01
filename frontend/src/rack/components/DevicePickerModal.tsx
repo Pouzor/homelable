@@ -26,12 +26,12 @@ import type { InventoryDevice } from '@/types'
  * matches against, so they stay as one stream wrote them.
  */
 const SOURCE_LABELS: Record<string, string> = {
-  arp: 'Network scan',
+  arp: t('Network scan'),
   proxmox: 'Proxmox',
   zigbee: 'Zigbee',
   zwave: 'Z-Wave',
-  manual: 'Added by hand',
-  rack: 'Rack device',
+  manual: t('Added by hand'),
+  rack: t('Rack device'),
 }
 
 function sourceLabel(source: string | null | undefined): string | null {

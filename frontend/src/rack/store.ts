@@ -10,6 +10,7 @@
  * network canvas already treats inventory nodes.
  */
 import { create } from 'zustand'
+import { t } from '@/i18n'
 import { racksApi, scanApi } from '@/api/client'
 import { generateUUID } from '@/utils/uuid'
 import * as standaloneStorage from '@/utils/standaloneStorage'
@@ -475,7 +476,7 @@ export const useRackStore = create<RackState>((set, get) => {
       const count = get().racks.length
       const rack: Rack = {
         id,
-        name: `Rack ${count + 1}`,
+        name: t('Rack {n}', { n: count + 1 }),
         uHeight: 24,
         widthStandard: '19',
         numbering: 'bottom-up',

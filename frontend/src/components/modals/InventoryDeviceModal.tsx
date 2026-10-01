@@ -571,7 +571,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                   <Chip key={s} color={SOURCE_META[s].color}>{SOURCE_META[s].label}</Chip>
                 ))}
                 {(device.type ?? device.suggested_type) && (
-                  <Chip color={roleColor}>{NODE_TYPE_LABELS[resolvedType] ?? resolvedType}</Chip>
+                  <Chip color={roleColor}>{t(NODE_TYPE_LABELS[resolvedType] ?? resolvedType)}</Chip>
                 )}
                 <span
                   className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider"
@@ -642,9 +642,9 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                               <SelectLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 px-2 py-1">
                                 {typeGroupLabel(group.label)}
                               </SelectLabel>
-                              {group.types.map((t) => (
-                                <SelectItem key={t} value={t} className="text-sm pl-4">
-                                  {NODE_TYPE_LABELS[t] ?? t}
+                              {group.types.map((nodeType) => (
+                                <SelectItem key={nodeType} value={nodeType} className="text-sm pl-4">
+                                  {t(NODE_TYPE_LABELS[nodeType] ?? nodeType)}
                                 </SelectItem>
                               ))}
                             </SelectGroup>

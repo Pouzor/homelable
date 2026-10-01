@@ -1,4 +1,5 @@
 import yaml from 'js-yaml'
+import { t } from '@/i18n'
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData, NodeProperty } from '@/types'
 import type { YamlNode, YamlNodeConnection } from '@/types/yaml'
@@ -37,7 +38,7 @@ export function parseYamlToCanvas(
   const raw = yaml.load(yamlString)
 
   if (!Array.isArray(raw)) {
-    throw new Error('YAML must be a list of node objects (top-level array)')
+    throw new Error(t('YAML must be a list of node objects (top-level array)'))
   }
 
   const entries = raw as unknown[]
@@ -56,10 +57,10 @@ export function parseYamlToCanvas(
     const entryRecord = entry as Record<string, unknown>
 
     if (!entryRecord.nodeType || typeof entryRecord.nodeType !== 'string') {
-      throw new Error(`Each YAML entry must have a "nodeType" string field`)
+      throw new Error(t(`Each YAML entry must have a "nodeType" string field`))
     }
     if (!entryRecord.label || typeof entryRecord.label !== 'string') {
-      throw new Error(`Each YAML entry must have a "label" string field`)
+      throw new Error(t(`Each YAML entry must have a "label" string field`))
     }
 
     const yn = entryRecord as unknown as YamlNode

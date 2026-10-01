@@ -93,7 +93,7 @@ const part: Record<string, string> = {
   'Import Zigbee mesh links': '导入 Zigbee Mesh 链路',
   'Import from': '导入来源',
   'Import from YAML': '从 YAML 导入',
-  'Import from…': '导入…',
+  'Import from…': '导入来源…',
   'Import links': '导入连线',
   'Import mesh links': '导入 mesh 链路',
   'Import {what}': '导入 {what}',

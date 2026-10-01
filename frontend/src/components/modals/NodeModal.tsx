@@ -251,7 +251,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 })
               }}>
                 <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label={t('Node type selector')}>
-                  <SelectValue>{NODE_TYPE_LABELS[(form.type ?? 'server') as NodeType]}</SelectValue>
+                  <SelectValue>{t(NODE_TYPE_LABELS[(form.type ?? 'server') as NodeType])}</SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-[#21262d] border-[#30363d]">
                   {NODE_TYPE_GROUPS.map((group, i) => (
@@ -263,7 +263,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                         </SelectLabel>
                         {group.types.map((type) => (
                           <SelectItem key={type} value={type} className="text-sm pl-4">
-                            {NODE_TYPE_LABELS[type]}
+                            {t(NODE_TYPE_LABELS[type])}
                           </SelectItem>
                         ))}
                       </SelectGroup>
@@ -560,7 +560,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               </div>
               <div className="min-h-3.5">
                 {!hasAppearanceOverrides && (
-                  <p className="text-[10px] text-muted-foreground/50">{t('Using default colors for {type}. Click a swatch to customize.', { type: NODE_TYPE_LABELS[form.type ?? 'generic'] })}</p>
+                  <p className="text-[10px] text-muted-foreground/50">{t('Using default colors for {type}. Click a swatch to customize.', { type: t(NODE_TYPE_LABELS[form.type ?? 'generic']) })}</p>
                 )}
               </div>
               {onEditTypeStyle && form.type !== 'group' && form.type !== 'groupRect' && (
@@ -569,7 +569,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                   onClick={() => onEditTypeStyle((form.type ?? 'generic') as NodeType)}
                   className="flex items-center gap-1 self-start text-[10px] text-[#00d4ff] hover:underline"
                 >
-                  <Palette size={10} /> {t('Edit {type} style for all nodes on the canvas', { type: NODE_TYPE_LABELS[form.type ?? 'generic'] })}
+                  <Palette size={10} /> {t('Edit {type} style for all nodes on the canvas', { type: t(NODE_TYPE_LABELS[form.type ?? 'generic']) })}
                 </button>
               )}
             </div>
