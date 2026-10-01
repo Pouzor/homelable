@@ -1,0 +1,95 @@
+# Homelable 简体中文版 —— NAS 部署用 Compose 文件
+#
+# 关键设计：汉化只改了前端（97 个文件全在 frontend/src/），后端与上游完全一致。
+# 所以后端直接用官方预构建镜像，NAS 上只需要构建前端一个 —— 省掉
+# pip install fastapi/uvicorn/nmap 那一大堆依赖，低功耗 NAS 上能省十几分钟。
+#
+# 用法（任何 NAS 都适用，不需要 BuildKit）：
+#   1) git clone -b feat/i18n-zh-cn https://github.com/kou147258/homelable.git
+#   2) cp .env.example .env   然后改 4 项，见文件末尾
+#   3) 把本文件改名成 docker-compose.yml（和仓库里那份并存，Docker 只会读后者）
+#   4) docker compose up -d --build
+#
+# ARM 和 x86 都不用改：官方镜像和这里的构建都是多架构的。
+
+services:
+  backend:
+    # 上游原版，未经汉化改动，不需要本地构建
+    image: ghcr.io/pouzor/homelable-backend:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # 覆盖 env_file：SQLite 必须指向容器内挂载点的路径
+      SQLITE_PATH: /app/data/homelab.db
+    volumes:
+      # 绑定挂载而不是具名卷：数据直接看得见，备份就是 cp -r 这个目录
+      - ./data:/app/data
+    # ping 状态检测需要裸 socket
+    cap_add:
+      - NET_RAW
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    # ── 想让扫描能拿到 MAC 地址？取消下面这行的注释 ──────────────
+    # ARP 是二层协议。容器默认在 bridge 网络上，和局域网设备不在同一个
+    # 广播域，扫出来的 MAC 永远是空的（加 NET_RAW 也没用 —— 那是给 socket
+    # 的权限，不是网络位置）。改成 host 模式让后端直接待在局域网里。
+    # 副作用：设备重扫时按 MAC 优先匹配，没有 MAC 的话 DHCP 换了 IP 就会
+    # 变成一条新设备，而不是更新原来那条。
+    # 群晖 Container Manager 对 host 模式支持有限，启动报错就改回来。
+    # network_mode: host
+    #
+    # 另外：如果开了 host 模式，frontend 的 BACKEND_UPSTREAM 也要改，
+    # 因为 backend 这时不再是 compose 网络里的服务名了（见本文件末尾注释）。
+
+  frontend:
+    # 唯一需要本地构建的服务 —— 汉化就在这里。
+    # 首次构建要跑 npm ci + vite build，NAS 内存小于 2GB 可能 OOM。
+    build:
+      context: .              # 指向你 clone 下来的那个目录
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BACKEND_UPSTREAM: backend:8000
+
+  # MCP 服务（给 Claude Code 之类的 AI 客户端读写画布用）。
+  # 不需要就别取消注释，它不影响前两个服务启动。
+  # 要让外部 AI 客户端连，得取消 ports 那行，并保证 .env 里填好了
+  # MCP_API_KEY 和 MCP_SERVICE_KEY。8001 绝不要暴露到公网。
+  # mcp:
+  #   build:
+  #     context: .
+  #     dockerfile: mcp/Dockerfile.mcp
+  #   restart: unless-stopped
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     BACKEND_URL: "http://backend:8000"
+  #   ports:
+  #     - "8001:8001"
+  #   depends_on:
+  #     - backend
+
+# ── .env 里必须改的 4 项 ──────────────────────────────────────────
+#   SECRET_KEY            python3 -c "import secrets; print(secrets.token_hex(32))"
+#   AUTH_PASSWORD_HASH    python3 -c "import bcrypt; print(bcrypt.hashpw(b'你的密码', bcrypt.gensalt()).decode())"
+#                        ⚠️ 外面那对单引号不能省 —— bcrypt 哈希里有 $，Docker 会当变量展开
+#   CORS_ORIGINS          ["http://192.168.9.x:3000"]  ← 填浏览器地址栏里那个
+#   SCANNER_RANGES        ["192.168.9.0/24"]          ← 换成你要扫的网段
+#
+# ── 如果你开了 network_mode: host ─────────────────────────────────
+# frontend 的 environment 要改成下面这样（并加 extra_hosts）：
+#   BACKEND_UPSTREAM: "host.docker.internal:8000"
+#   extra_hosts:
+#     - "host.docker.internal:host-gateway"
