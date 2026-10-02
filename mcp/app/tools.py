@@ -15,7 +15,7 @@ from .racks import RACK_TOOL_NAMES, RACK_TOOLS, dispatch_rack
 NODE_TYPES = [
     "isp", "router", "firewall", "switch", "server", "proxmox", "vm", "lxc", "nas", "kvm", "iot", "ap",
     "camera", "printer", "computer", "laptop", "mobile", "cpl", "docker_host", "docker_container",
-    "generic", "zigbee_coordinator", "zigbee_router", "zigbee_enddevice",
+    "hub", "generic", "zigbee_coordinator", "zigbee_router", "zigbee_enddevice",
     "zwave_coordinator", "zwave_router", "zwave_enddevice", "grid", "ups", "battery", "generator",
     "solar_panel", "inverter", "circuit_breaker", "contactor", "electrical_switch", "socket",
     "light", "meter", "transformer", "load",
