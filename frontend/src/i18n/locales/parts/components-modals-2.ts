@@ -136,6 +136,12 @@ const part: Record<string, string> = {
   'Nodes': '节点',
   'Nodes and links on a free canvas': '自由画布上的节点与连线',
   'None': '无',
+  // Check-method captions, read from CHECK_METHOD_LABELS at the render site.
+  // HTTP/HTTPS/TCP/SSH/Prometheus stay verbatim and so have no entry; they are
+  // listed in DYNAMIC_TABLES[].verbatim.
+  'Ping': 'Ping',
+  'SSH': 'SSH',
+  'TCP': 'TCP',
   'Not a valid IPv4 CIDR — try 192.168.1.0/24': '不是有效的 IPv4 CIDR —— 试试 192.168.1.0/24',
   'Opacity: {alpha}%': '不透明度：{alpha}%',
   'Opacity: {value}%': '不透明度：{value}%',

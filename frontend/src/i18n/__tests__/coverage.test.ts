@@ -28,7 +28,10 @@ describe('tables whose values reach t() at runtime', () => {
       const all = valuesOf(src, table)
       // Guard against a stale selector making this pass vacuously.
       expect(all.length, `no values found in ${table.file} — the selector is stale`).toBeGreaterThan(0)
-      const missing = all.filter((v) => !dict.has(v))
+      // Protocol names are exempt by *value*, not by table: a table-level
+      // exemption would cover every string later added to the same table.
+      const verbatim = new Set<string>(table.verbatim ?? [])
+      const missing = all.filter((v) => !verbatim.has(v) && !dict.has(v))
       expect(
         missing,
         `These ${table.what} fall back to English (from ${table.file}):\n` + missing.join('\n'),
@@ -209,6 +212,60 @@ describe('no English string literal reaches a render site untranslated', () => {
   it('states a reason for every allowlisted string', () => {
     for (const [text, reason] of ALLOWED) {
       expect(reason.length, `ALLOWED entry ${JSON.stringify(text)} has no reason`).toBeGreaterThan(10)
+    }
+  })
+
+  /**
+   * Every read of the check-method table must be wrapped in `t()`.
+   *
+   * This is the one gap the other checks cannot close. The literal sweep skips
+   * table values (they are data), the dictionary test only asks whether `Ping`
+   * *has* an entry, and neither notices that a render site stopped calling
+   * `t()` — the value is still translated, it just is not being read any more.
+   * That is not hypothetical: all three check-method pickers in this app
+   * printed the table straight to the screen, so the dropdown offered a bare
+   * English `Ping` in an otherwise Chinese interface, in two modals, with the
+   * whole suite green.
+   *
+   * The tables are now one, so this asserts that no caller can quietly drop
+   * the wrapper again, and a re-introduced local copy fails too.
+   */
+  it('routes every check-method caption read through t()', () => {
+    const CALLERS = [
+      'components/modals/NodeModal.tsx',
+      'components/modals/InventoryDeviceModal.tsx',
+    ]
+    const hits: string[] = []
+    for (const rel of CALLERS) {
+      const src = fs.readFileSync(path.join(SRC, rel), 'utf8')
+      let inBlock = false
+      for (const [i, raw] of src.split(/\r?\n/).entries()) {
+        const { code: line, inBlock: stillInBlock } = stripComments(raw, inBlock)
+        inBlock = stillInBlock
+        // The import is the one legitimate bare mention.
+        if (/^\s*import\b/.test(line)) continue
+        for (const m of line.matchAll(/\bCHECK_METHOD_LABELS\b/g)) {
+          const before = line.slice(0, m.index)
+          // `t(CHECK_METHOD_LABELS[…])` is the only acceptable shape.
+          if (/\bt\(\s*$/.test(before)) continue
+          hits.push(`${rel}:${i + 1}  CHECK_METHOD_LABELS read without t()`)
+        }
+      }
+    }
+    expect(
+      hits,
+      `Check-method captions reaching the screen untranslated:\n${hits.join('\n')}`,
+    ).toEqual([])
+  })
+
+  it('no dynamic table waives its whole value set', () => {
+    // `verbatim` exists for protocol names. If it ever covered a whole table
+    // the entry would assert nothing at all while still reading as coverage.
+    for (const table of DYNAMIC_TABLES) {
+      if (!table.verbatim?.length) continue
+      const all = valuesOf(fs.readFileSync(path.join(SRC, table.file), 'utf8'), table)
+      const waived = all.filter((v) => (table.verbatim ?? []).includes(v))
+      expect(waived.length, `${table.what} waives every value it has`).toBeLessThan(all.length)
     }
   })
 })

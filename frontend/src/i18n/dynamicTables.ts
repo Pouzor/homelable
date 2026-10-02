@@ -26,9 +26,25 @@ export interface DynamicTable {
   block?: string
   fields?: string[]
   pattern?: string
+  /**
+   * Values of this table that must stay in English in every locale — protocol
+   * names and acronyms, where a translation would name something that does not
+   * exist. Listed per value rather than per table, because a table-level
+   * exemption would silently cover every future entry added to it.
+   */
+  verbatim?: readonly string[]
 }
 
 export const DYNAMIC_TABLES: DynamicTable[] = [
+  {
+    what: 'check-method captions (CHECK_METHOD_LABELS)',
+    file: 'types/index.ts',
+    block: 'CHECK_METHOD_LABELS',
+    // Rendered through t() by every check-method picker. There is one table and
+    // not one per modal precisely because the per-modal copies drifted: the
+    // canvas one was fixed and the inventory one was not.
+    verbatim: ['HTTP', 'HTTPS', 'TCP', 'SSH', 'Prometheus'],
+  },
   {
     what: 'icon picker labels (rendered as t(entry.label))',
     file: 'utils/nodeIcons.ts',
@@ -94,56 +110,65 @@ export const DYNAMIC_TABLES: DynamicTable[] = [
   },
 ]
 
-/** Read the display fields inside `export const <name> = { … }` or `[ … ]`. */
-export function valuesInBlock(source: string, name: string, fields?: string[]): string[] {
-  const start = source.indexOf(`${name}`)
-  if (start === -1) return []
-  // The table may be an object or an array of objects. Find the first opener
-  // that actually contains something: `const SOURCES: ImportSource[] = [` has an
-  // empty `[]` in the type annotation just before the real literal.
-  let open = -1
-  for (let i = start; i < source.length; i++) {
-    const c = source[i]
-    if (c !== '{' && c !== '[') continue
-    if (source[i + 1] === (c === '{' ? '}' : ']')) { i += 1; continue }
-    open = i
-    break
-  }
-  if (open === -1) return []
+/** Index of the `}`/`]` that closes the block opened at `open`, or -1. */
+function balancedEnd(source: string, open: number): number {
   const closer = source[open] === '{' ? '}' : ']'
   const opener = source[open]
-
   let depth = 0
   for (let i = open; i < source.length; i++) {
     if (source[i] === opener) depth++
     else if (source[i] === closer) {
       depth--
-      if (depth === 0) {
-        const body = source.slice(open, i)
-        const quoted = (s: string) => s.replace(/\\'/g, "'").replace(/\\"/g, '"')
-        const found: string[] = []
-        if (!fields) {
-          for (const m of body.matchAll(/:\s*'((?:[^'\\]|\\')*)'/g)) found.push(m[1])
-          for (const m of body.matchAll(/\[([^\]]*)\]/g)) {
-            for (const n of m[1].matchAll(/'((?:[^'\\]|\\')*)'/g)) found.push(n[1])
-          }
-        } else {
-          // Global: the same field repeats once per entry, and a non-global
-          // regex would only ever see the first one.
-          for (const field of fields) {
-            const scalar = new RegExp(`\\b${field}:\\s*'((?:[^'\\\\]|\\\\.)*)'`, 'g')
-            for (const m of body.matchAll(scalar)) found.push(m[1])
-            const arr = new RegExp(`\\b${field}:\\s*\\[([^\\]]*)\\]`, 'g')
-            for (const m of body.matchAll(arr)) {
-              for (const n of m[1].matchAll(/'((?:[^'\\]|\\')*)'/g)) found.push(n[1])
-            }
-          }
-        }
-        return [...new Set(found.map(quoted))]
+      if (depth === 0) return i
+    }
+  }
+  return -1
+}
+
+/** Read the display fields inside `export const <name> = { … }` or `[ … ]`. */
+export function valuesInBlock(source: string, name: string, fields?: string[]): string[] {
+  const start = source.indexOf(`${name}`)
+  if (start === -1) return []
+  // The table may be an object, an array of objects, or preceded by a type
+  // annotation. `const SOURCES: ImportSource[] = [` has an empty `[]` in the
+  // annotation, and `const T: { label: string }[] = [` has a *non-empty* one —
+  // so skipping empties is not enough and the first brace can belong to a type.
+  // An opener has to be validated, not merely located: a type annotation holds
+  // no string literal, a real table does.
+  let open = -1
+  for (let i = start; i < source.length; i++) {
+    if (source[i] !== '{' && source[i] !== '[') continue
+    if (source[i + 1] === (source[i] === '{' ? '}' : ']')) { i += 1; continue }
+    const end = balancedEnd(source, i)
+    if (end === -1) break
+    if (!/['"]/.test(source.slice(i, end))) { i = end; continue }
+    open = i
+    break
+  }
+  if (open === -1) return []
+  const closeAt = balancedEnd(source, open)
+  if (closeAt === -1) return []
+  const body = source.slice(open, closeAt)
+  const quoted = (s: string) => s.replace(/\\'/g, "'").replace(/\\"/g, '"')
+  const found: string[] = []
+  if (!fields) {
+    for (const m of body.matchAll(/:\s*'((?:[^'\\]|\\')*)'/g)) found.push(m[1])
+    for (const m of body.matchAll(/\[([^\]]*)\]/g)) {
+      for (const n of m[1].matchAll(/'((?:[^'\\]|\\')*)'/g)) found.push(n[1])
+    }
+  } else {
+    // Global: the same field repeats once per entry, and a non-global
+    // regex would only ever see the first one.
+    for (const field of fields) {
+      const scalar = new RegExp(`\\b${field}:\\s*'((?:[^'\\\\]|\\\\.)*)'`, 'g')
+      for (const m of body.matchAll(scalar)) found.push(m[1])
+      const arr = new RegExp(`\\b${field}:\\s*\\[([^\\]]*)\\]`, 'g')
+      for (const m of body.matchAll(arr)) {
+        for (const n of m[1].matchAll(/'((?:[^'\\]|\\')*)'/g)) found.push(n[1])
       }
     }
   }
-  return []
+  return [...new Set(found.map(quoted))]
 }
 
 /**

@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { t, useLocale } from '@/i18n'
-import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod, type NodeTypeStyle } from '@/types'
+import { NODE_TYPE_LABELS, CHECK_METHOD_LABELS, type NodeData, type NodeType, type CheckMethod, type NodeTypeStyle } from '@/types'
 import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
@@ -86,17 +86,6 @@ const ZIGBEE_TYPES: NodeType[] = ['zigbee_coordinator', 'zigbee_router', 'zigbee
 const ZWAVE_TYPES: NodeType[] = ['zwave_coordinator', 'zwave_router', 'zwave_enddevice']
 // Mesh radio devices aren't IP-reachable, so they default to no status check.
 const MESH_TYPES: NodeType[] = [...ZIGBEE_TYPES, ...ZWAVE_TYPES]
-
-const CHECK_METHOD_LABELS: Record<CheckMethod, string> = {
-  none: 'None',
-  ping: 'Ping',
-  http: 'HTTP',
-  https: 'HTTPS',
-  tcp: 'TCP',
-  ssh: 'SSH',
-  prometheus: 'Prometheus',
-  health: 'Health',
-}
 
 const DEFAULT_DATA: Partial<NodeData> = {
   type: 'server',
@@ -369,13 +358,13 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 <Select value={form.check_method ?? 'ping'} onValueChange={(v) => set('check_method', v as CheckMethod)}>
                   <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label={t('Check method selector')}>
                     <SelectValue>
-                      {(form.check_method ?? 'ping') === 'health' ? t('Health') : CHECK_METHOD_LABELS[(form.check_method ?? 'ping') as CheckMethod]}
+                      {(form.check_method ?? 'ping') === 'health' ? t('Health') : t(CHECK_METHOD_LABELS[(form.check_method ?? 'ping') as CheckMethod])}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent className="bg-[#21262d] border-[#30363d]">
                     {CHECK_METHODS.map((m) => (
                       <SelectItem key={m} value={m} className="text-sm">
-                        {m === 'health' ? t('Health') : CHECK_METHOD_LABELS[m]}
+                        {m === 'health' ? t('Health') : t(CHECK_METHOD_LABELS[m])}
                       </SelectItem>
                     ))}
                   </SelectContent>

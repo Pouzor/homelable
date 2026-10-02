@@ -59,7 +59,7 @@ import { DEVICE_TYPE_GROUPS } from '@/utils/nodeTypeGroups'
 import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
 import { countPorts } from '@/utils/portSpec'
 import { serviceToForm, type ServiceFormData, type ServiceSubmitData } from '@/utils/serviceForm'
-import { NODE_TYPE_LABELS, type CheckMethod, type DeviceStatus, type InventoryEntry, type NodeProperty, type NodeType, type ServiceInfo } from '@/types'
+import { NODE_TYPE_LABELS, CHECK_METHOD_LABELS, type CheckMethod, type DeviceStatus, type InventoryEntry, type NodeProperty, type NodeType, type ServiceInfo } from '@/types'
 import modalStyles from './modal-interactive.module.css'
 
 // Home is `@/types` now — re-exported because most call sites import it here.
@@ -93,18 +93,6 @@ const CATEGORY_COLORS: Record<string, string> = {
 }
 
 const CHECK_METHODS: CheckMethod[] = ['ping', 'http', 'https', 'tcp', 'ssh', 'prometheus', 'health', 'none']
-
-// Protocol names stay verbatim; only the two English words are translated.
-const CHECK_METHOD_LABELS: Record<CheckMethod, string> = {
-  none: 'None',
-  ping: 'Ping',
-  http: 'HTTP',
-  https: 'HTTPS',
-  tcp: 'TCP',
-  ssh: 'SSH',
-  prometheus: 'Prometheus',
-  health: 'Health',
-}
 
 /** Live reachability — not the pending/approved/hidden lifecycle.
  *  Only the colour lives here; the caption goes through `liveLabel` below so it
@@ -696,7 +684,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                         <SelectContent className="bg-[#21262d] border-[#30363d]">
                           {CHECK_METHODS.map((m) => (
                             <SelectItem key={m} value={m} className="text-sm">
-                              {m === 'none' ? t('None') : m === 'health' ? t('Health') : CHECK_METHOD_LABELS[m]}
+                              {m === 'none' ? t('None') : m === 'health' ? t('Health') : t(CHECK_METHOD_LABELS[m])}
                             </SelectItem>
                           ))}
                         </SelectContent>

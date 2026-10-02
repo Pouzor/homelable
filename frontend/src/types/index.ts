@@ -397,6 +397,30 @@ export const EDGE_TYPE_LABELS: Record<EdgeType, string> = {
   electrical: 'Electrical Wire',
 }
 
+/**
+ * Captions for a node's or an inventory device's `check_method` dropdown.
+ *
+ * One table, not one per modal: NodeModal and InventoryDeviceModal each
+ * declared a byte-identical copy, and all three of their read sites printed it
+ * straight to the screen — so the check-method pickers showed a bare English
+ * `Ping` in an otherwise Chinese interface, in both modals, with the whole
+ * test suite green. A duplicated table is a duplicated fix, and the second one
+ * is the one nobody makes.
+ *
+ * Protocol names stay verbatim in every locale; the two English words are
+ * translated at the render site.
+ */
+export const CHECK_METHOD_LABELS: Record<CheckMethod, string> = {
+  none: 'None',
+  ping: 'Ping',
+  http: 'HTTP',
+  https: 'HTTPS',
+  tcp: 'TCP',
+  ssh: 'SSH',
+  prometheus: 'Prometheus',
+  health: 'Health',
+}
+
 export interface NodeTypeStyle {
   borderColor: string
   borderOpacity: number
