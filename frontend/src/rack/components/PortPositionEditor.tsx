@@ -13,6 +13,7 @@ import { INNER_WIDTH_PX, U_PX } from '../layout'
 import { clampPort, snapThreshold, snapToPeers } from '../portLayout'
 import { useRackPalette } from '../rackTheme'
 import { RACK_COLUMNS, type DeviceStatus, type Port } from '@/types'
+import { isTypingTarget } from '@/utils/keyboard'
 
 /** Default width of a full-width (12-column) plate in the editor. */
 const EDITOR_FULL_WIDTH = 660
@@ -161,11 +162,7 @@ export function PortPositionEditor({
     const onKeyDown = (e: KeyboardEvent) => {
       const step = ARROW_STEPS[e.key]
       if (!step) return
-      const target = e.target as HTMLElement | null
-      const tag = target?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
-        return
-      }
+      if (isTypingTarget(e)) return
       e.preventDefault()
       nudge(selectedPortId, step[0], step[1])
     }
