@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bold, Italic, Link2, List, ListChecks, Save, Table, X } from 'lucide-react'
+import { toast } from 'sonner'
 
-import { documentsApi } from '@/api/client'
+import { documentsApi, mediaApi } from '@/api/client'
 import { caretPoint, placeMenu, type CaretPoint, type Placement } from '@/documentation/caret'
 import { useDocHistory } from '@/documentation/history'
+import { IMAGE_TYPES, LINKED_TYPES, isSupportedMedia, mediaMarkdown, supportedLabel, uploadError } from '@/documentation/media'
 import { Button } from '@/components/ui/button'
 import { t, useLocale } from '@/i18n'
 import { cn } from '@/lib/utils'
@@ -56,6 +58,7 @@ export function DocEditor({
 }: Props) {
   useLocale()
   const textarea = useRef<HTMLTextAreaElement>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
   const pane = useRef<HTMLDivElement>(null)
   const caretRef = useRef<CaretPoint | null>(null)
   // Where the `/` that opened the menu sits in the body. Recorded on the way in
@@ -111,7 +114,22 @@ export function DocEditor({
           },
         }))
       : []
-    return [...generated, ...plainSnippets]
+    // These insert nothing themselves: they take the `/` away and open the
+    // file dialog, and the picked file lands at the caret once it is uploaded.
+    // One input serves both, narrowed to what the command is for.
+    const pick = (types: string[]) => () => {
+      const input = fileInput.current
+      if (input) {
+        input.accept = types.join(',')
+        input.click()
+      }
+      return ''
+    }
+    const uploads: SlashCommand[] = [
+      { id: 'image', label: '/image', hint: t('Upload an image — or drop or paste one'), insert: pick(IMAGE_TYPES) },
+      { id: 'pdf', label: '/pdf', hint: t('Upload a PDF, inserted as a link'), insert: pick(LINKED_TYPES) },
+    ]
+    return [...generated, ...plainSnippets, ...uploads]
   }, [deviceId])
 
   const visible = useMemo(() => {
@@ -185,6 +203,36 @@ export function DocEditor({
     },
     [body, history, onChange],
   )
+
+  // An upload outlives the render that started it. Inserting through the
+  // callback captured back then would write over a stale body and lose
+  // whatever was typed while the file was on its way.
+  const insertLatest = useRef(insertAtCursor)
+  useEffect(() => {
+    insertLatest.current = insertAtCursor
+  }, [insertAtCursor])
+
+  /** Upload `files` and write their markdown at the caret. */
+  const uploadFiles = useCallback(async (files: File[]) => {
+    const accepted = files.filter(isSupportedMedia)
+    if (accepted.length < files.length) toast.error(t('Only {formats} can go in a document', { formats: supportedLabel() }))
+    if (accepted.length === 0) return
+    setInserting(true)
+    const uploaded: string[] = []
+    try {
+      for (const file of accepted) {
+        const { url } = await mediaApi.upload(file)
+        uploaded.push(mediaMarkdown(file, url))
+      }
+    } catch (error) {
+      toast.error(uploadError(error))
+    } finally {
+      // What made it up is inserted even when a later file failed: it is on
+      // the server either way, and unreferenced it would only be an orphan.
+      if (uploaded.length > 0) insertLatest.current(uploaded.join('\n'), null)
+      setInserting(false)
+    }
+  }, [])
 
   const runCommand = useCallback(
     async (command: SlashCommand) => {
@@ -399,7 +447,38 @@ export function DocEditor({
               onChange(event.target.value)
             }}
             onKeyDown={handleKeyDown}
+            onDragOver={(event) => {
+              // Without this the browser navigates to the dropped file.
+              if (event.dataTransfer.types.includes('Files')) event.preventDefault()
+            }}
+            onDrop={(event) => {
+              const files = Array.from(event.dataTransfer.files)
+              if (files.length === 0) return
+              event.preventDefault()
+              void uploadFiles(files)
+            }}
+            onPaste={(event) => {
+              const files = Array.from(event.clipboardData.files)
+              // A spreadsheet or a word processor copies a picture of the
+              // selection beside its text; the text is what was meant.
+              if (files.length === 0 || event.clipboardData.getData('text/plain')) return
+              event.preventDefault()
+              void uploadFiles(files)
+            }}
             className="h-full w-full resize-none bg-transparent p-4 font-mono text-xs leading-relaxed outline-none"
+          />
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            aria-label={t('Upload a file')}
+            className="hidden"
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? [])
+              // Cleared so picking the same file twice in a row still fires.
+              event.target.value = ''
+              void uploadFiles(files)
+            }}
           />
           {slashOpen && (
             <EditorMenu

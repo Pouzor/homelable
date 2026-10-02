@@ -27,6 +27,7 @@ import { AlignmentGuides } from './AlignmentGuides'
 import { FloorMapLayer } from './FloorMapLayer'
 import { useAlignmentGuides } from '@/hooks/useAlignmentGuides'
 import { setViewportCenterProjector } from '@/utils/viewportCenter'
+import { isTypingTarget } from '@/utils/keyboard'
 import type { NodeData, EdgeData } from '@/types'
 
 interface CanvasContainerProps {
@@ -84,9 +85,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return
-      const el = e.target as HTMLElement
-      const isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable
-      if (isInput) return
+      if (isTypingTarget(e)) return
       if (e.key === 'c') {
         copySelectedNodes()
       } else if (e.key === 'v') {

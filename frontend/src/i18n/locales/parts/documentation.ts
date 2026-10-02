@@ -9,6 +9,16 @@ const part: Record<string, string> = {
   'A highlighted note': '一条高亮提示',
   'A link to a device document': '一个指向设备文档的链接',
   'A link to another document': '一个指向其他文档的链接',
+  // The `/image` and `/pdf` slash commands, added upstream in 52765a4. The
+  // commands themselves stay untranslated — they are what the user types — but
+  // the hints are copy.
+  'Upload an image — or drop or paste one': '上传图片 —— 也可以拖放或粘贴',
+  'Upload a PDF, inserted as a link': '上传 PDF，以链接形式插入',
+  'Upload a file': '上传文件',
+  'Upload failed': '上传失败',
+  // The format list keeps its Latin names; only the separators are copy.
+  'PNG, JPEG, WebP, SVG or PDF': 'PNG、JPEG、WebP、SVG 或 PDF',
+  'Only {formats} can go in a document': '文档里只能放 {formats}',
   'All devices': '全部设备',
   'All documents': '全部文档',
   'An empty three-column table': '一个空的三列表格',

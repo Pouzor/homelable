@@ -6,6 +6,7 @@ import { groupIntoZones, liftEdgesToTopLevel, type AutoLayoutMode } from '@/util
 import { serializeNode, serializeEdge, deserializeApiCanvas, migrateClusterHandles, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { generateUUID } from '@/utils/uuid'
 import { getCenteredPosition } from '@/utils/viewportCenter'
+import { isTypingTarget } from '@/utils/keyboard'
 import { resolveVirtualEdgeParent } from '@/utils/virtualEdgeParent'
 import { getDesignIdFromUrl, setDesignIdInUrl } from '@/utils/designUrl'
 import { useDocsUrlSync } from '@/hooks/useDocsUrlSync'
@@ -541,8 +542,7 @@ export default function App() {
     const handler = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey
       // Ignore shortcuts when typing in an input/textarea
-      const tag = (e.target as HTMLElement).tagName
-      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable
+      const isInput = isTypingTarget(e)
 
       if (ctrl && e.key === 's') { e.preventDefault(); handleSaveRef.current(); return }
       // Undo belongs to whatever is being typed in — the document editor keeps

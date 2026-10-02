@@ -62,7 +62,10 @@ const part: Record<string, string> = {
   "Unexpected error during Proxmox import": "Proxmox 导入过程中发生意外错误",
   "Unexpected error during UniFi import": "UniFi 导入过程中发生意外错误",
   "Unexpected error during Z-Wave import": "Z-Wave 导入过程中发生意外错误",
-  "Unsupported media type — PNG, JPEG, or WebP only": "不支持的媒体类型 —— 仅支持 PNG、JPEG 或 WebP",
+  // Reworded upstream in 52765a4 ("– PNG, JPEG, or WebP only" gained SVG and
+  // PDF along with the upload routes). The backend stays the authority, so the
+  // key tracks whatever the server actually sends.
+  "Unsupported media type — PNG, JPEG, WebP, SVG or PDF only": "不支持的媒体类型 —— 仅支持 PNG、JPEG、WebP、SVG 或 PDF",
 }
 
 export default part

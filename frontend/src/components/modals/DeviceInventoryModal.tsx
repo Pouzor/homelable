@@ -22,6 +22,7 @@ import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
 import { getCenteredPosition } from '@/utils/viewportCenter'
 import { sourceBuckets, orderedSources, isRackDevice, SOURCE_META, type SourceBucket } from '@/utils/deviceSources'
 import { isRackable } from '@/utils/rackable'
+import { isTypingTarget } from '@/utils/keyboard'
 import { ProxmoxApproveModal, type ProxmoxApproveChoice } from '@/components/modals/ProxmoxApproveModal'
 import { MergeDevicesModal } from '@/components/modals/MergeDevicesModal'
 import { layoutProxmoxContainers, measureProxmoxContainers } from '@/utils/proxmoxContainerLayout'
@@ -645,8 +646,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null
-      const inField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')
+      const inField = isTypingTarget(e)
       if (e.key === 'Escape') {
         if (selectMode && selectedIds.size > 0) { e.preventDefault(); setSelectedIds(new Set()) }
         return

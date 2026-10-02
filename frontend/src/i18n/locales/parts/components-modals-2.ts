@@ -108,6 +108,10 @@ const part: Record<string, string> = {
   'Kind': '类型',
   'Label': '标签',
   'Label Position': '标签位置',
+  // The locale picker's own label, rendered by SettingsModal and by
+  // LanguageSwitcher's default. `Label` and `Label Position` are the property
+  // captions; this is the word for the language field itself.
+  'Language': '语言',
   'Label position {position}': '标签位置：{position}',
   'Line Style': '线条样式',
   'Line Width': '线条宽度',
