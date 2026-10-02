@@ -163,6 +163,58 @@ async def test_apply_lands_an_automatic_merge(client: AsyncClient, headers: dict
     assert [r["reason"] for r in revisions] == ["sync"]
 
 
+async def test_a_body_that_already_matches_the_device_is_not_drifted(client: AsyncClient, headers: dict):
+    """The user already wrote the device's new value: an update would have
+    nothing to offer, so neither the document, the list nor coverage flag it."""
+    device = await _device(client, headers)
+    doc = await _doc(client, headers, device)
+    await _set_ip(client, headers, device, "192.168.1.99")
+    assert (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["drifted"] is True
+
+    await _edit_ip(client, headers, doc, "192.168.1.99")
+    assert (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["drifted"] is False
+    listed = (await client.get("/api/v1/documents", headers=headers)).json()
+    assert next(d for d in listed if d["id"] == doc["id"])["drifted"] is False
+    assert (await client.get("/api/v1/documents/coverage", headers=headers)).json()["drifted"] == 0
+
+
+async def test_a_conflict_keeps_the_document_drifted(client: AsyncClient, headers: dict):
+    """The user and the device disagree: that is exactly what the flag is for."""
+    device = await _device(client, headers)
+    doc = await _doc(client, headers, device)
+    await _edit_ip(client, headers, doc, "nas.example.lan")
+    await _set_ip(client, headers, device, "192.168.1.99")
+    assert (await client.get(f"/api/v1/documents/{doc['id']}", headers=headers)).json()["drifted"] is True
+
+
+async def test_apply_with_nothing_to_change_records_the_facts_without_a_revision(
+    client: AsyncClient, headers: dict
+):
+    device = await _device(client, headers)
+    doc = await _doc(client, headers, device)
+    await _set_ip(client, headers, device, "192.168.1.99")
+    edited = await _edit_ip(client, headers, doc, "192.168.1.99")
+
+    preview = await _preview(client, headers, doc["id"])
+    assert preview["summary"] == []
+    assert preview["unresolved"] == []
+
+    res = await client.post(
+        f"/api/v1/documents/{doc['id']}/update-from-device",
+        json={"preview_id": preview["preview_id"], "resolutions": []},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    updated = res.json()
+    assert updated["body"] == edited["body"]
+    assert updated["facts_snapshot"]["ip"] == "192.168.1.99"
+    assert updated["drifted"] is False
+
+    # Nothing was rewritten, so history gains no sync revision.
+    revisions = (await client.get(f"/api/v1/documents/{doc['id']}/revisions", headers=headers)).json()
+    assert "sync" not in [r["reason"] for r in revisions]
+
+
 async def test_apply_records_a_durable_decision(client: AsyncClient, headers: dict):
     device = await _device(client, headers)
     doc = await _doc(client, headers, device)

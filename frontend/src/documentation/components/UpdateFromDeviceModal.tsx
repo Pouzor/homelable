@@ -199,8 +199,11 @@ export function UpdateFromDeviceModal({
             Cancel
           </Button>
           {previewReady && !hasAnythingToApply && (
-            <Button variant="secondary" onClick={cancel} className="cursor-pointer" disabled={loading}>
-              Done
+            // The body already matches, but the document still reads as
+            // drifted until the device's facts are recorded as reviewed —
+            // closing without that would leave the badge on forever.
+            <Button variant="secondary" onClick={onApply} className="cursor-pointer" disabled={loading}>
+              Mark as up to date
             </Button>
           )}
           {previewReady && hasAnythingToApply && (
@@ -355,6 +358,24 @@ function VersionPanel({
   )
 }
 
+/**
+ * Whether a previous value says anything worth disclosing.
+ *
+ * A document generated before baselines were recorded has its previous value
+ * rebuilt from the facts snapshot, and unknown facts come out as `—` — a whole
+ * Hardware table of dashes reads as an empty box. Headings and a table's
+ * header and separator rows are structure, not data.
+ */
+function carriesData(value: string): boolean {
+  const lines = value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'))
+  const separator = lines.findIndex((line) => /^\|\s*:?-{3,}/.test(line))
+  const data = separator >= 0 ? [...lines.slice(0, Math.max(separator - 1, 0)), ...lines.slice(separator + 1)] : lines
+  return data.some((line) => line.split('|').some((cell) => cell.trim() !== '' && cell.trim() !== '—'))
+}
+
 function ConflictRow({
   change,
   onResolve,
@@ -415,7 +436,7 @@ function ConflictRow({
         />
       </div>
 
-      {change.previous && change.previous !== change.documented && change.previous !== change.device && (
+      {carriesData(change.previous) && change.previous !== change.documented && change.previous !== change.device && (
         <details className="mt-2 text-xs">
           <summary className="cursor-pointer text-muted-foreground">Show previous shared value</summary>
           <div className="mt-1 rounded border border-border bg-muted/20 px-2.5 py-2">

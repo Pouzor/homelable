@@ -92,7 +92,7 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 describe('DocumentationView — update from device', () => {
-  it('previews and applies a safe update with one primary click and a short history-linked summary', async () => {
+  it('shows a conflict-free update for review and applies it only once Update is clicked', async () => {
     const merged = doc({ body: '# NAS\n\nIP: 192.168.1.30\n\nManual backup notes.', drifted: false })
     api.updatePreview.mockResolvedValue({
       data: preview({
@@ -115,9 +115,16 @@ describe('DocumentationView — update from device', () => {
 
     fireEvent.click(renderView())
 
+    // No conflict to settle, yet nothing is written until the user confirms.
+    const confirm = await screen.findByRole('button', { name: 'Update the document' })
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(api.updateFromDevice).not.toHaveBeenCalled()
+    fireEvent.click(confirm)
+
     await waitFor(() => expect(api.updateFromDevice).toHaveBeenCalledTimes(1))
     expect(api.updatePreview).toHaveBeenCalledTimes(1)
     expect(api.updateFromDevice).toHaveBeenCalledWith('doc-1', 'preview-1', [])
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getByText('Manual backup notes.')).toBeInTheDocument()
     expect(toast.success).toHaveBeenCalledWith(
@@ -211,7 +218,7 @@ describe('DocumentationView — update from device', () => {
     expect(api.updateFromDevice).not.toHaveBeenCalled()
   })
 
-  it('shows a fresh preview after a stale apply without autoapplying it', async () => {
+  it('shows a fresh preview after a stale apply without applying it', async () => {
     const first = preview({
       changes: [{
         id: 'device-info.IP Address',
@@ -246,6 +253,7 @@ describe('DocumentationView — update from device', () => {
     api.get.mockResolvedValueOnce({ data: doc({ updated_at: '2026-01-02T00:00:00Z' }) } as never)
 
     fireEvent.click(renderView())
+    fireEvent.click(await screen.findByRole('button', { name: 'Update the document' }))
 
     await waitFor(() => expect(api.updatePreview).toHaveBeenCalledTimes(2))
     expect(api.updateFromDevice).toHaveBeenCalledTimes(1)
@@ -254,7 +262,7 @@ describe('DocumentationView — update from device', () => {
     expect(screen.getByRole('button', { name: 'Update the document' })).toBeInTheDocument()
   })
 
-  it('does not autoapply a preview that finishes after navigation', async () => {
+  it('does not apply a preview that finishes after navigation', async () => {
     const comparing = deferred<{ data: UpdatePreview }>()
     api.updatePreview.mockImplementationOnce(() => comparing.promise)
     api.get.mockResolvedValueOnce({ data: doc({ id: 'doc-2', title: 'Router', slug: 'router' }) } as never)
@@ -277,7 +285,7 @@ describe('DocumentationView — update from device', () => {
     expect(useDocsStore.getState().openDoc?.id).toBe('doc-2')
   })
 
-  it('does not close a newer review when an old automatic apply finishes after navigation', async () => {
+  it('does not close a newer review when an old apply finishes after navigation', async () => {
     const applying = deferred<{ data: Doc }>()
     api.updatePreview.mockResolvedValueOnce({
       data: preview({
@@ -298,6 +306,7 @@ describe('DocumentationView — update from device', () => {
     const { toast } = await import('sonner')
 
     fireEvent.click(renderView())
+    fireEvent.click(await screen.findByRole('button', { name: 'Update the document' }))
     await waitFor(() => expect(api.updateFromDevice).toHaveBeenCalledTimes(1))
     await act(async () => {
       await useDocsStore.getState().open('doc-2')

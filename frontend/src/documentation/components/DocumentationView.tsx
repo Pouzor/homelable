@@ -43,7 +43,7 @@ function updateConfirmation(result: UpdatePreview): string {
       .map((change) => change.name.trim())
       .filter(Boolean),
   )]
-  if (names.length === 0) return 'Documentation updated'
+  if (names.length === 0) return 'Documentation already matched the device — marked as up to date'
   const shown = names.slice(0, 3).join(', ')
   return `Documentation updated: ${shown}${names.length > 3 ? `, and ${names.length - 3} more` : ''}`
 }
@@ -327,29 +327,17 @@ export function DocumentationView() {
     })
   }, [applyUpdate, clearResolutions, open, openUpdatePreview])
 
-  const handleUpdatePreview = useCallback(async (applyIfSafe: boolean) => {
+  // The comparison only ever opens the review. Even an update with no conflict
+  // waits for the Update button: nothing is written to a document unseen.
+  const handleUpdatePreview = useCallback(async () => {
     if (!openDoc) return
     const flow = ++updateFlow.current
     const docId = openDoc.id
     setUpdateOpen(true)
     const result = await openUpdatePreview()
     if (flow !== updateFlow.current || useDocsStore.getState().openDoc?.id !== docId) return
-    if (result === null) {
-      toast.error('Could not compare this document with the device')
-      return
-    }
-    if (applyIfSafe && result.unresolved.length === 0) await finishUpdate(result, flow, docId)
-  }, [finishUpdate, openDoc, openUpdatePreview])
-
-  const handleOpenUpdatePreview = useCallback(
-    () => handleUpdatePreview(true),
-    [handleUpdatePreview],
-  )
-
-  const handleRetryUpdatePreview = useCallback(
-    () => handleUpdatePreview(false),
-    [handleUpdatePreview],
-  )
+    if (result === null) toast.error('Could not compare this document with the device')
+  }, [openDoc, openUpdatePreview])
 
   const handleApplyUpdate = useCallback(async () => {
     if (!openDoc || !preview) return
@@ -694,7 +682,7 @@ export function DocumentationView() {
             onToggleStar={() => void toggleStar(openDoc.id)}
             onMarkReviewed={() => void markReviewed(openDoc.id)}
             onSetTags={(tags) => void setTags(tags)}
-            onUpdateFromDevice={() => void handleOpenUpdatePreview()}
+            onUpdateFromDevice={() => void handleUpdatePreview()}
             onRegenerate={() => setRegenerateOpen(true)}
             onDownload={() => downloadDoc(openDoc)}
             onDelete={() => void handleDelete()}
@@ -741,7 +729,7 @@ export function DocumentationView() {
           preview={preview}
           loading={previewLoading}
           resolutions={resolutions}
-          onPreview={() => void handleRetryUpdatePreview()}
+          onPreview={() => void handleUpdatePreview()}
           onResolve={(id, item) => setResolution(id, item)}
           onCancel={handleCancelUpdate}
           onApply={() => void handleApplyUpdate()}

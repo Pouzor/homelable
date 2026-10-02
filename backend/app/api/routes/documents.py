@@ -213,17 +213,26 @@ async def _scaffold_body(db: AsyncSession, doc: Document, template_id: str | Non
     doc.template_id = template_id or "blank"
 
 
-def _has_drifted(doc: Document, device: InventoryDevice | None) -> bool:
-    """Whether the device has moved on since this document was snapshotted.
+async def _has_drifted(db: AsyncSession, doc: Document, device: InventoryDevice | None) -> bool:
+    """Whether the device has moved on in a way this document does not show yet.
 
     The comparison lives on the server rather than in the UI because
     `facts_snapshot` is the server's own shape — `label` and `type` are stored
     through their fallbacks and `properties` as a flat map — so nothing else
     can compare it to a device row correctly. Same rule as the coverage count.
+
+    A snapshot that differs is necessary, not sufficient: the body may already
+    say what the device says now (the user wrote it, or the snapshot predates a
+    fact the body was generated with). "Update from device" would then have
+    nothing to offer, so the document is not flagged — the merge itself decides.
     """
     if not doc.device_id or not doc.facts_snapshot or device is None:
         return False
-    return doc.facts_snapshot != facts_snapshot(device)
+    if doc.facts_snapshot == facts_snapshot(device):
+        return False
+    _, generated = await _generated_body(db, device)
+    result = await _reconcile_document(doc, [], generated=generated, snapshot=_sync_snapshot(doc))
+    return bool(result.auto or result.conflicts)
 
 
 async def _devices_for(db: AsyncSession, docs: list[Document]) -> dict[str, InventoryDevice]:
@@ -237,16 +246,18 @@ async def _devices_for(db: AsyncSession, docs: list[Document]) -> dict[str, Inve
     return {device.id: device for device in rows}
 
 
-def _summary(doc: Document, device: InventoryDevice | None) -> DocumentSummary:
+async def _summary(db: AsyncSession, doc: Document, device: InventoryDevice | None) -> DocumentSummary:
     payload = DocumentSummary.model_validate(doc)
-    payload.drifted = _has_drifted(doc, device)
+    payload.drifted = await _has_drifted(db, doc, device)
     return payload
 
 
 async def _response(db: AsyncSession, doc: Document) -> DocumentResponse:
     """One document, with the drift flag resolved against the live device."""
     payload = DocumentResponse.model_validate(doc)
-    payload.drifted = _has_drifted(doc, await db.get(InventoryDevice, doc.device_id) if doc.device_id else None)
+    payload.drifted = await _has_drifted(
+        db, doc, await db.get(InventoryDevice, doc.device_id) if doc.device_id else None
+    )
     return payload
 
 
@@ -345,7 +356,7 @@ async def list_documents(
         wanted = tag.lower()
         docs = [d for d in docs if any(str(t).lower() == wanted for t in (d.tags or []))]
     devices = await _devices_for(db, list(docs))
-    return [_summary(d, devices.get(d.device_id or "")) for d in docs]
+    return [await _summary(db, d, devices.get(d.device_id or "")) for d in docs]
 
 
 @router.get("/coverage", response_model=CoverageResponse)
@@ -369,7 +380,7 @@ async def coverage(
         # Never edited since it was generated: the template is all there is.
         if doc.edited_at is None and doc.reviewed_at is None:
             header_only += 1
-        if doc.facts_snapshot and doc.facts_snapshot != facts_snapshot(device):
+        if await _has_drifted(db, doc, device):
             drifted += 1
         interval = _parse_interval((doc.frontmatter or {}).get("review_every"))
         since = _aware(doc.reviewed_at) or _aware(doc.created_at)
@@ -851,8 +862,13 @@ async def apply_device_update(
             f"Resolve every conflict first: {', '.join(c.name for c in result.unresolved)}",
         )
 
-    await _record_revision(db, doc, "sync")
-    _apply_body(doc, result.proposed_body)
+    # A body that already matched the device, with no decision to record, is
+    # an acknowledgement, not an edit: the facts below are still stored so the
+    # drift clears, but history gets no revision identical to the body it would
+    # restore. A kept conflict is a decision and keeps its revision.
+    if body.resolutions or result.proposed_body != (doc.body or ""):
+        await _record_revision(db, doc, "sync")
+        _apply_body(doc, result.proposed_body)
     # The baseline is the body the device *actually* read — the very generated
     # body the proposal above was merged from, fetched once — not the merged
     # one: a decision the user made (a kept line, a custom value) must stay

@@ -116,6 +116,19 @@ describe('UpdateFromDeviceModal', () => {
     expect(screen.getByText(/already matches the device/)).toBeTruthy()
   })
 
+  it('records the device as reviewed when there is nothing to change', async () => {
+    // Closing without applying would leave "The device has changed" on a
+    // document whose body already matches.
+    const user = userEvent.setup()
+    const onApply = vi.fn()
+    const onCancel = vi.fn()
+    render(<UpdateFromDeviceModal {...PROPS} preview={preview()} onApply={onApply} onCancel={onCancel} />)
+
+    await user.click(screen.getByRole('button', { name: 'Mark as up to date' }))
+    expect(onApply).toHaveBeenCalledTimes(1)
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
   it('hides the Update button when conflicts remain unresolved', () => {
     render(
       <UpdateFromDeviceModal
@@ -155,6 +168,35 @@ describe('UpdateFromDeviceModal', () => {
     expect(screen.getByText('Latest device information')).toBeTruthy()
     expect(screen.getByText('old')).toHaveProperty('tagName', 'MARK')
     expect(screen.getByText('new')).toHaveProperty('tagName', 'MARK')
+    expect(screen.getByText('Show previous shared value')).toBeTruthy()
+  })
+
+  it('hides the previous value when it carries no data', () => {
+    // A document with no recorded baseline gets its previous Hardware table
+    // rebuilt from a snapshot whose facts were unknown: dashes only.
+    const empties = ['', '—', '| CPU | RAM | Disk |\n|---|---|---|\n| — | — | — |']
+    for (const previous of empties) {
+      const { unmount } = render(
+        <UpdateFromDeviceModal
+          {...PROPS}
+          preview={preview({ changes: [change({ kind: 'section', previous })], unresolved: ['conflict-1'] })}
+        />,
+      )
+      expect(screen.queryByText('Show previous shared value')).toBeNull()
+      unmount()
+    }
+  })
+
+  it('shows a previous table as soon as one of its cells is known', () => {
+    render(
+      <UpdateFromDeviceModal
+        {...PROPS}
+        preview={preview({
+          changes: [change({ kind: 'section', previous: '| CPU | RAM | Disk |\n|---|---|---|\n| — | 2 GB | — |' })],
+          unresolved: ['conflict-1'],
+        })}
+      />,
+    )
     expect(screen.getByText('Show previous shared value')).toBeTruthy()
   })
 
