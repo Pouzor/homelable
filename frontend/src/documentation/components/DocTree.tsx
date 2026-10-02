@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, File, FileText, Folder, FolderOpen, Star } from 'lucide-react'
 
+import { t, useLocale } from '@/i18n'
 import { cn } from '@/lib/utils'
 import type { DocState, TreeGroup, TreeLeaf } from '../types'
 
@@ -11,14 +12,6 @@ import type { DocState, TreeGroup, TreeLeaf } from '../types'
  * user files by hand. They share this renderer so both feel like one tree.
  */
 
-const STATE_TITLE: Record<DocState, string> = {
-  none: 'No document yet',
-  'header-only': 'Only the generated header — nothing written yet',
-  written: 'Documented',
-  drifted: 'The device changed since this was written',
-  overdue: 'Due for review',
-}
-
 const STATE_CLASS: Record<DocState, string> = {
   none: 'bg-muted-foreground/30',
   'header-only': 'bg-muted-foreground/60 ring-1 ring-inset ring-background',
@@ -28,10 +21,20 @@ const STATE_CLASS: Record<DocState, string> = {
 }
 
 export function DocStateDot({ state }: { state: DocState }) {
+  useLocale()
+  // Built inside the component so the titles go through `t`; a module-level
+  // table would be created once at import, before the locale is known.
+  const stateTitle: Record<DocState, string> = {
+    none: t('No document yet'),
+    'header-only': t('Only the generated header — nothing written yet'),
+    written: t('Documented'),
+    drifted: t('The device changed since this was written'),
+    overdue: t('Due for review'),
+  }
   return (
     <span
-      aria-label={STATE_TITLE[state]}
-      title={STATE_TITLE[state]}
+      aria-label={stateTitle[state]}
+      title={stateTitle[state]}
       className={cn('size-1.5 shrink-0 rounded-full', STATE_CLASS[state])}
     />
   )
@@ -67,6 +70,7 @@ interface ItemProps {
 }
 
 export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect, onToggle, dnd }: ItemProps) {
+  useLocale()
   const isFolder = leaf.kind === 'folder'
   const isOpen = expanded.includes(leaf.id)
   const active = activeId !== null && leaf.docId === activeId
@@ -122,8 +126,8 @@ export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect
         <span
           draggable={dragHandle || undefined}
           data-testid={dragHandle ? `drag-${leaf.id}` : undefined}
-          aria-label={dragHandle ? `Drag ${leaf.label}` : undefined}
-          title={dragHandle ? 'Drag to file this elsewhere' : undefined}
+          aria-label={dragHandle ? t('Drag {title}', { title: leaf.label }) : undefined}
+          title={dragHandle ? t('Drag to file this elsewhere') : undefined}
           onDragStart={
             dragHandle
               ? (event) => {
@@ -182,8 +186,9 @@ interface GroupsProps {
 }
 
 export function DocTreeGroups({ groups, activeId, expanded, starred, onSelect, onToggle }: GroupsProps) {
+  useLocale()
   if (groups.length === 0) {
-    return <p className="px-3 py-2 text-xs text-muted-foreground/60">No devices to document yet.</p>
+    return <p className="px-3 py-2 text-xs text-muted-foreground/60">{t('No devices to document yet.')}</p>
   }
   return (
     <>

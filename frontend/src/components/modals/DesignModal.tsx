@@ -6,12 +6,10 @@ import { Input } from '@/components/ui/input'
 import { DESIGN_ICONS, DEFAULT_DESIGN_ICON, resolveDesignIcon } from '@/utils/designIcons'
 import type { Design, DesignType, FloorMapConfig } from '@/types'
 import { resolveServerPath } from '@/utils/basePath'
+import { t, useLocale } from '@/i18n'
 
 /** Canvas kinds offered on create. `electrical` shares the network renderer. */
-const CANVAS_KINDS: { value: DesignType; label: string; hint: string }[] = [
-  { value: 'network', label: 'Diagram', hint: 'Nodes and links on a free canvas' },
-  { value: 'rack', label: 'Rack', hint: 'Racks, mounted gear and patching' },
-]
+type CanvasKind = { value: DesignType; label: string; hint: string }
 
 export interface DesignFormData {
   name: string
@@ -70,6 +68,13 @@ export function DesignModal({
   onUploadImage,
   sourceDesigns = [],
 }: DesignModalProps) {
+  useLocale()
+  // Built inside the component so the labels go through `t`; a module-level
+  // table would be created once at import, before the locale is known.
+  const canvasKinds: CanvasKind[] = [
+    { value: 'network', label: t('Diagram'), hint: t('Nodes and links on a free canvas') },
+    { value: 'rack', label: t('Rack'), hint: t('Racks, mounted gear and patching') },
+  ]
   const [name, setName] = useState(initial?.name ?? '')
   const [icon, setIcon] = useState(initial?.icon ?? DEFAULT_DESIGN_ICON)
   const [designType, setDesignType] = useState<DesignType>(initial?.designType ?? 'network')
@@ -146,12 +151,12 @@ export function DesignModal({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle>{t(title)}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label htmlFor="design-name">Name</Label>
+            <Label htmlFor="design-name">{t('Name')}</Label>
             <Input
               id="design-name"
               value={name}
@@ -165,9 +170,9 @@ export function DesignModal({
           {/* A copy inherits the source's kind, so the picker would be a lie. */}
           {canPickKind && !fromExisting && (
             <div className="space-y-1.5">
-              <Label>Kind</Label>
+              <Label>{t('Kind')}</Label>
               <div className="grid grid-cols-2 gap-1.5">
-                {CANVAS_KINDS.map((kind) => {
+                {canvasKinds.map((kind) => {
                   const selected = kind.value === designType
                   return (
                     <button
@@ -192,7 +197,7 @@ export function DesignModal({
           )}
 
           <div className="space-y-1.5">
-            <Label>Icon</Label>
+            <Label>{t('Icon')}</Label>
             <div className="grid grid-cols-8 gap-1.5">
               {DESIGN_ICONS.map((entry) => {
                 const Icon = entry.icon
@@ -201,9 +206,9 @@ export function DesignModal({
                   <button
                     key={entry.key}
                     type="button"
-                    aria-label={entry.label}
+                    aria-label={t(entry.label)}
                     aria-pressed={selected}
-                    title={entry.label}
+                    title={t(entry.label)}
                     onClick={() => setIcon(entry.key)}
                     className={`flex items-center justify-center aspect-square rounded-md border transition-colors cursor-pointer ${
                       selected
@@ -231,7 +236,7 @@ export function DesignModal({
                       : 'border-border text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  Blank canvas
+                  {t('Blank canvas')}
                 </button>
                 <button
                   type="button"
@@ -243,12 +248,12 @@ export function DesignModal({
                       : 'border-border text-muted-foreground hover:text-foreground'
                   }`}
                 >
-                  Copy from existing
+                  {t('Copy from existing')}
                 </button>
               </div>
 
               {fromExisting && (
-                <div className="space-y-1 max-h-48 overflow-y-auto pr-1" role="radiogroup" aria-label="Source canvas">
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-1" role="radiogroup" aria-label={t('Source canvas')}>
                   {sourceDesigns.map((d) => {
                     const Icon = resolveDesignIcon(d.icon)
                     const selected = d.id === sourceId
@@ -269,7 +274,11 @@ export function DesignModal({
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm">{d.name}</div>
                           <div className="text-xs text-muted-foreground">
-                            {d.node_count ?? 0} nodes · {d.group_count ?? 0} groups · {d.text_count ?? 0} text
+                            {t('{nodes} nodes · {groups} groups · {text} text', {
+                              nodes: d.node_count ?? 0,
+                              groups: d.group_count ?? 0,
+                              text: d.text_count ?? 0,
+                            })}
                           </div>
                         </div>
                       </button>
@@ -282,45 +291,45 @@ export function DesignModal({
 
           {showFloorMap && (
             <div className="space-y-2 pt-2 border-t border-border">
-              <Label>Floor Plan</Label>
+              <Label>{t('Floor Plan')}</Label>
               {!hasImage ? (
                 <div
                   className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-[#30363d] rounded-lg p-6 cursor-pointer hover:border-[#00d4ff]/50 transition-colors"
                   onClick={() => fileRef.current?.click()}
                 >
                   <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleFile} />
-                  <span className="text-muted-foreground text-sm">{uploading ? 'Uploading…' : 'Click to select a floor plan image'}</span>
-                  <span className="text-muted-foreground/50 text-xs">PNG, JPEG or WebP · max 10 MB</span>
+                  <span className="text-muted-foreground text-sm">{uploading ? t('Uploading…') : t('Click to select a floor plan image')}</span>
+                  <span className="text-muted-foreground/50 text-xs">{t('PNG, JPEG or WebP · max 10 MB')}</span>
                 </div>
               ) : (
                 <>
                   <div className="relative rounded-lg overflow-hidden border border-[#30363d]" style={{ maxHeight: 160 }}>
-                    <img src={resolveServerPath(imageData)} alt="Floor plan preview" className="w-full h-full object-contain" style={{ opacity }} />
+                    <img src={resolveServerPath(imageData)} alt={t('Floor plan preview')} className="w-full h-full object-contain" style={{ opacity }} />
                   </div>
 
                   <div className="flex items-center gap-2">
                     <Button size="sm" variant="secondary" className="cursor-pointer" disabled={uploading} onClick={() => fileRef.current?.click()}>
-                      {uploading ? 'Uploading…' : 'Replace Image'}
+                      {uploading ? t('Uploading…') : t('Replace Image')}
                     </Button>
                     <Button size="sm" variant="destructive" className="cursor-pointer" onClick={() => setImageData('')}>
-                      Remove
+                      {t('Remove')}
                     </Button>
                     <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleFile} />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1.5">
-                      <Label className="text-xs text-muted-foreground">Width (px)</Label>
+                      <Label className="text-xs text-muted-foreground">{t('Width (px)')}</Label>
                       <Input type="number" value={width} onChange={(e) => setWidth(Math.max(80, Number(e.target.value)))} className="bg-[#21262d] border-[#30363d] text-xs h-8" />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <Label className="text-xs text-muted-foreground">Height (px)</Label>
+                      <Label className="text-xs text-muted-foreground">{t('Height (px)')}</Label>
                       <Input type="number" value={height} onChange={(e) => setHeight(Math.max(80, Number(e.target.value)))} className="bg-[#21262d] border-[#30363d] text-xs h-8" />
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <Label className="text-xs text-muted-foreground">Opacity: {Math.round(opacity * 100)}%</Label>
+                    <Label className="text-xs text-muted-foreground">{t('Opacity: {value}%', { value: Math.round(opacity * 100) })}</Label>
                     <input
                       type="range" min="0.05" max="1" step="0.05" value={opacity}
                       onChange={(e) => setOpacity(Number(e.target.value))}
@@ -331,11 +340,11 @@ export function DesignModal({
                   <div className="flex items-center gap-6">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={locked} onChange={(e) => setLocked(e.target.checked)} className="accent-[#00d4ff] w-3.5 h-3.5" />
-                      <span className="text-xs text-muted-foreground">Lock position & size</span>
+                      <span className="text-xs text-muted-foreground">{t('Lock position & size')}</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="accent-[#00d4ff] w-3.5 h-3.5" />
-                      <span className="text-xs text-muted-foreground">Show on canvas</span>
+                      <span className="text-xs text-muted-foreground">{t('Show on canvas')}</span>
                     </label>
                   </div>
                 </>
@@ -345,8 +354,8 @@ export function DesignModal({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={!name.trim()}>{submitLabel}</Button>
+          <Button variant="ghost" onClick={onClose}>{t('Cancel')}</Button>
+          <Button onClick={handleSubmit} disabled={!name.trim()}>{t(submitLabel)}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

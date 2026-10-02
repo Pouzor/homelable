@@ -14,12 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { countPorts, isValidPortSpec, FULL_PORT_RANGE } from '@/utils/portSpec'
 import modalStyles from './modal-interactive.module.css'
-
-const PRESETS: Array<{ label: string; spec: string }> = [
-  { label: 'All ports', spec: FULL_PORT_RANGE },
-  { label: 'Well-known', spec: '1-1024' },
-  { label: 'Common', spec: '1-10000' },
-]
+import { t, useLocale } from '@/i18n'
 
 interface DeepScanModalProps {
   open: boolean
@@ -29,6 +24,14 @@ interface DeepScanModalProps {
 }
 
 export function DeepScanModal({ open, target, onClose, onStart }: DeepScanModalProps) {
+  useLocale()
+  // Built inside the component so the labels go through `t`; a module-level
+  // table would be created once at import, before the locale is known.
+  const presets: Array<{ label: string; spec: string }> = [
+    { label: t('All ports'), spec: FULL_PORT_RANGE },
+    { label: t('Well-known'), spec: '1-1024' },
+    { label: t('Common'), spec: '1-10000' },
+  ]
   // Prefilled with the full range. The caller mounts this only while it is
   // open, so a previous narrow spec never becomes the next scan's default.
   const [spec, setSpec] = useState(FULL_PORT_RANGE)
@@ -50,14 +53,14 @@ export function DeepScanModal({ open, target, onClose, onStart }: DeepScanModalP
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Radar size={15} className="text-[#00d4ff]" />
-            Deep scan{target ? ` — ${target}` : ''}
+            {t('Deep scan')}{target ? ` — ${target}` : ''}
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="deep-scan-ports" className="text-xs text-muted-foreground">
-              Port range
+              {t('Port range')}
             </Label>
             <Input
               id="deep-scan-ports"
@@ -71,18 +74,18 @@ export function DeepScanModal({ open, target, onClose, onStart }: DeepScanModalP
             />
             <div className="flex items-center justify-between gap-2 text-[10px]">
               <span className="text-muted-foreground">
-                A port, a range, or a comma list — <span className="font-mono">80,443,8000-9000</span>
+                {t('A port, a range, or a comma list —')} <span className="font-mono">80,443,8000-9000</span>
               </span>
               {trimmed !== '' && (
                 <span className={valid ? 'text-muted-foreground shrink-0' : 'text-[#f85149] shrink-0'}>
-                  {valid ? `${total.toLocaleString('en-US')} ports` : 'Invalid range'}
+                  {valid ? t('{count} ports', { count: total.toLocaleString('en-US') }) : t('Invalid range')}
                 </span>
               )}
             </div>
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            {PRESETS.map((preset) => (
+            {presets.map((preset) => (
               <button
                 key={preset.spec}
                 type="button"
@@ -99,8 +102,7 @@ export function DeepScanModal({ open, target, onClose, onStart }: DeepScanModalP
           </div>
 
           <p className="text-[10px] text-muted-foreground">
-            Scanning runs in the background — the whole range takes several minutes. Found services are
-            merged into the device; nothing already recorded is removed.
+            {t('Scanning runs in the background — the whole range takes several minutes. Found services are merged into the device; nothing already recorded is removed.')}
           </p>
 
           <div className="flex justify-end gap-2 pt-1">
@@ -111,7 +113,7 @@ export function DeepScanModal({ open, target, onClose, onStart }: DeepScanModalP
               className={`cursor-pointer ${modalStyles['modal-cancel-hover']}`}
               onClick={onClose}
             >
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               type="submit"
@@ -120,7 +122,7 @@ export function DeepScanModal({ open, target, onClose, onStart }: DeepScanModalP
               data-testid="deep-scan-start"
               className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Start scan
+              {t('Start scan')}
             </Button>
           </div>
         </form>

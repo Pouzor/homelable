@@ -11,6 +11,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { NODE_TYPE_DEFAULT_ICONS } from '@/utils/nodeIcons'
 import { toast } from 'sonner'
+import { t, useLocale } from '@/i18n'
 import { InventoryDeviceModal, type InventoryEntry } from '@/components/modals/InventoryDeviceModal'
 import type { NodeType, ServiceInfo } from '@/types'
 import { applyAutoEdges, type AutoEdge } from '@/utils/autoEdges'
@@ -164,6 +165,7 @@ function injectAutoEdges(edges: AutoEdge[] | undefined) {
 }
 
 export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus = 'pending', demoDevices, onPick, initialRackableOnly = false, onOpenDocumentation }: DeviceInventoryModalProps) {
+  useLocale()
   const [devices, setDevices] = useState<InventoryEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState<InventoryEntry | null>(null)
@@ -202,7 +204,10 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       const res = statusFilter === 'pending' ? await scanApi.pending() : await scanApi.hidden()
       setDevices(res.data)
     } catch {
-      toast.error(`Failed to load ${statusFilter} devices`)
+      // The filter is a stored enum ('pending' | 'hidden'), so it is mapped to a
+      // caption first: interpolating the raw id would print an English token
+      // inside an otherwise Chinese sentence.
+      toast.error(t('Failed to load {status} devices', { status: t(statusFilter === 'pending' ? 'pending' : 'hidden') }))
     } finally {
       setLoading(false)
     }
@@ -296,9 +301,9 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
     try {
       await scanApi.restore(device.id)
       setDevices((prev) => prev.filter((d) => d.id !== device.id))
-      toast.success(`Restored ${deviceLabel(device)}`)
+      toast.success(t('Restored {label}', { label: deviceLabel(device) }))
     } catch {
-      toast.error('Failed to restore device')
+      toast.error(t('Failed to restore device'))
     }
   }
 
@@ -309,9 +314,9 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       const res = await scanApi.bulkRestore(ids)
       setDevices((prev) => prev.filter((d) => !ids.includes(d.id)))
       setSelectedIds(new Set())
-      toast.success(`Restored ${res.data.restored} device${res.data.restored !== 1 ? 's' : ''}`)
+      toast.success(t('Restored {count} device{plural}', { count: res.data.restored, plural: res.data.restored !== 1 ? 's' : '' }))
     } catch {
-      toast.error('Failed to bulk restore devices')
+      toast.error(t('Failed to bulk restore devices'))
     }
   }
 
@@ -341,18 +346,18 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
         )
         setDevices((prev) => prev.filter((d) => !removedIds.has(d.id)))
         setSelectedIds(new Set())
-        if (failed > 0) toast.error(`Removed ${removedIds.size}, ${failed} failed`)
-        else toast.success(`Removed ${removedIds.size} device${removedIds.size !== 1 ? 's' : ''}`)
+        if (failed > 0) toast.error(t('Removed {count}, {failed} failed', { count: removedIds.size, failed }))
+        else toast.success(t('Removed {count} device{plural}', { count: removedIds.size, plural: removedIds.size !== 1 ? 's' : '' }))
       } else {
         // Clears only pending rows server-side; approved/on-canvas devices stay,
         // so reload rather than blanking the whole inventory.
         await scanApi.clearPending()
         setSelectedIds(new Set())
         await load()
-        toast.success('Pending devices cleared')
+        toast.success(t('Pending devices cleared'))
       }
     } catch {
-      toast.error('Failed to clear pending devices')
+      toast.error(t('Failed to clear pending devices'))
     }
   }
 
@@ -362,7 +367,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
     // Rack gear documents a mount, not a host: it stays out of logical canvases.
     // The backend refuses it too — this is the friendly half of the guard.
     if (isRackDevice(device)) {
-      toast.error('Rack devices belong to a rack canvas, not a logical one')
+      toast.error(t('Rack devices belong to a rack canvas, not a logical one'))
       return
     }
     const fallbackLabel = deviceLabel(device)
@@ -400,8 +405,8 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
         },
       })
       injectAutoEdges(res.data.edges)
-      const extra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
-      toast.success(`Put ${nodeData.label} in the canvas${extra}`)
+      const extra = res.data.edges_created > 0 ? t(' (+{count} link{plural})', { count: res.data.edges_created, plural: res.data.edges_created !== 1 ? 's' : '' }) : ''
+      toast.success(t('Put {label} in the canvas{extra}', { label: nodeData.label, extra }))
       // Keep the row (now on-canvas, shown with an "In N canvas" badge); reload
       // for a fresh canvas_count rather than dropping it until reopen.
       setSelected(null)
@@ -418,7 +423,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
         setDupPrompt({ device, conflict })
         return
       }
-      toast.error('Failed to approve device')
+      toast.error(t('Failed to approve device'))
     }
   }
 
@@ -507,17 +512,17 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       setSelected(null)
       await load()
       toast.success(
-        `Added ${res.data.approved} device${res.data.approved !== 1 ? 's' : ''}` +
-        (nested ? ' (nested in the host)' : ''),
+        t('Added {count} device{plural}', { count: res.data.approved, plural: res.data.approved !== 1 ? 's' : '' }) +
+        (nested ? t(' (nested in the host)') : ''),
       )
       const dupes = res.data.skipped_devices ?? []
       if (dupes.length > 0) {
         const names = dupes.slice(0, 3).map((d) => d.label).join(', ')
-        const more = dupes.length > 3 ? ` +${dupes.length - 3} more` : ''
-        toast.info(`${dupes.length} already on this canvas, skipped: ${names}${more}`)
+        const more = dupes.length > 3 ? t(' +{count} more', { count: dupes.length - 3 }) : ''
+        toast.info(t('{count} already on this canvas, skipped: {names}{more}', { count: dupes.length, names, more }))
       }
     } catch {
-      toast.error('Failed to add the Proxmox host to the canvas')
+      toast.error(t('Failed to add the Proxmox host to the canvas'))
     }
   }
 
@@ -533,9 +538,9 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       await scanApi.hide(device.id)
       setDevices((prev) => prev.filter((d) => d.id !== device.id))
       setSelected(null)
-      toast.success('Device hidden')
+      toast.success(t('Device hidden'))
     } catch {
-      toast.error('Failed to hide device')
+      toast.error(t('Failed to hide device'))
     }
   }
 
@@ -545,7 +550,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       setDevices((prev) => prev.filter((d) => d.id !== device.id))
       setSelected(null)
     } catch {
-      toast.error('Failed to remove device')
+      toast.error(t('Failed to remove device'))
     }
   }
 
@@ -555,7 +560,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
     const skippedRack = selectedIds.size - ids.length
     if (skippedRack > 0) {
       toast.error(
-        `${skippedRack} rack device${skippedRack > 1 ? 's' : ''} skipped — they belong to a rack canvas`,
+        t('{count} rack device{plural} skipped — they belong to a rack canvas', { count: skippedRack, plural: skippedRack > 1 ? 's' : '' }),
       )
     }
     if (ids.length === 0) return
@@ -584,21 +589,21 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       // reappear with a fresh canvas_count instead of vanishing until reopen.
       setSelectedIds(new Set())
       await load()
-      const linkExtra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
-      toast.success(`Put ${res.data.approved} device${res.data.approved !== 1 ? 's' : ''} in the canvas${linkExtra}`)
+      const linkExtra = res.data.edges_created > 0 ? t(' (+{count} link{plural})', { count: res.data.edges_created, plural: res.data.edges_created !== 1 ? 's' : '' }) : ''
+      toast.success(t('Put {count} device{plural} in the canvas{extra}', { count: res.data.approved, plural: res.data.approved !== 1 ? 's' : '', extra: linkExtra }))
       // Bulk can't prompt per-device, so report the ones already on this canvas
       // (skipped as duplicates) instead of silently dropping them.
       const dupes = res.data.skipped_devices ?? []
       if (dupes.length > 0) {
         const names = dupes.slice(0, 3).map((d) => d.label).join(', ')
-        const more = dupes.length > 3 ? ` +${dupes.length - 3} more` : ''
+        const more = dupes.length > 3 ? t(' +{count} more', { count: dupes.length - 3 }) : ''
         toast.info(
-          `${dupes.length} already on this canvas, skipped: ${names}${more}`,
-          { description: 'Matched an existing node by IP/MAC/IEEE on this design.' },
+          t('{count} already on this canvas, skipped: {names}{more}', { count: dupes.length, names, more }),
+          { description: t('Matched an existing node by IP/MAC/IEEE on this design.') },
         )
       }
     } catch {
-      toast.error('Failed to bulk approve devices')
+      toast.error(t('Failed to bulk approve devices'))
     }
   }
 
@@ -613,11 +618,11 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       // Reload rather than patch: a merge moves canvas links around, so
       // `canvas_count` on the survivor is only right coming from the server.
       await load()
-      toast.success(`Merged ${ids.length + 1} devices into one`, {
-        description: 'Facts, canvas nodes, rack mounts and documents were kept.',
+      toast.success(t('Merged {count} devices into one', { count: ids.length + 1 }), {
+        description: t('Facts, canvas nodes, rack mounts and documents were kept.'),
       })
     } catch {
-      toast.error('Failed to merge devices')
+      toast.error(t('Failed to merge devices'))
     } finally {
       setMerging(false)
     }
@@ -630,9 +635,9 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       const res = await scanApi.bulkHide(ids)
       setDevices((prev) => prev.filter((d) => !ids.includes(d.id)))
       setSelectedIds(new Set())
-      toast.success(`Hidden ${res.data.hidden} device${res.data.hidden !== 1 ? 's' : ''}`)
+      toast.success(t('Hidden {count} device{plural}', { count: res.data.hidden, plural: res.data.hidden !== 1 ? 's' : '' }))
     } catch {
-      toast.error('Failed to bulk hide devices')
+      toast.error(t('Failed to bulk hide devices'))
     }
   }
 
@@ -678,13 +683,13 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
           <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
             <div className="flex items-center justify-between gap-3">
               <DialogTitle className="text-base font-semibold flex items-center gap-2">
-                {onPick ? 'Pick a Device' : statusFilter === 'pending' ? 'Device Inventory' : 'Hidden Devices'}
+                {onPick ? t('Pick a Device') : statusFilter === 'pending' ? t('Device Inventory') : t('Hidden Devices')}
                 <span className="text-muted-foreground font-normal text-xs">
                   ({filtered.length}{filtered.length !== devices.length && ` of ${devices.length}`})
                 </span>
               </DialogTitle>
               <div className="flex items-center gap-1">
-                <button onClick={load} className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors" title="Refresh">
+                <button onClick={load} className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors" title={t('Refresh')}>
                   <RefreshCw size={14} />
                 </button>
                 {/* Never offer a destructive bulk clear from a picker. */}
@@ -692,7 +697,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                   <button
                     onClick={handleClearAll}
                     className="text-muted-foreground hover:text-[#f85149] p-1.5 rounded transition-colors"
-                    title={filtered.length !== devices.length ? `Remove ${filtered.length} filtered` : 'Clear all pending'}
+                    title={filtered.length !== devices.length ? t('Remove {count} filtered', { count: filtered.length }) : t('Clear all pending')}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -704,7 +709,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                   render={
                     <button
                       className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors"
-                      aria-label="Close"
+                      aria-label={t('Close')}
                     />
                   }
                 >
@@ -722,22 +727,22 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 ref={searchRef}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search name, IP, MAC, IEEE, service…"
+                placeholder={t('Search name, IP, MAC, IEEE, service…')}
                 className="w-full text-xs bg-[#0d1117] border border-border rounded px-7 py-1.5 outline-none focus:border-[#00d4ff]/50"
               />
             </div>
-            <div className="flex rounded border border-border overflow-hidden text-xs" role="group" aria-label="Source filter">
+            <div className="flex rounded border border-border overflow-hidden text-xs" role="group" aria-label={t('Source filter')}>
               <button
                 onClick={() => setSourceFilter('all')}
                 className={`px-2.5 py-1.5 transition-colors ${sourceFilter === 'all' ? 'bg-[#00d4ff]/20 text-[#00d4ff]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
               >
-                All
+                {t('All')}
               </button>
               <button
                 onClick={() => setSourceFilter('ip')}
                 className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'ip' ? 'bg-[#a855f7]/20 text-[#a855f7]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
               >
-                IP scan
+                {t('IP scan')}
               </button>
               <button
                 onClick={() => setSourceFilter('zigbee')}
@@ -760,32 +765,32 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
               <button
                 onClick={() => setSourceFilter('unifi')}
                 className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'unifi' ? 'bg-[#0559c9]/20 text-[#0559c9]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
-                title="Imported from a UniFi controller — gear and clients"
+                title={t('Imported from a UniFi controller — gear and clients')}
               >
                 UniFi
               </button>
               <button
                 onClick={() => setSourceFilter('rack')}
                 className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'rack' ? 'bg-[#39d353]/20 text-[#39d353]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
-                title="Gear created from a rack canvas"
+                title={t('Gear created from a rack canvas')}
               >
-                Rack devices
+                {t('Rack devices')}
               </button>
               <button
                 onClick={() => setSourceFilter('canvas')}
                 className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'canvas' ? 'bg-[#8b949e]/20 text-foreground' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
-                title="Documented directly on a canvas — no scan ever saw it"
+                title={t('Documented directly on a canvas — no scan ever saw it')}
               >
-                Canvas
+                {t('Canvas')}
               </button>
             </div>
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
               className="text-xs bg-[#0d1117] border border-border rounded px-2 py-1.5 outline-none focus:border-[#00d4ff]/50"
-              aria-label="Type filter"
+              aria-label={t('Type filter')}
             >
-              <option value="all">All types</option>
+              <option value="all">{t('All types')}</option>
               {distinctTypes.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
             <div className="flex rounded border border-border overflow-hidden text-xs">
@@ -793,51 +798,51 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 onClick={() => setStatusFilter('pending')}
                 className={`px-2.5 py-1.5 transition-colors ${statusFilter === 'pending' ? 'bg-[#00d4ff]/20 text-[#00d4ff]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
               >
-                Inventory
+                {t('Inventory')}
               </button>
               <button
                 onClick={() => setStatusFilter('hidden')}
                 className={`px-2.5 py-1.5 transition-colors ${statusFilter === 'hidden' ? 'bg-[#8b949e]/20 text-foreground' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
               >
-                Hidden
+                {t('Hidden')}
               </button>
             </div>
             {statusFilter === 'pending' && (
               <button
                 onClick={() => setShowOnCanvas((v) => !v)}
                 className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${showOnCanvas ? 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground' : 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50'}`}
-                title="Show or hide devices already on a canvas"
+                title={t('Show or hide devices already on a canvas')}
                 aria-pressed={!showOnCanvas}
               >
                 <Layers size={12} />
-                {showOnCanvas ? 'Hide on-canvas' : 'Show on-canvas'}
+                {showOnCanvas ? t('Hide on-canvas') : t('Show on-canvas')}
               </button>
             )}
             <button
               onClick={() => setWithServicesOnly((v) => !v)}
               className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${withServicesOnly ? 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
-              title="Only show devices with at least one detected service"
+              title={t('Only show devices with at least one detected service')}
               aria-pressed={withServicesOnly}
             >
               <ServerCog size={12} />
-              With services
+              {t('With services')}
             </button>
             <button
               onClick={() => setRackableOnly((v) => !v)}
               className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${rackableOnly ? 'bg-[#39d353]/20 text-[#39d353] border-[#39d353]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
-              title="Only show hardware you could mount in a rack (no VMs, containers or mesh devices)"
+              title={t('Only show hardware you could mount in a rack (no VMs, containers or mesh devices)')}
               aria-pressed={rackableOnly}
             >
               <Server size={12} />
-              Rackable
+              {t('Rackable')}
             </button>
             {!onPick && (
             <button
               onClick={() => selectMode ? exitSelectMode() : enterSelectMode()}
               className={`text-xs px-2.5 py-1.5 rounded border transition-colors ${selectMode ? 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
-              title="Toggle select mode (s)"
+              title={t('Toggle select mode (s)')}
             >
-              {selectMode ? 'Exit select' : 'Select mode'}
+              {selectMode ? t('Exit select') : t('Select mode')}
             </button>
             )}
           </div>
@@ -851,7 +856,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
             )}
             {!loading && filtered.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-10">
-                {devices.length === 0 ? `No ${statusFilter} devices` : 'No devices match filters'}
+                {devices.length === 0 ? t('No {status} devices', { status: statusFilter }) : t('No devices match filters')}
               </p>
             )}
             {!loading && filtered.length > 0 && (
@@ -875,29 +880,29 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
           {selectMode && (
             <div className="px-4 py-2.5 border-t border-border bg-[#161b22] shrink-0 flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground mr-1">
-                {selectedIds.size} selected
+                {t('{count} selected', { count: selectedIds.size })}
               </span>
               <button
                 onClick={selectAllVisible}
                 className="text-xs px-2.5 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground transition-colors"
               >
-                Select all visible ({filtered.length})
+                {t('Select all visible ({count})', { count: filtered.length })}
               </button>
               <button
                 onClick={() => setSelectedIds(new Set())}
                 disabled={selectedIds.size === 0}
                 className="text-xs px-2.5 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
               >
-                Clear
+                {t('Clear')}
               </button>
               <div className="flex-1" />
               <button
                 onClick={() => setMergePrompt(devices.filter((d) => selectedIds.has(d.id)))}
                 disabled={selectedIds.size < 2}
-                title="Fold the selected rows into one device"
+                title={t('Fold the selected rows into one device')}
                 className="text-xs px-3 py-1.5 rounded bg-[#00d4ff]/20 text-[#00d4ff] hover:bg-[#00d4ff]/30 disabled:opacity-40 font-medium transition-colors"
               >
-                Merge ({selectedIds.size})
+                {t('Merge ({count})', { count: selectedIds.size })}
               </button>
               {statusFilter === 'pending' && (
                 <>
@@ -906,14 +911,14 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                     disabled={selectedIds.size === 0}
                     className="text-xs px-3 py-1.5 rounded bg-[#39d353]/20 text-[#39d353] hover:bg-[#39d353]/30 disabled:opacity-40 font-medium transition-colors"
                   >
-                    Put in current Canvas ({selectedIds.size})
+                    {t('Put in current Canvas ({count})', { count: selectedIds.size })}
                   </button>
                   <button
                     onClick={handleBulkHide}
                     disabled={selectedIds.size === 0}
                     className="text-xs px-3 py-1.5 rounded bg-[#8b949e]/20 text-[#8b949e] hover:bg-[#8b949e]/30 disabled:opacity-40 font-medium transition-colors"
                   >
-                    Hide ({selectedIds.size})
+                    {t('Hide ({count})', { count: selectedIds.size })}
                   </button>
                 </>
               )}
@@ -923,7 +928,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                   disabled={selectedIds.size === 0}
                   className="text-xs px-3 py-1.5 rounded bg-[#e3b341]/20 text-[#e3b341] hover:bg-[#e3b341]/30 disabled:opacity-40 font-medium transition-colors"
                 >
-                  Restore ({selectedIds.size})
+                  {t('Restore ({count})', { count: selectedIds.size })}
                 </button>
               )}
             </div>
@@ -939,7 +944,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
             <div
               role="dialog"
               aria-modal="true"
-              aria-label="Device already on this canvas"
+              aria-label={t('Device already on this canvas')}
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
               onClick={() => setDupPrompt(null)}
             >
@@ -947,34 +952,34 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 className="w-full max-w-md rounded-lg border border-border bg-[#161b22] p-5 shadow-xl"
                 onClick={(e) => e.stopPropagation()}
               >
-                <h2 className="text-base font-semibold text-foreground mb-3">Device already on this canvas</h2>
+                <h2 className="text-base font-semibold text-foreground mb-3">{t('Device already on this canvas')}</h2>
                 <div className="text-sm text-muted-foreground space-y-3">
                   <p>
                     <span className="text-foreground font-medium break-all">{deviceLabel(dupPrompt.device)}</span>{' '}
-                    matches a node already on this design
+                    {t('matches a node already on this design')}
                     {' '}(<span className="uppercase text-[11px] font-mono">{dupPrompt.conflict.match}</span>{' '}
                     <span className="font-mono text-foreground">{dupPrompt.conflict.value}</span>):{' '}
                     <span className="text-foreground font-medium break-all">{dupPrompt.conflict.existing_label}</span>.
                   </p>
-                  <p>Add it again anyway, or jump to the existing node?</p>
+                  <p>{t('Add it again anyway, or jump to the existing node?')}</p>
                   <div className="flex flex-wrap justify-end gap-2 pt-1">
                     <button
                       onClick={() => setDupPrompt(null)}
                       className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      Cancel
+                      {t('Cancel')}
                     </button>
                     <button
                       onClick={() => goToExistingNode(dupPrompt.conflict.existing_node_id)}
                       className="text-xs px-3 py-1.5 rounded bg-[#00d4ff]/20 text-[#00d4ff] hover:bg-[#00d4ff]/30 font-medium transition-colors"
                     >
-                      Go to existing node
+                      {t('Go to existing node')}
                     </button>
                     <button
                       onClick={() => approveDevice(dupPrompt.device, true)}
                       className="text-xs px-3 py-1.5 rounded bg-[#e3b341]/20 text-[#e3b341] hover:bg-[#e3b341]/30 font-medium transition-colors"
                     >
-                      Add duplicate anyway
+                      {t('Add duplicate anyway')}
                     </button>
                   </div>
                 </div>
@@ -1034,6 +1039,7 @@ interface DeviceCardProps {
 }
 
 function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRef }: DeviceCardProps) {
+  useLocale()
   const sources = orderedSources(device)
   const roleType = deviceType(device) ?? 'generic'
   const Icon = NODE_TYPE_DEFAULT_ICONS[roleType] ?? NODE_TYPE_DEFAULT_ICONS.generic
@@ -1053,13 +1059,13 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
   const onCanvas = (device.canvas_count ?? 0) > 0
   const timestamps: { label: string; iso: string }[] = []
   if (onCanvas) {
-    if (device.node_created_at) timestamps.push({ label: 'Created', iso: device.node_created_at })
-    if (device.node_last_scan) timestamps.push({ label: 'Scan', iso: device.node_last_scan })
-    if (device.node_last_modified) timestamps.push({ label: 'Modified', iso: device.node_last_modified })
-    if (device.node_last_seen) timestamps.push({ label: 'Seen', iso: device.node_last_seen })
+    if (device.node_created_at) timestamps.push({ label: t('Created'), iso: device.node_created_at })
+    if (device.node_last_scan) timestamps.push({ label: t('Scan'), iso: device.node_last_scan })
+    if (device.node_last_modified) timestamps.push({ label: t('Modified'), iso: device.node_last_modified })
+    if (device.node_last_seen) timestamps.push({ label: t('Seen'), iso: device.node_last_seen })
   }
   if (timestamps.length === 0) {
-    timestamps.push({ label: 'Discovered', iso: device.discovered_at })
+    timestamps.push({ label: t('Discovered'), iso: device.discovered_at })
   }
 
   const borderClass = highlighted
@@ -1089,8 +1095,8 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
       {device.status !== 'hidden' && (device.canvas_count ?? 0) > 0 && !(selectMode && selected) && (
         <div
           className="absolute top-0 right-0 flex items-center gap-1 rounded-bl-lg rounded-tr-lg bg-[#00d4ff] text-[#0d1117] text-xs font-bold px-2 py-1 shadow-md"
-          title={`On ${device.canvas_count} canvas${device.canvas_count !== 1 ? 'es' : ''}`}
-          aria-label={`On ${device.canvas_count} canvas${device.canvas_count !== 1 ? 'es' : ''}`}
+          title={t('On {count} canvas{plural}', { count: device.canvas_count ?? 0, plural: device.canvas_count !== 1 ? 'es' : '' })}
+          aria-label={t('On {count} canvas{plural}', { count: device.canvas_count ?? 0, plural: device.canvas_count !== 1 ? 'es' : '' })}
         >
           <Layers size={12} strokeWidth={2.5} />
           {device.canvas_count}
@@ -1133,12 +1139,12 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
 
       {/* Tech grid */}
       <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-[11px] mb-2">
-        {device.ip && <InfoLine label="IP" value={device.ip} />}
-        {device.mac && <InfoLine label="MAC" value={device.mac} />}
+        {device.ip && <InfoLine label={t('IP')} value={device.ip} />}
+        {device.mac && <InfoLine label={t('MAC')} value={device.mac} />}
         {device.ieee_address && <InfoLine label="IEEE" value={device.ieee_address} />}
-        {device.hostname && <InfoLine label="Host" value={device.hostname} />}
-        {device.vendor && <InfoLine label="Vendor" value={device.vendor} />}
-        {device.model && <InfoLine label="Model" value={device.model} />}
+        {device.hostname && <InfoLine label={t('Host')} value={device.hostname} />}
+        {device.vendor && <InfoLine label={t('Vendor')} value={device.vendor} />}
+        {device.model && <InfoLine label={t('Model')} value={device.model} />}
       </div>
 
       {/* Services */}

@@ -12,6 +12,7 @@
  * default design on first run so existing users keep their canvas.
  */
 import type { Node, Edge } from '@xyflow/react'
+import { t } from '@/i18n'
 import type {
   Cable,
   CustomStyleDef,
@@ -209,7 +210,7 @@ export function ensureSeed(): Design[] {
 
   const design: Design = {
     id: generateUUID(),
-    name: 'My Homelab',
+    name: t('My Homelab'),
     design_type: 'network',
     icon: null,
     created_at: nowIso(),

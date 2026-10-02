@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Clock, Download, History, Link2, Pencil, Plus, RefreshCw, Star, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { t, useLocale } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { isOverdue, parseFrontmatter } from '../frontmatter'
 import { Markdown } from '../markdown/Markdown'
@@ -70,11 +71,7 @@ const NO_HISTORY: HistoryControls = {
 }
 
 /** The metadata a frontmatter block is worth surfacing as a chip. */
-const CHIPS: { key: string; label: string }[] = [
-  { key: 'criticality', label: 'Criticality' },
-  { key: 'owner', label: 'Owner' },
-  { key: 'review_every', label: 'Review' },
-]
+const CHIP_KEYS = ['criticality', 'owner', 'review_every'] as const
 
 export function DocViewer({
   doc,
@@ -97,10 +94,18 @@ export function DocViewer({
   onSetTags,
 }: Props) {
   const controls = history ?? NO_HISTORY
+  useLocale()
   const { data } = useMemo(() => parseFrontmatter(doc.body), [doc.body])
   const [tagDraft, setTagDraft] = useState<string | null>(null)
   const toc = useMemo(() => extractToc(doc.body), [doc.body])
   const overdue = isOverdue(data, doc.reviewed_at, doc.created_at)
+  // The chip labels go through `t` at render: a module-level table would be
+  // created once at import, before the locale is known.
+  const chipLabel: Record<(typeof CHIP_KEYS)[number], string> = {
+    criticality: t('Criticality'),
+    owner: t('Owner'),
+    review_every: t('Review'),
+  }
 
   // One field takes a whole list: "web, prod" adds two tags, and a tag already
   // on the document is not added twice whatever its case.
@@ -161,7 +166,7 @@ export function DocViewer({
               <Button
                 size="icon-xs"
                 variant="ghost"
-                title={doc.starred ? 'Unstar' : 'Star'}
+                title={doc.starred ? t('Unstar') : t('Star')}
                 aria-pressed={doc.starred}
                 onClick={onToggleStar}
                 className="cursor-pointer"
@@ -169,7 +174,7 @@ export function DocViewer({
                 <Star className={cn(doc.starred && 'fill-current text-[var(--accent-orange,#ff6e00)]')} />
               </Button>
               <Button size="sm" variant="ghost" onClick={onEdit} className="cursor-pointer gap-1">
-                <Pencil size={13} /> Edit
+                <Pencil size={13} /> {t('Edit')}
               </Button>
             </>
           )}
@@ -177,8 +182,8 @@ export function DocViewer({
             <Button
               size="icon-xs"
               variant="ghost"
-              title="Earlier versions of this document"
-              aria-label="Version history"
+              title={t('Earlier versions of this document')}
+              aria-label={t('Version history')}
               aria-pressed={history.open}
               onClick={history.onToggle}
               className={cn('cursor-pointer', history.open && 'bg-muted')}
@@ -191,8 +196,8 @@ export function DocViewer({
             <Button
               size="icon-xs"
               variant="ghost"
-              title="Regenerate this document from the database"
-              aria-label="Regenerate this document"
+              title={t('Regenerate this document from the database')}
+              aria-label={t('Regenerate this document')}
               onClick={onRegenerate}
               className="cursor-pointer"
             >
@@ -202,24 +207,24 @@ export function DocViewer({
           <Button
             size="icon-xs"
             variant="ghost"
-            title="Download this document as Markdown"
-            aria-label="Download this document"
+            title={t('Download this document as Markdown')}
+            aria-label={t('Download this document')}
             onClick={onDownload}
             className="cursor-pointer"
           >
             <Download />
           </Button>
           {!readOnly && (
-            <Button size="icon-xs" variant="ghost" title="Delete this document" onClick={onDelete} className="cursor-pointer">
+            <Button size="icon-xs" variant="ghost" title={t('Delete this document')} onClick={onDelete} className="cursor-pointer">
               <Trash2 />
             </Button>
           )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 px-6 pt-2 text-[10px]">
-          {CHIPS.filter((chip) => data[chip.key]).map((chip) => (
-            <span key={chip.key} className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
-              {chip.label}: <span className="text-foreground">{String(data[chip.key])}</span>
+          {CHIP_KEYS.filter((key) => data[key]).map((key) => (
+            <span key={key} className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
+              {chipLabel[key]}: <span className="text-foreground">{String(data[key])}</span>
             </span>
           ))}
           {doc.tags.map((tag) => (
@@ -234,7 +239,7 @@ export function DocViewer({
               {!readOnly && (
                 <button
                   type="button"
-                  aria-label={`Remove tag ${tag}`}
+                  aria-label={t('Remove tag {tag}', { tag })}
                   onClick={() => onSetTags?.(doc.tags.filter((t) => t !== tag))}
                   className="cursor-pointer opacity-60 hover:opacity-100"
                 >
@@ -250,13 +255,13 @@ export function DocViewer({
                 onClick={() => setTagDraft('')}
                 className="flex cursor-pointer items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
               >
-                <Plus size={10} /> Tag
+                <Plus size={10} /> {t('Tag')}
               </button>
             ) : (
               <input
                 autoFocus
                 value={tagDraft}
-                aria-label="New tag"
+                aria-label={t('New tag')}
                 placeholder="tag, tag…"
                 onChange={(event) => setTagDraft(event.target.value)}
                 onBlur={commitTags}
@@ -269,7 +274,7 @@ export function DocViewer({
             ))}
           {!doc.edited_at && (
             <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
-              Only the generated header so far
+              {t('Only the generated header so far')}
             </span>
           )}
           {overdue &&
@@ -277,7 +282,7 @@ export function DocViewer({
               // Still worth saying the page may be stale; marking it reviewed
               // is a write, so the reader is told rather than offered a button.
               <span className="flex items-center gap-1 rounded bg-[var(--status-pending,#e3b341)]/15 px-1.5 py-0.5 text-[var(--status-pending,#e3b341)]">
-                <Clock size={10} /> Due for review
+                <Clock size={10} /> {t('Due for review')}
               </span>
             ) : (
               <button
@@ -285,12 +290,12 @@ export function DocViewer({
                 onClick={onMarkReviewed}
                 className="flex cursor-pointer items-center gap-1 rounded bg-[var(--status-pending,#e3b341)]/15 px-1.5 py-0.5 text-[var(--status-pending,#e3b341)]"
               >
-                <Clock size={10} /> Due for review — mark as reviewed
+                <Clock size={10} /> {t('Due for review — mark as reviewed')}
               </button>
             ))}
           {drifted && (
             <span className="flex items-center gap-1 rounded bg-[var(--status-pending,#e3b341)]/15 px-1.5 py-0.5 text-[var(--status-pending,#e3b341)]">
-              <RefreshCw size={10} /> The device has changed
+              <RefreshCw size={10} /> {t('The device has changed')}
             </span>
           )}
         </div>
@@ -316,7 +321,7 @@ export function DocViewer({
               id="backlinks-heading"
               className="mb-2 flex items-center gap-1.5 border-t border-border pt-4 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70"
             >
-              <Link2 size={11} /> Linked from ({backlinks.length})
+              <Link2 size={11} /> {t('Linked from ({count})', { count: backlinks.length })}
             </h2>
             <ul className="space-y-1">
               {backlinks.map((link) => (
@@ -353,9 +358,9 @@ export function DocViewer({
         />
       ) : (
         toc.length > 1 && (
-        <nav aria-label="On this page" className="hidden w-52 shrink-0 overflow-y-auto border-l border-border px-3 py-5 xl:block">
+        <nav aria-label={t('On this page')} className="hidden w-52 shrink-0 overflow-y-auto border-l border-border px-3 py-5 xl:block">
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-            On this page
+            {t('On this page')}
           </p>
           {toc.map((entry) => (
             <a

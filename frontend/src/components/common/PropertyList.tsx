@@ -11,6 +11,7 @@ import { createElement, useState } from 'react'
 import { Eye, EyeOff, GripVertical, Pencil, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { t, useLocale } from '@/i18n'
 import { PROPERTY_ICONS, PROPERTY_ICON_NAMES, resolvePropertyIcon } from '@/utils/propertyIcons'
 import type { NodeProperty } from '@/types'
 
@@ -36,13 +37,30 @@ interface PropertyListProps {
 export function PropertyList({
   properties,
   onChange,
-  visibleLabel = 'Show on node',
-  keyPlaceholder = 'Label (e.g. CPU Model)',
-  valuePlaceholder = 'Value — optional (e.g. i7-12700K)',
+  visibleLabel,
+  keyPlaceholder,
+  valuePlaceholder,
   suggestions,
-  title = 'Properties',
-  emptyHint = 'No properties — click Add to define one.',
+  title,
+  emptyHint,
 }: PropertyListProps) {
+  useLocale()
+  // Callers pass their wording in English; the defaults are spelled out as
+  // literal keys so the completeness scan can see them.
+  const visibleText = visibleLabel ? t(visibleLabel) : t('Show on node')
+  const keyText = keyPlaceholder ? t(keyPlaceholder) : t('Label (e.g. CPU Model)')
+  const valueText = valuePlaceholder ? t(valuePlaceholder) : t('Value — optional (e.g. i7-12700K)')
+  const titleText = title ? t(title) : t('Properties')
+  const emptyText = emptyHint ? t(emptyHint) : t('No properties — click Add to define one.')
+  // "Show on node" is sliced down to the bare surface word for the eye
+  // tooltips, so each known surface needs its own translation. An unknown
+  // surface passes through untranslated rather than being mangled.
+  const surfaces: Record<string, string> = {
+    node: t('node'),
+    canvas: t('canvas'),
+    'new nodes': t('new nodes'),
+  }
+  const surface = surfaces[(visibleLabel ?? 'Show on node').replace(/^Show on /i, '')] ?? visibleLabel ?? t('node')
   const [adding, setAdding] = useState(false)
   const [newProp, setNewProp] = useState<PropForm>(EMPTY_PROP)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -113,12 +131,12 @@ export function PropertyList({
   return (
     <div className="px-4 py-3 border-t border-border">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-xs text-muted-foreground">{title}{properties.length > 0 ? ` (${properties.length})` : ''}</span>
+        <span className="text-xs text-muted-foreground">{titleText}{properties.length > 0 ? ` (${properties.length})` : ''}</span>
         <button
           onClick={() => { setAdding((v) => !v); setEditingIndex(null) }}
           className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer"
         >
-          <Plus size={10} /> Add
+          <Plus size={10} /> {t('Add')}
         </button>
       </div>
       {suggestions && suggestions.length > 0 && !adding && (
@@ -127,7 +145,7 @@ export function PropertyList({
             <button
               key={key}
               onClick={() => startAddWith(key)}
-              title={`Add a ${key} property`}
+              title={t('Add a {key} property', { key })}
               className="rounded border border-[#30363d] px-1.5 py-0.5 text-[10px] text-muted-foreground hover:border-[#00d4ff] hover:text-[#00d4ff] transition-colors cursor-pointer"
             >
               + {key}
@@ -141,10 +159,10 @@ export function PropertyList({
           onChange={setNewProp}
           onConfirm={handleAdd}
           onCancel={() => { setAdding(false); setNewProp(EMPTY_PROP) }}
-          confirmLabel="Add"
-          visibleLabel={visibleLabel}
-          keyPlaceholder={keyPlaceholder}
-          valuePlaceholder={valuePlaceholder}
+          confirmLabel={t('Add')}
+          visibleLabel={visibleText}
+          keyPlaceholder={keyText}
+          valuePlaceholder={valueText}
         />
       )}
       {properties.length > 0 && (
@@ -157,16 +175,16 @@ export function PropertyList({
                 onChange={setEditProp}
                 onConfirm={handleSaveEdit}
                 onCancel={() => setEditingIndex(null)}
-                confirmLabel="Save"
-                visibleLabel={visibleLabel}
-                keyPlaceholder={keyPlaceholder}
-                valuePlaceholder={valuePlaceholder}
+                confirmLabel={t('Save')}
+                visibleLabel={visibleText}
+                keyPlaceholder={keyText}
+                valuePlaceholder={valueText}
               />
             ) : (
               <PropertyBadge
                 key={`${prop.key}-${i}`}
                 prop={prop}
-                visibleLabel={visibleLabel}
+                visibleLabel={surface}
                 draggable={properties.length > 1}
                 isDragging={dragIndex === i}
                 isDragOver={dragOverIndex === i && dragIndex !== i}
@@ -187,7 +205,7 @@ export function PropertyList({
         </div>
       )}
       {properties.length === 0 && !adding && (
-        <p className="text-[10px] text-muted-foreground/50">{emptyHint}</p>
+        <p className="text-[10px] text-muted-foreground/50">{emptyText}</p>
       )}
     </div>
   )
@@ -203,12 +221,13 @@ export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel
   keyPlaceholder?: string
   valuePlaceholder?: string
 }) {
+  useLocale()
   return (
     <div className="flex flex-col gap-1.5 mb-1 p-2 rounded-md bg-[#0d1117] border border-[#30363d]">
       <Input
         value={form.key}
         onChange={(e) => onChange({ ...form, key: e.target.value })}
-        placeholder={keyPlaceholder}
+        placeholder={t(keyPlaceholder)}
         className="bg-[#21262d] border-[#30363d] text-xs h-7"
         autoFocus
         onKeyDown={(e) => e.key === 'Enter' && onConfirm()}
@@ -216,7 +235,7 @@ export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel
       <Input
         value={form.value}
         onChange={(e) => onChange({ ...form, value: e.target.value })}
-        placeholder={valuePlaceholder}
+        placeholder={t(valuePlaceholder)}
         className="bg-[#21262d] border-[#30363d] text-xs h-7"
         onKeyDown={(e) => e.key === 'Enter' && onConfirm()}
       />
@@ -224,7 +243,7 @@ export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel
       <div className="flex flex-wrap gap-1 pt-0.5">
         <button
           onClick={() => onChange({ ...form, icon: null })}
-          title="No icon"
+          title={t('No icon')}
           className={`w-6 h-6 rounded flex items-center justify-center text-[10px] border transition-colors ${
             form.icon === null ? 'border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff]' : 'border-[#30363d] text-muted-foreground hover:border-[#8b949e]'
           }`}
@@ -256,13 +275,13 @@ export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel
           onChange={(e) => onChange({ ...form, visible: e.target.checked })}
           className="accent-[#00d4ff] w-3 h-3"
         />
-        <span className="text-[10px] text-muted-foreground">{visibleLabel}</span>
+        <span className="text-[10px] text-muted-foreground">{t(visibleLabel)}</span>
       </label>
       <div className="flex gap-1.5">
         <Button size="sm" className="flex-1 h-6 text-[10px] bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90" onClick={onConfirm}>
           {confirmLabel}
         </Button>
-        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={onCancel}>Cancel</Button>
+        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={onCancel}>{t('Cancel')}</Button>
       </div>
     </div>
   )
@@ -284,7 +303,7 @@ export function PropertyBadge({ prop, visibleLabel = 'node', draggable, isDraggi
   onRemove: () => void
 }) {
   const Icon = resolvePropertyIcon(prop.icon)
-  const where = visibleLabel.replace(/^Show on /i, '')
+  useLocale()
   return (
     <div
       draggable={draggable}
@@ -302,7 +321,7 @@ export function PropertyBadge({ prop, visibleLabel = 'node', draggable, isDraggi
     >
       <div className="flex items-center gap-1.5 min-w-0">
         {draggable && (
-          <span className="shrink-0 cursor-grab active:cursor-grabbing text-[#8b949e] hover:text-[#00d4ff]" title="Drag to reorder">
+          <span className="shrink-0 cursor-grab active:cursor-grabbing text-[#8b949e] hover:text-[#00d4ff]" title={t('Drag to reorder')}>
             {createElement(GripVertical, { size: 11 })}
           </span>
         )}
@@ -315,15 +334,15 @@ export function PropertyBadge({ prop, visibleLabel = 'node', draggable, isDraggi
       <div className="flex items-center gap-1 shrink-0">
         <button
           onClick={onToggleVisible}
-          title={prop.visible ? `Hide on ${where}` : `Show on ${where}`}
+          title={prop.visible ? t('Hide on {where}', { where: t(visibleLabel) }) : t('Show on {where}', { where: t(visibleLabel) })}
           className="text-[#8b949e] hover:text-[#00d4ff] transition-colors"
         >
           {prop.visible ? <Eye size={10} /> : <EyeOff size={10} />}
         </button>
-        <button onClick={onEdit} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff]" title="Edit property">
+        <button onClick={onEdit} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff]" title={t('Edit property')}>
           <Pencil size={10} />
         </button>
-        <button onClick={onRemove} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149]" title="Remove property">
+        <button onClick={onRemove} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149]" title={t('Remove property')}>
           <X size={10} />
         </button>
       </div>

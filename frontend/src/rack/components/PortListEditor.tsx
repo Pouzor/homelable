@@ -8,6 +8,7 @@
  */
 import { Move, Plus, X } from 'lucide-react'
 import { Label } from '@/components/ui/label'
+import { t, useLocale } from '@/i18n'
 import { nextPortSpot } from '../portLayout'
 import { generateUUID } from '@/utils/uuid'
 import type { Port, PortType } from '@/types'
@@ -33,6 +34,7 @@ export function PortListEditor({
   selectedPortId,
   onSelect,
 }: Props) {
+  useLocale()
   const patch = (portId: string, fields: Partial<Port>) =>
     onChange(ports.map((p) => (p.id === portId ? { ...p, ...fields } : p)))
 
@@ -52,13 +54,13 @@ export function PortListEditor({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between">
-        <Label className="text-xs text-muted-foreground">Ports ({ports.length})</Label>
+        <Label className="text-xs text-muted-foreground">{t('Ports ({count})', { count: ports.length })}</Label>
         <div className="flex items-center gap-1">
           {/* Placing a port is a mode, not a field: the plate takes the pointer
               while it is on. */}
           <button
             type="button"
-            aria-label="Position ports"
+            aria-label={t('Position ports')}
             aria-pressed={positioning}
             disabled={ports.length === 0}
             className={`cursor-pointer rounded border px-2 py-0.5 text-xs disabled:cursor-not-allowed disabled:opacity-40 ${
@@ -68,15 +70,15 @@ export function PortListEditor({
             }`}
             onClick={() => onPositioningChange(!positioning)}
           >
-            <Move size={12} className="inline" /> Position
+            <Move size={12} className="inline" /> {t('Position')}
           </button>
           <button
             type="button"
-            aria-label="Add port"
+            aria-label={t('Add port')}
             className="cursor-pointer rounded border border-[#30363d] px-2 py-0.5 text-xs hover:border-[#00d4ff]"
             onClick={add}
           >
-            <Plus size={12} className="inline" /> Add
+            <Plus size={12} className="inline" /> {t('Add')}
           </button>
         </div>
       </div>
@@ -100,14 +102,14 @@ export function PortListEditor({
               // Borderless inside the chip: a box drawn inside a box is what
               // made the old rows twice as tall as they needed to be.
               className="h-6 min-w-0 flex-1 bg-transparent px-1.5 text-xs text-foreground outline-none"
-              aria-label={`Port ${port.label} label`}
-              placeholder="Name"
+              aria-label={t('Port {port} label', { port: port.label })}
+              placeholder={t('Name')}
               value={port.label}
               onChange={(e) => patch(port.id, { label: e.target.value })}
             />
             <select
               className="h-6 shrink-0 cursor-pointer rounded bg-transparent text-[11px] text-muted-foreground outline-none hover:text-foreground"
-              aria-label={`Port ${port.label} type`}
+              aria-label={t('Port {port} type', { port: port.label })}
               value={port.type}
               onChange={(e) => patch(port.id, { type: e.target.value as PortType })}
             >
@@ -119,7 +121,7 @@ export function PortListEditor({
             </select>
             <button
               type="button"
-              aria-label={`Remove port ${port.label}`}
+              aria-label={t('Remove port {port}', { port: port.label })}
               className="cursor-pointer px-0.5 text-muted-foreground hover:text-[#f85149]"
               onClick={() => onChange(ports.filter((p) => p.id !== port.id))}
             >
@@ -128,7 +130,7 @@ export function PortListEditor({
           </li>
         ))}
         {ports.length === 0 && (
-          <li className="col-span-2 text-[11px] text-muted-foreground">No port on this plate.</li>
+          <li className="col-span-2 text-[11px] text-muted-foreground">{t('No port on this plate.')}</li>
         )}
       </ul>
     </div>

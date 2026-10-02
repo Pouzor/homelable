@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import type { InventoryEntry } from '@/types'
 import { deviceName, factCount, suggestWinner } from '@/utils/mergeWinner'
+import { t, useLocale } from '@/i18n'
 
 const ACCENT = '#00d4ff'
 
@@ -31,6 +32,7 @@ interface MergeDevicesModalProps {
  * id (and so which of two *conflicting* values) stands.
  */
 export function MergeDevicesModal({ open, devices, onCancel, onConfirm, busy = false }: MergeDevicesModalProps) {
+  useLocale()
   // Only the user's override is state. The winner is otherwise derived, so a
   // choice held over from a previous selection — a row that no longer exists —
   // falls back to the suggestion instead of pointing at nothing.
@@ -47,14 +49,13 @@ export function MergeDevicesModal({ open, devices, onCancel, onConfirm, busy = f
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Merge size={16} style={{ color: ACCENT }} />
-            Merge {devices.length} devices into one
+            {t('Merge {count} devices into one', { count: devices.length })}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3 py-1">
           <p className="text-xs text-muted-foreground">
-            Keep which row? The others fold into it — their facts fill its gaps, and every
-            canvas node, rack mount and document they own moves across.
+            {t('Keep which row? The others fold into it — their facts fill its gaps, and every canvas node, rack mount and document they own moves across.')}
           </p>
 
           <div className="max-h-[50vh] overflow-y-auto space-y-1.5">
@@ -86,11 +87,13 @@ export function MergeDevicesModal({ open, devices, onCancel, onConfirm, busy = f
                     )}
                   </span>
                   <span className="block text-[11px] text-muted-foreground font-mono break-all">
-                    {[d.ip, d.mac, d.ieee_address].filter(Boolean).join(' · ') || 'no address'}
+                    {[d.ip, d.mac, d.ieee_address].filter(Boolean).join(' · ') || t('no address')}
                   </span>
                   <span className="block text-[11px] text-muted-foreground">
-                    {factCount(d)} fact{factCount(d) !== 1 ? 's' : ''}
-                    {d.services?.length ? ` · ${d.services.length} service${d.services.length !== 1 ? 's' : ''}` : ''}
+                    {t('{count} fact{plural}', { count: factCount(d), plural: factCount(d) !== 1 ? 's' : '' })}
+                    {d.services?.length
+                      ? ` · ${t('{count} service{plural}', { count: d.services.length, plural: d.services.length !== 1 ? 's' : '' })}`
+                      : ''}
                   </span>
                 </span>
               </label>
@@ -99,14 +102,18 @@ export function MergeDevicesModal({ open, devices, onCancel, onConfirm, busy = f
 
           <p className="text-[11px] text-muted-foreground">
             {winner
-              ? `Merging cannot be undone. ${devices.length - 1} row${devices.length - 1 !== 1 ? 's' : ''} will be deleted once their facts and links are on ${deviceName(winner)}.`
-              : 'Pick the row to keep.'}
+              ? t('Merging cannot be undone. {count} row{plural} will be deleted once their facts and links are on {name}.', {
+                  count: devices.length - 1,
+                  plural: devices.length - 1 !== 1 ? 's' : '',
+                  name: deviceName(winner),
+                })
+              : t('Pick the row to keep.')}
           </p>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button
             size="sm"
@@ -114,7 +121,9 @@ export function MergeDevicesModal({ open, devices, onCancel, onConfirm, busy = f
             disabled={!winnerId || busy}
             style={{ backgroundColor: `${ACCENT}33`, color: ACCENT }}
           >
-            {busy ? 'Merging…' : `Merge into ${winner ? deviceName(winner) : 'this row'}`}
+            {busy
+              ? t('Merging…')
+              : t('Merge into {name}', { name: winner ? deviceName(winner) : t('this row') })}
           </Button>
         </DialogFooter>
       </DialogContent>

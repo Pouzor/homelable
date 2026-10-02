@@ -1,6 +1,12 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData } from '@/types'
+import { t } from '@/i18n'
 
+// The device names below (Freebox Ultra, NAS-01, …) and the link labels (1G,
+// VLAN 20) are proper nouns and technical values, so they stay verbatim. The two
+// instruction banners are copy the app itself puts on the canvas, so they follow
+// the interface language. They are frozen at import — by the time a user loads
+// the demo these become ordinary persisted canvas content anyway.
 export const demoNodes: Node<NodeData>[] = [
   {
     id: 'isp-1',
@@ -67,11 +73,11 @@ export const demoNodes: Node<NodeData>[] = [
     type: 'text',
     position: { x: 660, y: 20 },
     data: {
-      label: 'Demo banner',
+      label: t('Demo banner'),
       type: 'text',
       status: 'unknown',
       services: [],
-      text_content: 'This is demo canvas, start with fresh scan',
+      text_content: t('This is demo canvas, start with fresh scan'),
       custom_colors: {
         text_color: '#e6edf3',
         text_size: 14,
@@ -88,11 +94,11 @@ export const demoNodes: Node<NodeData>[] = [
     type: 'text',
     position: { x: -240, y: 540 },
     data: {
-      label: 'Demo hint',
+      label: t('Demo hint'),
       type: 'text',
       status: 'unknown',
       services: [],
-      text_content: 'You can remove all nodes',
+      text_content: t('You can remove all nodes'),
       custom_colors: {
         text_color: '#8b949e',
         text_size: 12,

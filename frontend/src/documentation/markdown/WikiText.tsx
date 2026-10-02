@@ -1,5 +1,6 @@
 import { Children, isValidElement, type ReactNode } from 'react'
 
+import { t, useLocale } from '@/i18n'
 import { resolveWikiLink, splitWikiLinks, type LinkableDevice, type LinkableDoc } from '../wikilinks'
 
 /**
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function WikiText({ children, docs, devices, onOpenDoc, onCreate }: Props) {
+  useLocale()
   return (
     <>
       {Children.map(children, (child, childIndex) => {
@@ -37,7 +39,7 @@ export function WikiText({ children, docs, devices, onOpenDoc, onCreate }: Props
                 key={key}
                 type="button"
                 onClick={() => onCreate?.(segment.link.label)}
-                title="No document matches this link yet — click to create one"
+                title={t('No document matches this link yet — click to create one')}
                 className="cursor-pointer rounded border border-dashed border-destructive/50 px-1 text-destructive"
               >
                 {segment.link.label}

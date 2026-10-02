@@ -8,6 +8,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { t, useLocale } from '@/i18n'
 
 /** Labels past this many are summarized as "+N more" instead of listed. */
 const MAX_LISTED_LABELS = 5
@@ -33,16 +34,21 @@ export function ConfirmAddToGroupModal({
   onConfirm,
   onCancel,
 }: ConfirmAddToGroupModalProps) {
-  const noun = variant === 'container' ? 'container' : variant === 'zone' ? 'zone' : 'group'
-  const action = `Add to ${noun}`
+  useLocale()
+  const noun = variant === 'container' ? t('container') : variant === 'zone' ? t('zone') : t('group')
+  const action = t('Add to {noun}', { noun })
   const count = nodeLabels.length
   const listed = nodeLabels.slice(0, MAX_LISTED_LABELS).join(', ')
   const subject =
     count === 1
       ? nodeLabels[0]
       : count <= MAX_LISTED_LABELS
-        ? `${count} nodes (${listed})`
-        : `${count} nodes (${listed}, +${count - MAX_LISTED_LABELS} more)`
+        ? t('{count} nodes ({listed})', { count, listed })
+        : t('{count} nodes ({listed}, +{extra} more)', {
+            count,
+            listed,
+            extra: count - MAX_LISTED_LABELS,
+          })
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel() }}>
       <DialogContent className="max-w-sm">
@@ -52,12 +58,12 @@ export function ConfirmAddToGroupModal({
             {action}
           </DialogTitle>
           <DialogDescription>
-            Add <span className="font-medium text-foreground">{subject}</span> to the {noun}{' '}
+            {t('Add')} <span className="font-medium text-foreground">{subject}</span> {t('to the {noun}', { noun })}{' '}
             <span className="font-medium text-foreground">{targetLabel}</span>?
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+          <Button variant="ghost" size="sm" onClick={onCancel}>{t('Cancel')}</Button>
           <Button
             size="sm"
             className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"

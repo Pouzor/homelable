@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { RotateCcw, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { t, useLocale } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
 import { collapseDiff, diffLines, diffStat } from '../diff'
@@ -20,15 +21,23 @@ import type { LinkableDevice, LinkableDoc } from '../wikilinks'
  * screen.
  */
 
-/** Why a revision was taken, said in the words the action used. */
-const REASONS: Record<DocRevision['reason'], string> = {
-  edit: 'Saved',
-  restore: 'Restored',
-  import: 'Imported',
-  migrate: 'Migrated from notes',
-  scaffold: 'Generated',
-  regenerate: 'Regenerated',
-  mcp: 'Saved by an AI client',
+/**
+ * Why a revision was taken, said in the words the action used.
+ *
+ * Built from `t` rather than declared as a constant: a module-level table would
+ * be created once at import, before the locale is known, and would not follow a
+ * later language change. The keys stay the stored `reason` values.
+ */
+function revisionReasons(t: (key: string) => string): Record<DocRevision['reason'], string> {
+  return {
+    edit: t('Saved'),
+    restore: t('Restored'),
+    import: t('Imported'),
+    migrate: t('Migrated from notes'),
+    scaffold: t('Generated'),
+    regenerate: t('Regenerated'),
+    mcp: t('Saved by an AI client'),
+  }
 }
 
 function size(bytes: number): string {
@@ -44,24 +53,26 @@ interface RailProps {
 }
 
 export function DocHistoryRail({ revisions, activeId, loading, onSelect, onClose }: RailProps) {
+  useLocale()
+  const reasons = revisionReasons(t)
   return (
     <nav
-      aria-label="Document history"
+      aria-label={t('Document history')}
       className="flex w-60 shrink-0 flex-col overflow-y-auto border-l border-border"
     >
       <div className="flex items-center gap-1 px-3 py-4">
         <p className="flex-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-          History
+          {t('History')}
         </p>
-        <Button size="icon-xs" variant="ghost" aria-label="Close history" onClick={onClose} className="cursor-pointer">
+        <Button size="icon-xs" variant="ghost" aria-label={t('Close history')} onClick={onClose} className="cursor-pointer">
           <X />
         </Button>
       </div>
 
-      {loading && <p className="px-3 text-xs text-muted-foreground">Loading…</p>}
+      {loading && <p className="px-3 text-xs text-muted-foreground">{t('Loading…')}</p>}
       {!loading && revisions.length === 0 && (
         <p className="px-3 text-xs text-muted-foreground">
-          No earlier version yet. One is kept every time you save a change.
+          {t('No earlier version yet. One is kept every time you save a change.')}
         </p>
       )}
 
@@ -79,7 +90,7 @@ export function DocHistoryRail({ revisions, activeId, loading, onSelect, onClose
               )}
             >
               <span className="block truncate text-xs text-foreground">
-                {REASONS[revision.reason] ?? revision.reason}
+                {reasons[revision.reason] ?? revision.reason}
               </span>
               <span className="block truncate text-[10px] text-muted-foreground">
                 {formatRelative(revision.saved_at)} · {size(revision.size)}
@@ -117,6 +128,8 @@ export function RevisionPreview({
   onRestore,
   onClose,
 }: PreviewProps) {
+  useLocale()
+  const reasons = revisionReasons(t)
   const [showChanges, setShowChanges] = useState(false)
   // The diff reads old → new, so the current body is the "after" side: what the
   // reader wants is "what happened since this version", not how to undo it.
@@ -128,18 +141,18 @@ export function RevisionPreview({
     <div className="min-w-0 flex-1 overflow-y-auto">
       <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-[var(--surface,#161b22)] px-6 py-2.5">
         <span className="text-xs text-foreground">
-          {REASONS[revision.reason] ?? revision.reason}{' '}
+          {reasons[revision.reason] ?? revision.reason}{' '}
           <span className="text-muted-foreground" title={formatTimestamp(revision.saved_at)}>
             {formatRelative(revision.saved_at)}
           </span>
         </span>
         <span className="text-[10px] text-muted-foreground">
           {identical ? (
-            'Identical to the current version'
+            t('Identical to the current version')
           ) : (
             <>
               <span className="text-[var(--status-online,#39d353)]">+{stat.added}</span>{' '}
-              <span className="text-[var(--status-offline,#f85149)]">−{stat.removed}</span> since
+              <span className="text-[var(--status-offline,#f85149)]">−{stat.removed}</span> {t('since')}
             </>
           )}
         </span>
@@ -151,14 +164,14 @@ export function RevisionPreview({
             className="cursor-pointer"
             aria-pressed={showChanges}
           >
-            {showChanges ? 'Read it' : 'Changes'}
+            {showChanges ? t('Read it') : t('Changes')}
           </Button>
           {onRestore && (
             <Button size="sm" variant="ghost" onClick={onRestore} className="cursor-pointer gap-1">
-              <RotateCcw size={13} /> Restore
+              <RotateCcw size={13} /> {t('Restore')}
             </Button>
           )}
-          <Button size="icon-xs" variant="ghost" aria-label="Back to the current version" onClick={onClose} className="cursor-pointer">
+          <Button size="icon-xs" variant="ghost" aria-label={t('Back to the current version')} onClick={onClose} className="cursor-pointer">
             <X />
           </Button>
         </div>

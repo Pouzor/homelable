@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { DeviceInventoryModal } from '@/components/modals/DeviceInventoryModal'
 import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
+import { t, useLocale } from '@/i18n'
 import { useRackStore } from '../store'
 import { FaceplatePicker } from './FaceplatePicker'
 import { PortListEditor } from './PortListEditor'
@@ -24,7 +25,7 @@ import { PortPositionEditor } from './PortPositionEditor'
 import { LinkedDevicePanel } from './LinkedDevicePanel'
 import { SectionHeader } from './SectionHeader'
 import { DevicePickerModal } from './DevicePickerModal'
-import { deviceTypeForFaceplate, getFaceplate } from '../faceplates'
+import { deviceTypeForFaceplate, faceplateLabel, getFaceplate } from '../faceplates'
 import { findSlot } from '../layout'
 import { canFollowNode, resolveDeviceStatus } from '../deviceStatus'
 import { generateUUID } from '@/utils/uuid'
@@ -78,6 +79,7 @@ export function RackDeviceModal() {
 }
 
 function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: () => void }) {
+  useLocale()
   const device = useRackStore((s) => s.devices.find((d) => d.id === deviceId))
   const racks = useRackStore((s) => s.racks)
   const devices = useRackStore((s) => s.devices)
@@ -190,11 +192,11 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
       entry = useRackStore.getState().inventory.find((i) => i.id === picked.id)
     }
     if (!entry) {
-      toast.error('That device cannot be mounted in a rack')
+      toast.error(t('That device cannot be mounted in a rack'))
       return
     }
     if (entry.racked) {
-      toast.error(`${entry.label} is already mounted in this design`)
+      toast.error(t('{label} is already mounted in this design', { label: entry.label }))
       return
     }
     applyInventoryItem(entry)
@@ -222,9 +224,9 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
       // The plate may have taken the entry's name; keep the open form in step.
       const next = useRackStore.getState().devices.find((d) => d.id === device.id)
       if (next) setLabel(next.label)
-      toast.success(`Linked to ${entry.label}`)
+      toast.success(t('Linked to {label}', { label: entry.label }))
     } else {
-      toast.error(`${entry.label} is already mounted in this design`)
+      toast.error(t('{label} is already mounted in this design', { label: entry.label }))
     }
   }
 
@@ -266,13 +268,13 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     // still write the new plate's ports onto the old faceplate, silently.
     if (plateChanged && faceplateId !== device.faceplateId) {
       if (!applyFaceplate(device.id, faceplateId)) {
-        toast.error('No room in the rack for that faceplate')
+        toast.error(t('No room in the rack for that faceplate'))
         return null
       }
     }
     const name = label.trim() || device.label
     if (!updateDevice(device.id, { ...geometry, label: name, status, color, portVisibility })) {
-      toast.error('No room in the rack for that size')
+      toast.error(t('No room in the rack for that size'))
       return null
     }
     return device.id
@@ -280,7 +282,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
 
   async function commitCreate(): Promise<string | null> {
     if (!rackId) {
-      toast.error('Add a rack first')
+      toast.error(t('Add a rack first'))
       return null
     }
     const name = label.trim()
@@ -297,7 +299,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     let entryId = inventoryId
     if (source === 'new') {
       if (!name) {
-        toast.error('Name the device first')
+        toast.error(t('Name the device first'))
         return null
       }
       // `createInventoryDevice` POSTs straight to the Device Inventory, so a
@@ -313,13 +315,13 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
         ip: newIp.trim() || null,
       })
       if (!created) {
-        toast.error('Could not add the device to the inventory')
+        toast.error(t('Could not add the device to the inventory'))
         return null
       }
       entryId = created.id
     }
     if (!entryId) {
-      toast.error('Pick a device from the inventory')
+      toast.error(t('Pick a device from the inventory'))
       return null
     }
     const id = mountFromInventory(entryId, rackId, { ...geometry, faceplateId })
@@ -331,7 +333,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
   }
 
   function noRoom(): null {
-    toast.error('No free slot in this rack')
+    toast.error(t('No free slot in this rack'))
     return null
   }
 
@@ -361,19 +363,19 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
       <DialogContent className="border-[#30363d] bg-[#161b22] text-foreground max-w-[calc(100%-2rem)] sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">
-            {isEdit ? 'Edit Device' : 'Add Device'}
+            {isEdit ? t('Edit Device') : t('Add Device')}
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="mt-2 flex flex-col gap-3">
           {!isEdit && (
-            <Field label="Source">
+            <Field label={t('Source')}>
               <div className="flex gap-1">
                 {(
                   [
-                    ['inventory', 'From inventory'],
-                    ['new', 'New device'],
-                    ['accessory', 'Accessory'],
+                    ['inventory', t('From inventory')],
+                    ['new', t('New device')],
+                    ['accessory', t('Accessory')],
                   ] as [Source, string][]
                 ).map(([value, text]) => (
                   <button
@@ -412,7 +414,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                 aside={
                   <button
                     type="button"
-                    aria-label="Faceplate"
+                    aria-label={t('Faceplate')}
                     data-faceplate={faceplateId}
                     onClick={() => setPickerOpen(true)}
                     className="flex max-w-[65%] cursor-pointer items-center gap-1.5 rounded border border-[#30363d] px-2 py-0.5 text-[11px] hover:border-[#00d4ff]"
@@ -420,13 +422,13 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                     {/* The current plate names itself; `Change` is what says the
                         name is a button and not a read-out. */}
                     <span className="truncate text-muted-foreground">
-                      {getFaceplate(faceplateId).label}
+                      {faceplateLabel(getFaceplate(faceplateId))}
                     </span>
-                    <span className="shrink-0 text-[#00d4ff]">Change</span>
+                    <span className="shrink-0 text-[#00d4ff]">{t('Change')}</span>
                   </button>
                 }
               >
-                Faceplate
+                {t('Faceplate')}
               </SectionHeader>
               <FaceplatePicker
                 open={pickerOpen}
@@ -437,13 +439,13 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               />
               {plateChanged && isEdit && (
                 <p className="text-[11px] text-[#e3b341]">
-                  Changing the plate replaces its ports and drops their patches.
+                  {t('Changing the plate replaces its ports and drops their patches.')}
                 </p>
               )}
               <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded border border-[#30363d] bg-[#0d1117] p-3">
                 <PortPositionEditor
                   faceplateId={faceplateId}
-                  label={label || getFaceplate(faceplateId).label}
+                  label={label || faceplateLabel(getFaceplate(faceplateId))}
                   status={previewStatus}
                   ports={ports}
                   uHeight={uHeight}
@@ -463,14 +465,14 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               below the fold. */}
           <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
             <div className="flex flex-col gap-3">
-            <SectionHeader>Information</SectionHeader>
+            <SectionHeader>{t('Information')}</SectionHeader>
             {showInventoryPicker && STANDALONE && (
               /* No backend, so no Device Inventory modal to open (it reads
                  `pending_devices` over REST) — standalone keeps the flat list. */
-              <Field label="Device Inventory entry">
+              <Field label={t('Device Inventory entry')}>
                 <select
                   className={inputClass}
-                  aria-label="Device Inventory entry"
+                  aria-label={t('Device Inventory entry')}
                   value={inventoryId}
                   onChange={(e) => {
                     const item = inventory.find((i) => i.id === e.target.value)
@@ -478,7 +480,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                     else setInventoryId('')
                   }}
                 >
-                  <option value="">Select a device…</option>
+                  <option value="">{t('Select a device…')}</option>
                   {unracked.map((item) => (
                     <option key={item.id} value={item.id}>
                       {inventoryOption(item)}
@@ -489,27 +491,27 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
             )}
 
             {showInventoryPicker && !STANDALONE && (
-              <Field label="Device Inventory entry">
+              <Field label={t('Device Inventory entry')}>
                 {/* Opens the real Device Inventory rather than a flat <select>:
                     the user gets its search, source/type filters and the tech
                     detail on each card to tell look-alike hosts apart. */}
                 <button
                   type="button"
-                  aria-label="Device Inventory entry"
+                  aria-label={t('Device Inventory entry')}
                   data-device-id={inventoryId}
                   onClick={() => setInventoryPickerOpen(true)}
                   className="flex cursor-pointer flex-col items-start gap-0.5 rounded border border-[#30363d] bg-[#21262d] px-2 py-1.5 text-left hover:border-[#00d4ff]"
                 >
                   <span className="text-sm">
-                    {selectedEntry ? inventoryOption(selectedEntry) : 'No device picked yet'}
+                    {selectedEntry ? inventoryOption(selectedEntry) : t('No device picked yet')}
                   </span>
                   <span className="text-[11px] text-[#00d4ff]">
-                    {selectedEntry ? 'Change device…' : 'Browse the Device Inventory…'}
+                    {selectedEntry ? t('Change device…') : t('Browse the Device Inventory…')}
                   </span>
                 </button>
                 {unracked.length === 0 && (
                   <p className="text-[11px] text-muted-foreground">
-                    Everything in the inventory is already racked — create a new device instead.
+                    {t('Everything in the inventory is already racked — create a new device instead.')}
                   </p>
                 )}
                 {/* Rendered inside this DialogContent on purpose: an open Base UI
@@ -525,10 +527,10 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
             )}
 
             {!isEdit && source === 'new' && (
-              <Field label="IP (optional)">
+              <Field label={t('IP (optional)')}>
                 <input
                   className={`${inputClass} font-mono`}
-                  aria-label="IP"
+                  aria-label={t('IP')}
                   value={newIp}
                   onChange={(e) => setNewIp(e.target.value)}
                   placeholder="192.168.1.10"
@@ -537,10 +539,10 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
             )}
 
             {!isEdit && racks.length > 1 && (
-              <Field label="Rack">
+              <Field label={t('Rack')}>
                 <select
                   className={inputClass}
-                  aria-label="Rack"
+                  aria-label={t('Rack')}
                   value={rackId}
                   onChange={(e) => setRackId(e.target.value)}
                 >
@@ -553,94 +555,94 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               </Field>
             )}
 
-            <Field label="Label">
+            <Field label={t('Label')}>
               <input
                 className={inputClass}
-                aria-label="Label"
+                aria-label={t('Label')}
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                placeholder={source === 'accessory' ? getFaceplate(faceplateId).label : 'Device name'}
+                placeholder={source === 'accessory' ? faceplateLabel(getFaceplate(faceplateId)) : t('Device name')}
               />
             </Field>
 
-            <SectionHeader>Placement</SectionHeader>
+            <SectionHeader>{t('Placement')}</SectionHeader>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="U position">
+              <Field label={t('U position')}>
                 <input
                   type="number"
                   min={1}
                   className={inputClass}
-                  aria-label="U position"
+                  aria-label={t('U position')}
                   value={uStart}
                   onChange={(e) => setUStart(Number(e.target.value) || 1)}
                 />
               </Field>
-              <Field label="Height (U)">
+              <Field label={t('Height (U)')}>
                 <input
                   type="number"
                   min={1}
                   max={12}
                   className={inputClass}
-                  aria-label="Height (U)"
+                  aria-label={t('Height (U)')}
                   value={uHeight}
                   onChange={(e) => setUHeight(Number(e.target.value) || 1)}
                 />
               </Field>
-              <Field label="Column">
+              <Field label={t('Column')}>
                 <input
                   type="number"
                   min={0}
                   max={RACK_COLUMNS - 1}
                   className={inputClass}
-                  aria-label="Column"
+                  aria-label={t('Column')}
                   value={colStart}
                   onChange={(e) => setColStart(Number(e.target.value) || 0)}
                 />
               </Field>
-              <Field label={`Width (/${RACK_COLUMNS})`}>
+              <Field label={t('Width (/{count})', { count: RACK_COLUMNS })}>
                 <select
                   className={inputClass}
-                  aria-label="Width"
+                  aria-label={t('Width')}
                   value={colSpan}
                   onChange={(e) => setColSpan(Number(e.target.value))}
                 >
-                  <option value={RACK_COLUMNS}>Full width</option>
-                  <option value={RACK_COLUMNS / 2}>Half width</option>
-                  <option value={RACK_COLUMNS / 3}>Third width</option>
-                  <option value={RACK_COLUMNS / 4}>Quarter width</option>
-                  <option value={RACK_COLUMNS / 6}>Sixth width</option>
+                  <option value={RACK_COLUMNS}>{t('Full width')}</option>
+                  <option value={RACK_COLUMNS / 2}>{t('Half width')}</option>
+                  <option value={RACK_COLUMNS / 3}>{t('Third width')}</option>
+                  <option value={RACK_COLUMNS / 4}>{t('Quarter width')}</option>
+                  <option value={RACK_COLUMNS / 6}>{t('Sixth width')}</option>
                 </select>
               </Field>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-            <Field label="Status">
+            <Field label={t('Status')}>
               <select
                 className={inputClass}
-                aria-label="Status"
+                aria-label={t('Status')}
                 value={status}
                 onChange={(e) => setStatus(e.target.value as MountStatus)}
               >
                 {/* Only offered when there is a node to read: the rack runs no
                     check of its own. */}
-                {canCheck && <option value="auto">Check device (live)</option>}
-                <option value="online">Online</option>
-                <option value="offline">Offline</option>
-                <option value="unknown">Unknown</option>
+                {canCheck && <option value="auto">{t('Check device (live)')}</option>}
+                <option value="online">{t('Online')}</option>
+                <option value="offline">{t('Offline')}</option>
+                <option value="unknown">{t('Unknown')}</option>
               </select>
               {status === 'auto' && (
                 <p className="text-[11px] text-muted-foreground">
-                  Follows the status check configured on the matching canvas node.
+                  {t('Follows the status check configured on the matching canvas node.')}
                 </p>
               )}
             </Field>
 
-            <Field label="Colour override">
+            <Field label={t('Colour override')}>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
-                  aria-label="Colour override"
+                  aria-label={t('Colour override')}
                   className="h-8 flex-1 cursor-pointer rounded border border-[#30363d] bg-[#21262d]"
                   value={color ?? DEFAULT_COLOR}
                   onChange={(e) => setColor(e.target.value)}
@@ -650,7 +652,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                   onClick={() => setColor(undefined)}
                   className="rounded border border-[#30363d] px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer"
                 >
-                  Reset
+                  {t('Reset')}
                 </button>
               </div>
             </Field>
@@ -662,7 +664,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                 rule over an empty column reads as a missing section. */}
             {!isAccessory && (
               <>
-                <SectionHeader>Ports</SectionHeader>
+                <SectionHeader>{t('Ports')}</SectionHeader>
                 <PortListEditor
                   ports={ports}
                   onChange={setLocalPorts}
@@ -675,16 +677,16 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                 {/* How the canvas draws these sockets — a display choice about
                     this mount, not a fact about the hardware, so it stays on
                     the mount and never reaches the inventory entry. */}
-                <Field label="Show ports on the canvas">
+                <Field label={t('Show ports on the canvas')}>
                   <select
                     className="h-8 w-full rounded border border-[#30363d] bg-[#21262d] px-2 text-xs cursor-pointer"
-                    aria-label="Show ports on the canvas"
+                    aria-label={t('Show ports on the canvas')}
                     value={portVisibility}
                     onChange={(e) => setPortVisibility(e.target.value as PortVisibility)}
                   >
-                    <option value="auto">Automatic (switches and patch panels)</option>
-                    <option value="always">Always</option>
-                    <option value="hover">On hover or selection</option>
+                    <option value="auto">{t('Automatic (switches and patch panels)')}</option>
+                    <option value="always">{t('Always')}</option>
+                    <option value="hover">{t('On hover or selection')}</option>
                   </select>
                 </Field>
               </>
@@ -714,19 +716,19 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                 onClick={handleUnmount}
                 className="cursor-pointer text-[#f85149] hover:bg-[#f8514922] hover:text-[#f85149]"
               >
-                Unmount{device?.deviceId ? ' (stays in inventory)' : ''}
+                {device?.deviceId ? t('Unmount (stays in inventory)') : t('Unmount')}
               </Button>
             )}
             <div className="ml-auto flex gap-2">
               <Button type="button" variant="ghost" onClick={onClose} className="cursor-pointer">
-                Cancel
+                {t('Cancel')}
               </Button>
               <Button
                 type="submit"
                 disabled={busy}
                 className="cursor-pointer bg-[#00d4ff] text-[#0d1117] hover:bg-[#00b8e0]"
               >
-                {isEdit ? 'Save' : 'Add'}
+                {isEdit ? t('Save') : t('Add')}
               </Button>
             </div>
           </div>

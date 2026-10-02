@@ -5,6 +5,7 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { documentsApi, scanApi } from '@/api/client'
 import type { DocSearchHit } from '@/documentation/types'
 import type { InventoryEntry } from '@/components/modals/InventoryDeviceModal'
+import { t, useLocale } from '@/i18n'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -20,6 +21,7 @@ interface SearchModalProps {
 }
 
 export function SearchModal({ open, onClose, onOpenInventory, onOpenDocument }: SearchModalProps) {
+  useLocale()
   const [query, setQuery] = useState('')
   const [inventoryDevices, setInventoryEntrys] = useState<InventoryEntry[]>([])
   // Kept with the query it answered, so a stale answer is never shown against a
@@ -115,7 +117,7 @@ export function SearchModal({ open, onClose, onOpenInventory, onOpenDocument }: 
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search nodes, devices and documents…"
+            placeholder={t('Search nodes, devices and documents…')}
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
             onKeyDown={(e) => {
               if (e.key === 'Escape') { onClose(); setQuery('') }
@@ -156,7 +158,7 @@ export function SearchModal({ open, onClose, onOpenInventory, onOpenDocument }: 
                   className="flex items-center gap-3 px-4 py-2 hover:bg-[#21262d] cursor-pointer"
                   onClick={() => handleSelectInventoryDevice(device.id)}
                 >
-                  <span className="text-xs font-mono text-[#e3b341] w-16 shrink-0">pending</span>
+                  <span className="text-xs font-mono text-[#e3b341] w-16 shrink-0">{t('pending')}</span>
                   <span className="text-sm text-foreground font-medium flex-1 truncate font-mono">{device.hostname ?? device.ip}</span>
                   <span className="text-xs font-mono text-muted-foreground shrink-0">{serviceName ?? device.ip}</span>
                 </li>
@@ -190,12 +192,14 @@ export function SearchModal({ open, onClose, onOpenInventory, onOpenDocument }: 
         )}
 
         {q.length > 0 && totalResults === 0 && (
-          <p className="px-4 py-3 text-sm text-muted-foreground">No results match "{query}"</p>
+          <p className="px-4 py-3 text-sm text-muted-foreground">{t('No results match "{query}"', { query })}</p>
         )}
 
         {q.length === 0 && (
           <p className="px-4 py-3 text-xs text-muted-foreground">
-            Type to search nodes, pending devices{onOpenDocument && !STANDALONE ? ' and documents' : ''}…
+            {onOpenDocument && !STANDALONE
+              ? t('Type to search nodes, pending devices and documents…')
+              : t('Type to search nodes, pending devices…')}
           </p>
         )}
       </div>

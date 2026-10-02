@@ -12,6 +12,8 @@
  * prints everything discovery found; only the canvas-side rows go missing.
  */
 import { useRackPalette } from '../rackTheme'
+import { statusLabel } from '@/types'
+import { t, useLocale } from '@/i18n'
 import { SectionHeader } from './SectionHeader'
 import type { DeviceStatus, InventoryDevice } from '@/types'
 
@@ -58,6 +60,7 @@ export function LinkedDevicePanel({
    */
   onLink?: () => void
 }) {
+  useLocale()
   const palette = useRackPalette()
   if (!entry) return null
 
@@ -67,15 +70,15 @@ export function LinkedDevicePanel({
     if (value) rows.push({ label, value, mono })
   }
 
-  push('Name', firstOf(node?.label, entry.label))
-  push('Type', firstOf(node?.type, entry.type))
-  push('Hostname', firstOf(node?.hostname, entry.hostname))
-  push('IP', firstOf(node?.ip, entry.ip), true)
-  push('MAC', firstOf(node?.mac, entry.mac), true)
-  push('OS', firstOf(node?.os, entry.os))
-  push('Check', firstOf(node?.checkMethod))
-  push('Canvas', firstOf(node?.designName))
-  push('Last seen', formatSeen(node?.lastSeen))
+  push(t('Name'), firstOf(node?.label, entry.label))
+  push(t('Type'), firstOf(node?.type, entry.type))
+  push(t('Hostname'), firstOf(node?.hostname, entry.hostname))
+  push(t('IP'), firstOf(node?.ip, entry.ip), true)
+  push(t('MAC'), firstOf(node?.mac, entry.mac), true)
+  push(t('OS'), firstOf(node?.os, entry.os))
+  push(t('Check'), firstOf(node?.checkMethod))
+  push(t('Canvas'), firstOf(node?.designName))
+  push(t('Last seen'), formatSeen(node?.lastSeen))
 
   const services = entry.services ?? []
 
@@ -90,22 +93,22 @@ export function LinkedDevicePanel({
             className="inline-block h-2 w-2 rounded-full"
             style={{ backgroundColor: palette.status[status] }}
           />
-          {status}
+          {statusLabel(status)}
         </span>
       }
     >
-      Linked device
+      {t('Linked device')}
     </SectionHeader>
   )
 
   return (
-    <div aria-label="Linked device" className="flex flex-col gap-2">
+    <div aria-label={t('Linked device')} className="flex flex-col gap-2">
       {header}
 
       <section className="flex flex-1 flex-col rounded border border-[#30363d] bg-[#0d1117] p-2.5">
       {rows.length === 0 && (
         <p className="text-[11px] text-muted-foreground">
-          Nothing known about this device yet.
+          {t('Nothing known about this device yet.')}
         </p>
       )}
 
@@ -122,7 +125,7 @@ export function LinkedDevicePanel({
 
       {services.length > 0 && (
         <div className="mt-2 flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">Services</span>
+          <span className="text-[11px] text-muted-foreground">{t('Services')}</span>
           <ul className="flex flex-wrap gap-1">
             {services.map((service) => (
               <li
@@ -140,7 +143,7 @@ export function LinkedDevicePanel({
           part of the reading: no canvas node means `auto` status resolves to
           `unknown` and no link can be imported. */}
       {!node && (
-        <p className="mt-2 text-[11px] text-muted-foreground">Not on a logical canvas.</p>
+        <p className="mt-2 text-[11px] text-muted-foreground">{t('Not on a logical canvas.')}</p>
       )}
 
       {/* The device behind a plate is a choice — a placeholder created from the
@@ -152,7 +155,7 @@ export function LinkedDevicePanel({
           onClick={onLink}
           className="mt-2 cursor-pointer text-[11px] text-[#00d4ff] hover:underline"
         >
-          Link to another device…
+          {t('Link to another device…')}
         </button>
       )}
       </section>

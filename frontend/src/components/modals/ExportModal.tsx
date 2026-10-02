@@ -11,6 +11,7 @@ import {
   type ExportFormat,
   type ExportBackground,
 } from '@/utils/export'
+import { t, useLocale } from '@/i18n'
 
 interface ExportModalProps {
   open: boolean
@@ -19,6 +20,7 @@ interface ExportModalProps {
 }
 
 export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
+  useLocale()
   const [quality, setQuality] = useState<ExportQuality>('high')
   const [format, setFormat] = useState<ExportFormat>('png')
   const [background, setBackground] = useState<ExportBackground>('dark')
@@ -44,7 +46,7 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="bg-[#161b22] border-border max-w-sm">
         <DialogHeader>
-          <DialogTitle className="text-foreground">Export Canvas</DialogTitle>
+          <DialogTitle className="text-foreground">{t('Export Canvas')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-2 py-2">
@@ -60,8 +62,8 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
                   : 'border-border bg-[#0d1117] text-muted-foreground hover:border-muted-foreground',
               ].join(' ')}
             >
-              <span className="font-medium">{opt.label}</span>
-              <span className="text-xs opacity-70">{opt.hint}</span>
+              <span className="font-medium">{t(opt.label)}</span>
+              <span className="text-xs opacity-70">{t(opt.hint)}</span>
             </button>
           ))}
           <button
@@ -75,12 +77,12 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
             ].join(' ')}
           >
             <span className="font-medium">SVG</span>
-            <span className="text-xs opacity-70">vector — scalable, small file</span>
+            <span className="text-xs opacity-70">{t('vector — scalable, small file')}</span>
           </button>
         </div>
 
         <div className="space-y-1.5 pb-2">
-          <p className="text-xs font-medium text-muted-foreground">Background</p>
+          <p className="text-xs font-medium text-muted-foreground">{t('Background')}</p>
           <div className="flex gap-2">
             {EXPORT_BACKGROUND_OPTIONS.map((opt) => (
               <button
@@ -98,23 +100,23 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
                   className="h-3.5 w-3.5 rounded-sm border border-border"
                   style={{ background: opt.color }}
                 />
-                <span className="font-medium">{opt.label}</span>
-                <span className="text-xs opacity-70">{opt.hint}</span>
+                <span className="font-medium">{t(opt.label)}</span>
+                <span className="text-xs opacity-70">{t(opt.hint)}</span>
               </button>
             ))}
           </div>
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={exporting}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose} disabled={exporting}>{t('Cancel')}</Button>
           <Button
             onClick={handleExport}
             disabled={exporting}
             style={{ background: '#00d4ff', color: '#0d1117' }}
           >
             {exporting
-              ? <><Loader2 size={14} className="animate-spin mr-1.5" />Exporting…</>
-              : <><Download size={14} className="mr-1.5" />Download</>
+              ? <><Loader2 size={14} className="animate-spin mr-1.5" />{t('Exporting…')}</>
+              : <><Download size={14} className="mr-1.5" />{t('Download')}</>
             }
           </Button>
         </DialogFooter>

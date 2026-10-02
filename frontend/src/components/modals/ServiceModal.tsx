@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { ICON_REGISTRY, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
 import { IconPickerPanel } from './IconPickerPanel'
 import { EMPTY_SERVICE_FORM, type ServiceFormData, type ServiceSubmitData } from '@/utils/serviceForm'
+import { t, useLocale } from '@/i18n'
 
 interface ServiceModalProps {
   open: boolean
@@ -19,6 +20,7 @@ interface ServiceModalProps {
 }
 
 export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Service', confirmLabel = 'Add' }: ServiceModalProps) {
+  useLocale()
   const [form, setForm] = useState<ServiceFormData>(initial ?? EMPTY_SERVICE_FORM)
   const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const [nameError, setNameError] = useState(false)
@@ -72,7 +74,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
       return (
         <>
           {createElement(entry.icon, { size: 13, className: 'text-[#00d4ff] shrink-0' })}
-          <span className="text-foreground truncate">{entry.label}</span>
+          <span className="text-muted-foreground truncate">{t(entry.label)}</span>
         </>
       )
     }
@@ -81,7 +83,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
     return (
       <>
         {createElement(Circle, { size: 13, className: 'text-muted-foreground shrink-0' })}
-        <span className="text-muted-foreground truncate">{form.icon ?? 'None'}</span>
+        <span className="text-muted-foreground truncate">{form.icon ?? t('None')}</span>
       </>
     )
   }
@@ -90,27 +92,27 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-sm">
         <DialogHeader>
-          <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">{t(title)}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">
           {/* Name */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Name *</Label>
+            <Label className="text-xs text-muted-foreground">{t('Name *')}</Label>
             <Input
               value={form.service_name}
               onChange={(e) => { set('service_name', e.target.value); if (nameError) setNameError(false) }}
-              placeholder="Service name"
+              placeholder={t('Service name')}
               autoFocus
               className={`bg-[#21262d] text-sm h-8 ${nameError ? 'border-[#f85149]' : 'border-[#30363d]'}`}
             />
-            {nameError && <span className="text-[10px] text-[#f85149]">Name is required</span>}
+            {nameError && <span className="text-[10px] text-[#f85149]">{t('Name is required')}</span>}
           </div>
 
           {/* Port + protocol */}
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Port</Label>
+              <Label className="text-xs text-muted-foreground">{t('Port')}</Label>
               <Input
                 type="text"
                 inputMode="numeric"
@@ -118,15 +120,15 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
                 value={form.port}
                 onChange={(e) => setPort(e.target.value)}
                 onBlur={clampPort}
-                placeholder="Port"
+                placeholder={t('Port')}
                 className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label className="text-xs text-muted-foreground">Protocol</Label>
+              <Label className="text-xs text-muted-foreground">{t('Protocol')}</Label>
               <select
                 value={form.protocol}
-                aria-label="Protocol"
+                aria-label={t('Protocol')}
                 onChange={(e) => set('protocol', e.target.value as 'tcp' | 'udp')}
                 className={`bg-[#21262d] border border-[#30363d] text-sm h-8 px-2 text-foreground ${modalStyles['modal-radius']}`}
               >
@@ -138,7 +140,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
 
           {/* Host override */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Host</Label>
+            <Label className="text-xs text-muted-foreground">{t('Host')}</Label>
             <Input
               value={form.host}
               onChange={(e) => set('host', e.target.value)}
@@ -146,14 +148,13 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
               className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
             />
             <span className="text-[10px] text-muted-foreground/60">
-              Overrides the node host for this service only. The port above is
-              dropped &mdash; add one here (host:port) if the URL needs it.
+              {t('Overrides the node host for this service only. The port above is dropped — add one here (host:port) if the URL needs it.')}
             </span>
           </div>
 
           {/* Path */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Path</Label>
+            <Label className="text-xs text-muted-foreground">{t('Path')}</Label>
             <Input
               value={form.path}
               onChange={(e) => set('path', e.target.value)}
@@ -165,14 +166,14 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
           {/* Icon */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">Icon</Label>
+              <Label className="text-xs text-muted-foreground">{t('Icon')}</Label>
               {form.icon && (
                 <button
                   type="button"
                   onClick={() => { set('icon', undefined); setIconPickerOpen(false) }}
                   className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                 >
-                  <RotateCcw size={10} /> Reset
+                  <RotateCcw size={10} /> {t('Reset')}
                 </button>
               )}
             </div>
@@ -180,7 +181,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
               type="button"
               onClick={() => setIconPickerOpen((o) => !o)}
               className={`flex items-center justify-between gap-2 h-8 px-3 bg-[#21262d] border border-[#30363d] text-sm transition-colors w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
-              aria-label="Icon picker trigger"
+              aria-label={t('Icon picker trigger')}
             >
               <span className="flex items-center gap-2 min-w-0">{iconPreview()}</span>
               <ChevronDown size={12} className="text-muted-foreground shrink-0" style={{ transform: iconPickerOpen ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }} />
@@ -195,10 +196,10 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
 
           <div className="flex justify-end gap-2 pt-1">
             <Button type="button" variant="ghost" size="sm" className={`cursor-pointer ${modalStyles['modal-cancel-hover']}`} onClick={onClose}>
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer">
-              {confirmLabel}
+              {t(confirmLabel)}
             </Button>
           </div>
         </form>

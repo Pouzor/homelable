@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { statusLabel } from '@/types'
 import { RefreshCw, X, Loader2, StopCircle, Clock, ScanLine, Network, RadioTower, Server, Wifi, Inbox } from 'lucide-react'
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { scanApi } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { toast } from 'sonner'
+import { t, useLocale } from '@/i18n'
 
 export interface ScanRun {
   id: string
@@ -44,23 +46,6 @@ const KIND_META = {
 } as const
 type StatusFilter = 'all' | 'running' | 'done' | 'error' | 'cancelled'
 
-const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'running', label: 'Running' },
-  { key: 'done', label: 'Done' },
-  { key: 'error', label: 'Error' },
-  { key: 'cancelled', label: 'Cancelled' },
-]
-
-const KIND_FILTERS: { key: KindFilter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'ip', label: 'IP' },
-  { key: 'zigbee', label: 'Zigbee' },
-  { key: 'zwave', label: 'Z-Wave' },
-  { key: 'proxmox', label: 'Proxmox' },
-  { key: 'unifi', label: 'UniFi' },
-]
-
 function statusColor(s: string): string {
   return s === 'done' ? '#39d353'
     : s === 'running' ? '#e3b341'
@@ -91,6 +76,24 @@ function runDuration(r: ScanRun, now: number): string {
 }
 
 export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalProps) {
+  useLocale()
+  // Built inside the component so the labels go through `t`; a module-level
+  // table would be created once at import, before the locale is known.
+  const statusFilters: { key: StatusFilter; label: string }[] = [
+    { key: 'all', label: t('All') },
+    { key: 'running', label: t('Running') },
+    { key: 'done', label: t('Done') },
+    { key: 'error', label: t('Error') },
+    { key: 'cancelled', label: t('Cancelled') },
+  ]
+  const kindFilters: { key: KindFilter; label: string }[] = [
+    { key: 'all', label: t('All') },
+    { key: 'ip', label: 'IP' },
+    { key: 'zigbee', label: 'Zigbee' },
+    { key: 'zwave', label: 'Z-Wave' },
+    { key: 'proxmox', label: 'Proxmox' },
+    { key: 'unifi', label: 'UniFi' },
+  ]
   const [runs, setRuns] = useState<ScanRun[]>([])
   const [loading, setLoading] = useState(false)
   const [stopping, setStopping] = useState<string | null>(null)
@@ -111,7 +114,7 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
       for (const run of next) {
         const prev = prevRunsRef.current.find((r) => r.id === run.id)
         if (prev?.status === 'running' && run.status === 'error') {
-          toast.error(`Scan failed: ${run.error ?? 'unknown error'}`)
+          toast.error(t('Scan failed: {error}', { error: run.error ?? t('unknown error') }))
         }
         if (prev?.status === 'running' && run.status === 'done') {
           if (run.kind === 'zigbee' || run.kind === 'zwave' || run.kind === 'proxmox' || run.kind === 'unifi') {
@@ -119,9 +122,15 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
             // A done run can still carry a non-fatal advisory (e.g. Proxmox
             // imported hosts but the token couldn't see any VMs/LXC).
             if (run.error) {
-              toast.warning(`${label} import: ${run.error}`)
+              toast.warning(t('{kind} import: {error}', { kind: label, error: run.error }))
             } else {
-              toast.success(`${label} import done — ${run.devices_found} device${run.devices_found !== 1 ? 's' : ''}`)
+              toast.success(
+                t('{kind} import done — {count} device{plural}', {
+                  kind: label,
+                  count: run.devices_found,
+                  plural: run.devices_found !== 1 ? 's' : '',
+                }),
+              )
             }
           }
           useCanvasStore.getState().notifyScanDeviceFound()
@@ -130,7 +139,7 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
       prevRunsRef.current = next
       setRuns(next)
     } catch {
-      toast.error('Failed to load scan history')
+      toast.error(t('Failed to load scan history'))
     } finally {
       setLoading(false)
     }
@@ -166,9 +175,9 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
     setStopping(runId)
     try {
       await scanApi.stop(runId)
-      toast.success('Scan stop requested')
+      toast.success(t('Scan stop requested'))
     } catch {
-      toast.error('Failed to stop scan')
+      toast.error(t('Failed to stop scan'))
     } finally {
       setStopping(null)
     }
@@ -191,20 +200,22 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
           <div className="flex items-center justify-between gap-3">
             <DialogTitle className="text-base font-semibold flex items-center gap-2">
               <Clock size={16} className="text-[#00d4ff]" />
-              Scan History
+              {t('Scan History')}
               <span className="text-muted-foreground font-normal text-xs">
-                ({filtered.length}{filtered.length !== runs.length && ` of ${runs.length}`})
+                ({filtered.length !== runs.length
+                  ? t('{shown} of {total}', { shown: filtered.length, total: runs.length })
+                  : filtered.length})
               </span>
             </DialogTitle>
             <div className="flex items-center gap-1">
-              <button onClick={load} className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors" title="Refresh">
+              <button onClick={load} className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors" title={t('Refresh')}>
                 <RefreshCw size={14} className={loading ? 'animate-spin' : undefined} />
               </button>
               <DialogClose
                 render={
                   <button
                     className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors"
-                    aria-label="Close"
+                    aria-label={t('Close')}
                   />
                 }
               >
@@ -217,16 +228,16 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
         {/* Filters */}
         <div className="px-4 py-2 border-b border-border bg-[#161b22] shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Type</span>
-            {KIND_FILTERS.map((f) => (
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('Type')}</span>
+            {kindFilters.map((f) => (
               <FilterChip key={f.key} active={kindFilter === f.key} onClick={() => setKindFilter(f.key)}>
                 {f.label}
               </FilterChip>
             ))}
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Status</span>
-            {STATUS_FILTERS.map((f) => (
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('Status')}</span>
+            {statusFilters.map((f) => (
               <FilterChip key={f.key} active={statusFilter === f.key} onClick={() => setStatusFilter(f.key)}>
                 {f.label}
               </FilterChip>
@@ -244,7 +255,7 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
           {!loading && filtered.length === 0 && (
             <div className="flex flex-col items-center gap-2 py-12 text-muted-foreground">
               <Inbox size={28} className="opacity-50" />
-              <p className="text-sm">{runs.length === 0 ? 'No scans yet' : 'No scans match the filters'}</p>
+              <p className="text-sm">{runs.length === 0 ? t('No scans yet') : t('No scans match the filters')}</p>
             </div>
           )}
           {filtered.map((r) => {
@@ -255,7 +266,7 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
               <div key={r.id} className="rounded-lg border border-border bg-[#161b22] p-3">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: statusColor(r.status) }} />
-                  <span className="font-mono text-sm text-foreground capitalize">{r.status}</span>
+                  <span className="font-mono text-sm text-foreground">{statusLabel(r.status)}</span>
                   {r.status === 'running' && <Loader2 size={12} className="animate-spin text-[#e3b341]" />}
                   <span
                     className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider"
@@ -265,13 +276,13 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
                     {meta.label}
                   </span>
                   <span className="ml-auto text-xs text-muted-foreground font-mono">
-                    {r.devices_found} found
+                    {t('{count} found', { count: r.devices_found })}
                   </span>
                   {r.status === 'running' && (
                     <Tooltip>
                       <TooltipTrigger>
                         <button
-                          aria-label="Stop scan"
+                          aria-label={t('Stop scan')}
                           onClick={() => handleStop(r.id)}
                           disabled={stopping === r.id}
                           className="p-1 text-[#f85149] hover:bg-[#f85149]/10 rounded transition-colors disabled:opacity-50"
@@ -281,25 +292,25 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
                             : <StopCircle size={13} />}
                         </button>
                       </TooltipTrigger>
-                      <TooltipContent side="left">Stop scan</TooltipContent>
+                      <TooltipContent side="left">{t('Stop scan')}</TooltipContent>
                     </Tooltip>
                   )}
                 </div>
 
                 {/* Meta grid */}
                 <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                  <Meta label="Started" value={new Date(parseUtc(r.started_at)).toLocaleString()} />
+                  <Meta label={t('Started')} value={new Date(parseUtc(r.started_at)).toLocaleString()} />
                   <Meta
-                    label="Finished"
+                    label={t('Finished')}
                     value={r.finished_at ? new Date(parseUtc(r.finished_at)).toLocaleString() : '—'}
                   />
-                  <Meta label="Duration" value={runDuration(r, now)} mono />
-                  <Meta label="Devices" value={`${r.devices_found}`} mono />
+                  <Meta label={t('Duration')} value={runDuration(r, now)} mono />
+                  <Meta label={t('Devices')} value={`${r.devices_found}`} mono />
                 </div>
 
                 {r.ranges.length > 0 && (
                   <div className="mt-2 text-[11px]">
-                    <span className="text-muted-foreground">Ranges: </span>
+                    <span className="text-muted-foreground">{t('Ranges:')} </span>
                     <span className="text-[#8b949e] font-mono break-all">{r.ranges.join(', ')}</span>
                   </div>
                 )}

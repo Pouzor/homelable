@@ -1,4 +1,5 @@
 import type { Node } from '@xyflow/react'
+import { t } from '@/i18n'
 
 import type { Design, InventoryEntry, NodeData } from '@/types'
 import { ipToInt, parseCidr } from '@/utils/subnet'
@@ -175,11 +176,11 @@ export function bucketsFor(
     case 'subnet':
       return subnetsOf(device, context.ranges ?? [])
     case 'canvas':
-      return [facts?.canvas || 'Not on this canvas']
+      return [facts?.canvas || t('Not on this canvas')]
     case 'rack':
-      return [context.racksByDevice?.[device.id] || 'Not racked']
+      return [context.racksByDevice?.[device.id] || t('Not racked')]
     case 'vendor':
-      return [device.vendor || 'Unknown vendor']
+      return [device.vendor || t('Unknown vendor')]
     case 'source': {
       const sources = device.discovery_sources?.length
         ? device.discovery_sources
@@ -192,7 +193,7 @@ export function bucketsFor(
       return doc?.tags?.length ? doc.tags : ['Untagged']
     case 'flat':
     default:
-      return ['All devices']
+      return [t('All devices')]
   }
 }
 
@@ -208,7 +209,7 @@ export function docState(
 }
 
 export function deviceLabel(device: InventoryEntry): string {
-  return device.label || device.friendly_name || device.hostname || device.ip || 'Unnamed device'
+  return device.label || device.friendly_name || device.hostname || device.ip || t('Unnamed device')
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
@@ -333,7 +334,7 @@ export function buildLinkedDocTree(
       icon: doc.icon,
     }
     const buckets =
-      groupBy === 'tag' ? (doc.tags?.length ? doc.tags : ['Untagged']) : ['All documents']
+      groupBy === 'tag' ? (doc.tags?.length ? doc.tags : ['Untagged']) : [t('All documents')]
     for (const bucket of buckets) {
       const items = groups.get(bucket) ?? []
       items.push(leaf)

@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { errorMessage as message } from '@/i18n/errorMessage'
+import { t } from '@/i18n'
 
 import { docsviewApi } from '@/api/client'
 import type { Doc, DocRevision, DocumentSummary } from './types'
@@ -58,10 +60,7 @@ export interface PublicDocsState {
   toggleExpanded: (key: string) => void
 }
 
-function message(error: unknown, fallback: string): string {
-  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
-  return typeof detail === 'string' ? detail : fallback
-}
+
 
 export const usePublicDocsStore = create<PublicDocsState>()((set, get) => ({
   key: '',
@@ -92,7 +91,7 @@ export const usePublicDocsStore = create<PublicDocsState>()((set, get) => ({
         loading: false,
         loaded: true,
         docs: [],
-        error: message(error, 'Could not load the documentation'),
+        error: message(error, t('Could not load the documentation')),
       })
     }
   },
@@ -111,7 +110,7 @@ export const usePublicDocsStore = create<PublicDocsState>()((set, get) => ({
       const { data } = await docsviewApi.get(get().key, id)
       set({ openDoc: data, openLoading: false })
     } catch (error) {
-      set({ openLoading: false, error: message(error, 'Could not open that document') })
+      set({ openLoading: false, error: message(error, t('Could not open that document')) })
     }
   },
 

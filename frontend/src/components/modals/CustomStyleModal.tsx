@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { t, useLocale } from '@/i18n'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { MIN_HANDLES, clampHandles, sideDefault } from '@/utils/handleUtils'
@@ -25,15 +26,29 @@ import { MarkerShapePicker } from './MarkerShapePicker'
 
 // ── Node types exposed for custom style, grouped by category (skip groupRect/group) ──
 
-const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
-  { label: 'Hardware',       types: ['isp', 'router', 'firewall', 'switch', 'server', 'nas', 'kvm', 'ap', 'printer'] },
-  { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker_host', 'docker_container'] },
-  { label: 'IoT',            types: ['iot', 'camera', 'cpl'] },
-  { label: 'Zigbee',         types: ['zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice'] },
-  { label: 'Z-Wave',         types: ['zwave_coordinator', 'zwave_router', 'zwave_enddevice'] },
-  { label: 'Personal',       types: ['computer', 'laptop', 'mobile'] },
-  { label: 'Generic',        types: ['generic'] },
+const NODE_TYPE_GROUPS: { types: NodeType[] }[] = [
+  { types: ['isp', 'router', 'firewall', 'switch', 'server', 'nas', 'kvm', 'ap', 'printer'] },
+  { types: ['proxmox', 'vm', 'lxc', 'docker_host', 'docker_container'] },
+  { types: ['iot', 'camera', 'cpl'] },
+  { types: ['zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice'] },
+  { types: ['zwave_coordinator', 'zwave_router', 'zwave_enddevice'] },
+  { types: ['computer', 'laptop', 'mobile'] },
+  { types: ['generic'] },
 ]
+
+/** The group captions, written out so each is a dictionary-checkable literal.
+ *  Zigbee / Z-Wave are protocol names and stay verbatim. */
+function groupLabel(index: number): string {
+  switch (index) {
+    case 0: return t('Hardware')
+    case 1: return t('Virtualization')
+    case 2: return t('IoT')
+    case 3: return t('Zigbee')
+    case 4: return t('Z-Wave')
+    case 5: return t('Personal')
+    default: return t('Generic')
+  }
+}
 
 const EDITABLE_EDGE_TYPES: EdgeType[] = ['ethernet', 'wifi', 'iot', 'vlan', 'virtual', 'cluster', 'fibre', 'electrical', 'zigbee_mesh']
 
@@ -160,30 +175,31 @@ interface NodeEditorProps {
 }
 
 function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditorProps) {
+  useLocale()
   const set = useCallback(<K extends keyof NodeTypeStyle>(k: K, v: NodeTypeStyle[K]) => {
     onChange({ ...style, [k]: v })
   }, [style, onChange])
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="text-sm font-semibold text-[#e6edf3]">{NODE_TYPE_LABELS[nodeType]}</div>
+      <div className="text-sm font-semibold text-[#e6edf3]">{t(NODE_TYPE_LABELS[nodeType])}</div>
       <div className="flex flex-col gap-3">
         <ColorRow
-          label="Border"
+          label={t('Border')}
           color={style.borderColor}
           opacity={style.borderOpacity}
           onColorChange={(v) => set('borderColor', v)}
           onOpacityChange={(v) => set('borderOpacity', v)}
         />
         <ColorRow
-          label="Background"
+          label={t('Background')}
           color={style.bgColor}
           opacity={style.bgOpacity}
           onColorChange={(v) => set('bgColor', v)}
           onOpacityChange={(v) => set('bgOpacity', v)}
         />
         <ColorRow
-          label="Icon"
+          label={t('Icon')}
           color={style.iconColor}
           opacity={style.iconOpacity}
           onColorChange={(v) => set('iconColor', v)}
@@ -192,8 +208,8 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
       </div>
 
       <div className="border-t border-[#30363d] pt-3">
-        <div className="text-xs text-[#8b949e] mb-1">Default size</div>
-        <div className="text-xs text-[#8b949e]/60 mb-2">0 = auto (min 140 × 50 px, grows with content)</div>
+        <div className="text-xs text-[#8b949e] mb-1">{t('Default size')}</div>
+        <div className="text-xs text-[#8b949e]/60 mb-2">{t('0 = auto (min 140 × 50 px, grows with content)')}</div>
         <div className="flex gap-3">
           <div className="flex items-center gap-2">
             <span className="text-xs text-[#8b949e]">W</span>
@@ -221,14 +237,14 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
       </div>
 
       <div className="border-t border-[#30363d] pt-3">
-        <div className="text-xs text-[#8b949e] mb-1">Default connection points</div>
-        <div className="text-xs text-[#8b949e]/60 mb-2">New {NODE_TYPE_LABELS[nodeType]} nodes start with these (0–64 per side)</div>
+        <div className="text-xs text-[#8b949e] mb-1">{t('Default connection points')}</div>
+        <div className="text-xs text-[#8b949e]/60 mb-2">{t('New {type} nodes start with these (0–64 per side)', { type: t(NODE_TYPE_LABELS[nodeType]) })}</div>
         <div className="grid grid-cols-2 gap-2">
           {([
-            ['Top', 'top', 'topHandles'],
-            ['Right', 'right', 'rightHandles'],
-            ['Bottom', 'bottom', 'bottomHandles'],
-            ['Left', 'left', 'leftHandles'],
+            [t('Top'), 'top', 'topHandles'],
+            [t('Right'), 'right', 'rightHandles'],
+            [t('Bottom'), 'bottom', 'bottomHandles'],
+            [t('Left'), 'left', 'leftHandles'],
           ] as const).map(([label, side, key]) => (
             <div key={side} className="flex items-center gap-2">
               <span className="text-xs text-[#8b949e] w-12">{label}</span>
@@ -239,7 +255,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
                 step={1}
                 value={style[key] ?? sideDefault(side)}
                 onChange={(e) => set(key, clampHandles(side, parseInt(e.target.value, 10)))}
-                aria-label={`${label} default connection points`}
+                aria-label={t('{label} default connection points', { label })}
                 className="w-16 h-7 text-xs bg-[#0d1117] border border-[#30363d] rounded px-2 text-[#e6edf3]"
               />
             </div>
@@ -252,7 +268,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
         className="self-start bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
         onClick={onApplyToExisting}
       >
-        Apply to existing {NODE_TYPE_LABELS[nodeType]} nodes
+        {t('Apply to existing {type} nodes', { type: t(NODE_TYPE_LABELS[nodeType]) })}
       </Button>
     </div>
   )
@@ -268,6 +284,7 @@ interface EdgeEditorProps {
 }
 
 function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditorProps) {
+  useLocale()
   const set = useCallback(<K extends keyof EdgeTypeStyle>(k: K, v: EdgeTypeStyle[K]) => {
     onChange({ ...style, [k]: v })
   }, [style, onChange])
@@ -277,7 +294,7 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
       <div className="text-sm font-semibold text-[#e6edf3]">{EDGE_TYPE_LABELS[edgeType]}</div>
       <div className="flex flex-col gap-3">
         <ColorRow
-          label="Color"
+          label={t('Color')}
           color={style.color}
           opacity={style.opacity}
           onColorChange={(v) => set('color', v)}
@@ -288,7 +305,7 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
       <div className="border-t border-[#30363d] pt-3 flex flex-col gap-3">
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-[#8b949e]">Line style</span>
+            <span className="text-xs text-[#8b949e]">{t('Line style')}</span>
             <EdgeLineSwatch
               color={applyOpacity(style.color, style.opacity)}
               lineStyle={style.lineStyle}
@@ -317,7 +334,7 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
 
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-[#8b949e]">Line width</span>
+            <span className="text-xs text-[#8b949e]">{t('Line width')}</span>
             <span className="text-xs text-[#8b949e]">{style.widthMult}×</span>
           </div>
           <input
@@ -327,13 +344,13 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
             step={1}
             value={style.widthMult}
             onChange={(e) => set('widthMult', clampWidthMult(parseInt(e.target.value, 10)))}
-            aria-label="Line width multiplier"
+            aria-label={t('Line width multiplier')}
             className="w-full h-1 accent-[#00d4ff]"
           />
         </div>
 
         <div>
-          <div className="text-xs text-[#8b949e] mb-2">Path style</div>
+          <div className="text-xs text-[#8b949e] mb-2">{t('Path style')}</div>
           <div className="flex gap-2">
             {(['bezier', 'smooth'] as EdgePathStyle[]).map((ps) => (
               <button
@@ -347,31 +364,31 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
                   color: style.pathStyle === ps ? '#00d4ff' : '#8b949e',
                 }}
               >
-                {ps.charAt(0).toUpperCase() + ps.slice(1)}
+                {t(ps === 'bezier' ? 'Bezier' : 'Smooth')}
               </button>
             ))}
           </div>
         </div>
 
         <div>
-          <div className="text-xs text-[#8b949e] mb-2">Animation</div>
+          <div className="text-xs text-[#8b949e] mb-2">{t('Animation')}</div>
           <select
             value={style.animated}
             onChange={(e) => set('animated', e.target.value as EdgeTypeStyle['animated'])}
             className="w-full h-7 text-xs bg-[#0d1117] border border-[#30363d] rounded px-2 text-[#e6edf3]"
           >
-            <option value="none">None</option>
-            <option value="basic">Basic</option>
-            <option value="flow">Flow</option>
-            <option value="snake">Snake</option>
+            <option value="none">{t('None')}</option>
+            <option value="basic">{t('Basic')}</option>
+            <option value="flow">{t('Flow')}</option>
+            <option value="snake">{t('Snake')}</option>
           </select>
         </div>
 
         <div>
-          <div className="text-xs text-[#8b949e] mb-2">Endpoints</div>
+          <div className="text-xs text-[#8b949e] mb-2">{t('Endpoints')}</div>
           <div className="flex flex-col gap-1.5">
-            <MarkerShapePicker label="Start" value={style.arrowStart} onChange={(s) => set('arrowStart', s)} />
-            <MarkerShapePicker label="End" value={style.arrowEnd} onChange={(s) => set('arrowEnd', s)} />
+            <MarkerShapePicker label={t('Start')} value={style.arrowStart} onChange={(s) => set('arrowStart', s)} />
+            <MarkerShapePicker label={t('End')} value={style.arrowEnd} onChange={(s) => set('arrowEnd', s)} />
           </div>
         </div>
 
@@ -386,7 +403,7 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
               onChange={(e) => set('showLqi', e.target.checked)}
               className="accent-[#00d4ff] cursor-pointer"
             />
-            Show LQI on the link
+            {t('Show LQI on the link')}
           </label>
         )}
       </div>
@@ -396,7 +413,7 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
         className="self-start bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
         onClick={onApplyToExisting}
       >
-        Apply to existing {EDGE_TYPE_LABELS[edgeType]} edges
+        {t('Apply to existing {type} edges', { type: EDGE_TYPE_LABELS[edgeType] })}
       </Button>
     </div>
   )
@@ -415,6 +432,7 @@ interface CustomStyleModalProps {
 }
 
 export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyleModalProps) {
+  useLocale()
   const { customStyle, setCustomStyle } = useThemeStore()
   const { markUnsaved, applyTypeNodeStyle, applyTypeEdgeStyle, applyAllCustomStyles } = useCanvasStore()
 
@@ -460,22 +478,21 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
   const handleEdgeChange = (t: EdgeType, s: EdgeTypeStyle) =>
     setDraft((d) => ({ ...d, edges: { ...d.edges, [t]: s } }))
 
-  const handleApplyNodeType = (t: NodeType) => {
-    const style = getNodeStyle(t)
-    applyTypeNodeStyle(t, style)
-    toast.success(`Applied style to all ${NODE_TYPE_LABELS[t]} nodes`)
+  // Params are `type`, not `t`: `t` is the translator inside this component.
+  const handleApplyNodeType = (type: NodeType) => {
+    applyTypeNodeStyle(type, getNodeStyle(type))
+    toast.success(t('Applied style to all {type} nodes', { type: t(NODE_TYPE_LABELS[type]) }))
   }
 
-  const handleApplyEdgeType = (t: EdgeType) => {
-    const style = getEdgeStyle(t)
-    applyTypeEdgeStyle(t, style)
-    toast.success(`Applied style to all ${EDGE_TYPE_LABELS[t]} edges`)
+  const handleApplyEdgeType = (type: EdgeType) => {
+    applyTypeEdgeStyle(type, getEdgeStyle(type))
+    toast.success(t('Applied style to all {type} edges', { type: EDGE_TYPE_LABELS[type] }))
   }
 
   const handleSave = () => {
     setCustomStyle(draft)
     markUnsaved()
-    toast.success('Custom style saved — save your canvas to persist')
+    toast.success(t('Custom style saved — save your canvas to persist'))
     onClose()
   }
 
@@ -483,7 +500,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
     setCustomStyle(draft)
     applyAllCustomStyles(draft)
     markUnsaved()
-    toast.success('Custom style applied to all nodes and edges')
+    toast.success(t('Custom style applied to all nodes and edges'))
     onClose()
   }
 
@@ -494,7 +511,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
     <Dialog open={open} onOpenChange={handleOpen}>
       <DialogContent className="bg-[#161b22] border-[#30363d] max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-[#30363d]">
-          <DialogTitle className="text-sm font-semibold">Custom Style Editor</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">{t('Custom Style Editor')}</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-1 overflow-hidden min-h-0">
@@ -502,42 +519,42 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
           <div className="w-52 shrink-0 border-r border-[#30363d] flex flex-col overflow-hidden">
             {/* Tabs */}
             <div className="flex border-b border-[#30363d]">
-              {(['nodes', 'edges'] as Tab[]).map((t) => (
+              {(['nodes', 'edges'] as Tab[]).map((tabKey) => (
                 <button
-                  key={t}
+                  key={tabKey}
                   type="button"
-                  onClick={() => { setTab(t); setSelection(null) }}
+                  onClick={() => { setTab(tabKey); setSelection(null) }}
                   className="flex-1 py-2 text-xs font-medium transition-colors"
                   style={{
-                    borderBottom: tab === t ? '2px solid #00d4ff' : '2px solid transparent',
-                    color: tab === t ? '#00d4ff' : '#8b949e',
+                    borderBottom: tab === tabKey ? '2px solid #00d4ff' : '2px solid transparent',
+                    color: tab === tabKey ? '#00d4ff' : '#8b949e',
                   }}
                 >
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                  {t(tabKey === 'nodes' ? 'Nodes' : 'Edges')}
                 </button>
               ))}
             </div>
 
             {/* Type list */}
             <div className="flex-1 overflow-y-auto py-1">
-              {tab === 'nodes' && NODE_TYPE_GROUPS.map((group) => (
-                <Fragment key={group.label}>
+              {tab === 'nodes' && NODE_TYPE_GROUPS.map((group, gi) => (
+                <Fragment key={group.types[0]}>
                   <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#8b949e]/60">
-                    {group.label}
+                    {groupLabel(gi)}
                   </div>
-                  {group.types.map((t) => {
-                    const Icon = NODE_ICONS[t] ?? Circle
-                    const style = draft.nodes[t]
-                    const isSelected = selection?.kind === 'node' && selection.type === t
+                  {group.types.map((nodeType) => {
+                    const Icon = NODE_ICONS[nodeType] ?? Circle
+                    const style = draft.nodes[nodeType]
+                    const isSelected = selection?.kind === 'node' && selection.type === nodeType
                     const swatchColor = style
                       ? applyOpacity(style.borderColor, style.borderOpacity)
-                      : THEMES.default.colors.nodeAccents[t]?.border ?? '#8b949e'
+                      : THEMES.default.colors.nodeAccents[nodeType]?.border ?? '#8b949e'
 
                     return (
                       <button
-                        key={t}
+                        key={nodeType}
                         type="button"
-                        onClick={() => setSelection({ kind: 'node', type: t })}
+                        onClick={() => setSelection({ kind: 'node', type: nodeType })}
                         className="w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors text-left"
                         style={{
                           background: isSelected ? '#21262d' : 'transparent',
@@ -545,7 +562,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
                         }}
                       >
                         <Icon size={13} />
-                        <span className="flex-1 truncate">{NODE_TYPE_LABELS[t]}</span>
+                        <span className="flex-1 truncate">{t(NODE_TYPE_LABELS[nodeType])}</span>
                         <span
                           className="w-2.5 h-2.5 rounded-full shrink-0"
                           style={{ background: swatchColor }}
@@ -556,31 +573,31 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
                 </Fragment>
               ))}
 
-              {tab === 'edges' && EDITABLE_EDGE_TYPES.map((t) => {
-                const style = draft.edges[t]
-                const isSelected = selection?.kind === 'edge' && selection.type === t
+              {tab === 'edges' && EDITABLE_EDGE_TYPES.map((edgeType) => {
+                const style = draft.edges[edgeType]
+                const isSelected = selection?.kind === 'edge' && selection.type === edgeType
                 const swatchColor = style
                   ? applyOpacity(style.color, style.opacity)
-                  : THEMES.default.colors.edgeColors[t]
-                const lineStyle = style?.lineStyle ?? EDGE_TYPE_DEFAULT_LINE[t]
+                  : THEMES.default.colors.edgeColors[edgeType]
+                const lineStyle = style?.lineStyle ?? EDGE_TYPE_DEFAULT_LINE[edgeType]
                 const widthMult = clampWidthMult(style?.widthMult)
 
                 return (
                   <button
-                    key={t}
+                    key={edgeType}
                     type="button"
-                    onClick={() => setSelection({ kind: 'edge', type: t })}
+                    onClick={() => setSelection({ kind: 'edge', type: edgeType })}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors text-left"
                     style={{
                       background: isSelected ? '#21262d' : 'transparent',
                       color: isSelected ? '#e6edf3' : '#8b949e',
                     }}
                   >
-                    <span className="flex-1 truncate">{EDGE_TYPE_LABELS[t]}</span>
+                    <span className="flex-1 truncate">{EDGE_TYPE_LABELS[edgeType]}</span>
                     <EdgeLineSwatch
                       color={swatchColor}
                       lineStyle={lineStyle}
-                      strokeWidth={EDGE_TYPE_BASE_WIDTH[t] * widthMult}
+                      strokeWidth={EDGE_TYPE_BASE_WIDTH[edgeType] * widthMult}
                     />
                   </button>
                 )
@@ -592,7 +609,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
           <div className="flex-1 overflow-y-auto p-5">
             {!selection && (
               <div className="flex items-center justify-center h-full text-xs text-[#8b949e]">
-                Select a {tab === 'nodes' ? 'node type' : 'edge type'} from the list to edit its style
+                {t('Select a {kind} from the list to edit its style', { kind: tab === 'nodes' ? t('node type') : t('edge type') })}
               </div>
             )}
 
@@ -627,7 +644,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
             className="text-muted-foreground hover:text-foreground"
             onClick={onClose}
           >
-            Cancel
+            {t('Cancel')}
           </Button>
           <div className="flex gap-2">
             <Button
@@ -637,7 +654,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
               className="border-[#30363d] text-[#e6edf3] hover:bg-[#21262d]"
               onClick={handleSave}
             >
-              Save Custom Style
+              {t('Save Custom Style')}
             </Button>
             <Button
               type="button"
@@ -645,7 +662,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
               className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
               onClick={handleApplyAll}
             >
-              Apply All to Canvas
+              {t('Apply All to Canvas')}
             </Button>
           </div>
         </div>

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { errorMessage } from '@/i18n/errorMessage'
 import { Network, Router, Cpu, CheckCircle2, XCircle, Loader2, Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { zigbeeApi } from '@/api/client'
+import { t, useLocale } from '@/i18n'
 import { pollImportJob, PollAbortedError } from '@/utils/importJobPoll'
 import { toast } from 'sonner'
 import type { ZigbeeNode, ZigbeeEdge } from './types'
@@ -50,12 +52,6 @@ const DEVICE_TYPE_ICON = {
   zigbee_enddevice: Cpu,
 } as const
 
-const DEVICE_TYPE_LABEL = {
-  zigbee_coordinator: 'Coordinator',
-  zigbee_router: 'Router',
-  zigbee_enddevice: 'End Device',
-} as const
-
 const DEVICE_TYPE_COLOR = {
   zigbee_coordinator: '#00d4ff',
   zigbee_router: '#39d353',
@@ -63,6 +59,7 @@ const DEVICE_TYPE_COLOR = {
 } as const
 
 export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImported }: ZigbeeImportModalProps) {
+  useLocale()
   const [form, setForm] = useState<ConnectionForm>(DEFAULT_FORM)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
   const [connectionMsg, setConnectionMsg] = useState('')
@@ -71,6 +68,13 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
   const [edges, setEdges] = useState<ZigbeeEdge[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [importMode, setImportMode] = useState<ImportMode>('pending')
+  // Built inside the component so the labels go through `t`; a module-level
+  // table would be created once at import, before the locale is known.
+  const deviceTypeLabel = {
+    zigbee_coordinator: t('Coordinator'),
+    zigbee_router: t('Router'),
+    zigbee_enddevice: t('End Device'),
+  } as const
   // Aborts the canvas-import poll loop when the modal closes or unmounts.
   const pollAbort = useRef<AbortController | null>(null)
 
@@ -110,7 +114,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
   })
 
   const handleTestConnection = async () => {
-    if (!form.mqtt_host.trim()) { toast.error('Enter a broker hostname'); return }
+    if (!form.mqtt_host.trim()) { toast.error(t('Enter a broker hostname')); return }
     setConnectionStatus('testing')
     try {
       const res = await zigbeeApi.testConnection({
@@ -130,24 +134,24 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
       }
     } catch {
       setConnectionStatus('fail')
-      setConnectionMsg('Request failed — check broker address')
+      setConnectionMsg(t('Request failed — check broker address'))
     }
   }
 
   const extractError = (err: unknown): string | undefined => {
     if (err && typeof err === 'object' && 'response' in err) {
-      return (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      return errorMessage(err, 'Could not reach the Zigbee mesh')
     }
     return undefined
   }
 
   const handleFetchDevices = async () => {
-    if (!form.mqtt_host.trim()) { toast.error('Enter a broker hostname'); return }
+    if (!form.mqtt_host.trim()) { toast.error(t('Enter a broker hostname')); return }
     setLoading(true)
     try {
       if (importMode === 'pending') {
         await zigbeeApi.importToPending(buildPayload())
-        toast.success('Zigbee import started — track progress in Scan History')
+        toast.success(t('Zigbee import started — track progress in Scan History'))
         onInventoryImported?.(null)
         handleClose()
       } else {
@@ -165,14 +169,17 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
         setEdges(result.edges)
         setChecked(new Set(result.nodes.map((n) => n.id)))
         if (result.device_count === 0) {
-          toast.info('No Zigbee devices found in the network map')
+          toast.info(t('No Zigbee devices found in the network map'))
         } else {
-          toast.success(`Found ${result.device_count} device${result.device_count !== 1 ? 's' : ''}`)
+          toast.success(t('Found {count} device{plural}', {
+            count: result.device_count,
+            plural: result.device_count !== 1 ? 's' : '',
+          }))
         }
       }
     } catch (err: unknown) {
       if (err instanceof PollAbortedError) return
-      toast.error(extractError(err) ?? 'Failed to fetch Zigbee devices')
+      toast.error(extractError(err) ?? t('Failed to fetch Zigbee devices'))
     } finally {
       setLoading(false)
     }
@@ -194,7 +201,10 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
     const selectedIds = new Set(selectedDevices.map((d) => d.id))
     const selectedEdges = edges.filter((e) => selectedIds.has(e.source) && selectedIds.has(e.target))
     onAddToCanvas(selectedDevices, selectedEdges)
-    toast.success(`Added ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''} to canvas`)
+    toast.success(t('Added {count} device{plural} to canvas', {
+      count: selectedDevices.length,
+      plural: selectedDevices.length !== 1 ? 's' : '',
+    }))
     onClose()
   }
 
@@ -222,7 +232,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Network size={16} className="text-[#00d4ff]" />
-            Zigbee2MQTT Import
+            {t('Zigbee2MQTT Import')}
           </DialogTitle>
         </DialogHeader>
 
@@ -231,7 +241,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
               <div className="col-span-2 space-y-1">
-                <Label className="text-xs text-muted-foreground">Broker Host</Label>
+                <Label className="text-xs text-muted-foreground">{t('Broker Host')}</Label>
                 <Input
                   value={form.mqtt_host}
                   onChange={(e) => updateField('mqtt_host', e.target.value)}
@@ -240,7 +250,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Port</Label>
+                <Label className="text-xs text-muted-foreground">{t('Port')}</Label>
                 <Input
                   value={form.mqtt_port}
                   onChange={(e) => updateField('mqtt_port', e.target.value)}
@@ -250,7 +260,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Base Topic</Label>
+                <Label className="text-xs text-muted-foreground">{t('Base Topic')}</Label>
                 <Input
                   value={form.base_topic}
                   onChange={(e) => updateField('base_topic', e.target.value)}
@@ -259,7 +269,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Username (optional)</Label>
+                <Label className="text-xs text-muted-foreground">{t('Username (optional)')}</Label>
                 <Input
                   value={form.mqtt_username}
                   onChange={(e) => updateField('mqtt_username', e.target.value)}
@@ -268,7 +278,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Password (optional)</Label>
+                <Label className="text-xs text-muted-foreground">{t('Password (optional)')}</Label>
                 <Input
                   value={form.mqtt_password}
                   onChange={(e) => updateField('mqtt_password', e.target.value)}
@@ -286,7 +296,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                     onChange={(e) => toggleTls(e.target.checked)}
                     className="w-3 h-3 accent-[#00d4ff] cursor-pointer"
                   />
-                  Use TLS (port 8883)
+                  {t('Use TLS (port 8883)')}
                 </label>
                 <label
                   className={`flex items-center gap-1.5 text-xs cursor-pointer ${
@@ -302,7 +312,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                     }
                     className="w-3 h-3 accent-[#f85149] cursor-pointer disabled:cursor-not-allowed"
                   />
-                  Skip cert verify (self-signed only)
+                  {t('Skip cert verify (self-signed only)')}
                 </label>
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                   <input
@@ -313,8 +323,8 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                     }
                     className="w-3 h-3 accent-[#a855f7] cursor-pointer"
                   />
-                  Import mesh links
-                  <span className="text-muted-foreground/50">(neighbour links — many more edges)</span>
+                  {t('Import mesh links')}
+                  <span className="text-muted-foreground/50">{t('(neighbour links — many more edges)')}</span>
                 </label>
               </div>
             </div>
@@ -331,12 +341,12 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                 {connectionStatus === 'testing' && <Loader2 size={12} className="animate-spin" />}
                 {connectionStatus === 'ok' && <CheckCircle2 size={12} />}
                 {connectionStatus === 'fail' && <XCircle size={12} />}
-                <span>{connectionStatus === 'testing' ? 'Testing…' : connectionMsg}</span>
+                <span>{connectionStatus === 'testing' ? t('Testing…') : connectionMsg}</span>
               </div>
             )}
 
             <div className="space-y-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5">
-              <span className="block text-xs text-muted-foreground">Send devices to</span>
+              <span className="block text-xs text-muted-foreground">{t('Send devices to')}</span>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
                 <label className="flex items-center gap-1.5 cursor-pointer text-foreground">
                   <input
@@ -346,7 +356,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                     onChange={() => setImportMode('pending')}
                     className="accent-[#00d4ff] cursor-pointer"
                   />
-                  Device inventory only
+                  {t('Device inventory only')}
                 </label>
                 <label className="flex items-center gap-1.5 cursor-pointer text-foreground">
                   <input
@@ -356,7 +366,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                     onChange={() => setImportMode('canvas')}
                     className="accent-[#00d4ff] cursor-pointer"
                   />
-                  Inventory + canvas
+                  {t('Inventory + canvas')}
                 </label>
               </div>
             </div>
@@ -371,7 +381,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                 {connectionStatus === 'testing'
                   ? <Loader2 size={13} className="animate-spin" />
                   : <CheckCircle2 size={13} />}
-                Test Connection
+                {t('Test Connection')}
               </Button>
               <Button
                 size="sm"
@@ -381,11 +391,11 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                 disabled={loading || connectionStatus === 'testing'}
               >
                 {loading ? <Loader2 size={13} className="animate-spin" /> : <Network size={13} />}
-                {importMode === 'pending' ? 'Import to Inventory' : 'Fetch Devices'}
+                {importMode === 'pending' ? t('Import to Inventory') : t('Fetch Devices')}
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground italic">
-              Fetching the network map can take several minutes on large meshes.
+              {t('Fetching the network map can take several minutes on large meshes.')}
             </p>
           </div>
 
@@ -400,10 +410,10 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                     ref={(el) => { if (el) el.indeterminate = checked.size > 0 && checked.size < devices.length }}
                     onChange={toggleAll}
                     className="w-3 h-3 accent-[#00d4ff] cursor-pointer"
-                    title="Select all"
+                    title={t('Select all')}
                   />
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    Devices ({checked.size}/{devices.length} selected)
+                    {t('Devices ({checked}/{total} selected)', { checked: checked.size, total: devices.length })}
                   </span>
                 </div>
               </div>
@@ -418,7 +428,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                       <div className="flex items-center gap-1.5 mb-1">
                         <Icon size={11} style={{ color }} />
                         <span className="text-[10px] font-medium uppercase tracking-wider" style={{ color }}>
-                          {DEVICE_TYPE_LABEL[type]} ({group.length})
+                          {deviceTypeLabel[type]} ({group.length})
                         </span>
                       </div>
                       {group.map((device) => (
@@ -465,7 +475,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
         </div>
 
         <DialogFooter className="gap-2 shrink-0 pt-2 border-t border-border">
-          <Button variant="ghost" onClick={handleClose}>Cancel</Button>
+          <Button variant="ghost" onClick={handleClose}>{t('Cancel')}</Button>
           {devices.length > 0 && (
             <Button
               onClick={handleAddToCanvas}
@@ -474,7 +484,7 @@ export function ZigbeeImportModal({ open, onClose, onAddToCanvas, onInventoryImp
               className="gap-1.5"
             >
               <Plus size={13} />
-              Add {checked.size} to Canvas
+              {t('Add {count} to Canvas', { count: checked.size })}
             </Button>
           )}
         </DialogFooter>

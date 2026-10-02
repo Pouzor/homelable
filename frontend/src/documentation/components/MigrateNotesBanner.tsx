@@ -1,6 +1,7 @@
 import { ArrowRight, StickyNote } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { t, useLocale } from '@/i18n'
 
 /**
  * The one-time move from `device_inventory.notes` to real documents.
@@ -10,17 +11,18 @@ import { Button } from '@/components/ui/button'
  * devices added later.
  */
 export function MigrateNotesBanner({ count, onMigrate }: { count: number; onMigrate: () => void }) {
+  useLocale()
   return (
     <div className="flex items-center gap-2 border-b border-border bg-primary/5 px-4 py-1.5 text-xs">
       <StickyNote size={13} className="shrink-0 text-primary" />
       <span>
         {count === 1
-          ? '1 device has notes that are not a document yet.'
-          : `${count} devices have notes that are not documents yet.`}{' '}
-        <span className="text-muted-foreground">The notes are copied, never moved.</span>
+          ? t('1 device has notes that are not a document yet.')
+          : t('{count} devices have notes that are not documents yet.', { count })}{' '}
+        <span className="text-muted-foreground">{t('The notes are copied, never moved.')}</span>
       </span>
       <Button size="xs" variant="secondary" className="ml-auto cursor-pointer gap-1" onClick={onMigrate}>
-        Migrate <ArrowRight size={11} />
+        {t('Migrate')} <ArrowRight size={11} />
       </Button>
     </div>
   )

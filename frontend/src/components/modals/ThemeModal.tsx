@@ -7,6 +7,7 @@ import { THEMES, THEME_ORDER, type ThemeId } from '@/utils/themes'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { CustomStyleModal } from './CustomStyleModal'
+import { t, useLocale } from '@/i18n'
 
 // Node-type accent colors to display as preview swatches
 const PREVIEW_TYPES = ['isp', 'server', 'proxmox', 'switch', 'iot'] as const
@@ -21,6 +22,7 @@ interface ThemeCardProps {
 }
 
 function ThemeCard({ themeId, selected, onClick, onKeyDown, buttonRef, onEdit }: ThemeCardProps) {
+  useLocale()
   const { customStyle } = useThemeStore()
   const preset = THEMES[themeId]
   const c = preset.colors
@@ -90,13 +92,13 @@ function ThemeCard({ themeId, selected, onClick, onKeyDown, buttonRef, onEdit }:
           className="text-sm font-semibold leading-tight wrap-break-word"
           style={{ color: c.nodeLabelColor }}
         >
-          {preset.label}
+          {t(preset.label)}
         </div>
         <div
           className="text-xs leading-snug mt-1 line-clamp-3 whitespace-normal wrap-break-word overflow-hidden min-h-12"
           style={{ color: c.nodeSubtextColor }}
         >
-          {preset.description}
+          {t(preset.description)}
         </div>
       </button>
 
@@ -105,7 +107,7 @@ function ThemeCard({ themeId, selected, onClick, onKeyDown, buttonRef, onEdit }:
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onEdit() }}
-          title="Edit custom style"
+          title={t('Edit custom style')}
           className="absolute bottom-2 right-2 flex items-center justify-center w-6 h-6 rounded-md transition-colors"
           style={{
             background: c.nodeCardBackground,
@@ -126,6 +128,7 @@ interface ThemeModalProps {
 }
 
 export function ThemeModal({ open, onClose }: ThemeModalProps) {
+  useLocale()
   const { activeTheme, setTheme } = useThemeStore()
   const { markUnsaved } = useCanvasStore()
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -168,7 +171,7 @@ export function ThemeModal({ open, onClose }: ThemeModalProps) {
     setTheme(selected)
     markUnsaved()
     onClose()
-    toast.info('Style applied — save your canvas to make it permanent', { duration: 5000 })
+    toast.info(t('Style applied — save your canvas to make it permanent'), { duration: 5000 })
   }
 
   const handleCancel = () => {
@@ -181,7 +184,7 @@ export function ThemeModal({ open, onClose }: ThemeModalProps) {
       <Dialog open={open} onOpenChange={(o) => { if (!o) handleCancel() }}>
         <DialogContent className="bg-[#161b22] border-[#30363d] w-fit max-w-[calc(100%-2rem)] sm:max-w-[50vw]">
           <DialogHeader>
-            <DialogTitle className="text-sm font-semibold">Choose Canvas Style</DialogTitle>
+            <DialogTitle className="text-sm font-semibold">{t('Choose Canvas Style')}</DialogTitle>
           </DialogHeader>
 
           <div className="flex items-stretch flex-nowrap gap-3 py-1 overflow-x-auto overflow-y-hidden pb-2 pr-1">
@@ -207,7 +210,7 @@ export function ThemeModal({ open, onClose }: ThemeModalProps) {
               className="text-muted-foreground hover:text-foreground"
               onClick={handleCancel}
             >
-              Cancel
+              {t('Cancel')}
             </Button>
             <Button
               type="button"
@@ -220,7 +223,7 @@ export function ThemeModal({ open, onClose }: ThemeModalProps) {
               }
               onClick={handleApply}
             >
-              Apply Style
+              {t('Apply Style')}
             </Button>
           </div>
         </DialogContent>

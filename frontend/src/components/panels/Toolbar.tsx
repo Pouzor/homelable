@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Save, LayoutDashboard, ChevronDown, Download, Palette, Undo2, Redo2, HelpCircle, FileDown, Upload, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/ui/Logo'
+import { LanguageSwitcher } from '@/i18n/LanguageSwitcher'
+import { t, useLocale } from '@/i18n'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import { useRackStore } from '@/rack/store'
@@ -24,6 +26,7 @@ interface ToolbarProps {
 }
 
 export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo, onRedo, onShortcuts, onExportYaml, onImportYaml, onViewOnly }: ToolbarProps) {
+  useLocale()
   const { hasUnsavedChanges: canvasDirty, past, future } = useCanvasStore()
   const isRack = useDesignStore((s) => s.activeDesignType) === 'rack'
   const rackDirty = useRackStore((s) => s.hasUnsavedChanges)
@@ -54,7 +57,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
             className="gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer hover:bg-[#21262d]"
             onClick={onUndo}
             disabled={past.length === 0}
-            title="Undo (Ctrl+Z)"
+            title={t('Undo (Ctrl+Z)')}
           >
             <Undo2 size={14} />
           </Button>
@@ -63,7 +66,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
             className="gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer hover:bg-[#21262d]"
             onClick={onRedo}
             disabled={future.length === 0}
-            title="Redo (Ctrl+Y)"
+            title={t('Redo (Ctrl+Y)')}
           >
             <Redo2 size={14} />
           </Button>
@@ -75,10 +78,10 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       <>
       <AutoLayoutButton onAutoLayout={onAutoLayout} />
       <Button data-tour="style" size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onChangeStyle}>
-        <Palette size={14} /> Style
+        <Palette size={14} /> {t('Style')}
       </Button>
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={() => fileInputRef.current?.click()} title="Import from YAML">
-        <Upload size={14} /> Import
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={() => fileInputRef.current?.click()} title={t('Import from YAML')}>
+        <Upload size={14} /> {t('Import')}
       </Button>
       <input
         ref={fileInputRef}
@@ -87,26 +90,27 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
         className="hidden"
         onChange={handleFileChange}
       />
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExportYaml} title="Export canvas as YAML">
-        <Download size={14} /> Export
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExportYaml} title={t('Export canvas as YAML')}>
+        <Download size={14} /> {t('Export')}
       </Button>
       </>
       )}
       {/* PNG capture is DOM-based, so it works for both canvas kinds. */}
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExport} title="Download canvas as PNG">
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExport} title={t('Download canvas as PNG')}>
         <FileDown size={14} /> PNG
       </Button>
       {/* Live view reads backend/localStorage canvas; pointless in standalone
           where the editor already shows the only (localStorage) copy. Rack
           canvases have no live view yet. */}
       {!STANDALONE && !isRack && (
-        <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onViewOnly} title="Open read-only live view of this canvas">
-          <Eye size={14} /> View
+        <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onViewOnly} title={t('Open read-only live view of this canvas')}>
+          <Eye size={14} /> {t('View')}
         </Button>
       )}
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onShortcuts} title="Keyboard shortcuts (?)">
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onShortcuts} title={t('Keyboard shortcuts (?)')}>
         <HelpCircle size={14} />
       </Button>
+      <LanguageSwitcher />
       <Button
         size="sm"
         className="gap-1.5 relative cursor-pointer border border-transparent hover:border-white"
@@ -119,24 +123,29 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
         {hasUnsavedChanges && (
           <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#e3b341] border border-[#161b22]" />
         )}
-        <Save size={14} /> Save
+        <Save size={14} /> {t('Save')}
       </Button>
     </header>
   )
 }
 
-const LAYOUT_MODES: { mode: Exclude<AutoLayoutMode, 'hierarchy'>; label: string; hint: string }[] = [
-  { mode: 'type', label: 'Group by device type', hint: 'One zone per family: hardware, virtualization, IoT…' },
-  { mode: 'subnet', label: 'Group by subnet', hint: 'One zone per /24; devices without an IP stay loose' },
-]
+type LayoutMode = Exclude<AutoLayoutMode, 'hierarchy'>
 
 /**
  * Auto Layout as a split button: the main half runs the plain hierarchy, the
  * chevron offers the zone-grouping modes (#326).
  */
 function AutoLayoutButton({ onAutoLayout }: { onAutoLayout: (mode: AutoLayoutMode) => void }) {
+  useLocale()
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+
+  // Built inside the component so the labels go through `t`; a module-level
+  // table would be created once at import, before the locale is known.
+  const layoutModes: { mode: LayoutMode; label: string; hint: string }[] = [
+    { mode: 'type', label: t('Group by device type'), hint: t('One zone per family: hardware, virtualization, IoT…') },
+    { mode: 'subnet', label: t('Group by subnet'), hint: t('One zone per /24; devices without an IP stay loose') },
+  ]
 
   useEffect(() => {
     if (!open) return
@@ -160,7 +169,7 @@ function AutoLayoutButton({ onAutoLayout }: { onAutoLayout: (mode: AutoLayoutMod
   return (
     <div ref={rootRef} className="relative flex items-center">
       <Button size="sm" variant="ghost" className="gap-1.5 pr-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={() => pick('hierarchy')}>
-        <LayoutDashboard size={14} /> Auto Layout
+        <LayoutDashboard size={14} /> {t('Auto Layout')}
       </Button>
       <Button
         size="sm" variant="ghost"
@@ -168,14 +177,14 @@ function AutoLayoutButton({ onAutoLayout }: { onAutoLayout: (mode: AutoLayoutMod
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="More layout options"
-        title="More layout options"
+        aria-label={t('More layout options')}
+        title={t('More layout options')}
       >
         <ChevronDown size={12} />
       </Button>
       {open && (
         <div role="menu" className="absolute left-0 top-full mt-1 z-50 w-64 rounded-md border border-border bg-card p-1 shadow-lg">
-          {LAYOUT_MODES.map(({ mode, label, hint }) => (
+          {layoutModes.map(({ mode, label, hint }) => (
             <button
               key={mode}
               type="button"

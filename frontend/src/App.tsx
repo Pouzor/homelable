@@ -47,6 +47,7 @@ import { useAutosave } from '@/hooks/useAutosave'
 import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
+import { t, useLocale } from '@/i18n'
 import { canvasApi, designsApi, liveviewApi } from '@/api/client'
 import * as standaloneStorage from '@/utils/standaloneStorage'
 import { demoNodes, demoEdges } from '@/utils/demoData'
@@ -77,6 +78,7 @@ import { groupProxmoxGuests, layoutProxmoxContainers, measureProxmoxContainers }
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 export default function App() {
+  useLocale()
   const { loadCanvas, applyLayout, markSaved, markUnsaved, hasUnsavedChanges, editSeq, selectedNodeId, selectedNodeIds, addNode, updateNode, deleteNode, onConnect, updateEdge, deleteEdge, setProxmoxContainerMode, setNodeZIndex, editingGroupRectId, setEditingGroupRectId, editingTextId, setEditingTextId, nodes, edges, snapshotHistory, undo, redo, addNodesToGroup, addNodesToContainer, addNodesToZone, importZoneSubnet, floorMap, setFloorMap } = useCanvasStore()
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated, isInitialized } = useAuthStore()
@@ -177,9 +179,9 @@ export default function App() {
         // the store refuses rather than writing under whichever one it holds.
         const ok = await useRackStore.getState().save(saveDesignId)
         if (ok) {
-          if (!options?.silent) toast.success('Rack canvas saved')
+          if (!options?.silent) toast.success(t('Rack canvas saved'))
         } else {
-          toast.error('Save failed')
+          toast.error(t('Save failed'))
         }
         return ok
       }
@@ -188,7 +190,7 @@ export default function App() {
         // Floor plans are backend-only (upload/serve), so standalone never persists one.
         standaloneStorage.saveCanvas(saveDesignId, { nodes, edges, theme_id: activeTheme, custom_style: customStyle })
         markSaved()
-        if (!options?.silent) toast.success('Canvas saved')
+        if (!options?.silent) toast.success(t('Canvas saved'))
         return true
       }
       // Read the baseline at save time (not through the render-time destructure)
@@ -200,10 +202,10 @@ export default function App() {
       if (floorMap) viewport.floor_map = floorMap
       await canvasApi.save({ nodes: nodesToSave, edges: edgesToSave, viewport, custom_style: customStyle, design_id: saveDesignId })
       markSaved()
-      if (!options?.silent) toast.success('Canvas saved')
+      if (!options?.silent) toast.success(t('Canvas saved'))
       return true
     } catch {
-      toast.error('Save failed')
+      toast.error(t('Save failed'))
       return false
     }
   }, [nodes, edges, markSaved, activeTheme, customStyle, activeDesignId, floorMap, designTypeOf])
@@ -237,7 +239,7 @@ export default function App() {
       // Leave the on-screen canvas and provenance untouched so an autosave can't
       // clobber real data with an empty canvas.
       setLoadError(true)
-      toast.error('Could not load canvas — backend not responding')
+      toast.error(t('Could not load canvas — backend not responding'))
       return
     }
     const { nodes: apiNodes, edges: apiEdges } = res.data
@@ -352,7 +354,7 @@ export default function App() {
       // Backend unreachable/errored — surface it. Do NOT seed the demo: that would
       // hide a real outage behind a fake "new account" canvas.
       setLoadError(true)
-      toast.error('Could not reach backend — check the server and retry')
+      toast.error(t('Could not reach backend — check the server and retry'))
     }
   }, [setDesigns, setActiveDesign, loadAnyDesign, activeDesignId])
 
@@ -475,7 +477,7 @@ export default function App() {
             // Save failed: don't load the new design — that would overwrite the
             // unsaved in-memory canvas. Revert the selection back to the old
             // design so the UI matches the data still on screen.
-            toast.error('Switch cancelled — unsaved changes kept')
+            toast.error(t('Switch cancelled — unsaved changes kept'))
             revertingRef.current = true
             setActiveDesign(oldId)
           }
@@ -524,7 +526,7 @@ export default function App() {
     async (deviceId: string, label: string) => {
       setAppView('documentation')
       const ok = await useDocsStore.getState().openForDevice(deviceId, label)
-      if (!ok) toast.error('Could not open the documentation for that device')
+      if (!ok) toast.error(t('Could not open the documentation for that device'))
     },
     [setAppView],
   )
@@ -592,7 +594,7 @@ export default function App() {
       ...(isContainerNode ? { width: 300, height: 200 } : {}),
     }
     addNode(newNode)
-    toast.success(`Added "${data.label}"`)
+    toast.success(t('Added "{label}"', { label: data.label ?? '' }))
   }, [addNode, nodes, snapshotHistory])
 
   // Subnet import is a one-shot action on an existing zone, so on the Add modal
@@ -607,8 +609,8 @@ export default function App() {
   )
 
   const reportSubnetImport = useCallback((moved: number, cidr: string) => {
-    if (moved === 0) toast.info(`No unparented device in ${cidr}`)
-    else toast.success(`Moved ${moved} device${moved > 1 ? 's' : ''} from ${cidr} into the zone`)
+    if (moved === 0) toast.info(t('No unparented device in {cidr}', { cidr }))
+    else toast.success(t('Moved {count} device{plural} from {cidr} into the zone', { count: moved, plural: moved > 1 ? 's' : '', cidr }))
   }, [])
 
   const handleImportSubnetIntoZone = useCallback((zoneId: string, cidr: string) => {
@@ -798,12 +800,12 @@ export default function App() {
       // applyLayout keeps undo history so the user can revert an accidental
       // Auto Layout (#280); loadCanvas would wipe it.
       applyLayout(laid, edges)
-      toast.success('Canvas auto-arranged')
+      toast.success(t('Canvas auto-arranged'))
       return
     }
     const grouped = groupIntoZones(nodes, mode)
     if (grouped.moved === 0) {
-      toast.info(mode === 'subnet' ? 'No free device with an IPv4 address to group' : 'No free device to group')
+      toast.info(mode === 'subnet' ? t('No free device with an IPv4 address to group') : t('No free device to group'))
       return
     }
     // Dagre sees top-level boxes only: the edges are lifted onto the zones for
@@ -813,16 +815,16 @@ export default function App() {
     applyLayout(laid, edges)
     const zones = grouped.zonesCreated
     toast.success(
-      `Grouped ${grouped.moved} device${grouped.moved > 1 ? 's' : ''}`
-      + (zones > 0 ? ` into ${zones} new zone${zones > 1 ? 's' : ''}` : ' into existing zones'),
+      t('Grouped {moved} device{plural}', { moved: grouped.moved, plural: grouped.moved > 1 ? 's' : '' })
+      + (zones > 0 ? t(' into {count} new zone{plural}', { count: zones, plural: zones > 1 ? 's' : '' }) : t(' into existing zones')),
     )
   }, [nodes, edges, applyLayout])
 
   const handleExportYaml = useCallback(() => {
-    if (nodes.length === 0) { toast.error('No nodes to export'); return }
+    if (nodes.length === 0) { toast.error(t('No nodes to export')); return }
     const content = exportCanvasToYaml(nodes, edges)
     downloadYaml(content)
-    toast.success('Canvas exported as YAML')
+    toast.success(t('Canvas exported as YAML'))
   }, [nodes, edges])
 
   const handleImportYaml = useCallback((content: string) => {
@@ -831,9 +833,9 @@ export default function App() {
       // applyLayout keeps undo history so an import can be reverted; loadCanvas
       // would wipe it (#280).
       applyLayout(merged, mergedEdges)
-      toast.success(`Imported ${imported} node${imported !== 1 ? 's' : ''}`)
+      toast.success(t('Imported {count} node{plural}', { count: imported, plural: imported !== 1 ? 's' : '' }))
     } catch (err) {
-      toast.error(`Import failed: ${err instanceof Error ? err.message : String(err)}`)
+      toast.error(t('Import failed: {reason}', { reason: err instanceof Error ? err.message : String(err) }))
     }
   }, [nodes, edges, applyLayout])
 
@@ -853,20 +855,20 @@ export default function App() {
     try {
       const res = await liveviewApi.getConfig()
       if (!res.data.enabled || !res.data.key) {
-        toast.error('Live view is disabled — set LIVEVIEW_KEY in the backend .env')
+        toast.error(t('Live view is disabled — set LIVEVIEW_KEY in the backend .env'))
         return
       }
       const params = new URLSearchParams({ key: res.data.key })
       if (activeDesignId) params.set('design', activeDesignId)
       window.open(withBase(`view?${params.toString()}`), '_blank', 'noopener,noreferrer')
     } catch {
-      toast.error('Failed to open live view')
+      toast.error(t('Failed to open live view'))
     }
   }, [activeDesignId])
 
   const handleExport = useCallback(() => {
     const el = canvasRef.current?.querySelector<HTMLElement>('.react-flow')
-    if (!el) { toast.error('Canvas not ready'); return }
+    if (!el) { toast.error(t('Canvas not ready')); return }
     setExportModalOpen(true)
   }, [])
 
@@ -1253,7 +1255,7 @@ export default function App() {
           open={addNodeOpen}
           onClose={() => setAddNodeOpen(false)}
           onSubmit={handleAddNode}
-          title="Add Node"
+          title={t('Add Node')}
           parentCandidates={nodes.map((n) => ({ id: n.id, label: n.data.label ?? n.id, type: n.data.type, container_mode: n.data.container_mode }))}
           onEditTypeStyle={setStyleEditorType}
         />
@@ -1265,7 +1267,7 @@ export default function App() {
           onClose={() => setEditNodeId(null)}
           onSubmit={handleUpdateNode}
           initial={editNode?.data}
-          title="Edit Node"
+          title={t('Edit Node')}
           parentCandidates={(() => {
             const descendants = new Set<string>()
             if (editNodeId) {
@@ -1303,7 +1305,7 @@ export default function App() {
           onDelete={handleEdgeDelete}
           onClearWaypoints={handleClearWaypoints}
           initial={editEdge?.data}
-          title="Edit Link"
+          title={t('Edit Link')}
         />
 
         {!STANDALONE && (
@@ -1311,7 +1313,7 @@ export default function App() {
             open={scanConfigOpen}
             onClose={() => setScanConfigOpen(false)}
             onScanNow={() => {
-              toast.success('Network scan started — check Scan History for results')
+              toast.success(t('Network scan started — check Scan History for results'))
             }}
           />
         )}
@@ -1330,7 +1332,7 @@ export default function App() {
             onClose={() => setZigbeeImportOpen(false)}
             onAddToCanvas={handleZigbeeAddToCanvas}
             onInventoryImported={() => {
-              toast.success('Zigbee import started — check Scan History for results')
+              toast.success(t('Zigbee import started — check Scan History for results'))
             }}
           />
         )}
@@ -1341,7 +1343,7 @@ export default function App() {
             onClose={() => setZwaveImportOpen(false)}
             onAddToCanvas={handleZwaveAddToCanvas}
             onInventoryImported={() => {
-              toast.success('Z-Wave import started — check Scan History for results')
+              toast.success(t('Z-Wave import started — check Scan History for results'))
             }}
           />
         )}
@@ -1352,7 +1354,7 @@ export default function App() {
             onClose={() => setProxmoxImportOpen(false)}
             onAddToCanvas={handleProxmoxAddToCanvas}
             onInventoryImported={() => {
-              toast.success('Proxmox import started — check Scan History for results')
+              toast.success(t('Proxmox import started — check Scan History for results'))
             }}
           />
         )}
@@ -1382,7 +1384,7 @@ export default function App() {
           onImportSubnet={(cidr) => { pendingZoneSubnet.current = cidr }}
           countSubnetMatches={(cidr) => countSubnetMatches(cidr)}
           importOnSubmit
-          title="Add Zone"
+          title={t('Add Zone')}
         />
 
         {/* key forces re-mount when editing a different rect */}
@@ -1415,14 +1417,14 @@ export default function App() {
               z_order: rc.z_order ?? 1,
             }
           })()}
-          title="Edit Zone"
+          title={t('Edit Zone')}
         />
 
         <TextModal
           open={addTextOpen}
           onClose={() => setAddTextOpen(false)}
           onSubmit={handleAddText}
-          title="Add Text"
+          title={t('Add Text')}
         />
 
         <TextModal
@@ -1446,7 +1448,7 @@ export default function App() {
               background_color: rc.background ?? '#00000000',
             }
           })()}
-          title="Edit Text"
+          title={t('Edit Text')}
         />
 
         {/* key forces re-mount on open so useState captures current theme as original */}

@@ -19,6 +19,7 @@ import {
   type Viewport,
 } from '@xyflow/react'
 import { Plus } from 'lucide-react'
+import { t, useLocale } from '@/i18n'
 import { isTypingTarget } from '@/utils/keyboard'
 import { rackHeight, rackWidth } from '../layout'
 import { useRackStore } from '../store'
@@ -32,6 +33,7 @@ import { RackSettingsModal } from './RackSettingsModal'
 const nodeTypes = { rack: RackFlowNode }
 
 function RackCanvasInner() {
+  useLocale()
   const racks = useRackStore((s) => s.racks)
   const moveRack = useRackStore((s) => s.moveRack)
   const selectDevice = useRackStore((s) => s.selectDevice)
@@ -147,7 +149,7 @@ function RackCanvasInner() {
   if (loadError) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-[#f85149]">
-        Rack canvas could not be loaded.
+        {t('Rack canvas could not be loaded.')}
       </div>
     )
   }
@@ -173,21 +175,21 @@ function RackCanvasInner() {
         // z-10 clears .react-flow__renderer (z-index 4); without it the pane sits
         // on top and swallows the clicks as a canvas drag.
         <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 text-center">
-          <p className="text-sm text-[#8b949e]">This rack canvas is empty.</p>
+          <p className="text-sm text-[#8b949e]">{t('This rack canvas is empty.')}</p>
           <div className="pointer-events-auto flex gap-2">
             <button
               type="button"
               onClick={() => addRack({ style: palette.defaultRackStyle })}
               className="flex items-center gap-1.5 rounded border border-[#00d4ff] px-3 py-1.5 text-xs text-[#00d4ff] hover:bg-[#00d4ff]/10 cursor-pointer"
             >
-              <Plus size={14} /> Add a rack
+              <Plus size={14} /> {t('Add a rack')}
             </button>
             <button
               type="button"
               onClick={loadDemo}
               className="rounded border border-[#21262d] bg-[#161b22] px-3 py-1.5 text-xs text-[#8b949e] hover:border-[#30363d] hover:text-[#c9d1d9] cursor-pointer"
             >
-              Load a sample rack
+              {t('Load a sample rack')}
             </button>
           </div>
         </div>

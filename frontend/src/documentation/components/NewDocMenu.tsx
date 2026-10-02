@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
+import { t, useLocale } from '@/i18n'
 import { cn } from '@/lib/utils'
 
 import { DOC_TEMPLATES } from '../types'
@@ -35,6 +36,7 @@ const MARGIN = 8
 const GAP = 4
 
 export function NewDocMenu({ trigger, placement = 'up', parentId, onCreate }: Props) {
+  useLocale()
   const [open, setOpen] = useState(false)
   const [at, setAt] = useState<{ left: number; top?: number; bottom?: number } | null>(null)
   const anchor = useRef<HTMLDivElement>(null)
@@ -108,14 +110,16 @@ export function NewDocMenu({ trigger, placement = 'up', parentId, onCreate }: Pr
                 role="menuitem"
                 onClick={async () => {
                   setOpen(false)
-                  const title = window.prompt('Document title', template.label)
+                  // `template.id` is what the backend matches on, so it stays a
+                  // bare identifier; the English label and hint are the keys.
+                  const title = window.prompt(t('Document title'), t(template.label))
                   if (!title?.trim()) return
                   await onCreate({ title: title.trim(), templateId: template.id, parentId })
                 }}
                 className="flex w-full cursor-pointer flex-col items-start px-3 py-1.5 text-left hover:bg-muted"
               >
-                <span className="text-xs">{template.label}</span>
-                <span className="text-[10px] text-muted-foreground">{template.hint}</span>
+                <span className="text-xs">{t(template.label)}</span>
+                <span className="text-[10px] text-muted-foreground">{t(template.hint)}</span>
               </button>
             ))}
           </div>,

@@ -15,6 +15,8 @@ import {
 } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useWalkthroughStore } from '@/stores/walkthroughStore'
+import { LanguageSwitcher } from '@/i18n/LanguageSwitcher'
+import { t, useLocale } from '@/i18n'
 import { toast } from 'sonner'
 import {
   type AlignmentSettings,
@@ -38,6 +40,9 @@ interface SettingsModalProps {
 
 interface MeshAutoSyncProps {
   title: string
+  /** The bare source name ("Zigbee"), already translated — `title` reads
+   *  "Zigbee auto-sync" and cannot be sliced back out of a translated string. */
+  what: string
   accent: string
   hostConfigured: boolean
   envHostVar: string
@@ -59,31 +64,32 @@ interface MeshAutoSyncProps {
  * MQTT host is set in the server env, it shows how to configure one instead.
  */
 function MeshAutoSync({
-  title, accent, hostConfigured, envHostVar, enabled, onEnabledChange,
+  title, what, accent, hostConfigured, envHostVar, enabled, onEnabledChange,
   interval, onIntervalChange, description, syncing, onSyncNow, options,
 }: MeshAutoSyncProps) {
+  useLocale()
   return (
     <div className="pt-3 border-t border-border space-y-2">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</span>
       {!hostConfigured ? (
         <p className="text-[10px] text-[#e3b341] leading-tight">
-          No MQTT host configured. Set <span className="font-mono">{envHostVar}</span> in the server .env to enable auto-sync.
+          {t('No MQTT host configured. Set')} <span className="font-mono">{envHostVar}</span> {t('in the server .env to enable auto-sync.')}
         </p>
       ) : (
         <>
           <label className="flex items-center justify-between gap-2 cursor-pointer">
-            <span className="text-xs text-foreground">Auto-sync {title.replace(' auto-sync', '')} inventory</span>
+            <span className="text-xs text-foreground">{t('Auto-sync {what} inventory', { what })}</span>
             <input
               type="checkbox"
               checked={enabled}
               onChange={(e) => onEnabledChange(e.target.checked)}
               className="cursor-pointer"
               style={{ accentColor: accent }}
-              aria-label={`Toggle ${title}`}
+              aria-label={t('Toggle {what}', { what: title })}
             />
           </label>
           <div className={enabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
-            <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+            <label className="text-xs text-muted-foreground">{t('Sync interval (s)')}</label>
             <div className="flex items-center gap-2">
               <input
                 type="number"
@@ -92,9 +98,9 @@ function MeshAutoSync({
                 value={interval}
                 onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) onIntervalChange(v) }}
                 className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none"
-                aria-label={`${title} interval`}
+                aria-label={t('{what} interval', { what: title })}
               />
-              <span className="text-xs text-muted-foreground">seconds</span>
+              <span className="text-xs text-muted-foreground">{t('seconds')}</span>
             </div>
             <p className="text-[10px] text-muted-foreground leading-tight">{description}</p>
           </div>
@@ -107,10 +113,10 @@ function MeshAutoSync({
               className="h-7 text-xs"
               style={{ borderColor: accent, color: accent }}
             >
-              {syncing ? 'Syncing…' : 'Re-sync now'}
+              {syncing ? t('Syncing…') : t('Re-sync now')}
             </Button>
             <span className="text-[10px] text-muted-foreground leading-tight">
-              Runs one import immediately using the server .env config.
+              {t('Runs one import immediately using the server .env config.')}
             </span>
           </div>
         </>
@@ -123,12 +129,6 @@ function MeshAutoSync({
 // Mirrors UnifiSyncConfig.sync_interval (ge=300, le=86400) on the backend.
 const UNIFI_MIN_INTERVAL = 300
 const UNIFI_MAX_INTERVAL = 86400
-
-const UNIFI_SOURCES: { key: keyof UnifiImportModes; label: string; hint: string }[] = [
-  { key: 'infrastructure', label: 'Infrastructure', hint: 'stat/device — adopted APs, switches, gateways.' },
-  { key: 'known_clients', label: 'Known clients', hint: 'list/user — every client ever recorded. No IP, and long on a busy site.' },
-  { key: 'active_clients', label: 'Active clients', hint: 'stat/sta — connected right now, with IP and switch port.' },
-]
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [interval, setIntervalValue] = useState(60)
@@ -159,6 +159,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [unSyncing, setUnSyncing] = useState(false)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
+  useLocale()
+  // Built inside the component so the labels go through `t`; a module-level
+  // table would be created once at import, before the locale is known.
+  const unifiSources: { key: keyof UnifiImportModes; label: string; hint: string }[] = [
+    { key: 'infrastructure', label: t('Infrastructure'), hint: t('stat/device — adopted APs, switches, gateways.') },
+    { key: 'known_clients', label: t('Known clients'), hint: t('list/user — every client ever recorded. No IP, and long on a busy site.') },
+    { key: 'active_clients', label: t('Active clients'), hint: t('stat/sta — connected right now, with IP and switch port.') },
+  ]
   const anyUnifiSource = unModes.infrastructure || unModes.known_clients || unModes.active_clients
   // Saving with every source unticked 422s on the backend, aborting the save
   // after the other configs already persisted — refuse it up front instead.
@@ -226,9 +234,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setPmSyncing(true)
     try {
       await proxmoxApi.syncNow()
-      toast.success('Proxmox sync started')
+      toast.success(t('Proxmox sync started'))
     } catch {
-      toast.error('Failed to start Proxmox sync')
+      toast.error(t('Failed to start Proxmox sync'))
     } finally {
       setPmSyncing(false)
     }
@@ -239,9 +247,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     try {
       const res = await unifiApi.syncNow()
       const { infra_count, client_count } = res.data
-      toast.success(`UniFi sync done — ${infra_count} device(s), ${client_count} client(s)`)
+      toast.success(t('UniFi sync done — {infra} device(s), {clients} client(s)', { infra: infra_count, clients: client_count }))
     } catch {
-      toast.error('Failed to run UniFi sync')
+      toast.error(t('Failed to run UniFi sync'))
     } finally {
       setUnSyncing(false)
     }
@@ -251,9 +259,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setZbSyncing(true)
     try {
       await zigbeeApi.syncNow()
-      toast.success('Zigbee sync started')
+      toast.success(t('Zigbee sync started'))
     } catch {
-      toast.error('Failed to start Zigbee sync')
+      toast.error(t('Failed to start Zigbee sync'))
     } finally {
       setZbSyncing(false)
     }
@@ -263,9 +271,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setZwSyncing(true)
     try {
       await zwaveApi.syncNow()
-      toast.success('Z-Wave sync started')
+      toast.success(t('Z-Wave sync started'))
     } catch {
-      toast.error('Failed to start Z-Wave sync')
+      toast.error(t('Failed to start Z-Wave sync'))
     } finally {
       setZwSyncing(false)
     }
@@ -321,10 +329,10 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           modes: unModes,
         })
       }
-      toast.success('Settings saved')
+      toast.success(t('Settings saved'))
       onClose()
     } catch {
-      toast.error('Failed to save settings')
+      toast.error(t('Failed to save settings'))
     } finally {
       setSaving(false)
     }
@@ -334,16 +342,25 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="bg-[#161b22] border-border max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-foreground">Settings</DialogTitle>
+          <DialogTitle className="text-foreground">{t('Settings')}</DialogTitle>
         </DialogHeader>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5 py-2">
           {/* Left column */}
           <div className="space-y-5">
+          {/* Language. Applies immediately and is remembered in this browser, so
+              it lives outside the save button on purpose. */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('Language')}</span>
+            <LanguageSwitcher showLabel label={t('Interface language')} />
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              {t('Applies to this browser only, right away.')}
+            </p>
+          </div>
           {/* Status checker */}
           {!STANDALONE && (
           <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground">Status check interval (s)</label>
+            <label className="text-xs text-muted-foreground">{t('Status check interval (s)')}</label>
             <div className="flex items-center gap-2">
               <input
                 type="number"
@@ -353,25 +370,25 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setIntervalValue(v) }}
                 className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
               />
-              <span className="text-xs text-muted-foreground">seconds</span>
+              <span className="text-xs text-muted-foreground">{t('seconds')}</span>
             </div>
             <p className="text-[10px] text-muted-foreground leading-tight">
-              How often node health is polled (ping, HTTP, SSH…)
+              {t('How often node health is polled (ping, HTTP, SSH…)')}
             </p>
 
             <label className="flex items-center justify-between gap-2 cursor-pointer pt-2">
-              <span className="text-xs text-foreground">Check services individually</span>
+              <span className="text-xs text-foreground">{t('Check services individually')}</span>
               <input
                 type="checkbox"
                 checked={serviceCheckEnabled}
                 onChange={(e) => setServiceCheckEnabled(e.target.checked)}
                 className="cursor-pointer accent-[#00d4ff]"
-                aria-label="Toggle per-service status checks"
+                aria-label={t('Toggle per-service status checks')}
               />
             </label>
 
             <div className={serviceCheckEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
-              <label className="text-xs text-muted-foreground">Service check interval (s)</label>
+              <label className="text-xs text-muted-foreground">{t('Service check interval (s)')}</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
@@ -380,12 +397,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   value={serviceInterval}
                   onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setServiceInterval(v) }}
                   className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
-                  aria-label="Service check interval"
+                  aria-label={t('Service check interval')}
                 />
-                <span className="text-xs text-muted-foreground">seconds</span>
+                <span className="text-xs text-muted-foreground">{t('seconds')}</span>
               </div>
               <p className="text-[10px] text-muted-foreground leading-tight">
-                Probes each service port. Offline services turn red. Default 300s (5 min).
+                {t('Probes each service port. Offline services turn red. Default 300s (5 min).')}
               </p>
             </div>
           </div>
@@ -393,32 +410,32 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
           {/* Canvas */}
           <div className="pt-3 border-t border-border space-y-3">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Canvas</span>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('Canvas')}</span>
 
             <label className="flex items-center justify-between gap-2 cursor-pointer">
-              <span className="text-xs text-foreground">Snap to nodes</span>
+              <span className="text-xs text-foreground">{t('Snap to nodes')}</span>
               <input
                 type="checkbox"
                 checked={alignment.enabled}
                 onChange={(e) => updateAlignment({ enabled: e.target.checked })}
                 className="cursor-pointer accent-[#00d4ff]"
-                aria-label="Toggle alignment guides"
+                aria-label={t('Toggle alignment guides')}
               />
             </label>
 
             <label className="flex items-center justify-between gap-2 cursor-pointer">
-              <span className="text-xs text-foreground">Hide IP addresses</span>
+              <span className="text-xs text-foreground">{t('Hide IP addresses')}</span>
               <input
                 type="checkbox"
                 checked={hideIp}
                 onChange={(e) => setHideIp(e.target.checked)}
                 className="cursor-pointer accent-[#00d4ff]"
-                aria-label="Toggle IP address masking"
+                aria-label={t('Toggle IP address masking')}
               />
             </label>
 
             <div className={alignment.enabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
-              <label className="text-xs text-muted-foreground">Snap distance</label>
+              <label className="text-xs text-muted-foreground">{t('Snap distance')}</label>
               <div className="flex items-center gap-2">
                 <input
                   type="range"
@@ -428,35 +445,35 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   value={alignment.threshold}
                   onChange={(e) => updateAlignment({ threshold: Number(e.target.value) })}
                   className="flex-1 cursor-pointer accent-[#00d4ff]"
-                  aria-label="Alignment snap threshold"
+                  aria-label={t('Alignment snap threshold')}
                 />
                 <span className="font-mono text-[11px] text-foreground w-8 text-right">{alignment.threshold}px</span>
               </div>
               <p className="text-[10px] text-muted-foreground leading-tight">
-                Distance at which dragged nodes snap to neighbours. Hold Alt while dragging to disable.
+                {t('Distance at which dragged nodes snap to neighbours. Hold Alt while dragging to disable.')}
               </p>
             </div>
 
             <label className="flex items-center justify-between gap-2 cursor-pointer">
-              <span className="text-xs text-foreground">Autosave canvas</span>
+              <span className="text-xs text-foreground">{t('Autosave canvas')}</span>
               <input
                 type="checkbox"
                 checked={autosave.enabled}
                 onChange={(e) => updateAutosave({ enabled: e.target.checked })}
                 className="cursor-pointer accent-[#00d4ff]"
-                aria-label="Toggle autosave"
+                aria-label={t('Toggle autosave')}
               />
             </label>
 
             <div className={autosave.enabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
-              <label className="text-xs text-muted-foreground">Save after</label>
+              <label className="text-xs text-muted-foreground">{t('Save after')}</label>
               <div className="flex items-center gap-2">
                 <select
                   value={autosave.delay}
                   onChange={(e) => updateAutosave({ delay: Number(e.target.value) })}
                   disabled={!autosave.enabled}
                   className="px-2 py-1 rounded-md text-xs bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
-                  aria-label="Autosave delay"
+                  aria-label={t('Autosave delay')}
                 >
                   <option value={3}>3 s</option>
                   <option value={5}>5 s</option>
@@ -464,22 +481,22 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   <option value={30}>30 s</option>
                   <option value={60}>60 s</option>
                 </select>
-                <span className="text-xs text-muted-foreground">of inactivity</span>
+                <span className="text-xs text-muted-foreground">{t('of inactivity')}</span>
               </div>
               <p className="text-[10px] text-muted-foreground leading-tight">
-                Saves silently after this many seconds with no changes. Manual Ctrl+S still works.
+                {t('Saves silently after this many seconds with no changes. Manual Ctrl+S still works.')}
               </p>
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-foreground">Getting started tour</span>
+              <span className="text-xs text-foreground">{t('Getting started tour')}</span>
               <Button
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => { useWalkthroughStore.getState().start(); onClose() }}
               >
-                Restart walkthrough
+                {t('Restart walkthrough')}
               </Button>
             </div>
           </div>
@@ -490,7 +507,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           {/* Zigbee auto-sync */}
           {!STANDALONE && zbConfig && (
             <MeshAutoSync
-              title="Zigbee auto-sync"
+              title={t('Zigbee auto-sync')}
+              what={t('Zigbee')}
               accent="#39d353"
               hostConfigured={zbConfig.host_configured}
               envHostVar="ZIGBEE_MQTT_HOST"
@@ -498,15 +516,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               onEnabledChange={setZbSyncEnabled}
               interval={zbInterval}
               onIntervalChange={setZbInterval}
-              description="Re-imports the Zigbee mesh into the pending inventory. Min 300s (5 min)."
+              description={t('Re-imports the Zigbee mesh into the pending inventory. Min 300s (5 min).')}
               syncing={zbSyncing}
               onSyncNow={handleZbSyncNow}
               options={
                 <label className="flex items-center justify-between gap-2 cursor-pointer">
                   <span className="text-xs text-foreground">
-                    Import mesh links
+                    {t('Import mesh links')}
                     <span className="block text-[10px] text-muted-foreground leading-tight">
-                      Neighbour links too, not only the parent tree — many more edges.
+                      {t('Neighbour links too, not only the parent tree — many more edges.')}
                     </span>
                   </span>
                   <input
@@ -515,7 +533,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     onChange={(e) => setZbMeshLinks(e.target.checked)}
                     className="cursor-pointer"
                     style={{ accentColor: '#39d353' }}
-                    aria-label="Import Zigbee mesh links"
+                    aria-label={t('Import Zigbee mesh links')}
                   />
                 </label>
               }
@@ -525,7 +543,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           {/* Z-Wave auto-sync */}
           {!STANDALONE && zwConfig && (
             <MeshAutoSync
-              title="Z-Wave auto-sync"
+              title={t('Z-Wave auto-sync')}
+              what={t('Z-Wave')}
               accent="#a855f7"
               hostConfigured={zwConfig.host_configured}
               envHostVar="ZWAVE_MQTT_HOST"
@@ -533,7 +552,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               onEnabledChange={setZwSyncEnabled}
               interval={zwInterval}
               onIntervalChange={setZwInterval}
-              description="Re-imports the Z-Wave network into the pending inventory. Min 300s (5 min)."
+              description={t('Re-imports the Z-Wave network into the pending inventory. Min 300s (5 min).')}
               syncing={zwSyncing}
               onSyncNow={handleZwSyncNow}
             />
@@ -542,26 +561,26 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           {/* Proxmox auto-sync */}
           {!STANDALONE && pmConfig && (
           <div className="pt-3 border-t border-border space-y-2">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Proxmox auto-sync</span>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('Proxmox auto-sync')}</span>
             {!pmConfig.token_configured ? (
               <p className="text-[10px] text-[#e3b341] leading-tight">
-                No API token configured. Set <span className="font-mono">PROXMOX_TOKEN_ID</span> and{' '}
-                <span className="font-mono">PROXMOX_TOKEN_SECRET</span> in the server .env to enable auto-sync.
+                {t('No API token configured. Set')} <span className="font-mono">PROXMOX_TOKEN_ID</span> {t('and')}{' '}
+                <span className="font-mono">PROXMOX_TOKEN_SECRET</span> {t('in the server .env to enable auto-sync.')}
               </p>
             ) : (
               <>
                 <label className="flex items-center justify-between gap-2 cursor-pointer">
-                  <span className="text-xs text-foreground">Auto-sync Proxmox inventory</span>
+                  <span className="text-xs text-foreground">{t('Auto-sync Proxmox inventory')}</span>
                   <input
                     type="checkbox"
                     checked={pmSyncEnabled}
                     onChange={(e) => setPmSyncEnabled(e.target.checked)}
                     className="cursor-pointer accent-[#e57000]"
-                    aria-label="Toggle Proxmox auto-sync"
+                    aria-label={t('Toggle Proxmox auto-sync')}
                   />
                 </label>
                 <div className={pmSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
-                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <label className="text-xs text-muted-foreground">{t('Sync interval (s)')}</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -570,12 +589,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       value={pmInterval}
                       onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setPmInterval(v) }}
                       className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#e57000]"
-                      aria-label="Proxmox sync interval"
+                      aria-label={t('Proxmox sync interval')}
                     />
-                    <span className="text-xs text-muted-foreground">seconds</span>
+                    <span className="text-xs text-muted-foreground">{t('seconds')}</span>
                   </div>
                   <p className="text-[10px] text-muted-foreground leading-tight">
-                    Re-imports hosts/VMs/LXC into the pending inventory. Min 300s (5 min).
+                    {t('Re-imports hosts/VMs/LXC into the pending inventory. Min 300s (5 min).')}
                   </p>
                 </div>
                 {pmConfig.host ? (
@@ -586,15 +605,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       disabled={pmSyncing}
                       className="h-7 text-xs border-[#e57000] text-[#e57000] hover:bg-[#e57000]/10"
                     >
-                      {pmSyncing ? 'Syncing…' : 'Re-sync now'}
+                      {pmSyncing ? t('Syncing…') : t('Re-sync now')}
                     </Button>
                     <span className="text-[10px] text-muted-foreground leading-tight">
-                      Runs one import immediately using the server .env config.
+                      {t('Runs one import immediately using the server .env config.')}
                     </span>
                   </div>
                 ) : (
                   <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
-                    Set <span className="font-mono">PROXMOX_HOST</span> in the server .env to enable manual re-sync.
+                    {t('Set')} <span className="font-mono">PROXMOX_HOST</span> {t('in the server .env to enable manual re-sync.')}
                   </p>
                 )}
               </>
@@ -604,26 +623,26 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           {/* UniFi auto-sync */}
           {!STANDALONE && unConfig && (
           <div className="pt-3 border-t border-border space-y-2">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">UniFi auto-sync</span>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('UniFi auto-sync')}</span>
             {!unConfig.credentials_configured ? (
               <p className="text-[10px] text-[#e3b341] leading-tight">
-                No controller credentials configured. Set <span className="font-mono">UNIFI_USER</span> and{' '}
-                <span className="font-mono">UNIFI_PASS</span> in the server .env to enable auto-sync.
+                {t('No controller credentials configured. Set')} <span className="font-mono">UNIFI_USER</span> {t('and')}{' '}
+                <span className="font-mono">UNIFI_PASS</span> {t('in the server .env to enable auto-sync.')}
               </p>
             ) : (
               <>
                 <label className="flex items-center justify-between gap-2 cursor-pointer">
-                  <span className="text-xs text-foreground">Auto-sync UniFi inventory</span>
+                  <span className="text-xs text-foreground">{t('Auto-sync UniFi inventory')}</span>
                   <input
                     type="checkbox"
                     checked={unSyncEnabled}
                     onChange={(e) => setUnSyncEnabled(e.target.checked)}
                     className="cursor-pointer accent-[#0559c9]"
-                    aria-label="Toggle UniFi auto-sync"
+                    aria-label={t('Toggle UniFi auto-sync')}
                   />
                 </label>
                 <div className={unSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
-                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <label className="text-xs text-muted-foreground">{t('Sync interval (s)')}</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -632,17 +651,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       value={unInterval}
                       onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setUnInterval(v) }}
                       className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#0559c9]"
-                      aria-label="UniFi sync interval"
+                      aria-label={t('UniFi sync interval')}
                     />
-                    <span className="text-xs text-muted-foreground">seconds</span>
+                    <span className="text-xs text-muted-foreground">{t('seconds')}</span>
                   </div>
                 </div>
                 {/* Which of the controller's three inventories to pull. Applies
                     to auto-sync and to Re-sync now, not to the import modal,
                     which asks each time. */}
                 <div className="space-y-1.5 pt-1">
-                  <span className="text-xs text-muted-foreground">Import from</span>
-                  {UNIFI_SOURCES.map((src) => (
+                  <span className="text-xs text-muted-foreground">{t('Import from')}</span>
+                  {unifiSources.map((src) => (
                     <label key={src.key} className="flex items-start justify-between gap-2 cursor-pointer">
                       <span className="min-w-0">
                         <span className="text-xs text-foreground">{src.label}</span>
@@ -653,13 +672,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                         checked={unModes[src.key]}
                         onChange={(e) => setUnModes((m) => ({ ...m, [src.key]: e.target.checked }))}
                         className="mt-0.5 cursor-pointer accent-[#0559c9]"
-                        aria-label={`Import ${src.label}`}
+                        aria-label={t('Import {what}', { what: src.label })}
                       />
                     </label>
                   ))}
                   {!anyUnifiSource && (
                     <p className="text-[10px] text-[#e3b341] leading-tight">
-                      Select at least one source, or the sync has nothing to import.
+                      {t('Select at least one source, or the sync has nothing to import.')}
                     </p>
                   )}
                 </div>
@@ -671,15 +690,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       disabled={unSyncing || !anyUnifiSource}
                       className="h-7 text-xs border-[#0559c9] text-[#0559c9] hover:bg-[#0559c9]/10"
                     >
-                      {unSyncing ? 'Syncing…' : 'Re-sync now'}
+                      {unSyncing ? t('Syncing…') : t('Re-sync now')}
                     </Button>
                     <span className="text-[10px] text-muted-foreground leading-tight">
-                      Runs one import immediately using the server .env config.
+                      {t('Runs one import immediately using the server .env config.')}
                     </span>
                   </div>
                 ) : (
                   <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
-                    Set <span className="font-mono">UNIFI_HOST</span> in the server .env to enable manual re-sync.
+                    {t('Set')} <span className="font-mono">UNIFI_HOST</span> {t('in the server .env to enable manual re-sync.')}
                   </p>
                 )}
               </>
@@ -690,14 +709,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>{t('Cancel')}</Button>
           <Button
             onClick={handleSave}
             disabled={saving || unifiBlocksSave}
-            title={unifiBlocksSave ? 'Select at least one UniFi source to import.' : undefined}
+            title={unifiBlocksSave ? t('Select at least one UniFi source to import.') : undefined}
             style={{ background: '#00d4ff', color: '#0d1117' }}
           >
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? t('Saving…') : t('Save')}
           </Button>
         </DialogFooter>
       </DialogContent>

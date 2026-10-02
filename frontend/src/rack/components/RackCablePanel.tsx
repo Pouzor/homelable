@@ -12,16 +12,19 @@ import { Cable as CableIcon, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PropertyList } from '@/components/common/PropertyList'
+import { t, useLocale } from '@/i18n'
 import { CABLE_COLOR_PRESETS, CABLE_COLORS, CABLE_PROPERTY_SUGGESTIONS } from '../rackDefaults'
 import { useRackStore } from '../store'
 import type { CableProperty, CableType, RackDevice } from '@/types'
 
+/** Cable protocol names, as the stored type spells them. */
 const TYPE_LABELS: Record<CableType, string> = {
   ethernet: 'Ethernet',
   fiber: 'Fibre',
 }
 
 export function RackCablePanel() {
+  useLocale()
   const cables = useRackStore((s) => s.cables)
   const devices = useRackStore((s) => s.devices)
   const selectedCableId = useRackStore((s) => s.selectedCableId)
@@ -35,7 +38,7 @@ export function RackCablePanel() {
   const endpoint = (ref: { deviceId: string; portId: string }) => {
     const device: RackDevice | undefined = devices.find((d) => d.id === ref.deviceId)
     return {
-      device: device?.label ?? 'Unknown device',
+      device: device?.label ?? t('Unknown device'),
       port: device?.ports.find((p) => p.id === ref.portId)?.label ?? '—',
     }
   }
@@ -58,10 +61,10 @@ export function RackCablePanel() {
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="flex items-center gap-2 min-w-0 font-semibold text-sm text-foreground">
           <CableIcon size={14} className="shrink-0" style={{ color: cable.color }} />
-          <span className="truncate">{cable.label?.trim() || 'Cable'}</span>
+          <span className="truncate">{cable.label?.trim() || t('Cable')}</span>
         </span>
         <button
-          aria-label="Close panel"
+          aria-label={t('Close panel')}
           onClick={() => selectCable(null)}
           className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
         >
@@ -71,14 +74,14 @@ export function RackCablePanel() {
 
       {/* Endpoints */}
       <div className="flex flex-col gap-2 px-4 py-3 border-b border-border">
-        <span className="text-xs text-muted-foreground">Endpoints</span>
+        <span className="text-xs text-muted-foreground">{t('Endpoints')}</span>
         <EndpointRow side="A" device={from.device} port={from.port} />
         <EndpointRow side="B" device={to.device} port={to.port} />
       </div>
 
       {/* Type */}
       <div className="px-4 py-3 border-b border-border">
-        <span className="text-xs text-muted-foreground">Type</span>
+        <span className="text-xs text-muted-foreground">{t('Type')}</span>
         <div className="mt-2 flex gap-1.5">
           {(Object.keys(TYPE_LABELS) as CableType[]).map((type) => (
             <button
@@ -98,12 +101,12 @@ export function RackCablePanel() {
 
       {/* Colour */}
       <div className="px-4 py-3 border-b border-border">
-        <span className="text-xs text-muted-foreground">Colour</span>
+        <span className="text-xs text-muted-foreground">{t('Colour')}</span>
         <div className="mt-2 flex flex-wrap gap-1">
           {CABLE_COLOR_PRESETS.map((color) => (
             <button
               key={color}
-              aria-label={`Cable colour ${color}`}
+              aria-label={t('Cable colour {color}', { color })}
               title={color}
               onClick={() => updateCable(cable.id, { color })}
               className={`h-6 w-6 rounded border transition-transform cursor-pointer hover:scale-110 ${
@@ -122,11 +125,11 @@ export function RackCablePanel() {
 
       {/* Label */}
       <div className="px-4 py-3 border-b border-border">
-        <span className="text-xs text-muted-foreground">Label</span>
+        <span className="text-xs text-muted-foreground">{t('Label')}</span>
         <Input
           value={cable.label ?? ''}
           onChange={(e) => updateCable(cable.id, { label: e.target.value })}
-          aria-label="Cable label"
+          aria-label={t('Cable label')}
           placeholder="e.g. Uplink to core"
           className="mt-2 bg-[#21262d] border-[#30363d] text-xs h-7"
         />
@@ -137,18 +140,23 @@ export function RackCablePanel() {
             onChange={(e) => updateCable(cable.id, { labelVisible: e.target.checked })}
             className="accent-[#00d4ff] w-3 h-3"
           />
-          <span className="text-[10px] text-muted-foreground">Show on canvas</span>
+          <span className="text-[10px] text-muted-foreground">{t('Show on canvas')}</span>
         </label>
       </div>
 
+      {/* `visibleLabel` is passed through in English on purpose: PropertyList
+          slices the surface word off it to build "Show/Hide on {where}". The
+          other three are plain captions, and translating them here keeps the
+          key visible to the completeness scan — `t()` on an already
+          translated string is a no-op, so the second pass changes nothing. */}
       <PropertyList
         properties={properties}
         onChange={(next) => updateCable(cable.id, { properties: next })}
         visibleLabel="Show on canvas"
-        keyPlaceholder="Label (e.g. Length)"
-        valuePlaceholder="Value — optional (e.g. 2 m)"
+        keyPlaceholder={t('Label (e.g. Length)')}
+        valuePlaceholder={t('Value — optional (e.g. 2 m)')}
         suggestions={CABLE_PROPERTY_SUGGESTIONS}
-        emptyHint="No properties — add a length, a VLAN, whatever this run needs."
+        emptyHint={t('No properties — add a length, a VLAN, whatever this run needs.')}
       />
 
       <div className="px-4 py-3 border-t border-border mt-auto">
@@ -158,7 +166,7 @@ export function RackCablePanel() {
           onClick={() => removeCable(cable.id)}
           className="w-full h-7 text-[11px] text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10"
         >
-          <Trash2 size={12} className="mr-1.5" /> Unplug cable
+          <Trash2 size={12} className="mr-1.5" /> {t('Unplug cable')}
         </Button>
       </div>
     </aside>
@@ -178,6 +186,7 @@ function HexField({ value, fallback, onCommit }: {
   fallback: string
   onCommit: (color: string) => void
 }) {
+  useLocale()
   const [draft, setDraft] = useState(value)
 
   // Follow a colour set elsewhere (a swatch, a type change). Adjusted during
@@ -205,7 +214,7 @@ function HexField({ value, fallback, onCommit }: {
         if (e.key === 'Enter') e.currentTarget.blur()
         if (e.key === 'Escape') setDraft(value)
       }}
-      aria-label="Cable colour hex"
+      aria-label={t('Cable colour hex')}
       placeholder="#39d353"
       className="mt-2 bg-[#21262d] border-[#30363d] text-xs h-7 font-mono"
     />

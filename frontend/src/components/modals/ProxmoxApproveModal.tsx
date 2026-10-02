@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import type { InventoryEntry } from '@/types'
 import type { ProxmoxCanvasMode } from '@/components/proxmox/types'
+import { t, useLocale } from '@/i18n'
 
 const ACCENT = '#e57000'
 
@@ -42,6 +43,7 @@ export function ProxmoxApproveModal({
   onCancel,
   onConfirm,
 }: ProxmoxApproveModalProps) {
+  useLocale()
   const [includeChildren, setIncludeChildren] = useState(true)
   const [mode, setMode] = useState<ProxmoxCanvasMode>('container')
 
@@ -63,7 +65,7 @@ export function ProxmoxApproveModal({
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Server size={16} style={{ color: ACCENT }} />
-            Add {label(host)} to canvas
+            {t('Add {name} to canvas', { name: label(host) })}
           </DialogTitle>
         </DialogHeader>
 
@@ -78,17 +80,20 @@ export function ProxmoxApproveModal({
             />
             <span>
               <span className="block text-foreground">
-                Also add its {guests.length} guest{guests.length !== 1 ? 's' : ''}
+                {t('Also add its {count} guest{plural}', {
+                  count: guests.length,
+                  plural: guests.length !== 1 ? 's' : '',
+                })}
               </span>
               <span className="block text-[11px] text-muted-foreground">
-                VMs and LXC containers this host runs, as recorded by the Proxmox import.
+                {t('VMs and LXC containers this host runs, as recorded by the Proxmox import.')}
               </span>
             </span>
           </label>
 
           {includeChildren && (
             <div className="space-y-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5">
-              <span className="block text-xs text-muted-foreground">Draw the guests as</span>
+              <span className="block text-xs text-muted-foreground">{t('Draw the guests as')}</span>
               <label className="flex items-start gap-2 text-xs cursor-pointer text-foreground">
                 <input
                   type="radio"
@@ -99,9 +104,9 @@ export function ProxmoxApproveModal({
                   style={{ accentColor: ACCENT }}
                 />
                 <span>
-                  Nested inside the host
+                  {t('Nested inside the host')}
                   <span className="block text-[11px] text-muted-foreground">
-                    Container mode — the host becomes a box holding its guests.
+                    {t('Container mode — the host becomes a box holding its guests.')}
                   </span>
                 </span>
               </label>
@@ -115,9 +120,9 @@ export function ProxmoxApproveModal({
                   style={{ accentColor: ACCENT }}
                 />
                 <span>
-                  Separate nodes linked to the host
+                  {t('Separate nodes linked to the host')}
                   <span className="block text-[11px] text-muted-foreground">
-                    Guests sit beside the host, joined by virtual edges.
+                    {t('Guests sit beside the host, joined by virtual edges.')}
                   </span>
                 </span>
               </label>
@@ -150,14 +155,14 @@ export function ProxmoxApproveModal({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={onCancel}>Cancel</Button>
+          <Button variant="ghost" onClick={onCancel}>{t('Cancel')}</Button>
           <Button
             onClick={confirm}
             style={{ background: ACCENT, color: '#0d1117' }}
             className="gap-1.5"
           >
             <Plus size={13} />
-            Add {includeChildren ? guests.length + 1 : 1} to canvas
+            {t('Add {count} to canvas', { count: includeChildren ? guests.length + 1 : 1 })}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -10,10 +10,11 @@
  */
 import { useState } from 'react'
 import { Label } from '@/components/ui/label'
+import { t, useLocale } from '@/i18n'
 import { FaceplatePicker } from './FaceplatePicker'
 import { PortListEditor } from './PortListEditor'
 import { PortPositionEditor } from './PortPositionEditor'
-import { getFaceplate } from '../faceplates'
+import { faceplateLabel, getFaceplate } from '../faceplates'
 import { MAX_RACK_U } from '../rackDefaults'
 import type { DeviceRackModel } from '../deviceRackModel'
 import { RACK_COLUMNS, type DeviceStatus } from '@/types'
@@ -35,6 +36,7 @@ interface Props {
 }
 
 export function DeviceFaceplateEditor({ value, label, status, editable, onChange }: Props) {
+  useLocale()
   const [pickerOpen, setPickerOpen] = useState(false)
   const [positioning, setPositioning] = useState(false)
   const [selectedPortId, setSelectedPortId] = useState<string | null>(null)
@@ -67,24 +69,28 @@ export function DeviceFaceplateEditor({ value, label, status, editable, onChange
         />
         {!editable && (
           <p className="text-[11px] text-muted-foreground">
-            {plate.label} · {value.uHeight}U · {value.ports.length} port
-            {value.ports.length === 1 ? '' : 's'}
+            {t('{plate} · {height}U · {count} port{plural}', {
+              plate: faceplateLabel(plate),
+              height: value.uHeight,
+              count: value.ports.length,
+              plural: value.ports.length === 1 ? '' : 's',
+            })}
           </p>
         )}
       </div>
       {editable && (
         <>
           <div className="flex flex-col gap-1.5">
-            <Label className={fieldLabel}>Faceplate</Label>
+            <Label className={fieldLabel}>{t('Faceplate')}</Label>
             <button
               type="button"
-              aria-label="Faceplate"
+              aria-label={t('Faceplate')}
               data-faceplate={value.faceplateId}
               onClick={() => setPickerOpen(true)}
               className="flex cursor-pointer flex-col items-start gap-0.5 rounded border border-[#30363d] bg-[#21262d] px-2 py-1.5 text-left hover:border-[#00d4ff]"
             >
-              <span className="text-sm">{plate.label}</span>
-              <span className="text-[11px] text-[#00d4ff]">Browse faceplates…</span>
+              <span className="text-sm">{faceplateLabel(plate)}</span>
+              <span className="text-[11px] text-[#00d4ff]">{t('Browse faceplates…')}</span>
             </button>
             <FaceplatePicker
               open={pickerOpen}
@@ -96,13 +102,13 @@ export function DeviceFaceplateEditor({ value, label, status, editable, onChange
 
           <div className="grid grid-cols-3 gap-3">
             <div className="flex flex-col gap-1.5">
-              <Label className={fieldLabel}>Height (U)</Label>
+              <Label className={fieldLabel}>{t('Height (U)')}</Label>
               <input
                 type="number"
                 min={1}
                 max={MAX_RACK_U}
                 className={inputClass}
-                aria-label="Height (U)"
+                aria-label={t('Height (U)')}
                 value={value.uHeight}
                 onChange={(e) =>
                   onChange({
@@ -115,26 +121,26 @@ export function DeviceFaceplateEditor({ value, label, status, editable, onChange
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label className={fieldLabel}>{`Width (/${RACK_COLUMNS})`}</Label>
+              <Label className={fieldLabel}>{t('Width (/{count})', { count: RACK_COLUMNS })}</Label>
               <select
                 className={inputClass}
-                aria-label="Width"
+                aria-label={t('Width')}
                 value={value.colSpan}
                 onChange={(e) => onChange({ ...value, colSpan: Number(e.target.value) })}
               >
-                <option value={RACK_COLUMNS}>Full width</option>
-                <option value={RACK_COLUMNS / 2}>Half width</option>
-                <option value={RACK_COLUMNS / 3}>Third width</option>
-                <option value={RACK_COLUMNS / 4}>Quarter width</option>
-                <option value={RACK_COLUMNS / 6}>Sixth width</option>
+                <option value={RACK_COLUMNS}>{t('Full width')}</option>
+                <option value={RACK_COLUMNS / 2}>{t('Half width')}</option>
+                <option value={RACK_COLUMNS / 3}>{t('Third width')}</option>
+                <option value={RACK_COLUMNS / 4}>{t('Quarter width')}</option>
+                <option value={RACK_COLUMNS / 6}>{t('Sixth width')}</option>
               </select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label className={fieldLabel}>Colour override</Label>
+              <Label className={fieldLabel}>{t('Colour override')}</Label>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
-                  aria-label="Colour override"
+                  aria-label={t('Colour override')}
                   className="h-8 flex-1 cursor-pointer rounded border border-[#30363d] bg-[#21262d]"
                   value={value.color ?? DEFAULT_COLOR}
                   onChange={(e) => onChange({ ...value, color: e.target.value })}
@@ -144,7 +150,7 @@ export function DeviceFaceplateEditor({ value, label, status, editable, onChange
                   className="cursor-pointer rounded border border-[#30363d] px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
                   onClick={() => onChange({ ...value, color: null })}
                 >
-                  Reset
+                  {t('Reset')}
                 </button>
               </div>
             </div>

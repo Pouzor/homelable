@@ -16,6 +16,7 @@ import { BookOpen, Search, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { t, useLocale } from '@/i18n'
 import { isOverdue } from '../frontmatter'
 import { usePublicDocsStore, type PublicGroupBy } from '../publicStore'
 import { buildLibraryTree, buildLinkedDocTree, filterGroups, filterTree } from '../tree'
@@ -53,6 +54,7 @@ function Centered({ title, detail }: { title: string; detail?: string }) {
 }
 
 export default function PublicDocs() {
+  useLocale()
   const {
     docs,
     loaded,
@@ -81,7 +83,7 @@ export default function PublicDocs() {
   useEffect(() => {
     // Nothing here should ever be indexed: it is somebody's homelab, published
     // to whoever holds one link.
-    document.title = 'Documentation'
+    document.title = t('Documentation')
     const meta = document.createElement('meta')
     meta.name = 'robots'
     meta.content = 'noindex, nofollow'
@@ -133,21 +135,21 @@ export default function PublicDocs() {
   if (STANDALONE) {
     return (
       <Centered
-        title="Documentation needs the backend"
-        detail="This build runs without one, so there is nothing to share."
+        title={t('Documentation needs the backend')}
+        detail={t('This build runs without one, so there is nothing to share.')}
       />
     )
   }
   if (!boot.key) {
     return (
       <Centered
-        title="This link is missing its key"
-        detail="A documentation link looks like /docs?key=…"
+        title={t('This link is missing its key')}
+        detail={t('A documentation link looks like /docs?key=…')}
       />
     )
   }
   if (error) return <Centered title={error} />
-  if (loading || !loaded) return <Centered title="Loading…" />
+  if (loading || !loaded) return <Centered title={t('Loading…')} />
 
   return (
     <div className="flex h-screen min-h-0 bg-background text-foreground">
@@ -157,12 +159,12 @@ export default function PublicDocs() {
           <Input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
-            placeholder="Filter documents"
-            aria-label="Filter documents"
+            placeholder={t('Filter documents')}
+            aria-label={t('Filter documents')}
             className="h-6 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
           />
           {filter && (
-            <Button size="icon-xs" variant="ghost" aria-label="Clear filter" onClick={() => setFilter('')}>
+            <Button size="icon-xs" variant="ghost" aria-label={t('Clear filter')} onClick={() => setFilter('')}>
               <X />
             </Button>
           )}
@@ -183,7 +185,7 @@ export default function PublicDocs() {
           >
             {GROUP_OPTIONS.map((option) => (
               <option key={option} value={option}>
-                {GROUP_BY_LABELS[option]}
+                {t(GROUP_BY_LABELS[option])}
               </option>
             ))}
           </select>
@@ -194,7 +196,7 @@ export default function PublicDocs() {
             Library
           </p>
           {libraryItems.length === 0 ? (
-            <p className="px-3 py-1 text-xs text-muted-foreground/60">Nothing filed here.</p>
+            <p className="px-3 py-1 text-xs text-muted-foreground/60">{t('Nothing filed here.')}</p>
           ) : (
             libraryItems.map((leaf) => (
               <DocTreeItem
@@ -260,8 +262,8 @@ export default function PublicDocs() {
           />
         ) : (
           <Centered
-            title={docs.length === 0 ? 'Nothing is documented yet' : 'Pick a document'}
-            detail={docs.length === 0 ? undefined : 'Everything here is read-only.'}
+            title={docs.length === 0 ? t('Nothing is documented yet') : t('Pick a document')}
+            detail={docs.length === 0 ? undefined : t('Everything here is read-only.')}
           />
         )}
       </div>

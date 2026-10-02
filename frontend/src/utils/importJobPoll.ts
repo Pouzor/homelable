@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 /**
  * Polling helper for backend import jobs that answer immediately and finish later.
  *
@@ -9,7 +10,7 @@
 
 export class PollAbortedError extends Error {
   constructor() {
-    super('Import polling aborted')
+    super(t('Import polling aborted'))
     this.name = 'PollAbortedError'
   }
 }
@@ -64,7 +65,7 @@ export async function pollImportJob<T>(
     if (signal?.aborted) throw new PollAbortedError()
 
     if (job.status !== 'running') {
-      if (job.result == null) throw new Error('Import finished without a result')
+      if (job.result == null) throw new Error(t('Import finished without a result'))
       return job.result
     }
 

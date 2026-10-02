@@ -29,6 +29,7 @@ import { nodeTypes } from '@/components/canvas/nodes/nodeTypes'
 import { edgeTypes } from '@/components/canvas/edges/edgeTypes'
 import { deserializeApiCanvas, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { computeCollapseInfo, rewireEdgesForCollapse } from '@/utils/collapseFilter'
+import { t, useLocale } from '@/i18n'
 import { liveviewApi } from '@/api/client'
 import * as standaloneStorage from '@/utils/standaloneStorage'
 import type { NodeData, CustomStyleDef } from '@/types'
@@ -38,6 +39,7 @@ const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 type ViewState = 'loading' | 'disabled' | 'invalid-key' | 'no-key' | 'network-error' | 'ready'
 
 function LiveViewCanvas() {
+  useLocale()
   const { nodes, edges, loadCanvas, fitViewPending, clearFitViewPending } = useCanvasStore()
   const { fitView } = useReactFlow()
   const activeTheme = useThemeStore((s) => s.activeTheme)
@@ -123,22 +125,22 @@ function LiveViewCanvas() {
   if (viewState === 'loading') {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-[#0d1117] text-[#8b949e]">
-        Loading…
+        {t('Loading…')}
       </div>
     )
   }
 
   if (viewState !== 'ready') {
     const messages: Record<Exclude<ViewState, 'loading' | 'ready'>, string> = {
-      disabled: 'Live view is disabled on this instance.',
-      'invalid-key': 'Invalid or expired live view key.',
-      'no-key': 'Missing key — use ?key=your-secret in the URL.',
-      'network-error': 'Could not reach the server. Check your connection.',
+      disabled: t('Live view is disabled on this instance.'),
+      'invalid-key': t('Invalid or expired live view key.'),
+      'no-key': t('Missing key — use ?key=your-secret in the URL.'),
+      'network-error': t('Could not reach the server. Check your connection.'),
     }
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-[#0d1117]">
         <div className="text-center space-y-2">
-          <p className="text-[#f85149] text-lg font-medium">Access Denied</p>
+          <p className="text-[#f85149] text-lg font-medium">{t('Access Denied')}</p>
           <p className="text-[#8b949e] text-sm">{messages[viewState]}</p>
         </div>
       </div>

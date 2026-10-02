@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { t, useLocale } from '@/i18n'
 
 interface Props {
   open: boolean
@@ -28,30 +29,35 @@ interface Props {
  * body is snapshotted into the document's history first.
  */
 export function RegenerateDocModal({ open, title, fromDevice, busy, onCancel, onConfirm }: Props) {
+  useLocale()
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onCancel()}>
       <DialogContent className="max-w-md border-border bg-[#161b22]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-foreground">
             <AlertTriangle size={16} className="text-[var(--status-pending,#e3b341)]" />
-            Regenerate “{title}”?
+            {t('Regenerate “{title}”?', { title })}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            Everything written in this document is erased and replaced by a freshly generated one.
+            {t('Everything written in this document is erased and replaced by a freshly generated one.')}
           </DialogDescription>
         </DialogHeader>
 
         <ul className="space-y-1.5 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5 text-xs text-muted-foreground">
           <li>
-            The body is rebuilt {fromDevice ? "from the device's current facts in the database" : 'from the template this page was created with'}.
+            {t('The body is rebuilt {source}', {
+              source: fromDevice
+                ? t("from the device's current facts in the database")
+                : t('from the template this page was created with'),
+            })}
           </li>
-          <li>Your notes, sections and edits in it are lost.</li>
-          <li>The current body is saved to the history first, so this can be undone from there.</li>
+          <li>{t('Your notes, sections and edits in it are lost.')}</li>
+          <li>{t('The current body is saved to the history first, so this can be undone from there.')}</li>
         </ul>
 
         <DialogFooter className="gap-2">
           <Button variant="ghost" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t('Cancel')}
           </Button>
           <Button
             onClick={onConfirm}
@@ -59,7 +65,7 @@ export function RegenerateDocModal({ open, title, fromDevice, busy, onCancel, on
             className="gap-1.5 bg-[var(--status-offline,#f85149)] text-[#0d1117] hover:bg-[var(--status-offline,#f85149)]/90"
           >
             <RefreshCw size={13} />
-            {busy ? 'Regenerating…' : 'Erase and regenerate'}
+            {busy ? t('Regenerating…') : t('Erase and regenerate')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -9,6 +9,7 @@ import type { TextPosition } from '@/types'
 import { hexToRgba, rgbaToHex8 } from '@/utils/colorUtils'
 import { isValidCidr } from '@/utils/subnet'
 import styles from './GroupRectModal.module.css'
+import { t, useLocale } from '@/i18n'
 
 export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double' | 'none'
 
@@ -30,14 +31,6 @@ export interface GroupRectFormData {
   z_order: number
 }
 
-const BORDER_STYLES: { value: BorderStyle; label: string; preview: string }[] = [
-  { value: 'solid',  label: 'Solid',  preview: '───' },
-  { value: 'dashed', label: 'Dashed', preview: '╌╌╌' },
-  { value: 'dotted', label: 'Dotted', preview: '···' },
-  { value: 'double', label: 'Double', preview: '═══' },
-  { value: 'none',   label: 'None',   preview: '   ' },
-]
-
 const TEXT_SIZES: { value: number; label: string }[] = [
   { value: 10, label: '10' },
   { value: 12, label: '12' },
@@ -45,11 +38,6 @@ const TEXT_SIZES: { value: number; label: string }[] = [
   { value: 16, label: '16' },
   { value: 18, label: '18' },
   { value: 20, label: '20' },
-]
-
-const LABEL_POSITIONS: { value: LabelPosition; label: string }[] = [
-  { value: 'inside',  label: 'Inside' },
-  { value: 'outside', label: 'Outside' },
 ]
 
 const BORDER_WIDTHS: { value: number; label: string }[] = [
@@ -75,12 +63,6 @@ const DEFAULT_FORM: GroupRectFormData = {
   z_order: 1,
 }
 
-const FONTS = [
-  { value: 'inter', label: 'Inter (sans-serif)' },
-  { value: 'mono', label: 'JetBrains Mono' },
-  { value: 'serif', label: 'Serif' },
-]
-
 const TEXT_POSITIONS: { value: TextPosition; label: string }[] = [
   { value: 'top-left',      label: '↖' },
   { value: 'top-center',    label: '↑' },
@@ -92,8 +74,6 @@ const TEXT_POSITIONS: { value: TextPosition; label: string }[] = [
   { value: 'bottom-center', label: '↓' },
   { value: 'bottom-right',  label: '↘' },
 ]
-
-const getFontLabel = (value: string) => FONTS.find((f) => f.value === value)?.label ?? value
 
 interface GroupRectModalProps {
   open: boolean
@@ -125,6 +105,7 @@ export function GroupRectModal({
   countSubnetMatches,
   importOnSubmit = false,
 }: GroupRectModalProps) {
+  useLocale()
   const [form, setForm] = useState<GroupRectFormData>({ ...DEFAULT_FORM, ...initial })
   const [subnet, setSubnet] = useState('')
 
@@ -132,6 +113,35 @@ export function GroupRectModal({
   const showCidrError = subnet.trim() !== '' && !cidrValid
   const canImport = cidrValid && !!onImportSubnet
   const matchCount = cidrValid && countSubnetMatches ? countSubnetMatches(subnet) : null
+
+  // Callers pass an already-translated title, so match both forms of the
+  // default — otherwise zh-CN would never reach the "Add" branch.
+  const isAddMode = title === 'Add Zone' || title === t('Add Zone')
+
+  // Built inside the component so the labels go through `t`; a module-level
+  // table would be created once at import, before the locale is known.
+  const borderStyles: { value: BorderStyle; label: string; preview: string }[] = [
+    { value: 'solid',  label: t('Solid'),  preview: '───' },
+    { value: 'dashed', label: t('Dashed'), preview: '╌╌╌' },
+    { value: 'dotted', label: t('Dotted'), preview: '···' },
+    { value: 'double', label: t('Double'), preview: '═══' },
+    { value: 'none',   label: t('None'),   preview: '   ' },
+  ]
+  const labelPositions: { value: LabelPosition; label: string }[] = [
+    { value: 'inside',  label: t('Inside') },
+    { value: 'outside', label: t('Outside') },
+  ]
+  const fonts = [
+    { value: 'inter', label: t('Inter (sans-serif)') },
+    { value: 'mono', label: t('JetBrains Mono') },
+    { value: 'serif', label: t('Serif') },
+  ]
+  const getFontLabel = (value: string) => fonts.find((f) => f.value === value)?.label ?? value
+  const colorFields = [
+    { key: 'text_color' as const, label: t('Text') },
+    { key: 'border_color' as const, label: t('Border') },
+    { key: 'background_color' as const, label: t('Background') },
+  ]
 
   const handleImport = () => {
     if (!canImport) return
@@ -151,44 +161,38 @@ export function GroupRectModal({
     onClose()
   }
 
-  const colorFields = [
-    { key: 'text_color' as const, label: 'Text' },
-    { key: 'border_color' as const, label: 'Border' },
-    { key: 'background_color' as const, label: 'Background' },
-  ]
-
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">{t(title)}</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
           {/* ── LEFT column: content & text ── */}
           <div className="flex flex-col gap-4 min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 pb-1 border-b border-[#30363d]">Content</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 pb-1 border-b border-[#30363d]">{t('Content')}</div>
 
           {/* Label */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Label</Label>
+            <Label className="text-xs text-muted-foreground">{t('Label')}</Label>
             <Input
               value={form.label}
               onChange={(e) => set('label', e.target.value)}
-              placeholder="Zone name…"
+              placeholder={t('Zone name…')}
               className={`bg-[#21262d] border-[#30363d] text-sm h-8 ${modalStyles['modal-radius']}`}
             />
           </div>
 
           {/* Description */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground" htmlFor="zone-description">Description</Label>
+            <Label className="text-xs text-muted-foreground" htmlFor="zone-description">{t('Description')}</Label>
             <textarea
               id="zone-description"
               value={form.description}
               onChange={(e) => set('description', e.target.value)}
-              placeholder="What is in this zone, and what it is for…"
+              placeholder={t('What is in this zone, and what it is for…')}
               rows={3}
               className={`bg-[#21262d] border border-[#30363d] text-sm resize-y px-2 py-1.5 text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#00d4ff]/50 ${modalStyles['modal-radius']}`}
             />
@@ -196,15 +200,15 @@ export function GroupRectModal({
 
           {/* Font */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Font</Label>
+            <Label className="text-xs text-muted-foreground">{t('Font')}</Label>
             <Select value={form.font} onValueChange={(v: string | null) => set('font', v ?? 'inter')}>
-              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Font selector">
+              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label={t('Font selector')}>
                 <SelectValue>
                   {getFontLabel(form.font)}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent className="bg-[#21262d] border-[#30363d]">
-                {FONTS.map((f) => (
+                {fonts.map((f) => (
                   <SelectItem key={f.value} value={f.value} className="text-sm">
                     {f.label}
                   </SelectItem>
@@ -215,7 +219,7 @@ export function GroupRectModal({
 
           {/* Text position 3×3 grid */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Text Position</Label>
+            <Label className="text-xs text-muted-foreground">{t('Text Position')}</Label>
             <div className="grid grid-cols-3 gap-1">
               {TEXT_POSITIONS.map(({ value, label }) => {
                 const isSelected = form.text_position === value
@@ -226,7 +230,7 @@ export function GroupRectModal({
                     title={value}
                     onClick={() => set('text_position', value)}
                     className={`h-8 rounded text-base transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
-                    aria-label={`Text position ${label}`}
+                    aria-label={t('Text position {position}', { position: label })}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -242,9 +246,9 @@ export function GroupRectModal({
 
           {/* Label position */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Label Position</Label>
+            <Label className="text-xs text-muted-foreground">{t('Label Position')}</Label>
             <div className="grid grid-cols-2 gap-1">
-              {LABEL_POSITIONS.map(({ value, label }) => {
+              {labelPositions.map(({ value, label }) => {
                 const isSelected = form.label_position === value
                 return (
                   <button
@@ -252,7 +256,7 @@ export function GroupRectModal({
                     type="button"
                     onClick={() => set('label_position', value)}
                     className={`flex items-center justify-center h-8 rounded text-xs transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
-                    aria-label={`Label position ${label}`}
+                    aria-label={t('Label position {position}', { position: label })}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -268,7 +272,7 @@ export function GroupRectModal({
 
           {/* Text size */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Text Size</Label>
+            <Label className="text-xs text-muted-foreground">{t('Text Size')}</Label>
             <div className="grid grid-cols-6 gap-1">
               {TEXT_SIZES.map(({ value, label }) => {
                 const isSelected = form.text_size === value
@@ -278,7 +282,7 @@ export function GroupRectModal({
                     type="button"
                     onClick={() => set('text_size', value)}
                     className={`flex items-center justify-center h-8 rounded transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
-                    aria-label={`Text size ${label}`}
+                    aria-label={t('Text size {size}', { size: label })}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -296,11 +300,11 @@ export function GroupRectModal({
 
           {/* ── RIGHT column: style ── */}
           <div className="flex flex-col gap-4 min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 pb-1 border-b border-[#30363d]">Style</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 pb-1 border-b border-[#30363d]">{t('Style')}</div>
 
           {/* Colors */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Colors</Label>
+            <Label className="text-xs text-muted-foreground">{t('Colors')}</Label>
             <div className="grid grid-cols-3 gap-2">
               {colorFields.map(({ key, label }) => {
                 const { hex6, alpha } = hexToRgba(form[key])
@@ -325,9 +329,9 @@ export function GroupRectModal({
                       value={alpha}
                       onChange={(e) => set(key, rgbaToHex8(hex6, Number(e.target.value)))}
                       className={`w-full cursor-pointer mt-2 ${styles['slider-thumb']} ${styles['slider-accent']}`}
-                      title={`Opacity: ${alpha}%`}
+                      title={t('Opacity: {alpha}%', { alpha })}
                     />
-                    <span className="text-[9px] text-muted-foreground/60">{label} {alpha}%</span>
+                    <span className="text-[9px] text-muted-foreground/60">{t(label)} {alpha}%</span>
                   </div>
                 )
               })}
@@ -336,9 +340,9 @@ export function GroupRectModal({
 
           {/* Border style */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Border Style</Label>
+            <Label className="text-xs text-muted-foreground">{t('Border Style')}</Label>
             <div className="grid grid-cols-5 gap-1">
-              {BORDER_STYLES.map(({ value, label, preview }) => {
+              {borderStyles.map(({ value, label, preview }) => {
                 const isSelected = form.border_style === value
                 return (
                   <button
@@ -347,7 +351,7 @@ export function GroupRectModal({
                     title={label}
                     onClick={() => set('border_style', value)}
                     className={`flex flex-col items-center justify-center h-10 rounded text-xs gap-0.5 transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
-                    aria-label={`Border style ${label}`}
+                    aria-label={t('Border style {style}', { style: label })}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -364,7 +368,7 @@ export function GroupRectModal({
 
           {/* Border width */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Border Width</Label>
+            <Label className="text-xs text-muted-foreground">{t('Border Width')}</Label>
             <div className="grid grid-cols-5 gap-1">
               {BORDER_WIDTHS.map(({ value, label }) => {
                 const isSelected = form.border_width === value
@@ -374,7 +378,7 @@ export function GroupRectModal({
                     type="button"
                     onClick={() => set('border_width', value)}
                     className={`flex items-center justify-center h-8 rounded text-xs transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
-                    aria-label={`Border width ${label}`}
+                    aria-label={t('Border width {width}', { width: label })}
                     style={{
                       background: isSelected ? '#00d4ff22' : '#21262d',
                       border: `1px solid ${isSelected ? '#00d4ff88' : '#30363d'}`,
@@ -390,9 +394,9 @@ export function GroupRectModal({
 
           {/* Z-order */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs text-muted-foreground">Z-Order (1 = furthest back)</Label>
+            <Label className="text-xs text-muted-foreground">{t('Z-Order (1 = furthest back)')}</Label>
             <Select value={String(form.z_order)} onValueChange={(v: string | null) => set('z_order', v !== null ? Number(v) : 1)}>
-              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']}`} aria-label="Z-order selector">
+              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']}`} aria-label={t('Z-order selector')}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-[#21262d] border-[#30363d]">
@@ -414,14 +418,14 @@ export function GroupRectModal({
           {onImportSubnet && (
             <div className="flex flex-col gap-2 pt-3 border-t border-[#30363d]">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                Import devices by subnet
+                {t('Import devices by subnet')}
               </div>
               <div className="flex gap-2">
                 <Input
                   value={subnet}
                   onChange={(e) => setSubnet(e.target.value)}
                   placeholder="192.168.1.0/24"
-                  aria-label="Subnet"
+                  aria-label={t('Subnet')}
                   className={`bg-[#21262d] border-[#30363d] text-sm h-8 font-mono ${modalStyles['modal-radius']}`}
                   style={showCidrError ? { borderColor: '#f85149' } : undefined}
                   // Enter runs the import instead of submitting the whole form —
@@ -442,18 +446,26 @@ export function GroupRectModal({
                     className="cursor-pointer border-[#30363d] bg-[#21262d] shrink-0"
                     onClick={handleImport}
                   >
-                    Import
+                    {t('Import')}
                   </Button>
                 )}
               </div>
               <p className="text-[11px] text-muted-foreground/70">
                 {showCidrError
-                  ? <span className="text-[#f85149]">Not a valid IPv4 CIDR — try 192.168.1.0/24</span>
+                  ? <span className="text-[#f85149]">{t('Not a valid IPv4 CIDR — try 192.168.1.0/24')}</span>
                   : matchCount === null
-                    ? 'Moves every unparented device in that range into this zone. Nothing is removed.'
+                    ? t('Moves every unparented device in that range into this zone. Nothing is removed.')
                     : matchCount === 0
-                      ? 'No unparented device in that range.'
-                      : `${matchCount} device${matchCount > 1 ? 's' : ''} will move into this zone${importOnSubmit ? ' when you add it' : ''}.`}
+                      ? t('No unparented device in that range.')
+                      : importOnSubmit
+                        ? t('{count} device{plural} will move into this zone when you add it.', {
+                            count: matchCount,
+                            plural: matchCount > 1 ? 's' : '',
+                          })
+                        : t('{count} device{plural} will move into this zone.', {
+                            count: matchCount,
+                            plural: matchCount > 1 ? 's' : '',
+                          })}
               </p>
             </div>
           )}
@@ -467,15 +479,15 @@ export function GroupRectModal({
                 className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10 cursor-pointer"
                 onClick={() => { onDelete(); onClose() }}
               >
-                Delete
+                {t('Delete')}
               </Button>
             )}
             <div className="flex gap-2 ml-auto">
               <Button type="button" variant="ghost" size="sm" className={`cursor-pointer ${modalStyles['modal-cancel-hover']}`} onClick={onClose}>
-                Cancel
+                {t('Cancel')}
               </Button>
               <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer">
-                {title === 'Add Zone' ? 'Add' : 'Save'}
+                {isAddMode ? t('Add') : t('Save')}
               </Button>
             </div>
           </div>

@@ -3,6 +3,7 @@ import modalStyles from './modal-interactive.module.css'
 import { Input } from '@/components/ui/input'
 import { ICON_REGISTRY, ICON_CATEGORIES, isBrandIconKey } from '@/utils/nodeIcons'
 import { BrandIconPicker } from './BrandIconPicker'
+import { t, useLocale } from '@/i18n'
 
 interface IconPickerPanelProps {
   /** Current icon key — a lucide registry key or `brand:<slug>`. */
@@ -18,6 +19,7 @@ interface IconPickerPanelProps {
  * both surfaces offer the same lucide registry + dashboard-icons brand catalog.
  */
 export function IconPickerPanel({ value, onSelect, autoFocus }: IconPickerPanelProps) {
+  useLocale()
   const [search, setSearch] = useState('')
   const [tab, setTab] = useState<'generic' | 'brand'>(isBrandIconKey(value) ? 'brand' : 'generic')
 
@@ -28,12 +30,12 @@ export function IconPickerPanel({ value, onSelect, autoFocus }: IconPickerPanelP
 
   return (
     <div className="flex flex-col gap-2 p-2.5 rounded-md bg-[#0d1117] border border-[#30363d]">
-      <div className="flex gap-1 mb-1" role="tablist" aria-label="Icon source">
+      <div className="flex gap-1 mb-1" role="tablist" aria-label={t('Icon source')}>
         <button type="button" role="tab" aria-selected={tab === 'generic'} onClick={() => setTab('generic')} className={tabClass(tab === 'generic')}>
-          Generic
+          {t('Generic')}
         </button>
         <button type="button" role="tab" aria-selected={tab === 'brand'} onClick={() => setTab('brand')} className={tabClass(tab === 'brand')}>
-          Brand
+          {t('Brand')}
         </button>
       </div>
 
@@ -44,7 +46,7 @@ export function IconPickerPanel({ value, onSelect, autoFocus }: IconPickerPanelP
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search icons…"
+            placeholder={t('Search icons…')}
             className={`bg-[#21262d] border-[#30363d] text-xs h-7 ${modalStyles['modal-radius']}`}
             autoFocus={autoFocus}
           />
@@ -57,7 +59,7 @@ export function IconPickerPanel({ value, onSelect, autoFocus }: IconPickerPanelP
               if (entries.length === 0) return null
               return (
                 <div key={cat}>
-                  <p className="text-[9px] font-semibold text-muted-foreground/50 uppercase tracking-wider mb-1">{cat}</p>
+                  <p className="text-[9px] font-semibold text-muted-foreground/50 uppercase tracking-wider mb-1">{t(cat)}</p>
                   <div className="grid grid-cols-7 gap-1">
                     {entries.map((entry) => {
                       const isSelected = value === entry.key
@@ -65,10 +67,10 @@ export function IconPickerPanel({ value, onSelect, autoFocus }: IconPickerPanelP
                         <button
                           key={entry.key}
                           type="button"
-                          title={entry.label}
+                          title={t(entry.label)}
                           onClick={() => onSelect(isSelected ? undefined : entry.key)}
                           className={`flex items-center justify-center w-7 h-7 rounded transition-colors cursor-pointer ${modalStyles['modal-interactive']}`}
-                          aria-label={`Select icon ${entry.label}`}
+                          aria-label={t('Select icon {label}', { label: entry.label })}
                           style={{
                             background: isSelected ? '#00d4ff22' : 'transparent',
                             border: isSelected ? '1px solid #00d4ff88' : '1px solid transparent',

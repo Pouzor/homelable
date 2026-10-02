@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 import { useCanvasStore, serviceStatusKey } from '@/stores/canvasStore'
-import { NODE_TYPE_LABELS, STATUS_COLORS, type ServiceInfo, type ServiceStatus, type NodeData, type NodeProperty } from '@/types'
+import { t, useLocale } from '@/i18n'
+import { NODE_TYPE_LABELS, STATUS_COLORS, statusLabel, type ServiceInfo, type ServiceStatus, type NodeData, type NodeProperty } from '@/types'
 import { getServiceUrl } from '@/utils/serviceUrl'
 import { splitIps } from '@/utils/maskIp'
 import { PropertyList } from '@/components/common/PropertyList'
@@ -28,6 +29,7 @@ interface DetailPanelProps {
 type SvcModalState = { nodeId: string; index: number | null; form?: ServiceFormData }
 
 export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: DetailPanelProps) {
+  useLocale()
   const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup, removeFromGroup, setNodeSize } = useCanvasStore()
   const serviceStatuses = useCanvasStore((s) => s.serviceStatuses)
 
@@ -93,7 +95,7 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
   const host = ipAddresses[0] ?? data.hostname
 
   const handleDelete = () => {
-    if (confirm(`Delete "${data.label}"?`)) {
+    if (confirm(t('Delete "{label}"?', { label: data.label }))) {
       snapshotHistory()
       deleteNode(node.id)
     }
@@ -174,24 +176,24 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
     <aside className="w-72 shrink-0 flex flex-col border-l border-border bg-[#161b22] overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="font-semibold text-sm text-foreground truncate">{data.label}</span>
-        <button aria-label="Close panel" onClick={() => setSelectedNode(null)} className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+        <button aria-label={t('Close panel')} onClick={() => setSelectedNode(null)} className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
           <X size={16} />
         </button>
       </div>
 
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: statusColor }} />
-        <span className="text-sm capitalize" style={{ color: statusColor }}>{data.status}</span>
+        <span className="text-sm" style={{ color: statusColor }}>{statusLabel(data.status)}</span>
         {data.response_time_ms !== undefined && (
           <span className="ml-auto font-mono text-xs text-muted-foreground">{data.response_time_ms}ms</span>
         )}
       </div>
 
       <div className="flex flex-col gap-3 px-4 py-3 text-sm">
-        <DetailRow label="Type" value={NODE_TYPE_LABELS[data.type]} />
+        <DetailRow label={t('Type')} value={t(NODE_TYPE_LABELS[data.type])} />
         {data.hostname && (
           <div className="flex justify-between gap-2 items-baseline">
-            <span className="text-muted-foreground text-xs shrink-0">Hostname</span>
+            <span className="text-muted-foreground text-xs shrink-0">{t('Hostname')}</span>
             <a href={`http://${data.hostname}`} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-[#00d4ff] hover:underline truncate flex items-center gap-1" title={data.hostname}>
               {data.hostname}<ExternalLink size={10} className="shrink-0" />
             </a>
@@ -199,7 +201,7 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
         )}
         {ipAddresses.length > 0 && (
           <div className="flex justify-between gap-2 items-start">
-            <span className="text-muted-foreground text-xs shrink-0">{ipAddresses.length > 1 ? 'IP Addresses' : 'IP Address'}</span>
+            <span className="text-muted-foreground text-xs shrink-0">{ipAddresses.length > 1 ? t('IP Addresses') : t('IP Address')}</span>
             <div className="flex flex-wrap justify-end items-center gap-x-2 gap-y-1 max-w-[65%]">
               {ipAddresses.map((ip, index) => (
                 <span key={`${ip}-${index}`} className="inline-flex items-center shrink-0 whitespace-nowrap">
@@ -218,13 +220,13 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
             </div>
           </div>
         )}
-        {data.mac && <DetailRow label="MAC" value={data.mac} mono />}
-        {data.os && <DetailRow label="OS" value={data.os} />}
-        {data.check_method && <DetailRow label="Check" value={data.check_method} mono />}
-        {data.last_seen && <DetailRow label="Last Seen" value={formatTimestamp(data.last_seen)} />}
-        {data.last_scan && <DetailRow label="Last Scan" value={formatTimestamp(data.last_scan)} />}
-        {data.created_at && <DetailRow label="Created" value={formatTimestamp(data.created_at)} />}
-        {data.updated_at && <DetailRow label="Last Modified" value={formatTimestamp(data.updated_at)} />}
+        {data.mac && <DetailRow label={t('MAC')} value={data.mac} mono />}
+        {data.os && <DetailRow label={t('OS')} value={data.os} />}
+        {data.check_method && <DetailRow label={t('Check')} value={data.check_method} mono />}
+        {data.last_seen && <DetailRow label={t('Last Seen')} value={formatTimestamp(data.last_seen)} />}
+        {data.last_scan && <DetailRow label={t('Last Scan')} value={formatTimestamp(data.last_scan)} />}
+        {data.created_at && <DetailRow label={t('Created')} value={formatTimestamp(data.created_at)} />}
+        {data.updated_at && <DetailRow label={t('Last Modified')} value={formatTimestamp(data.updated_at)} />}
         {/* The row behind this node — where the same facts live for every other
             canvas showing it. */}
         {data.device_id && (onOpenInventory || onOpenDocumentation) && (
@@ -234,7 +236,7 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
                 onClick={() => onOpenInventory(data.device_id as string)}
                 className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer"
               >
-                <Boxes size={10} /> Open in inventory
+                <Boxes size={10} /> {t('Open in inventory')}
               </button>
             )}
             {onOpenDocumentation && (
@@ -242,7 +244,7 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
                 onClick={() => onOpenDocumentation(data.device_id as string, data.label)}
                 className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer"
               >
-                <BookOpen size={10} /> Open in documentation
+                <BookOpen size={10} /> {t('Open in documentation')}
               </button>
             )}
           </div>
@@ -261,9 +263,9 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
 
       <div className="px-4 py-3 border-t border-border">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-muted-foreground">Services{services.length > 0 ? ` (${services.length})` : ''}</span>
+          <span className="text-xs text-muted-foreground">{t('Services')}{services.length > 0 ? ` (${services.length})` : ''}</span>
           <button onClick={() => setSvcModal({ nodeId: node.id, index: null })} className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer">
-            <Plus size={10} /> Add
+            <Plus size={10} /> {t('Add')}
           </button>
         </div>
         {services.length > 0 && (
@@ -292,7 +294,7 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
             ))}
           </div>
         )}
-        {services.length === 0 && <p className="text-[10px] text-muted-foreground/50">No services — click Add to register one.</p>}
+        {services.length === 0 && <p className="text-[10px] text-muted-foreground/50">{t('No services — click Add to register one.')}</p>}
       </div>
 
       {openSvcModal && (
@@ -302,23 +304,23 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
           onClose={() => setSvcModal(null)}
           onSubmit={handleSubmitService}
           initial={openSvcModal.form}
-          title={openSvcModal.index === null ? 'Add Service' : 'Edit Service'}
-          confirmLabel={openSvcModal.index === null ? 'Add' : 'Save'}
+          title={openSvcModal.index === null ? t('Add Service') : t('Edit Service')}
+          confirmLabel={openSvcModal.index === null ? t('Add') : t('Save')}
         />
       )}
 
       {data.notes && (
         <div className="px-4 py-3 border-t border-border">
-          <div className="text-xs text-muted-foreground mb-1">Notes</div>
+          <div className="text-xs text-muted-foreground mb-1">{t('Notes')}</div>
           <p className="text-xs text-foreground/80 whitespace-pre-wrap">{data.notes}</p>
         </div>
       )}
 
       <div className="mt-auto flex gap-2 px-4 py-3 border-t border-border">
         <Button size="sm" variant="secondary" className="flex-1 gap-1.5 cursor-pointer" onClick={() => onEdit(node.id)}>
-          <Edit size={14} /> Edit
+          <Edit size={14} /> {t('Edit')}
         </Button>
-        <Button size="sm" variant="destructive" className="gap-1.5 cursor-pointer" aria-label="Delete node" onClick={handleDelete}>
+        <Button size="sm" variant="destructive" className="gap-1.5 cursor-pointer" aria-label={t('Delete node')} onClick={handleDelete}>
           <Trash2 size={14} />
         </Button>
       </div>
@@ -331,6 +333,7 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
 const round = (v: number | undefined): string => (v != null ? String(Math.round(v)) : '')
 
 function SizeFields({ node, onCommit }: { node: Node<NodeData>; onCommit: (size: { width?: number; height?: number }) => void }) {
+  useLocale()
   // Live size from the explicit dimension, falling back to the DOM-measured
   // size so the field shows the node's current footprint even before resize.
   const liveWidth = round(node.width ?? node.measured?.width)
@@ -364,14 +367,14 @@ function SizeFields({ node, onCommit }: { node: Node<NodeData>; onCommit: (size:
 
   return (
     <div className="px-4 py-3 border-t border-border">
-      <span className="text-xs text-muted-foreground">Size</span>
+      <span className="text-xs text-muted-foreground">{t('Size')}</span>
       <div className="mt-2 flex items-center gap-2">
         <label className="flex flex-1 items-center gap-1.5">
           <span className="text-[10px] text-muted-foreground/70 w-3">W</span>
           <Input
             type="number"
             min={140}
-            aria-label="Width"
+            aria-label={t('Width')}
             value={width}
             onFocus={() => setEditing('width')}
             onChange={(e) => setWidth(e.target.value)}
@@ -385,7 +388,7 @@ function SizeFields({ node, onCommit }: { node: Node<NodeData>; onCommit: (size:
           <Input
             type="number"
             min={50}
-            aria-label="Height"
+            aria-label={t('Height')}
             value={height}
             onFocus={() => setEditing('height')}
             onChange={(e) => setHeight(e.target.value)}
@@ -413,9 +416,12 @@ interface MultiSelectPanelProps {
 }
 
 function MultiSelectPanel({ nodeIds, nodes, groupName, setGroupName, creatingGroup, setCreatingGroup, onCreateGroup, onClose }: MultiSelectPanelProps) {
+  useLocale()
   const selectedNodes = nodeIds.map((id) => nodes.find((n) => n.id === id)).filter(Boolean) as Node<NodeData>[]
 
   const handleCreate = () => {
+    // The fallback is persisted as the group's real name, so it stays a plain
+    // string rather than a translated one.
     const name = groupName.trim() || 'Group'
     onCreateGroup(name)
   }
@@ -425,9 +431,9 @@ function MultiSelectPanel({ nodeIds, nodes, groupName, setGroupName, creatingGro
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
           <Layers size={14} className="text-[#00d4ff]" />
-          <span className="font-semibold text-sm text-foreground">{nodeIds.length} nodes selected</span>
+          <span className="font-semibold text-sm text-foreground">{t('{count} nodes selected', { count: nodeIds.length })}</span>
         </div>
-        <button aria-label="Close panel" onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+        <button aria-label={t('Close panel')} onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
           <X size={16} />
         </button>
       </div>
@@ -437,7 +443,7 @@ function MultiSelectPanel({ nodeIds, nodes, groupName, setGroupName, creatingGro
           <div key={n.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-[#21262d] text-xs">
             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[n.data.status] }} />
             <span className="truncate text-foreground font-medium">{n.data.label}</span>
-            <span className="ml-auto text-muted-foreground shrink-0">{NODE_TYPE_LABELS[n.data.type] ?? n.data.type}</span>
+            <span className="ml-auto text-muted-foreground shrink-0">{t(NODE_TYPE_LABELS[n.data.type] ?? n.data.type)}</span>
           </div>
         ))}
       </div>
@@ -447,7 +453,7 @@ function MultiSelectPanel({ nodeIds, nodes, groupName, setGroupName, creatingGro
           <>
             <Input
               autoFocus
-              placeholder="Group name…"
+              placeholder={t('Group name…')}
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setCreatingGroup(false) }}
@@ -455,10 +461,10 @@ function MultiSelectPanel({ nodeIds, nodes, groupName, setGroupName, creatingGro
             />
             <div className="flex gap-2">
               <Button size="sm" className="flex-1 h-7 text-[10px] bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90" onClick={handleCreate}>
-                Create Group
+                {t('Create Group')}
               </Button>
               <Button size="sm" variant="ghost" className="h-7 text-[10px]" onClick={() => setCreatingGroup(false)}>
-                Cancel
+                {t('Cancel')}
               </Button>
             </div>
           </>
@@ -470,7 +476,7 @@ function MultiSelectPanel({ nodeIds, nodes, groupName, setGroupName, creatingGro
             variant="ghost"
             onClick={() => setCreatingGroup(true)}
           >
-            <Layers size={13} /> Create Group
+            <Layers size={13} /> {t('Create Group')}
           </Button>
         )}
       </div>
@@ -493,6 +499,7 @@ interface GroupDetailPanelProps {
 }
 
 function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescription, onSnapshotBeforeEdit, onToggleBorder, onClose, onSelectChild }: GroupDetailPanelProps) {
+  useLocale()
   const children = nodes.filter((n) => n.parentId === node.id)
   const onlineCount = children.filter((n) => n.data.status === 'online').length
   const offlineCount = children.filter((n) => n.data.status === 'offline').length
@@ -514,7 +521,7 @@ function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescr
   }
 
   const handleUngroup = () => {
-    if (confirm(`Ungroup "${node.data.label}"? Nodes will be released to the canvas.`)) {
+    if (confirm(t('Ungroup "{label}"? Nodes will be released to the canvas.', { label: node.data.label }))) {
       onUngroup()
     }
   }
@@ -526,29 +533,29 @@ function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescr
           <Layers size={14} className="text-[#00d4ff] shrink-0" />
           <span className="font-semibold text-sm text-foreground truncate">{node.data.label}</span>
         </div>
-        <button aria-label="Close panel" onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+        <button aria-label={t('Close panel')} onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
           <X size={16} />
         </button>
       </div>
 
       {/* Status summary */}
       <div className="flex items-center gap-4 px-4 py-3 border-b border-border text-xs">
-        <span className="text-muted-foreground">{children.length} node{children.length !== 1 ? 's' : ''}</span>
-        {onlineCount > 0 && <span style={{ color: STATUS_COLORS.online }}>● {onlineCount} online</span>}
-        {offlineCount > 0 && <span style={{ color: STATUS_COLORS.offline }}>● {offlineCount} offline</span>}
+        <span className="text-muted-foreground">{t('{count} node{plural}', { count: children.length, plural: children.length !== 1 ? 's' : '' })}</span>
+        {onlineCount > 0 && <span style={{ color: STATUS_COLORS.online }}>● {t('{count} online', { count: onlineCount })}</span>}
+        {offlineCount > 0 && <span style={{ color: STATUS_COLORS.offline }}>● {t('{count} offline', { count: offlineCount })}</span>}
       </div>
 
       {/* Description */}
       <div className="px-4 py-3 border-b border-border">
         <label htmlFor="group-description" className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-          Description
+          {t('Description')}
         </label>
         <textarea
           id="group-description"
           value={node.data.description ?? node.data.notes ?? ''}
           onFocus={() => { snappedRef.current = false }}
           onChange={(e) => handleDescriptionChange(e.target.value)}
-          placeholder="Add a description for this group…"
+          placeholder={t('Add a description for this group…')}
           rows={3}
           className="mt-1.5 w-full resize-y rounded-md bg-[#21262d] border border-[#30363d] px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:border-[#00d4ff]/50"
         />
@@ -556,8 +563,8 @@ function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescr
 
       {/* Children list */}
       <div className="flex-1 px-4 py-3 space-y-1.5 overflow-y-auto">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">Members</span>
-        {children.length === 0 && <p className="text-xs text-muted-foreground/50">No nodes in this group.</p>}
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">{t('Members')}</span>
+        {children.length === 0 && <p className="text-xs text-muted-foreground/50">{t('No nodes in this group.')}</p>}
         {children.map((child) => (
           <div
             key={child.id}
@@ -569,12 +576,12 @@ function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescr
             >
               <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: STATUS_COLORS[child.data.status] }} />
               <span className="truncate text-foreground font-medium">{child.data.label}</span>
-              <span className="ml-auto text-muted-foreground shrink-0">{NODE_TYPE_LABELS[child.data.type] ?? child.data.type}</span>
+              <span className="ml-auto text-muted-foreground shrink-0">{t(NODE_TYPE_LABELS[child.data.type] ?? child.data.type)}</span>
             </button>
             <button
               onClick={() => onRemoveChild(child.id)}
-              aria-label={`Remove ${child.data.label} from group`}
-              title="Remove from group"
+              aria-label={t('Remove {label} from group', { label: child.data.label })}
+              title={t('Remove from group')}
               className="shrink-0 opacity-0 group-hover/member:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] cursor-pointer"
             >
               <X size={12} />
@@ -590,7 +597,7 @@ function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescr
           className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-[#21262d] transition-colors"
         >
           {showBorder ? <Eye size={13} /> : <EyeOff size={13} />}
-          {showBorder ? 'Hide border & title' : 'Show border & title'}
+          {showBorder ? t('Hide border & title') : t('Show border & title')}
         </button>
         <Button
           size="sm"
@@ -598,7 +605,7 @@ function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescr
           className="w-full gap-2"
           onClick={handleUngroup}
         >
-          <Ungroup size={13} /> Ungroup
+          <Ungroup size={13} /> {t('Ungroup')}
         </Button>
       </div>
     </aside>
@@ -637,6 +644,7 @@ function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, on
   onEdit: () => void
   onRemove: () => void
 }) {
+  useLocale()
   const url = getServiceUrl(svc, host)
   // Manually-added services carry no category, so they fell back to grey even
   // when they're reachable HTTP/HTTPS. Treat any resolvable web URL as `web`.
@@ -664,7 +672,7 @@ function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, on
     >
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
         {draggable && (
-          <span className="shrink-0 cursor-grab active:cursor-grabbing text-[#8b949e] hover:text-[#00d4ff]" title="Drag to reorder">
+          <span className="shrink-0 cursor-grab active:cursor-grabbing text-[#8b949e] hover:text-[#00d4ff]" title={t('Drag to reorder')}>
             {createElement(GripVertical, { size: 11 })}
           </span>
         )}
@@ -727,7 +735,7 @@ function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, on
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleVisible() }}
           className="text-[#8b949e] hover:text-[#00d4ff] ml-0.5 cursor-pointer transition-colors"
-          title={shown ? 'Hide on node' : 'Show on node'}
+          title={shown ? t('Hide on node') : t('Show on node')}
         >
           {shown ? <Eye size={10} /> : <EyeOff size={10} />}
         </button>
@@ -735,7 +743,7 @@ function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, on
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit() }}
           className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff] ml-0.5 cursor-pointer"
-          title="Edit service"
+          title={t('Edit service')}
         >
           <Pencil size={10} />
         </button>
@@ -743,7 +751,7 @@ function ServiceBadge({ svc, host, status, draggable, isDragging, isDragOver, on
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRemove() }}
           className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149] ml-0.5 cursor-pointer"
-          title="Remove service"
+          title={t('Remove service')}
         >
           <X size={10} />
         </button>

@@ -10,6 +10,7 @@ import {
   type Edge,
 } from '@xyflow/react'
 import type { EdgeData, EdgeLineStyle, EdgeType, Waypoint } from '@/types'
+import { t, useLocale } from '@/i18n'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { THEMES } from '@/utils/themes'
@@ -54,6 +55,7 @@ interface WaypointHandleProps {
 }
 
 function WaypointHandle({ edgeId, index, waypoint, waypoints, color, pathStyle, prevPoint, nextPoint }: WaypointHandleProps) {
+  useLocale()
   const { screenToFlowPosition } = useReactFlow()
   const updateEdge = useCanvasStore((s) => s.updateEdge)
 
@@ -102,7 +104,7 @@ function WaypointHandle({ edgeId, index, waypoint, waypoints, color, pathStyle, 
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onDoubleClick={handleDoubleClick}
-      title="Drag to move · Double-click to remove"
+      title={t('Drag to move · Double-click to remove')}
     />
   )
 }
@@ -121,6 +123,7 @@ interface AddWaypointHandleProps {
 }
 
 function AddWaypointHandle({ edgeId, insertIndex, x, y, waypoints, color, pathStyle, prevPoint }: AddWaypointHandleProps) {
+  useLocale()
   const updateEdge = useCanvasStore((s) => s.updateEdge)
 
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -153,7 +156,7 @@ function AddWaypointHandle({ edgeId, insertIndex, x, y, waypoints, color, pathSt
         zIndex: 9,
         opacity: 0.7,
       }}
-      title="Click to add waypoint"
+      title={t('Click to add waypoint')}
     >
       +
     </div>
@@ -223,6 +226,7 @@ interface EndpointDotProps {
  * endpoint coords sit at the outer edge of the handle box, not its center.
  */
 function EndpointDot({ edgeId, role, x, y, position, color, source, target, sourceHandle, targetHandle, onDrag }: EndpointDotProps) {
+  useLocale()
   const reconnectEdge = useCanvasStore((s) => s.reconnectEdge)
   const { screenToFlowPosition } = useReactFlow()
 
@@ -282,7 +286,7 @@ function EndpointDot({ edgeId, role, x, y, position, color, source, target, sour
         zIndex: 1000,
         touchAction: 'none',
       }}
-      title="Drag to reconnect"
+      title={t('Drag to reconnect')}
     />
   )
 }
