@@ -67,6 +67,9 @@
 | Server | 服务器 |
 | Switch | 交换机 |
 | Router | 路由器 |
+
+`Switch` 只有指**网络交换机**时才是「交换机」。设备名里的其它 switch 要按实际器件翻：
+`KVM Switch` → `KVM 切换器`（键鼠/视频切换硬件，不是网络设备）。
 | Firewall | 防火墙 |
 | Storage | 存储 |
 | Document | 文档 |
