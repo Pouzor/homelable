@@ -34,9 +34,10 @@ export const DYNAMIC_TABLES: DynamicTable[] = [
     pattern: "label:\\s*'((?:[^'\\\\]|\\\\.)*)'",
   },
   {
-    what: 'theme descriptions (rendered as t(preset.description))',
+    // Theme names and descriptions, both rendered as t(preset.…).
+    what: 'theme names and descriptions',
     file: 'utils/themes.ts',
-    pattern: "description:\\s*'((?:[^'\\\\]|\\\\.)*)'",
+    pattern: "(?:label|description):\\s*'((?:[^'\\\\]|\\\\.)*)'",
   },
   {
     // Only this const — the same file also holds STATUS_COLORS and
@@ -77,6 +78,13 @@ export const DYNAMIC_TABLES: DynamicTable[] = [
     what: 'documentation tree group-by captions',
     file: 'documentation/types.ts',
     block: 'GROUP_BY_LABELS',
+  },
+  {
+    // Export quality / background captions. The modal renders t(opt.label) and
+    // t(opt.hint), so every key here is a dynamic lookup.
+    what: 'export dialog option captions and hints',
+    file: 'utils/export.ts',
+    pattern: "(?:label|hint):\\s*'((?:[^'\\\\]|\\\\.)*)'",
   },
   {
     what: 'rack faceplate labels (faceplateLabel())',
