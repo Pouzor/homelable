@@ -316,6 +316,20 @@ def test_untouched_hardware_section_is_replaced_wholesale():
     assert _after(result.proposed_body, "## Configuration") == _after(_body(_device()), "## Configuration")
 
 
+def test_a_section_summary_names_the_section_instead_of_quoting_it():
+    # A whole table collapsed onto one summary line reads as noise.
+    result = _run(_device(), _device(cpu_model="N200"))
+    assert result.summary == ["Hardware updated from the device"]
+
+
+def test_a_dropped_section_is_summarised_as_removed():
+    baseline = _body(_device())
+    result = reconcile(
+        baseline, _body(_device(properties=[])), baseline_body=baseline, snapshot=t.facts_snapshot(_device())
+    )
+    assert result.summary == ["Properties removed"]
+
+
 def test_section_conflict_resolves_three_ways():
     current = _body(_device()).replace(
         "| CPU | RAM | Disk |",

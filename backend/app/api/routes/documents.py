@@ -150,50 +150,101 @@ async def _record_revision(db: AsyncSession, doc: Document, reason: str) -> None
         await db.delete(revision)
 
 
-async def _device_context(db: AsyncSession, device_id: str) -> dict[str, Any]:
-    """Zone, rack placement and canvas neighbours for a device.
+async def _device_contexts(db: AsyncSession, device_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Zone, rack placement and canvas neighbours for a batch of devices.
 
     All three are optional: a device may be on no canvas, in no rack and in no
     zone, and the template drops those sections rather than printing them empty.
+
+    The query count depends on how deep the zones nest, not on how many devices
+    are asked for — the document list resolves every drifted device at once.
     """
-    context: dict[str, Any] = {"zone_label": None, "rack": None, "connections": []}
+    contexts: dict[str, dict[str, Any]] = {
+        device_id: {"zone_label": None, "rack": None, "connections": []} for device_id in device_ids
+    }
+    if not contexts:
+        return contexts
 
-    node = (
-        await db.execute(select(Node).where(Node.device_id == device_id).order_by(Node.created_at))
-    ).scalars().first()
-    if node is not None:
-        parent_id = node.parent_id
-        seen: set[str] = set()
-        while parent_id and parent_id not in seen:
-            seen.add(parent_id)
-            parent = await db.get(Node, parent_id)
+    # A device placed on several canvases is described by its oldest node.
+    node_of: dict[str, Node] = {}
+    for node in (
+        await db.execute(select(Node).where(Node.device_id.in_(contexts)).order_by(Node.created_at))
+    ).scalars():
+        if node.device_id is not None:
+            node_of.setdefault(node.device_id, node)
+
+    # Walk every parent chain one level per query until each device has met a
+    # zone, run out of parents or looped.
+    known: dict[str, Node] = {}
+    cursor = {device_id: node.parent_id for device_id, node in node_of.items() if node.parent_id}
+    seen: dict[str, set[str]] = {device_id: set() for device_id in cursor}
+    while cursor:
+        missing = {parent_id for parent_id in cursor.values() if parent_id not in known}
+        if missing:
+            for found in (await db.execute(select(Node).where(Node.id.in_(missing)))).scalars():
+                known[found.id] = found
+        following: dict[str, str] = {}
+        for device_id, parent_id in cursor.items():
+            seen[device_id].add(parent_id)
+            parent = known.get(parent_id)
             if parent is None:
-                break
+                continue
             if parent.type in _ZONE_TYPES:
-                context["zone_label"] = parent.label
-                break
-            parent_id = parent.parent_id
+                contexts[device_id]["zone_label"] = parent.label
+            elif parent.parent_id and parent.parent_id not in seen[device_id]:
+                following[device_id] = parent.parent_id
+        cursor = following
 
+    device_of_node = {node.id: device_id for device_id, node in node_of.items()}
+    if device_of_node:
+        peers_of: dict[str, set[str]] = {device_id: set() for device_id in node_of}
         edges = (
-            await db.execute(select(Edge).where((Edge.source == node.id) | (Edge.target == node.id)))
+            await db.execute(
+                select(Edge).where(Edge.source.in_(device_of_node) | Edge.target.in_(device_of_node))
+            )
         ).scalars().all()
-        peer_ids = [e.target if e.source == node.id else e.source for e in edges]
+        for edge in edges:
+            if edge.source in device_of_node:
+                peers_of[device_of_node[edge.source]].add(edge.target)
+            if edge.target in device_of_node:
+                peers_of[device_of_node[edge.target]].add(edge.source)
+        peer_ids = set().union(*peers_of.values())
         if peer_ids:
-            peers = (await db.execute(select(Node.label).where(Node.id.in_(peer_ids)))).scalars().all()
-            context["connections"] = sorted({label for label in peers if label})
+            labels = dict(
+                (await db.execute(select(Node.id, Node.label).where(Node.id.in_(peer_ids)))).tuples().all()
+            )
+            for device_id, peers in peers_of.items():
+                contexts[device_id]["connections"] = sorted(
+                    {labels[peer] for peer in peers if labels.get(peer)}
+                )
 
-    mount = (
-        await db.execute(select(RackDevice).where(RackDevice.device_id == device_id))
-    ).scalars().first()
-    if mount is not None:
-        rack = await db.get(Rack, mount.rack_id)
-        context["rack"] = {
-            "name": rack.name if rack else None,
-            "u_start": mount.u_start,
-            "u_height": mount.u_height,
-            "col_span": mount.col_span,
+    mounts: dict[str, RackDevice] = {}
+    for mount in (
+        await db.execute(select(RackDevice).where(RackDevice.device_id.in_(contexts)))
+    ).scalars():
+        if mount.device_id is not None:
+            mounts.setdefault(mount.device_id, mount)
+    if mounts:
+        racks = {
+            rack.id: rack
+            for rack in (
+                await db.execute(select(Rack).where(Rack.id.in_({m.rack_id for m in mounts.values()})))
+            ).scalars()
         }
-    return context
+        for device_id, mount in mounts.items():
+            rack = racks.get(mount.rack_id)
+            contexts[device_id]["rack"] = {
+                "name": rack.name if rack else None,
+                "u_start": mount.u_start,
+                "u_height": mount.u_height,
+                "col_span": mount.col_span,
+            }
+    return contexts
+
+
+async def _device_context(db: AsyncSession, device_id: str) -> dict[str, Any]:
+    """Zone, rack placement and canvas neighbours for one device."""
+    return (await _device_contexts(db, [device_id]))[device_id]
 
 
 async def _scaffold_body(db: AsyncSession, doc: Document, template_id: str | None) -> None:
@@ -213,8 +264,10 @@ async def _scaffold_body(db: AsyncSession, doc: Document, template_id: str | Non
     doc.template_id = template_id or "blank"
 
 
-async def _has_drifted(db: AsyncSession, doc: Document, device: InventoryDevice | None) -> bool:
-    """Whether the device has moved on in a way this document does not show yet.
+async def _drifted_ids(
+    db: AsyncSession, pairs: list[tuple[Document, InventoryDevice | None]]
+) -> set[str]:
+    """The documents whose device has moved on in a way they do not show yet.
 
     The comparison lives on the server rather than in the UI because
     `facts_snapshot` is the server's own shape — `label` and `type` are stored
@@ -225,14 +278,23 @@ async def _has_drifted(db: AsyncSession, doc: Document, device: InventoryDevice 
     say what the device says now (the user wrote it, or the snapshot predates a
     fact the body was generated with). "Update from device" would then have
     nothing to offer, so the document is not flagged — the merge itself decides.
+    Only those candidates pay for a generated body, and their render contexts
+    are fetched together.
     """
-    if not doc.device_id or not doc.facts_snapshot or device is None:
-        return False
-    if doc.facts_snapshot == facts_snapshot(device):
-        return False
-    _, generated = await _generated_body(db, device)
-    result = await _reconcile_document(doc, [], generated=generated, snapshot=_sync_snapshot(doc))
-    return bool(result.auto or result.conflicts)
+    candidates = [
+        (doc, device)
+        for doc, device in pairs
+        if doc.device_id and doc.facts_snapshot and device is not None
+        and doc.facts_snapshot != facts_snapshot(device)
+    ]
+    contexts = await _device_contexts(db, [device.id for _, device in candidates])
+    drifted: set[str] = set()
+    for doc, device in candidates:
+        generated = render_device_document(device, **contexts[device.id])
+        result = await _reconcile_document(doc, [], generated=generated, snapshot=_sync_snapshot(doc))
+        if result.auto or result.conflicts:
+            drifted.add(doc.id)
+    return drifted
 
 
 async def _devices_for(db: AsyncSession, docs: list[Document]) -> dict[str, InventoryDevice]:
@@ -246,18 +308,17 @@ async def _devices_for(db: AsyncSession, docs: list[Document]) -> dict[str, Inve
     return {device.id: device for device in rows}
 
 
-async def _summary(db: AsyncSession, doc: Document, device: InventoryDevice | None) -> DocumentSummary:
+def _summary(doc: Document, drifted: bool) -> DocumentSummary:
     payload = DocumentSummary.model_validate(doc)
-    payload.drifted = await _has_drifted(db, doc, device)
+    payload.drifted = drifted
     return payload
 
 
 async def _response(db: AsyncSession, doc: Document) -> DocumentResponse:
     """One document, with the drift flag resolved against the live device."""
     payload = DocumentResponse.model_validate(doc)
-    payload.drifted = await _has_drifted(
-        db, doc, await db.get(InventoryDevice, doc.device_id) if doc.device_id else None
-    )
+    device = await db.get(InventoryDevice, doc.device_id) if doc.device_id else None
+    payload.drifted = doc.id in await _drifted_ids(db, [(doc, device)])
     return payload
 
 
@@ -356,7 +417,8 @@ async def list_documents(
         wanted = tag.lower()
         docs = [d for d in docs if any(str(t).lower() == wanted for t in (d.tags or []))]
     devices = await _devices_for(db, list(docs))
-    return [await _summary(db, d, devices.get(d.device_id or "")) for d in docs]
+    drifted = await _drifted_ids(db, [(d, devices.get(d.device_id or "")) for d in docs])
+    return [_summary(d, d.id in drifted) for d in docs]
 
 
 @router.get("/coverage", response_model=CoverageResponse)
@@ -371,6 +433,9 @@ async def coverage(
     docs = (await db.execute(select(Document))).scalars().all()
     by_device = {d.device_id: d for d in docs if d.device_id}
 
+    drifted_ids = await _drifted_ids(
+        db, [(by_device[device.id], device) for device in devices if device.id in by_device]
+    )
     header_only = drifted = overdue = 0
     now = _now()
     for device in devices:
@@ -380,7 +445,7 @@ async def coverage(
         # Never edited since it was generated: the template is all there is.
         if doc.edited_at is None and doc.reviewed_at is None:
             header_only += 1
-        if await _has_drifted(db, doc, device):
+        if doc.id in drifted_ids:
             drifted += 1
         interval = _parse_interval((doc.frontmatter or {}).get("review_every"))
         since = _aware(doc.reviewed_at) or _aware(doc.created_at)

@@ -931,17 +931,31 @@ def _set_frontmatter_title(block: Block, title: str) -> None:
 # ── summary & fingerprint ───────────────────────────────────────────────────
 
 
+def _updated(change: Change) -> str:
+    """One line for a value taken from the device.
+
+    A field's new value is short enough to quote. A section's is a whole block
+    of markdown — a table collapsed onto one line reads as noise — so it is
+    named, not quoted.
+    """
+    if not change.device:
+        return f"{change.name} removed"
+    if change.kind == "section":
+        return f"{change.name} updated from the device"
+    return f"{change.name} updated to {change.device}"
+
+
 def _summarise(changes: list[Change]) -> list[str]:
     lines: list[str] = []
     for change in changes:
         if change.status == SAME:
             continue
         if change.status == AUTO:
-            lines.append(f"{change.name} updated to {change.device}")
+            lines.append(_updated(change))
         elif change.resolution == KEEP:
             lines.append(f"{change.name} kept as written")
         elif change.resolution == DEVICE:
-            lines.append(f"{change.name} updated to {change.device}" if change.device else f"{change.name} removed")
+            lines.append(_updated(change))
         elif change.resolution == CUSTOM:
             lines.append(f"{change.name} set from your text")
     return [re.sub(r"\s+", " ", line).strip() for line in lines]

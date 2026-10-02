@@ -178,6 +178,32 @@ async def test_a_body_that_already_matches_the_device_is_not_drifted(client: Asy
     assert (await client.get("/api/v1/documents/coverage", headers=headers)).json()["drifted"] == 0
 
 
+async def test_the_list_flags_each_drifted_document_on_its_own_device(client: AsyncClient, headers: dict):
+    """The list resolves every candidate's render context in one batch; each
+    document must still be judged against its own device."""
+    docs = {}
+    for name, ip in (("nas-a", "192.168.1.31"), ("nas-b", "192.168.1.32"), ("nas-c", "192.168.1.33")):
+        device = await _device(client, headers, label=name, hostname=f"{name}.lan", ip=ip)
+        docs[name] = (device, await _doc(client, headers, device))
+
+    for name, ip in (("nas-a", "192.168.1.41"), ("nas-b", "192.168.1.42"), ("nas-c", "192.168.1.43")):
+        await _set_ip(client, headers, docs[name][0], ip)
+    # nas-c's owner already wrote the new address down.
+    matching = docs["nas-c"][1]
+    res = await client.patch(
+        f"/api/v1/documents/{matching['id']}",
+        json={"body": matching["body"].replace("| IP | 192.168.1.33 |", "| IP | 192.168.1.43 |")},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+
+    listed = {d["id"]: d["drifted"] for d in (await client.get("/api/v1/documents", headers=headers)).json()}
+    assert listed[docs["nas-a"][1]["id"]] is True
+    assert listed[docs["nas-b"][1]["id"]] is True
+    assert listed[matching["id"]] is False
+    assert (await client.get("/api/v1/documents/coverage", headers=headers)).json()["drifted"] == 2
+
+
 async def test_a_conflict_keeps_the_document_drifted(client: AsyncClient, headers: dict):
     """The user and the device disagree: that is exactly what the flag is for."""
     device = await _device(client, headers)
