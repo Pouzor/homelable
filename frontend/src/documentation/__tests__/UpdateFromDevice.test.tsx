@@ -48,8 +48,7 @@ const PROPS = {
  * A stateful host that behaves like the real store: `onResolve` records the
  * decision, flips the preview into its loading state, and only after the merge
  * answers drops the settled conflict from `unresolved` while keeping every
- * conflict row in `changes`. This is the actual rerender that used to unmount
- * the custom editor after its first debounced keystroke.
+ * conflict row in `changes`.
  */
 function StatefulReview({
   onApply = vi.fn(),
@@ -89,8 +88,6 @@ function StatefulReview({
     />
   )
 }
-
-const idle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('UpdateFromDeviceModal', () => {
   it('opens wide enough to read the two versions side by side', () => {
@@ -207,36 +204,59 @@ describe('UpdateFromDeviceModal', () => {
     expect(screen.getByText((_, node) => node?.tagName === 'PRE' && node.textContent?.includes('firmware: new') === true)).toHaveClass('bg-[var(--status-online,#39d353)]/20')
   })
 
-  it('requires confirmation when custom replaces keep, even with an empty or unchanged draft', async () => {
+  it('offers only the documentation and the device as choices', () => {
+    render(
+      <UpdateFromDeviceModal
+        {...PROPS}
+        preview={preview({ changes: [change()], unresolved: ['conflict-1'] })}
+      />,
+    )
+    expect(screen.getAllByRole('radio')).toHaveLength(2)
+    expect(screen.getByRole('radio', { name: 'Keep actual documentation' })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'Take new device information' })).toBeTruthy()
+    expect(screen.queryByRole('radio', { name: 'Write my own' })).toBeNull()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  it('names the device choice without echoing the raw device value', () => {
+    render(
+      <UpdateFromDeviceModal
+        {...PROPS}
+        preview={preview({
+          changes: [change({ kind: 'section', device: '| CPU | RAM | Disk |\n|---|---|---|\n| 2 cores | 1 GB | 4 GB |' })],
+          unresolved: ['conflict-1'],
+        })}
+      />,
+    )
+    expect(screen.getByRole('radio', { name: 'Take new device information' })).toBeTruthy()
+  })
+
+  it('offers to remove the entry when the device no longer has it', () => {
+    render(
+      <UpdateFromDeviceModal
+        {...PROPS}
+        preview={preview({ changes: [change({ device: '' })], unresolved: ['conflict-1'] })}
+      />,
+    )
+    expect(screen.getByRole('radio', { name: 'Remove it' })).toBeTruthy()
+    expect(screen.queryByRole('radio', { name: 'Take new device information' })).toBeNull()
+  })
+
+  it('records a choice as soon as it is picked', async () => {
     const user = userEvent.setup()
     const onResolve = vi.fn()
     render(
       <UpdateFromDeviceModal
         {...PROPS}
-        preview={preview({ changes: [change({ custom: 'old draft' })] })}
-        resolutions={{ 'conflict-1': { id: 'conflict-1', choice: 'keep' } }}
+        preview={preview({ changes: [change()], unresolved: ['conflict-1'] })}
         onResolve={onResolve}
       />,
     )
 
-    expect(screen.getByRole('button', { name: 'Update the document' })).toBeTruthy()
-    await user.click(screen.getByRole('radio', { name: 'Write my own' }))
-
-    // The visible choice no longer matches the stored keep resolution. Empty
-    // custom text (and text equal to the earlier draft) must remain pending.
-    expect(screen.getByRole('button', { name: /Resolve 1 more/ })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Use this text' }).hasAttribute('disabled')).toBe(false)
-    await user.clear(screen.getByLabelText('Your text for IP'))
-    expect(screen.getByRole('button', { name: /Resolve 1 more/ })).toBeTruthy()
-    await user.type(screen.getByLabelText('Your text for IP'), 'old draft')
-    expect(screen.getByRole('button', { name: /Resolve 1 more/ })).toBeTruthy()
-
-    await user.click(screen.getByRole('button', { name: 'Use this text' }))
-    expect(onResolve).toHaveBeenCalledWith('conflict-1', {
-      id: 'conflict-1',
-      choice: 'custom',
-      custom: 'old draft',
-    })
+    await user.click(screen.getByRole('radio', { name: 'Keep actual documentation' }))
+    expect(onResolve).toHaveBeenLastCalledWith('conflict-1', { id: 'conflict-1', choice: 'keep' })
+    await user.click(screen.getByRole('radio', { name: 'Take new device information' }))
+    expect(onResolve).toHaveBeenLastCalledWith('conflict-1', { id: 'conflict-1', choice: 'device' })
   })
 
   it('resets the local choice when its resolution is cleared', () => {
@@ -267,89 +287,35 @@ describe('UpdateFromDeviceModal', () => {
     expect(screen.getByRole('button', { name: 'Cancel' }).hasAttribute('disabled')).toBe(true)
   })
 
-  it('keeps the custom editor mounted and editable across a confirmed resolve and the re-preview', async () => {
+  it('keeps a settled row on screen so the decision can be revised', async () => {
     const user = userEvent.setup()
     const log: ResolutionItem[] = []
     render(<StatefulReview onResolveLog={log} />)
 
-    // A live conflict: no resolution yet, so the update button still asks for one.
     expect(screen.getByRole('button', { name: /Resolve 1 more/ })).toBeTruthy()
-    await user.click(screen.getByRole('radio', { name: 'Write my own' }))
-    const textarea = screen.getByLabelText('Your text for IP')
-    expect(textarea).toBeTruthy()
-
-    await user.type(textarea, '10.0.0.5')
-    expect((screen.getByLabelText('Your text for IP') as HTMLTextAreaElement).value).toBe('10.0.0.5')
-
-    // An unconfirmed draft keeps the row pending — Update must not run on it yet.
-    expect(screen.getByRole('button', { name: /Resolve 1 more/ })).toBeTruthy()
-
-    // Confirm; the store records the text, the re-preview runs, and only when
-    // its answer has arrived does Update become available.
-    await user.click(screen.getByRole('button', { name: 'Use this text' }))
+    await user.click(screen.getByRole('radio', { name: 'Keep actual documentation' }))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Update the document' })).toBeTruthy()
     }, { timeout: 2000 })
-    expect(log.at(-1)).toEqual({ id: 'conflict-1', choice: 'custom', custom: '10.0.0.5' })
-
-    // The row stayed mounted, text intact, and the user can revise it again.
-    expect((screen.getByLabelText('Your text for IP') as HTMLTextAreaElement).value).toBe('10.0.0.5')
-    await user.type(screen.getByLabelText('Your text for IP'), '6')
-    expect((screen.getByLabelText('Your text for IP') as HTMLTextAreaElement).value).toBe('10.0.0.56')
-    expect(screen.getByRole('button', { name: /Resolve 1 more/ })).toBeTruthy()
-
-    await user.click(screen.getByRole('button', { name: 'Use this text' }))
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Update the document' })).toBeTruthy()
-    }, { timeout: 2000 })
-    expect(log.at(-1)).toEqual({ id: 'conflict-1', choice: 'custom', custom: '10.0.0.56' })
-    expect((screen.getByLabelText('Your text for IP') as HTMLTextAreaElement).value).toBe('10.0.0.56')
-  })
-
-  it('abandons unconfirmed custom text when the choice changes and restores it when custom is re-picked', async () => {
-    const user = userEvent.setup()
-    const log: ResolutionItem[] = []
-    render(<StatefulReview onResolveLog={log} />)
-
-    await user.click(screen.getByRole('radio', { name: 'Write my own' }))
-    await user.type(screen.getByLabelText('Your text for IP'), 'draft')
-    await user.click(screen.getByRole('button', { name: 'Use this text' }))
-    await waitFor(() => {
-      expect(log.at(-1)).toEqual({ id: 'conflict-1', choice: 'custom', custom: 'draft' })
-    }, { timeout: 2000 })
-
-    // The user edits again but walks away without confirming — that text is
-    // not a resolution yet, so a different choice must not be overridden by it.
-    await user.type(screen.getByLabelText('Your text for IP'), ' v2')
-    expect((screen.getByLabelText('Your text for IP') as HTMLTextAreaElement).value).toBe('draft v2')
-    await user.click(screen.getByRole('radio', { name: 'Keep my text' }))
-    expect(screen.queryByLabelText('Your text for IP')).toBeNull()
     expect(log.at(-1)).toEqual({ id: 'conflict-1', choice: 'keep' })
 
-    // The settled row is still on screen; picking custom again restores the
-    // text the user typed and blocks Update until it is confirmed.
-    await user.click(screen.getByRole('radio', { name: 'Write my own' }))
-    expect((screen.getByLabelText('Your text for IP') as HTMLTextAreaElement).value).toBe('draft v2')
-    expect(screen.getByRole('button', { name: /Resolve 1 more/ })).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: 'Use this text' }))
+    await user.click(screen.getByRole('radio', { name: 'Take new device information' }))
     await waitFor(() => {
-      expect(log.at(-1)).toEqual({ id: 'conflict-1', choice: 'custom', custom: 'draft v2' })
+      expect(log.at(-1)).toEqual({ id: 'conflict-1', choice: 'device' })
     }, { timeout: 2000 })
   })
 
-  it('leaves Update locked from the confirm until the matching preview has arrived', async () => {
+  it('leaves Update locked from the choice until the matching preview has arrived', async () => {
     const user = userEvent.setup()
     const log: ResolutionItem[] = []
     const onApply = vi.fn()
     render(<StatefulReview onApply={onApply} onResolveLog={log} previewDelay={150} />)
 
-    await user.click(screen.getByRole('radio', { name: 'Write my own' }))
-    await user.type(screen.getByLabelText('Your text for IP'), 'abc')
-    await user.click(screen.getByRole('button', { name: 'Use this text' }))
+    await user.click(screen.getByRole('radio', { name: 'Take new device information' }))
 
     // The resolution is committed, but the preview it needs is still in flight:
     // saving before it lands would write something the user has not seen.
-    expect(log.at(-1)).toEqual({ id: 'conflict-1', choice: 'custom', custom: 'abc' })
+    expect(log.at(-1)).toEqual({ id: 'conflict-1', choice: 'device' })
     expect(screen.queryByRole('button', { name: 'Update the document' })).toBeNull()
     expect(screen.getByRole('button', { name: /Working…/ })).toBeTruthy()
     expect(onApply).not.toHaveBeenCalled()
@@ -360,23 +326,5 @@ describe('UpdateFromDeviceModal', () => {
     }, { timeout: 2000 })
     await user.click(screen.getByRole('button', { name: 'Update the document' }))
     expect(onApply).toHaveBeenCalled()
-    expect(log.at(-1)).toEqual({ id: 'conflict-1', choice: 'custom', custom: 'abc' })
-  })
-
-  it('cancel drops the review and any unconfirmed custom draft', async () => {
-    const user = userEvent.setup()
-    const log: ResolutionItem[] = []
-    render(<StatefulReview onResolveLog={log} />)
-
-    expect(screen.getByRole('button', { name: /Resolve 1 more/ })).toBeTruthy()
-    await user.click(screen.getByRole('radio', { name: 'Write my own' }))
-    await user.type(screen.getByLabelText('Your text for IP'), 'ghost')
-
-    // Unconfirmed text never becomes a resolution; cancel discards the review.
-    await user.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(log).not.toContainEqual({ id: 'conflict-1', choice: 'custom', custom: 'ghost' })
-    expect(screen.queryByLabelText('Your text for IP')).toBeNull()
-    await idle(50)
-    expect(log).not.toContainEqual({ id: 'conflict-1', choice: 'custom', custom: 'ghost' })
   })
 })

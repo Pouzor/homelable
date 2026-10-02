@@ -188,7 +188,7 @@ describe('DocumentationView — update from device', () => {
     api.updateFromDevice.mockResolvedValue({ data: doc({ drifted: false }) } as never)
 
     fireEvent.click(renderView())
-    fireEvent.click(await screen.findByRole('radio', { name: 'Keep my text' }))
+    fireEvent.click(await screen.findByRole('radio', { name: 'Keep actual documentation' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
 
     await waitFor(() => expect(api.updatePreview).toHaveBeenCalledTimes(3))
@@ -199,60 +199,6 @@ describe('DocumentationView — update from device', () => {
       'resolved-preview',
       [{ id: conflict.id, choice: 'keep' }],
     ))
-  })
-
-  it('retains custom text typed during a failed re-preview and requires confirming it again', async () => {
-    const repreview = deferred<{ data: UpdatePreview }>()
-    const conflict = {
-      id: 'device-info.IP Address',
-      name: 'IP address',
-      kind: 'field' as const,
-      status: 'conflict' as const,
-      documented: 'nas.example.lan',
-      device: '192.168.1.30',
-      previous: '192.168.1.20',
-    }
-    api.updatePreview
-      .mockResolvedValueOnce({
-        data: preview({ changes: [conflict], unresolved: [conflict.id] }),
-      } as never)
-      .mockImplementationOnce(() => repreview.promise)
-      .mockResolvedValueOnce({
-        data: preview({
-          preview_id: 'confirmed-a',
-          changes: [conflict],
-          unresolved: [],
-          summary: ['IP address set from your text'],
-        }),
-      } as never)
-      .mockResolvedValueOnce({
-        data: preview({
-          preview_id: 'confirmed-b',
-          changes: [conflict],
-          unresolved: [],
-          summary: ['IP address set from your text'],
-        }),
-      } as never)
-
-    fireEvent.click(renderView())
-    fireEvent.click(await screen.findByRole('radio', { name: 'Write my own' }))
-    const editor = screen.getByLabelText('Your text for IP address')
-    fireEvent.change(editor, { target: { value: 'confirmed A' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Use this text' }))
-    fireEvent.change(editor, { target: { value: 'unsaved B' } })
-
-    await act(async () => repreview.reject(new Error('offline')))
-    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
-    await waitFor(() => expect(api.updatePreview).toHaveBeenCalledTimes(3))
-
-    expect(screen.getByLabelText('Your text for IP address')).toHaveValue('unsaved B')
-    expect(screen.getByRole('button', { name: 'Resolve 1 more' })).toBeDisabled()
-    expect(api.updateFromDevice).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Use this text' }))
-    await waitFor(() => expect(api.updatePreview).toHaveBeenCalledTimes(4))
-    expect(screen.getByRole('button', { name: 'Update the document' })).toBeEnabled()
-    expect(api.updateFromDevice).not.toHaveBeenCalled()
   })
 
   it('keeps a failed comparison visible without writing', async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { AlertTriangle, Check, Loader2, RefreshCw, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -39,16 +39,14 @@ interface Props {
  *
  * The server never overwrites a body on its own: a changed device value the
  * user never touched is applied automatically, a value both sides changed is a
- * conflict the user settles here (keep / take the device / their own text), and
- * the live body underneath always reflects the current decisions because it is
- * the server's own merge. Nothing is saved until every conflict is settled and
- * the Apply button is pressed.
+ * conflict the user settles here (keep the documentation / take the device),
+ * and the live body underneath always reflects the current decisions because
+ * it is the server's own merge. Nothing is saved until every conflict is
+ * settled and the Apply button is pressed.
  *
- * A custom text is applied in two explicit steps so what is shown is always
- * what is saved: revising the text only marks the row pending, the "Use this
- * text" button records the resolution and re-runs the merge, and Update stays
- * locked while that preview is loading. The merge the user looks at is by
- * construction the merge that will land.
+ * Each decision re-runs the merge and Update stays locked while that preview
+ * is loading, so the merge the user looks at is by construction the merge that
+ * will land.
  */
 export function UpdateFromDeviceModal({
   open,
@@ -64,9 +62,8 @@ export function UpdateFromDeviceModal({
   devices,
 }: Props) {
   // Keep the last successful comparison mounted while a refresh is pending or
-  // has failed. ConflictRow owns unconfirmed custom text, so unmounting it on a
-  // transport error would discard keystrokes. `preview`, not this retained
-  // copy, remains the authority for enabling Apply.
+  // has failed, so a transport error does not blank the review. `preview`, not
+  // this retained copy, remains the authority for enabling Apply.
   const [lastPreview, setLastPreview] = useState<UpdatePreview | null>(preview)
   const [previousPreview, setPreviousPreview] = useState(preview)
   if (preview !== previousPreview) {
@@ -77,28 +74,18 @@ export function UpdateFromDeviceModal({
   const displayedPreview = preview ?? lastPreview
 
   // Every conflict — settled or still open — keeps a row for the whole review,
-  // so a decision can be revised and the custom editor is never torn down by
-  // the re-preview that a confirmed choice triggers. The section therefore
-  // descends from `changes`, never from `unresolved`.
+  // so a decision can be revised after the re-preview it triggers. The section
+  // therefore descends from `changes`, never from `unresolved`.
   const conflicts = displayedPreview
     ? displayedPreview.changes.filter((change) => change.status === 'conflict')
     : []
 
-  // A custom draft counts as pending until it is explicitly confirmed ("Use
-  // this text"), so Update can never omit keystrokes the user has not reviewed.
-  // The rows report their own dirty state; the store only knows confirmed
-  // decisions.
-  const [dirty, setDirty] = useState<Record<string, boolean>>({})
-  const reportDirty = useCallback((id: string, value: boolean) => {
-    setDirty((current) => (current[id] === value ? current : { ...current, [id]: value }))
-  }, [])
   const cancel = useCallback(() => {
     setLastPreview(null)
-    setDirty({})
     onCancel()
   }, [onCancel])
 
-  const pending = conflicts.filter((change) => !(change.id in resolutions) || dirty[change.id])
+  const pending = conflicts.filter((change) => !(change.id in resolutions))
   const hasAnythingToApply =
     displayedPreview !== null &&
     (displayedPreview.summary.length > 0 || displayedPreview.unresolved.length > 0 || Object.keys(resolutions).length > 0)
@@ -174,7 +161,6 @@ export function UpdateFromDeviceModal({
                       key={change.id}
                       change={change}
                       onResolve={onResolve}
-                      reportDirty={reportDirty}
                       docs={docs}
                       devices={devices}
                       resolved={resolutions[change.id]}
@@ -247,9 +233,8 @@ export function UpdateFromDeviceModal({
 }
 
 const CHOICES: { choice: ResolutionItem['choice']; label: string }[] = [
-  { choice: 'keep', label: 'Keep my text' },
-  { choice: 'device', label: 'Take the device value' },
-  { choice: 'custom', label: 'Write my own' },
+  { choice: 'keep', label: 'Keep actual documentation' },
+  { choice: 'device', label: 'Take new device information' },
 ]
 
 /** Mark the changed run while leaving the matching context easy to scan. */
@@ -373,56 +358,29 @@ function VersionPanel({
 function ConflictRow({
   change,
   onResolve,
-  reportDirty,
   docs,
   devices,
   resolved,
 }: {
   change: ReconcileChange
   onResolve: (id: string, item: ResolutionItem) => void
-  reportDirty: (id: string, dirty: boolean) => void
   docs: LinkableDoc[]
   devices: LinkableDevice[]
   resolved?: ResolutionItem
 }) {
-  const [typed, setTyped] = useState(resolved?.choice === 'custom' ? (resolved.custom ?? '') : (change.custom ?? ''))
   const [choice, setChoice] = useState<ResolutionItem['choice'] | null>(resolved?.choice ?? null)
   const [previousResolved, setPreviousResolved] = useState(resolved)
 
   // A reset (or a decision made elsewhere) must also reset this row's local
-  // selection. Adjusting state during render avoids a stale frame and leaves
-  // unconfirmed text intact when the user deliberately picks keep/device.
+  // selection. Adjusting state during render avoids a stale frame.
   if (resolved !== previousResolved) {
     setPreviousResolved(resolved)
     setChoice(resolved?.choice ?? null)
-    if (resolved?.choice === 'custom') setTyped(resolved.custom ?? '')
-    else if (!resolved) setTyped(change.custom ?? '')
   }
-
-  // Custom text is only committed by the explicit "Use this text" button — the
-  // textarea itself never spawns a request. Nothing lands mid-review: the typed
-  // value only becomes a resolution when the user confirms it, and every
-  // confirmation is preceded by its own merge preview below.
-  const confirmedCustom = resolved?.choice === 'custom' ? (resolved.custom ?? '') : ''
-  // Choosing custom replaces a prior keep/device resolution even if its text
-  // happens to be empty or equal to an earlier value, so it needs confirmation.
-  const dirty = choice === 'custom' && (resolved?.choice !== 'custom' || typed !== confirmedCustom)
-
-  // The row tells the parent whether it still has unconfirmed text, so Update
-  // stays blocked until every custom edit has its matching preview.
-  useEffect(() => {
-    reportDirty(change.id, dirty)
-    return () => reportDirty(change.id, false)
-  }, [change.id, dirty, reportDirty])
 
   function pick(next: ResolutionItem['choice']) {
     setChoice(next)
-    // keep/device are complete on their own; custom waits for a confirmation.
-    if (next !== 'custom') onResolve(change.id, { id: change.id, choice: next })
-  }
-
-  function confirmText() {
-    onResolve(change.id, { id: change.id, choice: 'custom', custom: typed })
+    onResolve(change.id, { id: change.id, choice: next })
   }
 
   const stat = useMemo(() => diffStat(diffLines(change.documented, change.device)), [change])
@@ -483,7 +441,7 @@ function ConflictRow({
             {value === 'device' && change.device ? (
               <>
                 <RefreshCw size={11} />
-                Take <span className="max-w-40 truncate text-foreground">{change.device}</span>
+                {label}
               </>
             ) : value === 'device' ? (
               <>
@@ -496,29 +454,6 @@ function ConflictRow({
           </label>
         ))}
       </div>
-
-      {choice === 'custom' && (
-        <div className="mt-2">
-          <textarea
-            autoFocus
-            value={typed}
-            onChange={(event) => setTyped(event.target.value)}
-            aria-label={`Your text for ${change.name}`}
-            rows={2}
-            className="w-full rounded border border-border bg-[#0d1117] px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={confirmText}
-            disabled={!dirty}
-            className="mt-1.5 cursor-pointer"
-          >
-            Use this text
-          </Button>
-        </div>
-      )}
     </div>
   )
 }
