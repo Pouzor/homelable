@@ -35,6 +35,7 @@ import rack from './parts/rack'
 import nodeTypes from './parts/node-types'
 import icons from './parts/icons'
 import docTemplates from './parts/doc-templates'
+import backend from './parts/backend'
 
 const zhCN: Record<string, string> = {
   ...root,
@@ -48,6 +49,7 @@ const zhCN: Record<string, string> = {
   ...nodeTypes,
   ...icons,
   ...docTemplates,
+  ...backend,
   // Owned directly by the switcher component.
   Language: '语言',
 }

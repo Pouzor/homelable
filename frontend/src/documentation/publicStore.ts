@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { errorMessage as message } from '@/i18n/errorMessage'
 import { t } from '@/i18n'
 
 import { docsviewApi } from '@/api/client'
@@ -59,10 +60,7 @@ export interface PublicDocsState {
   toggleExpanded: (key: string) => void
 }
 
-function message(error: unknown, fallback: string): string {
-  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
-  return typeof detail === 'string' ? detail : fallback
-}
+
 
 export const usePublicDocsStore = create<PublicDocsState>()((set, get) => ({
   key: '',

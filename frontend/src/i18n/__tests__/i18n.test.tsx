@@ -15,7 +15,7 @@ import {
   LOCALE_LABELS,
 } from '../index'
 import zhCN from '../locales/zh-CN'
-import { DIALOG_TITLES, DYNAMIC_TABLES, FIELD_NAME_KEYS, valuesOf } from '../dynamicTables'
+import { DIALOG_TITLES, DYNAMIC_TABLES, ERROR_FALLBACK_KEYS, FIELD_NAME_KEYS, RUNTIME_KEY_PARTS, valuesOf } from '../dynamicTables'
 import { LanguageSwitcher } from '../LanguageSwitcher'
 
 // __dirname is src/i18n/__tests__, so `../..` is already `src`.
@@ -254,10 +254,26 @@ describe('zh-CN dictionary completeness', () => {
     // literal call site, so the scan cannot see them being used — and declaring
     // them stale would make this test contradict the coverage test that exists
     // precisely to guard them.
-    const dynamicKeys = new Set<string>([...DIALOG_TITLES, ...FIELD_NAME_KEYS])
+    const dynamicKeys = new Set<string>([
+      ...DIALOG_TITLES,
+      ...FIELD_NAME_KEYS,
+      ...ERROR_FALLBACK_KEYS,
+    ])
     for (const table of DYNAMIC_TABLES) {
       const src = fs.readFileSync(path.join(SRC_ROOT, table.file), 'utf8')
       for (const v of valuesOf(src, table)) dynamicKeys.add(v)
+    }
+    // Part files whose keys are resolved at runtime rather than by a literal
+    // call site: the API's own error copy arrives over HTTP inside `detail`, and
+    // the table helpers read theirs.
+    for (const part of RUNTIME_KEY_PARTS) {
+      const body = fs.readFileSync(
+        path.join(SRC_ROOT, 'i18n/locales/parts', `${part}.ts`),
+        'utf8',
+      )
+      for (const m of body.matchAll(/^\s*(['"])((?:\\.|(?!\1)[^\\])*)\1\s*:/gm)) {
+        dynamicKeys.add(m[2].replace(/\\'/g, "'").replace(/\\"/g, '"'))
+      }
     }
 
     const { used } = collectKeys()

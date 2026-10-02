@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { errorMessage } from '@/i18n/errorMessage'
 import { Server, Box, Container, CheckCircle2, XCircle, Loader2, Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -82,7 +83,7 @@ export function ProxmoxImportModal({ open, onClose, onAddToCanvas, onInventoryIm
 
   const extractError = (err: unknown): string | undefined => {
     if (err && typeof err === 'object' && 'response' in err) {
-      return (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      return errorMessage(err, 'Could not reach Proxmox')
     }
     return undefined
   }

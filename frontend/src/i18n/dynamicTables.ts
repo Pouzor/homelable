@@ -1,3 +1,4 @@
+
 /**
  * Tables of English strings that reach the UI through a *runtime* `t()` call
  * rather than a literal one.
@@ -145,6 +146,33 @@ export function valuesInBlock(source: string, name: string, fields?: string[]): 
   return []
 }
 
+/**
+ * Part files whose keys are resolved at runtime rather than by a literal
+ * `t('…')` call site:
+ *
+ *  - `backend.ts` holds the API's own error copy. The string arrives over HTTP
+ *    inside a `detail` field, so it never appears as a literal in the source.
+ *  - `doc-templates.ts` and `node-types.ts` are read through the table helpers.
+ *
+ * The stale-key scan would otherwise declare all of them unused, which would
+ * contradict the tests that exist precisely to guard them.
+ */
+export const RUNTIME_KEY_PARTS = ['backend', 'doc-templates', 'node-types'] as const
+
+/**
+ * Keys handed to `errorMessage()` as its fallback. That argument is a plain
+ * string the function translates itself, so the call site reads
+ * `errorMessage(err, 'Could not reach Proxmox')` rather than a `t()` literal.
+ */
+export const ERROR_FALLBACK_KEYS = [
+  'Could not reach Proxmox',
+  'Could not reach the Z-Wave mesh',
+  'Could not reach the Zigbee mesh',
+] as const
+
+/**
+ * Every key such a part contributes.
+ */
 /**
  * Modal title/label defaults. The modal renders `{t(title)}`, so the default
  * literal is a key rather than a bare string, and two of them are additionally

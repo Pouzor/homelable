@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { errorMessage as message } from '@/i18n/errorMessage'
 import { t } from '@/i18n'
 
 import { documentsApi } from '@/api/client'
@@ -177,10 +178,7 @@ export interface DocsState {
   setFilter: (filter: string) => void
 }
 
-function message(error: unknown, fallback: string): string {
-  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
-  return typeof detail === 'string' ? detail : fallback
-}
+
 
 const initialUi = readUi()
 
