@@ -12,6 +12,7 @@
  * prints everything discovery found; only the canvas-side rows go missing.
  */
 import { useRackPalette } from '../rackTheme'
+import { statusLabel } from '@/types'
 import { t, useLocale } from '@/i18n'
 import { SectionHeader } from './SectionHeader'
 import type { DeviceStatus, InventoryDevice } from '@/types'
@@ -92,7 +93,7 @@ export function LinkedDevicePanel({
             className="inline-block h-2 w-2 rounded-full"
             style={{ backgroundColor: palette.status[status] }}
           />
-          {status}
+          {statusLabel(status)}
         </span>
       }
     >

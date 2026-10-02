@@ -543,7 +543,7 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                         style={{ borderColor: isCustom ? currentValue : '#30363d' }}
                         title={`${key.charAt(0).toUpperCase() + key.slice(1)}: ${currentValue}`}
                         tabIndex={0}
-                        aria-label={t('Color picker for {name}', { name: key })}
+                        aria-label={t('Color picker for {name}', { name: t(key) })}
                       >
                         <input
                           type="color"
@@ -553,7 +553,9 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                         />
                         <div className="w-full h-full rounded-sm" style={{ background: currentValue }} />
                       </label>
-                      <span className="text-[9px] text-muted-foreground/60 capitalize">{key}</span>
+                      <span className="text-[9px] text-muted-foreground/60 capitalize">
+                        {t(key)}
+                      </span>
                     </div>
                   )
                 })}

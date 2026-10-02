@@ -1,3 +1,4 @@
+import { t } from '@/i18n'
 export * from './rack'
 // The rack's `Port` describes a socket on a faceplate; an inventory row carries
 // the plate's ports, so the type is needed here as well as re-exported.
@@ -354,6 +355,29 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   load: 'Electrical Load',
 }
 
+/**
+ * Display caption per status. The enum is rendered directly in several places
+ * (node tooltip, detail panel, scan history, linked-device panel), and a bare
+ * `{status}` renders the raw English id — a literal sweep cannot see it
+ * because the value never appears as a string.
+ *
+ * Thunks, not a plain record: the module is evaluated once at import, and a
+ * record of translated strings would freeze whatever language was active
+ * then. Calling through t() at render time keeps it repainting on a switch.
+ */
+export const STATUS_LABELS: Record<NodeStatus | ServiceStatus, () => string> = {
+  online: () => t('online'),
+  offline: () => t('offline'),
+  pending: () => t('pending'),
+  unknown: () => t('unknown'),
+}
+
+/** The status id as a colour and as a caption. Falls back to the raw id. */
+export function statusLabel(status: string | null | undefined): string {
+  if (!status) return ''
+  const label = STATUS_LABELS[status as NodeStatus]
+  return label ? label() : status
+}
 export const STATUS_COLORS: Record<NodeStatus, string> = {
   online: '#39d353',
   offline: '#f85149',

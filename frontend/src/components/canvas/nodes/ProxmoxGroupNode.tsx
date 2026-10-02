@@ -1,4 +1,5 @@
 import { createElement, useEffect } from 'react'
+import { statusLabel } from '@/types'
 import { NodeResizer, useUpdateNodeInternals, type NodeProps, type Node } from '@xyflow/react'
 import { Layers } from 'lucide-react'
 import type { NodeData } from '@/types'
@@ -100,7 +101,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
           <div
             className="ml-auto w-1.5 h-1.5 rounded-full shrink-0"
             style={{ backgroundColor: statusColor }}
-            title={data.status}
+            title={statusLabel(data.status)}
           />
         </div>
 

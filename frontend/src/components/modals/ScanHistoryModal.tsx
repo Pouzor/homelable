@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { statusLabel } from '@/types'
 import { RefreshCw, X, Loader2, StopCircle, Clock, ScanLine, Network, RadioTower, Server, Wifi, Inbox } from 'lucide-react'
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -265,7 +266,7 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
               <div key={r.id} className="rounded-lg border border-border bg-[#161b22] p-3">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: statusColor(r.status) }} />
-                  <span className="font-mono text-sm text-foreground capitalize">{r.status}</span>
+                  <span className="font-mono text-sm text-foreground">{statusLabel(r.status)}</span>
                   {r.status === 'running' && <Loader2 size={12} className="animate-spin text-[#e3b341]" />}
                   <span
                     className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider"

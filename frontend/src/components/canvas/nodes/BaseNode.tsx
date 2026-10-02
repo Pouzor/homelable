@@ -1,4 +1,5 @@
 import { createElement, useEffect, useMemo } from 'react'
+import { statusLabel } from '@/types'
 import { NodeResizer, useUpdateNodeInternals, useViewport, type NodeProps, type Node } from '@xyflow/react'
 import { Cpu, MemoryStick, HardDrive, ExternalLink, type LucideIcon } from 'lucide-react'
 import type { NodeData } from '@/types'
@@ -99,7 +100,7 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
       <div
         className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full"
         style={{ backgroundColor: statusColor }}
-        title={data.status}
+        title={statusLabel(data.status)}
       />
 
       {/* Main row */}

@@ -157,6 +157,14 @@ export const DIALOG_TITLES = [
   'New Canvas',
 ] as const
 
+/**
+ * Field names rendered through a variable key. The colour swatches iterate
+ * `['border', 'background', 'icon']` and call `t(key)`, so the literal scan sees
+ * a variable rather than a string. They are internal field names, lower-case in
+ * English too — the capital the user sees comes from a `capitalize` class.
+ */
+export const FIELD_NAME_KEYS = ['background', 'border', 'icon'] as const
+
 /** Every value this table can put in front of a user. */
 export function valuesOf(source: string, table: DynamicTable): string[] {
   if (table.block) return valuesInBlock(source, table.block, table.fields)

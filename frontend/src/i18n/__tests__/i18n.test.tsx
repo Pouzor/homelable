@@ -15,7 +15,7 @@ import {
   LOCALE_LABELS,
 } from '../index'
 import zhCN from '../locales/zh-CN'
-import { DIALOG_TITLES, DYNAMIC_TABLES, valuesOf } from '../dynamicTables'
+import { DIALOG_TITLES, DYNAMIC_TABLES, FIELD_NAME_KEYS, valuesOf } from '../dynamicTables'
 import { LanguageSwitcher } from '../LanguageSwitcher'
 
 // __dirname is src/i18n/__tests__, so `../..` is already `src`.
@@ -254,7 +254,7 @@ describe('zh-CN dictionary completeness', () => {
     // literal call site, so the scan cannot see them being used — and declaring
     // them stale would make this test contradict the coverage test that exists
     // precisely to guard them.
-    const dynamicKeys = new Set<string>(DIALOG_TITLES)
+    const dynamicKeys = new Set<string>([...DIALOG_TITLES, ...FIELD_NAME_KEYS])
     for (const table of DYNAMIC_TABLES) {
       const src = fs.readFileSync(path.join(SRC_ROOT, table.file), 'utf8')
       for (const v of valuesOf(src, table)) dynamicKeys.add(v)
