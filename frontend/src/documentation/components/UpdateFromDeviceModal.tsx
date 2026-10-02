@@ -106,7 +106,9 @@ export function UpdateFromDeviceModal({
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && !loading && cancel()}>
-      <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col border-border bg-[#161b22]">
+      {/* `!max-w-none`: the dialog primitive's `sm:max-w-sm` otherwise wins and
+          squeezes the side-by-side comparison into 384px. */}
+      <DialogContent className="flex max-h-[90vh] w-[95vw] !max-w-none flex-col border-border bg-[#161b22]">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2 text-foreground">
             <RefreshCw size={16} className="text-[var(--status-online,#39d353)]" />

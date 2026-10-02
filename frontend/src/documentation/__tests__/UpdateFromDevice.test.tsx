@@ -93,6 +93,15 @@ function StatefulReview({
 const idle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 describe('UpdateFromDeviceModal', () => {
+  it('opens wide enough to read the two versions side by side', () => {
+    render(<UpdateFromDeviceModal {...PROPS} preview={null} loading />)
+    // The dialog primitive caps every dialog at `sm:max-w-sm`; only an
+    // important override lifts it.
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.className).toContain('!max-w-none')
+    expect(dialog.className).toContain('w-[95vw]')
+  })
+
   it('shows a spinner while the preview is loading', () => {
     render(<UpdateFromDeviceModal {...PROPS} preview={null} loading />)
     expect(screen.getByText('Comparing with the device…')).toBeTruthy()
