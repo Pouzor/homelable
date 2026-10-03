@@ -758,6 +758,13 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 Proxmox
               </button>
               <button
+                onClick={() => setSourceFilter('unraid')}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'unraid' ? 'bg-[#e22828]/20 text-[#e22828]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                title="Imported from an Unraid server - Docker containers"
+              >
+                Unraid
+              </button>
+              <button
                 onClick={() => setSourceFilter('unifi')}
                 className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'unifi' ? 'bg-[#0559c9]/20 text-[#0559c9]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
                 title="Imported from a UniFi controller — gear and clients"
