@@ -1,5 +1,7 @@
 /** Shared Unraid import type definitions for the frontend. */
 
+import type { NodeProperty, ServiceInfo } from '@/types'
+
 export type UnraidNodeType = 'docker_host' | 'docker_container'
 
 export interface UnraidNode {
@@ -17,6 +19,9 @@ export interface UnraidNode {
   /** Device Inventory row this node draws - stamped by the import so the
    * canvas save links to it instead of minting a second row. */
   device_id?: string | null
+  /** The inventory row's lists - a container's web UI is one of the services. */
+  services?: ServiceInfo[]
+  properties?: NodeProperty[]
 }
 
 export interface UnraidEdge {

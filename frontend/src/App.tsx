@@ -1117,7 +1117,10 @@ export default function App() {
           label: un.label,
           type: un.type as NodeData['type'],
           status: (un.status === 'online' ? 'online' : 'unknown') as NodeData['status'],
-          services: [],
+          // The row's lists, not empty ones: a new node's first save replaces
+          // the row's with whatever it holds.
+          services: un.services ?? [],
+          properties: un.properties ?? [],
           // Same as the Proxmox import: the row exists already, point at it.
           ...(un.device_id ? { device_id: un.device_id } : {}),
           ...(un.ip ? { ip: un.ip } : {}),
