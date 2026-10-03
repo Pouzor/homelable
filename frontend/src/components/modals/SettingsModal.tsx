@@ -4,10 +4,12 @@ import { Button } from '@/components/ui/button'
 import {
   settingsApi,
   proxmoxApi,
+  unraidApi,
   zigbeeApi,
   zwaveApi,
   unifiApi,
   type ProxmoxConfigData,
+  type UnraidConfigData,
   type ZigbeeConfigData,
   type ZwaveConfigData,
   type UnifiConfigData,
@@ -142,6 +144,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [pmSyncEnabled, setPmSyncEnabled] = useState(false)
   const [pmInterval, setPmInterval] = useState(3600)
   const [pmSyncing, setPmSyncing] = useState(false)
+  const [urConfig, setUrConfig] = useState<UnraidConfigData | null>(null)
+  const [urSyncEnabled, setUrSyncEnabled] = useState(false)
+  const [urInterval, setUrInterval] = useState(3600)
+  const [urIncludeOffline, setUrIncludeOffline] = useState(true)
+  const [urSyncing, setUrSyncing] = useState(false)
   const [zbConfig, setZbConfig] = useState<ZigbeeConfigData | null>(null)
   const [zbSyncEnabled, setZbSyncEnabled] = useState(false)
   const [zbInterval, setZbInterval] = useState(3600)
@@ -186,6 +193,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setPmInterval(res.data.sync_interval)
       })
       .catch(() => {/* proxmox not configured */})
+    unraidApi.getConfig()
+      .then((res) => {
+        setUrConfig(res.data)
+        setUrSyncEnabled(res.data.sync_enabled)
+        setUrInterval(res.data.sync_interval)
+        setUrIncludeOffline(res.data.include_offline)
+      })
+      .catch(() => {/* unraid not configured */})
     zigbeeApi.getConfig()
       .then((res) => {
         setZbConfig(res.data)
@@ -235,6 +250,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       toast.error('Failed to start Proxmox sync')
     } finally {
       setPmSyncing(false)
+    }
+  }
+
+  const handleUrSyncNow = async () => {
+    setUrSyncing(true)
+    try {
+      await unraidApi.syncNow()
+      toast.success('Unraid sync started')
+    } catch {
+      toast.error('Failed to start Unraid sync')
+    } finally {
+      setUrSyncing(false)
     }
   }
 
@@ -295,6 +322,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         await proxmoxApi.saveConfig({
           sync_enabled: pmSyncEnabled,
           sync_interval: pmInterval,
+        })
+      }
+      if (urConfig) {
+        // Connection config (host/port/key/verify) is env-only.
+        await unraidApi.saveConfig({
+          sync_enabled: urSyncEnabled,
+          sync_interval: urInterval,
+          include_offline: urIncludeOffline,
         })
       }
       if (zbConfig) {
@@ -611,6 +646,72 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     Set <span className="font-mono">PROXMOX_HOST</span> in the server .env to enable manual re-sync.
                   </p>
                 )}
+              </>
+            )}
+          </div>
+          )}
+          {/* Unraid auto-sync */}
+          {!STANDALONE && urConfig && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Unraid auto-sync</span>
+            {!(urConfig.api_key_configured && urConfig.host) ? (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                No Unraid server configured. Set <span className="font-mono">UNRAID_HOST</span> and{' '}
+                <span className="font-mono">UNRAID_API_KEY</span> in the server .env to enable auto-sync.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Auto-sync Unraid containers</span>
+                  <input
+                    type="checkbox"
+                    checked={urSyncEnabled}
+                    onChange={(e) => setUrSyncEnabled(e.target.checked)}
+                    className="cursor-pointer accent-[#e22828]"
+                    aria-label="Toggle Unraid auto-sync"
+                  />
+                </label>
+                <div className={urSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={300}
+                      max={86400}
+                      value={urInterval}
+                      onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setUrInterval(v) }}
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#e22828]"
+                      aria-label="Unraid sync interval"
+                    />
+                    <span className="text-xs text-muted-foreground">seconds</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    Re-imports the server and its containers into the pending inventory. Min 300s (5 min).
+                  </p>
+                </div>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Import offline containers</span>
+                  <input
+                    type="checkbox"
+                    checked={urIncludeOffline}
+                    onChange={(e) => setUrIncludeOffline(e.target.checked)}
+                    className="cursor-pointer accent-[#e22828]"
+                    aria-label="Import offline Unraid containers"
+                  />
+                </label>
+                <div className="flex items-center gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    onClick={handleUrSyncNow}
+                    disabled={urSyncing}
+                    className="h-7 text-xs border-[#e22828] text-[#e22828] hover:bg-[#e22828]/10"
+                  >
+                    {urSyncing ? 'Syncing...' : 'Re-sync now'}
+                  </Button>
+                  <span className="text-[10px] text-muted-foreground leading-tight">
+                    Runs one import immediately using the server .env config.
+                  </span>
+                </div>
               </>
             )}
           </div>
