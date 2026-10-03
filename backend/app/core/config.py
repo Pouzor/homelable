@@ -226,6 +226,19 @@ class Settings(BaseSettings):
     proxmox_sync_enabled: bool = False
     proxmox_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
 
+    # Unraid import (Docker containers). Same rules as Proxmox: the API key is a
+    # credential -> env/.env ONLY, never persisted by the app and never returned
+    # by the API. Connection config is env-only; only the auto-sync activation
+    # is persisted.
+    unraid_api_key: str = ""
+    unraid_host: str = ""
+    unraid_port: int = 443
+    unraid_verify_tls: bool = False  # Unraid ships a self-signed certificate
+    unraid_sync_enabled: bool = False
+    unraid_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+    # Import stopped containers on auto-sync / sync-now too.
+    unraid_sync_include_offline: bool = True
+
     # Zigbee2MQTT auto-sync import.
     # MQTT credentials are secrets → env/.env ONLY, never persisted by the app to
     # scan_config.json and never returned by the API. Only the auto-sync
@@ -335,6 +348,13 @@ class Settings(BaseSettings):
                 self.proxmox_sync_enabled = bool(data["proxmox_sync_enabled"])
             if "proxmox_sync_interval" in data:
                 self.proxmox_sync_interval = int(data["proxmox_sync_interval"])
+            # Unraid: auto-sync activation only, same reason as Proxmox.
+            if "unraid_sync_enabled" in data:
+                self.unraid_sync_enabled = bool(data["unraid_sync_enabled"])
+            if "unraid_sync_interval" in data:
+                self.unraid_sync_interval = int(data["unraid_sync_interval"])
+            if "unraid_sync_include_offline" in data:
+                self.unraid_sync_include_offline = bool(data["unraid_sync_include_offline"])
             # Zigbee/Z-Wave: only the auto-sync activation is persisted. MQTT
             # connection config (host, port, credentials, topic, tls) is env-only
             # by design — never read from or written to this file.
@@ -378,6 +398,11 @@ class Settings(BaseSettings):
             # be written to disk — that is the single source of truth.
             "proxmox_sync_enabled": self.proxmox_sync_enabled,
             "proxmox_sync_interval": self.proxmox_sync_interval,
+            # Unraid: only the auto-sync activation. Host/port/key/verify_tls
+            # are env-only.
+            "unraid_sync_enabled": self.unraid_sync_enabled,
+            "unraid_sync_interval": self.unraid_sync_interval,
+            "unraid_sync_include_offline": self.unraid_sync_include_offline,
             # Zigbee/Z-Wave: only the auto-sync activation is persisted. MQTT
             # connection config (host/port/credentials/topic/tls) is env-only.
             "zigbee_sync_enabled": self.zigbee_sync_enabled,

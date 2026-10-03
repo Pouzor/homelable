@@ -193,6 +193,37 @@ async def _run_proxmox_sync() -> None:
     )
 
 
+async def _run_unraid_sync() -> None:
+    """Fetch the Unraid containers and upsert them into pending (auto-sync)."""
+    if not settings.unraid_sync_enabled:
+        return
+    if not (settings.unraid_host and settings.unraid_api_key):
+        logger.warning("Unraid auto-sync enabled but host/API key not configured - skipping")
+        return
+    from app.api.routes.unraid import _background_unraid_import
+    from app.db.models import ScanRun
+
+    async with AsyncSessionLocal() as db:
+        run = ScanRun(
+            status="running",
+            kind="unraid",
+            ranges=[f"{settings.unraid_host}:{settings.unraid_port}"],
+        )
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    await _background_unraid_import(
+        run_id,
+        settings.unraid_host,
+        settings.unraid_port,
+        settings.unraid_api_key,
+        settings.unraid_verify_tls,
+        settings.unraid_sync_include_offline,
+    )
+
+
 async def _run_mesh_sync(kind: str) -> None:
     """Shared auto-sync for the MQTT mesh imports (Zigbee / Z-Wave).
 
@@ -292,6 +323,17 @@ def _add_proxmox_sync_job() -> None:
     )
 
 
+def _add_unraid_sync_job() -> None:
+    scheduler.add_job(
+        _run_unraid_sync,
+        "interval",
+        seconds=settings.unraid_sync_interval,
+        id="unraid_sync",
+        max_instances=1,
+        coalesce=True,
+    )
+
+
 def _add_zigbee_sync_job() -> None:
     scheduler.add_job(
         _run_zigbee_sync,
@@ -346,6 +388,8 @@ def start_scheduler() -> None:
             _add_service_check_job()
     if settings.proxmox_sync_enabled:
         _add_proxmox_sync_job()
+    if settings.unraid_sync_enabled:
+        _add_unraid_sync_job()
     if settings.zigbee_sync_enabled:
         _add_zigbee_sync_job()
     if settings.zwave_sync_enabled:
@@ -424,6 +468,31 @@ def set_proxmox_sync_enabled(enabled: bool) -> None:
     elif not enabled and job:
         scheduler.remove_job("proxmox_sync")
         logger.info("Proxmox auto-sync disabled")
+
+
+def reschedule_unraid_sync(interval_seconds: int) -> None:
+    """Update the Unraid auto-sync interval on the running scheduler (if enabled)."""
+    if interval_seconds < 300:
+        raise ValueError(f"interval_seconds must be >= 300, got {interval_seconds}")
+    if not scheduler.running:
+        logger.warning("Scheduler not running, skipping reschedule")
+        return
+    if scheduler.get_job("unraid_sync"):
+        scheduler.reschedule_job("unraid_sync", trigger="interval", seconds=interval_seconds)
+        logger.info("Unraid auto-sync rescheduled to every %ds", interval_seconds)
+
+
+def set_unraid_sync_enabled(enabled: bool) -> None:
+    """Add or remove the Unraid auto-sync job on the running scheduler."""
+    if not scheduler.running:
+        return
+    job = scheduler.get_job("unraid_sync")
+    if enabled and not job:
+        _add_unraid_sync_job()
+        logger.info("Unraid auto-sync enabled - every %ds", settings.unraid_sync_interval)
+    elif not enabled and job:
+        scheduler.remove_job("unraid_sync")
+        logger.info("Unraid auto-sync disabled")
 
 
 def reschedule_zigbee_sync(interval_seconds: int) -> None:
