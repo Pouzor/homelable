@@ -51,7 +51,9 @@ Open **Import** in the sidebar and pick **Unraid**. Enter the host, port
 (default `443`) and API key, then choose where devices go:
 
 - **Device inventory only** - runs in the background; follow it in Scan
-  History, then approve devices from the Device Inventory.
+  History, then approve devices from the Device Inventory. Approving the
+  server asks whether to bring its containers along, placed beside it and
+  joined by virtual edges.
 - **Inventory + canvas** - fetches immediately, lists the server and containers,
   and adds the ones you tick to the canvas. They land in the inventory too.
 
