@@ -15,8 +15,13 @@ optionally, onto the canvas) as typed nodes. It can also **sync** on a schedule.
   maker/model, CPU model and thread count, Unraid version.
 - **Every Docker container** as a `docker_container` node, linked to the server
   with a `virtual` edge. Each container carries hidden-by-default properties:
-  Image, Network, Ports, Web UI and, for containers started by a Compose
-  plugin, Compose Project.
+  Image, Network, Ports and, for containers started by a Compose plugin,
+  Compose Project.
+- **The container's web UI** (the WebUI address from its Unraid template) as a
+  **Web UI** service on the node, so it shows up as a link and, with service
+  checks on, gets checked. Unraid resolves the address to the server IP; a
+  container with its own LAN IP gets that IP instead, since that is where it
+  answers. Re-imports refresh the address but keep a name or icon you gave it.
 
 Containers managed by Unraid's own Docker page and containers started by a
 Docker Compose plugin are both listed by the API and imported the same way.
