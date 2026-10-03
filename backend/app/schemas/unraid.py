@@ -5,7 +5,7 @@ backend falls back to the server-configured key (env), for the configured host
 only. No response schema ever carries the key.
 """
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -46,6 +46,9 @@ class UnraidNodeOut(BaseModel):
     parent_ieee: str | None = None
     # The Device Inventory row this node draws, stamped by the import.
     device_id: str | None = None
+    # The row's lists, so the node's first canvas save writes them back intact.
+    services: list[dict[str, Any]] = []
+    properties: list[dict[str, Any]] = []
 
 
 class UnraidEdgeOut(BaseModel):

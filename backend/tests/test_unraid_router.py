@@ -44,7 +44,7 @@ def _ct(name: str, status: str = "online", ip: str | None = None) -> dict:
         "id": ieee, "label": name, "type": "docker_container", "ieee_address": ieee,
         "hostname": name, "ip": ip, "mac": None, "status": status,
         "vendor": "Docker", "model": f"img/{name}", "network": "bridge",
-        "ports": [], "web_ui": None, "compose_project": None, "parent_ieee": HOST,
+        "ports": [], "services": [], "compose_project": None, "parent_ieee": HOST,
     }
 
 
@@ -54,6 +54,10 @@ def _inventory(*containers: dict) -> tuple[list[dict], list[dict]]:
 
 
 BODY = {"host": "pearl", "port": 443, "api_key": "k"}
+WEB_UI = {
+    "port": 32400, "protocol": "tcp", "service_name": "Web UI",
+    "host": "http://10.1.1.231:32400", "path": "/web/index.html",
+}
 
 
 # --- endpoints -------------------------------------------------------------
@@ -193,6 +197,18 @@ async def test_canvas_import_offline_to_canvas(client: AsyncClient, headers: dic
     assert all(n["device_id"] for n in data["nodes"])
 
 
+@pytest.mark.asyncio
+async def test_canvas_nodes_carry_the_row_lists(client: AsyncClient, headers: dict) -> None:
+    # A dropped node's first save replaces the row's lists with the node's, so
+    # the node must already hold what the import wrote.
+    plex = {**_ct("plex"), "services": [WEB_UI]}
+    with patch("app.api.routes.unraid.fetch_unraid_inventory", new=AsyncMock(return_value=_inventory(plex))):
+        res = await client.post("/api/v1/unraid/import", json=BODY, headers=headers)
+    node = next(n for n in res.json()["nodes"] if n["label"] == "plex")
+    assert node["services"] == [WEB_UI]
+    assert {p["key"] for p in node["properties"]} >= {"Image", "Source"}
+
+
 # --- persistence ---------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -284,6 +300,22 @@ async def test_ip_match_skips_rows_another_importer_owns(db_session) -> None:
     assert len(rows) == 2
     await db_session.refresh(guest)
     assert guest.ieee_address == "pve-pve1-101"
+
+
+@pytest.mark.asyncio
+async def test_web_ui_service_is_stored_and_a_rename_survives(db_session) -> None:
+    plex = {**_ct("plex"), "services": [WEB_UI]}
+    await _persist_pending_import(db_session, [plex], [])
+    row = (await db_session.execute(select(InventoryDevice))).scalar_one()
+    assert row.services == [WEB_UI]
+
+    row.services = [{**WEB_UI, "service_name": "Plex"}]
+    await db_session.commit()
+    await _persist_pending_import(db_session, [plex], [])
+
+    await db_session.refresh(row)
+    assert len(row.services) == 1
+    assert row.services[0]["service_name"] == "Plex"
 
 
 @pytest.mark.asyncio

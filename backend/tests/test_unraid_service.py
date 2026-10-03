@@ -121,9 +121,49 @@ def test_container_properties() -> None:
     props = {p["key"]: p["value"] for p in svc.build_unraid_properties(nodes[1])}
     assert props["Image"] == "img/jellyfin:latest"
     assert props["Ports"] == "10.1.1.231:7359, 10.1.1.231:8096"
-    assert props["Web UI"] == "http://10.1.1.231:8096"
+    assert "Web UI" not in props
     assert props["Compose Project"] == "media"
     assert props["Source"] == "Unraid"
+
+
+def test_web_ui_becomes_a_service() -> None:
+    ct = _container("jellyfin", "bridge", webUiUrl="http://10.1.1.231:8096")
+    nodes, _ = svc._parse_inventory(_payload([ct]))
+    assert nodes[1]["services"] == [{
+        "port": 8096, "protocol": "tcp", "service_name": "Web UI",
+        "host": "http://10.1.1.231:8096", "path": "",
+    }]
+
+
+def test_web_ui_points_at_the_containers_own_lan_ip() -> None:
+    # Unraid resolves [IP] to the server, but an ipvlan/macvlan container only
+    # answers on its own address.
+    ct = _container("netdata", "br0", "10.1.1.198", webUiUrl="http://10.1.1.231:19999")
+    nodes, _ = svc._parse_inventory(_payload([ct]))
+    assert nodes[1]["services"][0]["host"] == "http://10.1.1.198:19999"
+
+
+def test_web_ui_service_unescapes_the_template_query() -> None:
+    service = svc._web_ui_service(
+        "http://10.1.1.231:6080/vnc.html?resize=remote&amp;host=10.1.1.231&amp;port=6080"
+    )
+    assert service is not None
+    assert service["path"] == "/vnc.html?resize=remote&host=10.1.1.231&port=6080"
+
+
+def test_web_ui_service_defaults_the_scheme_port() -> None:
+    service = svc._web_ui_service("https://10.1.1.231/")
+    assert service is not None
+    assert service["port"] == 443
+    assert service["host"] == "https://10.1.1.231"
+
+
+def test_no_service_without_a_usable_web_ui() -> None:
+    assert svc._web_ui_service(None) is None
+    assert svc._web_ui_service("ftp://10.1.1.231:21") is None
+    assert svc._web_ui_service("http://10.1.1.231:notaport") is None
+    nodes, _ = svc._parse_inventory(_payload([_container("redis", "bridge")]))
+    assert nodes[1]["services"] == []
 
 
 def test_malformed_payload_raises() -> None:

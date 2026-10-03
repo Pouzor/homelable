@@ -14,8 +14,10 @@ a container on every update, so its Docker id is not stable.
 
 from __future__ import annotations
 
+import html
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -181,11 +183,47 @@ def _lan_address(
     return None, None
 
 
+def _web_ui_service(
+    url: str | None, own_ip: str | None = None, server_ip: str | None = None
+) -> dict[str, Any] | None:
+    """A "Web UI" service for the URL Unraid resolved from the template, or None.
+
+    The address goes in ``host`` because most containers sit behind the server's
+    IP on a published port, not on an address of their own. The URL comes
+    HTML-escaped from the template (``&amp;`` in a query string).
+
+    Unraid resolves the template's ``[IP]`` to the server even for a container
+    with its own LAN address, where nothing answers on the server IP. Such a
+    container gets its own address instead.
+    """
+    if not url:
+        return None
+    parts = urlsplit(html.unescape(url).strip())
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return None
+    try:
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+    except ValueError:
+        return None
+    netloc = parts.netloc
+    if own_ip and server_ip and parts.hostname == server_ip:
+        netloc = f"{own_ip}:{parts.port}" if parts.port else own_ip
+    path = parts.path + (f"?{parts.query}" if parts.query else "")
+    return {
+        "port": port,
+        "protocol": "tcp",
+        "service_name": "Web UI",
+        "host": f"{parts.scheme}://{netloc}",
+        "path": path,
+    }
+
+
 def _container_node(
     raw: dict[str, Any],
     host_key: str,
     drivers: dict[str, str | None],
     names_by_id: dict[str, str],
+    server_ip: str | None = None,
 ) -> dict[str, Any] | None:
     name = _container_name(raw)
     if not name:
@@ -203,6 +241,7 @@ def _container_node(
 
     labels = raw.get("labels") or {}
     ports = sorted(set(raw.get("lanIpPorts") or []))
+    web_ui = _web_ui_service(raw.get("webUiUrl"), ip, server_ip)
     return {
         "id": ieee,
         "label": name,
@@ -216,7 +255,7 @@ def _container_node(
         "model": raw.get("image") or None,
         "network": network_mode,
         "ports": ports,
-        "web_ui": raw.get("webUiUrl") or None,
+        "services": [web_ui] if web_ui else [],
         "compose_project": labels.get("com.docker.compose.project") if isinstance(labels, dict) else None,
         "parent_ieee": f"unraid-host-{host_key}",
     }
@@ -245,11 +284,12 @@ def _parse_inventory(data: dict[str, Any]) -> tuple[list[dict[str, Any]], list[d
         if (name := _container_name(c))
     }
 
-    nodes = [_host_node(info, host_ieee)]
+    host = _host_node(info, host_ieee)
+    nodes = [host]
     edges: list[dict[str, Any]] = []
     seen = {host_ieee}
     for raw in containers:
-        node = _container_node(raw, host_key, drivers, names_by_id)
+        node = _container_node(raw, host_key, drivers, names_by_id, host["ip"])
         if node is None or node["id"] in seen:
             continue
         seen.add(node["id"])
@@ -275,7 +315,6 @@ def build_unraid_properties(node: dict[str, Any]) -> list[dict[str, Any]]:
         add("Image", node.get("model"))
         add("Network", node.get("network"))
         add("Ports", ", ".join(node.get("ports") or []))
-        add("Web UI", node.get("web_ui"))
         add("Compose Project", node.get("compose_project"))
     props.append({"key": "Source", "value": "Unraid", "icon": None, "visible": False})
     return props

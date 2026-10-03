@@ -36,7 +36,7 @@ from app.schemas.unraid import (
     UnraidTestConnectionResponse,
 )
 from app.services.discovery_sources import add_source
-from app.services.inventory_sync import attach_device_ids
+from app.services.inventory_sync import attach_device_ids, merge_services
 from app.services.node_dedupe import dedupe_nodes_by_device
 from app.services.unraid_service import (
     build_unraid_properties,
@@ -144,9 +144,27 @@ async def import_unraid(
     await _persist_pending_import(db, stored, _edges_between(edges_raw, stored))
 
     drawn = await attach_device_ids(db, _keep(stored, payload.offline_containers, canvas=True))
+    drawn = await _with_row_lists(db, drawn)
     nodes = [UnraidNodeOut(**n) for n in drawn]
     edges = [UnraidEdgeOut(**e) for e in _edges_between(edges_raw, drawn)]
     return UnraidImportResponse(nodes=nodes, edges=edges, device_count=len(nodes))
+
+
+async def _with_row_lists(db: AsyncSession, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Carry each row's services and properties on the node drawing it.
+
+    A freshly dropped node has no baseline to diff against, so its first canvas
+    save sends every list as an edit and replaces the row's. Without these the
+    save would erase the web UI service and the properties the import just wrote.
+    """
+    out: list[dict[str, Any]] = []
+    for n in nodes:
+        row = await db.get(InventoryDevice, n["device_id"]) if n.get("device_id") else None
+        if row is None:
+            out.append(n)
+            continue
+        out.append({**n, "services": list(row.services or []), "properties": list(row.properties or [])})
+    return out
 
 
 @router.post("/import-pending", response_model=ScanRunResponse)
@@ -343,6 +361,7 @@ def _new_row(ieee: str, n: dict[str, Any], props: list[dict[str, Any]]) -> Inven
         os=n.get("os_version"),
         cpu_count=n.get("cpu_count"),
         cpu_model=n.get("cpu_model"),
+        services=list(n.get("services") or []),
         properties=props,
         status="pending",
         discovery_source=_UNRAID_SOURCE,
@@ -367,6 +386,8 @@ def _refresh_row(row: InventoryDevice, ieee: str, n: dict[str, Any], props: list
     row.cpu_count = row.cpu_count or n.get("cpu_count")
     row.cpu_model = row.cpu_model or n.get("cpu_model")
     row.properties = merge_unraid_properties(list(row.properties or []), props)
+    # discovered=True: refresh the address, keep a name or icon the user set.
+    row.services = merge_services(row.services, n.get("services"), discovered=True)
 
 
 async def _replace_links(
