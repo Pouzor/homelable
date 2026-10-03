@@ -30,6 +30,7 @@ import { SettingsModal } from '@/components/modals/SettingsModal'
 import { ZigbeeImportModal } from '@/components/zigbee/ZigbeeImportModal'
 import { ZwaveImportModal } from '@/components/zwave/ZwaveImportModal'
 import { ProxmoxImportModal } from '@/components/proxmox/ProxmoxImportModal'
+import { UnraidImportModal } from '@/components/unraid/UnraidImportModal'
 import { UnifiImportModal } from '@/components/unifi/UnifiImportModal'
 import { ImportSourceModal, type ImportSourceKey } from '@/components/modals/ImportSourceModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
@@ -71,6 +72,7 @@ import type { NodeData, EdgeData, CustomStyleDef, DesignType, FloorMapConfig, No
 import type { ZigbeeNode, ZigbeeEdge } from '@/components/zigbee/types'
 import type { ZwaveNode, ZwaveEdge } from '@/components/zwave/types'
 import type { ProxmoxNode, ProxmoxEdge, ProxmoxCanvasMode } from '@/components/proxmox/types'
+import type { UnraidNode, UnraidEdge } from '@/components/unraid/types'
 import { buildProxmoxClusterEdges } from '@/components/proxmox/clusterEdges'
 import { groupProxmoxGuests, layoutProxmoxContainers, measureProxmoxContainers } from '@/utils/proxmoxContainerLayout'
 
@@ -162,6 +164,7 @@ export default function App() {
   const [zigbeeImportOpen, setZigbeeImportOpen] = useState(false)
   const [zwaveImportOpen, setZwaveImportOpen] = useState(false)
   const [proxmoxImportOpen, setProxmoxImportOpen] = useState(false)
+  const [unraidImportOpen, setUnraidImportOpen] = useState(false)
   const [unifiImportOpen, setUnifiImportOpen] = useState(false)
   const [importPickerOpen, setImportPickerOpen] = useState(false)
 
@@ -374,6 +377,7 @@ export default function App() {
     if (source === 'zigbee') setZigbeeImportOpen(true)
     else if (source === 'zwave') setZwaveImportOpen(true)
     else if (source === 'proxmox') setProxmoxImportOpen(true)
+    else if (source === 'unraid') setUnraidImportOpen(true)
     else setUnifiImportOpen(true)
   }, [])
 
@@ -1082,6 +1086,65 @@ export default function App() {
     markUnsaved()
   }, [addNode, onConnect, snapshotHistory, markUnsaved])
 
+  const handleUnraidAddToCanvas = useCallback((urNodes: UnraidNode[], urEdges: UnraidEdge[]) => {
+    snapshotHistory()
+    const COLS = 6
+    const SPACING_X = 190
+    const SPACING_Y = 110
+    // The server on its own row, containers in a grid below it.
+    const hosts = urNodes.filter((n) => n.type === 'docker_host')
+    const containers = urNodes.filter((n) => n.type !== 'docker_host')
+    const cols = Math.min(COLS, Math.max(containers.length, 1))
+    const rows = Math.ceil(containers.length / COLS) + (hosts.length ? 1 : 0)
+    const origin = getCenteredPosition(cols * SPACING_X, rows * SPACING_Y)
+    const placement: Record<string, { x: number; y: number }> = {}
+    hosts.forEach((n, i) => {
+      placement[n.id] = { x: origin.x + ((cols - hosts.length) / 2 + i) * SPACING_X, y: origin.y }
+    })
+    const top = hosts.length ? SPACING_Y : 0
+    containers.forEach((n, i) => {
+      placement[n.id] = {
+        x: origin.x + (i % COLS) * SPACING_X,
+        y: origin.y + top + Math.floor(i / COLS) * SPACING_Y,
+      }
+    })
+    urNodes.forEach((un) => {
+      const newNode: import('@xyflow/react').Node<NodeData> = {
+        id: un.id,
+        type: un.type,
+        position: placement[un.id] ?? getCenteredPosition(),
+        data: {
+          label: un.label,
+          type: un.type as NodeData['type'],
+          status: (un.status === 'online' ? 'online' : 'unknown') as NodeData['status'],
+          services: [],
+          // Same as the Proxmox import: the row exists already, point at it.
+          ...(un.device_id ? { device_id: un.device_id } : {}),
+          ...(un.ip ? { ip: un.ip } : {}),
+          ...(un.hostname ? { hostname: un.hostname } : {}),
+        },
+      }
+      addNode(newNode)
+    })
+    // Host -> container links render as 'virtual' edges, like Proxmox host -> guest.
+    urEdges.forEach((ue) => {
+      onConnect({
+        source: ue.source,
+        sourceHandle: 'bottom',
+        target: ue.target,
+        targetHandle: 'top-t',
+        type: 'virtual',
+      } as unknown as import('@xyflow/react').Connection)
+    })
+    const importedIds = new Set(urNodes.map((un) => un.id))
+    useCanvasStore.setState((state) => ({
+      nodes: state.nodes.map((n) => ({ ...n, selected: importedIds.has(n.id) })),
+      selectedNodeIds: Array.from(importedIds),
+      selectedNodeId: importedIds.size === 1 ? Array.from(importedIds)[0] : null,
+    }))
+    markUnsaved()
+  }, [addNode, onConnect, snapshotHistory, markUnsaved])
+
   const handleEdgeConnect = useCallback((connection: Connection) => {
     setPendingConnection(connection)
   }, [])
@@ -1353,6 +1416,17 @@ export default function App() {
             onAddToCanvas={handleProxmoxAddToCanvas}
             onInventoryImported={() => {
               toast.success('Proxmox import started — check Scan History for results')
+            }}
+          />
+        )}
+
+        {!STANDALONE && (
+          <UnraidImportModal
+            open={unraidImportOpen}
+            onClose={() => setUnraidImportOpen(false)}
+            onAddToCanvas={handleUnraidAddToCanvas}
+            onInventoryImported={() => {
+              toast.success('Unraid import started - check Scan History for results')
             }}
           />
         )}

@@ -1,9 +1,9 @@
-import { Network, RadioTower, Server, Wifi, ArrowRight, Clock } from 'lucide-react'
+import { Network, RadioTower, Server, HardDrive, Wifi, ArrowRight, Clock } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { brandIconUrl } from '@/utils/nodeIcons'
 
-export type ImportSourceKey = 'zigbee' | 'zwave' | 'proxmox' | 'unifi'
+export type ImportSourceKey = 'zigbee' | 'zwave' | 'proxmox' | 'unraid' | 'unifi'
 
 interface ImportSourceModalProps {
   open: boolean
@@ -64,6 +64,16 @@ const SOURCES: ImportSource[] = [
     imports: ['Hosts', 'VMs', 'LXC'],
   },
   {
+    key: 'unraid',
+    label: 'Unraid',
+    brandSlug: 'unraid',
+    fallbackIcon: HardDrive,
+    accent: '#e22828',
+    description: 'Reads the Unraid API for the server and every Docker container it runs.',
+    duration: '~5 s',
+    imports: ['Server', 'Containers'],
+  },
+  {
     key: 'unifi',
     label: 'UniFi',
     brandSlug: 'unifi',
@@ -85,7 +95,7 @@ export function ImportSourceModal({ open, onClose, onPick }: ImportSourceModalPr
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       {/* The dialog primitive pins `sm:max-w-sm`, and a variant utility outranks
           every plain `max-w-*` class — only an inline width actually widens it,
-          and four tiles need the room. */}
+          and five tiles need the room. */}
       <DialogContent
         className="bg-[#161b22] border-border max-h-[85vh] flex flex-col"
         style={{ maxWidth: 'min(1120px, calc(100vw - 3rem))' }}
@@ -99,7 +109,7 @@ export function ImportSourceModal({ open, onClose, onPick }: ImportSourceModalPr
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto min-h-0 py-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             {SOURCES.map((source) => (
               <ImportSourceTile key={source.key} source={source} onPick={() => onPick(source.key)} />
             ))}
