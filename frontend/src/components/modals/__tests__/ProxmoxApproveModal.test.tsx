@@ -66,3 +66,22 @@ describe('ProxmoxApproveModal', () => {
     expect(props.onConfirm).not.toHaveBeenCalled()
   })
 })
+
+describe('ProxmoxApproveModal - Unraid server', () => {
+  const server = { id: 'h2', label: 'tower', type: 'docker_host', status: 'pending', services: [] } as unknown as InventoryEntry
+  const containers = [
+    { id: 'c1', label: 'plex', type: 'docker_container', status: 'pending', services: [] },
+  ] as unknown as InventoryEntry[]
+
+  beforeEach(() => {
+    props.onConfirm.mockReset()
+  })
+
+  it('asks about containers and offers no nesting', () => {
+    render(<ProxmoxApproveModal {...props} host={server} guests={containers} source="unraid" />)
+    expect(screen.getByRole('checkbox', { name: /also add its 1 containerdocker/i })).toBeDefined()
+    expect(screen.queryByRole('radio')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /add 2 to canvas/i }))
+    expect(props.onConfirm).toHaveBeenCalledWith({ childIds: ['c1'], mode: 'linked' })
+  })
+})

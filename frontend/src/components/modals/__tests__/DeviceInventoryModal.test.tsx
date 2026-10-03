@@ -931,6 +931,52 @@ async function openProxmoxPrompt() {
   await waitFor(() => expect(screen.getByRole('button', { name: /add 3 to canvas/i })).toBeInTheDocument())
 }
 
+describe('DeviceInventoryModal - Unraid server approval', () => {
+  const SERVER = {
+    ...PVE_HOST,
+    id: 'dev-unraid',
+    hostname: 'tower',
+    friendly_name: 'tower',
+    suggested_type: 'docker_host',
+    discovery_source: 'unraid',
+    discovery_sources: ['unraid'],
+    ieee_address: 'unraid-host-abc',
+  }
+  const CONTAINERS = [
+    { ...SERVER, id: 'dev-c1', friendly_name: 'plex', suggested_type: 'docker_container', ieee_address: 'unraid-abc-ct-plex' },
+  ]
+
+  it('asks about the containers and places them linked, not nested', async () => {
+    mockPending.mockResolvedValue({ data: [SERVER] })
+    mockProxmoxChildren.mockResolvedValue({ data: CONTAINERS })
+    mockBulkApprove.mockResolvedValue({
+      data: {
+        approved: 2, node_ids: ['n-host', 'n-c1'], device_ids: ['dev-unraid', 'dev-c1'],
+        edges: [], edges_created: 0, skipped: 0, skipped_devices: [],
+      },
+    })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-unraid')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('pending-card-dev-unraid'))
+    fireEvent.click(screen.getByTestId('do-approve'))
+    fireEvent.click(await screen.findByRole('button', { name: /add 2 to canvas/i }))
+    await waitFor(() => expect(mockBulkApprove).toHaveBeenCalledWith(['dev-unraid', 'dev-c1'], null))
+    const added = mockAddNode.mock.calls.map((c) => c[0])
+    expect(added.find((n) => n.id === 'n-host').data.container_mode).toBeUndefined()
+    added.forEach((n) => expect(n.data.parent_id).toBeUndefined())
+  })
+
+  it('approves a docker host from another source without asking', async () => {
+    mockPending.mockResolvedValue({ data: [{ ...SERVER, discovery_source: 'arp', discovery_sources: ['arp'] }] })
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-dev-unraid')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('pending-card-dev-unraid'))
+    fireEvent.click(screen.getByTestId('do-approve'))
+    await waitFor(() => expect(mockApprove).toHaveBeenCalled())
+    expect(mockProxmoxChildren).not.toHaveBeenCalled()
+  })
+})
+
 describe('DeviceInventoryModal — Proxmox host approval', () => {
   beforeEach(() => {
     mockBulkApprove.mockResolvedValue({
