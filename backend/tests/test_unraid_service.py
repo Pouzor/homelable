@@ -1,0 +1,170 @@
+"""Unit tests for the Unraid import service (parsing, properties, errors)."""
+
+from __future__ import annotations
+
+import httpx
+import pytest
+
+from app.services import unraid_service as svc
+
+HOST_UUID = "AA67F8CB-8DEA-8A1D-AB9C-D8BBC16C6573"
+HOST_KEY = HOST_UUID.lower()
+
+
+def _container(name: str, network: str, ip: str = "", mac: str = "", state: str = "RUNNING", **extra) -> dict:
+    return {
+        "id": f"server:{name}id",
+        "names": [f"/{name}"],
+        "image": f"img/{name}:latest",
+        "state": state,
+        "webUiUrl": None,
+        "labels": {},
+        "lanIpPorts": None,
+        "hostConfig": {"networkMode": network},
+        "networkSettings": {"Networks": {network: {"IPAddress": ip, "MacAddress": mac}}},
+        **extra,
+    }
+
+
+def _payload(containers: list[dict]) -> dict:
+    return {
+        "info": {
+            "system": {"uuid": HOST_UUID, "manufacturer": "MSI", "model": "MS-7D25"},
+            "cpu": {"brand": "Core i5-13600K", "threads": 20},
+            "os": {"hostname": "Pearl"},
+            "primaryNetwork": {"macAddress": "A0:36:9F:77:F9:44", "ipAddress": "10.1.1.231"},
+            "versions": {"core": {"unraid": "7.3.1"}},
+        },
+        "docker": {
+            "networks": [
+                {"name": "bridge", "driver": "bridge"},
+                {"name": "br0", "driver": "ipvlan"},
+                {"name": "mv0", "driver": "macvlan"},
+                {"name": "host", "driver": "host"},
+            ],
+            "containers": containers,
+        },
+    }
+
+
+def test_host_node_from_info() -> None:
+    nodes, edges = svc._parse_inventory(_payload([]))
+    assert edges == []
+    host = nodes[0]
+    assert host["ieee_address"] == f"unraid-host-{HOST_KEY}"
+    assert host["type"] == "docker_host"
+    assert host["ip"] == "10.1.1.231"
+    assert host["mac"] == "a0:36:9f:77:f9:44"
+    assert host["cpu_count"] == 20
+    assert host["model"] == "MSI MS-7D25"
+    assert host["os_version"] == "Unraid 7.3.1"
+
+
+def test_host_key_falls_back_to_hostname() -> None:
+    data = _payload([])
+    data["info"]["system"]["uuid"] = None
+    nodes, _ = svc._parse_inventory(data)
+    assert nodes[0]["ieee_address"] == "unraid-host-pearl"
+
+
+def test_container_identity_is_host_and_name() -> None:
+    nodes, edges = svc._parse_inventory(_payload([_container("plex", "host")]))
+    plex = nodes[1]
+    assert plex["ieee_address"] == f"unraid-{HOST_KEY}-ct-plex"
+    assert plex["type"] == "docker_container"
+    assert plex["parent_ieee"] == f"unraid-host-{HOST_KEY}"
+    assert edges == [{"source": f"unraid-host-{HOST_KEY}", "target": plex["id"]}]
+
+
+def test_bridge_container_gets_no_address() -> None:
+    # The 172.x address is internal to the host and the MAC changes on every
+    # recreate - neither may identify the container.
+    nodes, _ = svc._parse_inventory(_payload([_container("app", "bridge", "172.17.0.3", "12:64:29:75:17:49")]))
+    assert nodes[1]["ip"] is None
+    assert nodes[1]["mac"] is None
+
+
+def test_ipvlan_container_gets_ip_but_never_a_mac() -> None:
+    # ipvlan shares the parent interface's MAC with the host.
+    nodes, _ = svc._parse_inventory(_payload([_container("netdata", "br0", "10.1.1.198", "a0:36:9f:77:f9:44")]))
+    assert nodes[1]["ip"] == "10.1.1.198"
+    assert nodes[1]["mac"] is None
+
+
+def test_macvlan_container_keeps_its_own_mac() -> None:
+    nodes, _ = svc._parse_inventory(_payload([_container("pihole", "mv0", "10.1.1.53", "02:42:0A:01:01:35")]))
+    assert nodes[1]["ip"] == "10.1.1.53"
+    assert nodes[1]["mac"] == "02:42:0a:01:01:35"
+
+
+def test_container_network_mode_resolves_to_a_name() -> None:
+    vpn = _container("vpn", "bridge")
+    stash = _container("stash", "container:vpnid")
+    stash["networkSettings"] = {"Networks": {}}
+    nodes, _ = svc._parse_inventory(_payload([vpn, stash]))
+    assert nodes[2]["network"] == "container:vpn"
+
+
+def test_stopped_container_is_offline() -> None:
+    nodes, _ = svc._parse_inventory(_payload([_container("old", "bridge", state="EXITED")]))
+    assert nodes[1]["status"] == "offline"
+
+
+def test_container_properties() -> None:
+    ct = _container(
+        "jellyfin", "bridge",
+        webUiUrl="http://10.1.1.231:8096",
+        lanIpPorts=["10.1.1.231:8096", "10.1.1.231:8096", "10.1.1.231:7359"],
+        labels={"com.docker.compose.project": "media"},
+    )
+    nodes, _ = svc._parse_inventory(_payload([ct]))
+    props = {p["key"]: p["value"] for p in svc.build_unraid_properties(nodes[1])}
+    assert props["Image"] == "img/jellyfin:latest"
+    assert props["Ports"] == "10.1.1.231:7359, 10.1.1.231:8096"
+    assert props["Web UI"] == "http://10.1.1.231:8096"
+    assert props["Compose Project"] == "media"
+    assert props["Source"] == "Unraid"
+
+
+def test_malformed_payload_raises() -> None:
+    with pytest.raises(ValueError):
+        svc._parse_inventory({"info": None, "docker": {}})
+
+
+def test_unauthenticated_graphql_error_is_auth_error() -> None:
+    payload = {"errors": [{"message": "API key validation failed", "extensions": {"code": "UNAUTHENTICATED"}}]}
+    with pytest.raises(svc.UnraidAuthError):
+        svc._graphql_errors(payload)
+
+
+def test_other_graphql_error_is_value_error() -> None:
+    with pytest.raises(ValueError, match="boom"):
+        svc._graphql_errors({"errors": [{"message": "boom"}]})
+
+
+def test_sanitizer_hides_details() -> None:
+    req = httpx.Request("POST", "https://h/graphql", headers={"x-api-key": "secret"})
+    exc = httpx.HTTPStatusError("x", request=req, response=httpx.Response(403, request=req))
+    msg = svc._sanitize_unraid_error(exc)
+    assert "secret" not in msg
+    assert "Authentication failed" in msg
+    assert "TLS" in svc._sanitize_unraid_error(httpx.ConnectError("certificate verify failed"))
+
+
+@pytest.mark.asyncio
+async def test_fetch_inventory_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["x-api-key"] == "k"
+        return httpx.Response(200, json={"data": _payload([_container("plex", "host")])})
+
+    def fake_client(host: str, port: int, api_key: str, verify_tls: bool) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            base_url=f"https://{host}:{port}",
+            headers={"x-api-key": api_key},
+            transport=httpx.MockTransport(handler),
+        )
+
+    monkeypatch.setattr(svc, "_client", fake_client)
+    nodes, edges = await svc.fetch_unraid_inventory("h", 443, "k", verify_tls=False)
+    assert len(nodes) == 2
+    assert len(edges) == 1
