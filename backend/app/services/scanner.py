@@ -777,9 +777,9 @@ async def process_host(
         # discovered=: the fingerprint may add services and refresh what it
         # knows, but never repaints an icon or category the user chose.
         keep.services = merge_services(keep.services, services, discovered=True)
-        # Don't downgrade a Proxmox-typed guest (vm/lxc) to the generic
-        # scan guess; the importer knows the true type.
-        if not (keep.ieee_address or "").startswith("pve-"):
+        # Don't downgrade a Proxmox-typed guest (vm/lxc) or an Unraid
+        # container to the generic scan guess; the importer knows the true type.
+        if not (keep.ieee_address or "").startswith(("pve-", "unraid-")):
             keep.suggested_type = suggested_type
         # Merged row carries both sources (e.g. ["proxmox", "arp"]).
         keep.discovery_sources = add_source(keep.discovery_sources, discovery_source)

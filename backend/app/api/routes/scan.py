@@ -1109,9 +1109,10 @@ async def _resolve_pending_links_for_ieee(
         # '-t' target id does not resolve here and RF falls back to the top
         # handle, so never emit one.
         #   proxmox         → 'virtual' host→guest, vertical (bottom → top)
+        #   unraid          -> 'virtual' host->container, same shape
         #   proxmox_cluster → 'cluster' host↔host, horizontal (right → left)
         #   anything else   → 'iot' mesh link, vertical
-        if link.discovery_source == "proxmox":
+        if link.discovery_source in ("proxmox", "unraid"):
             edge_type, src_handle, tgt_handle = "virtual", "bottom", "top"
         elif link.discovery_source == "proxmox_cluster":
             edge_type, src_handle, tgt_handle = "cluster", "right", "left"
