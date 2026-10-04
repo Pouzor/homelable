@@ -82,7 +82,7 @@ describe('UnraidImportModal', () => {
   it('skips offline containers when the inventory checkbox is cleared', async () => {
     render(<UnraidImportModal {...defaultProps} />)
     fillHost()
-    fireEvent.click(screen.getByLabelText('Import offline containers'))
+    fireEvent.click(screen.getByLabelText('Import offline containers and VMs'))
     fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
     await waitFor(() => expect(unraidApi.importToPending).toHaveBeenCalled())
     expect(vi.mocked(unraidApi.importToPending).mock.calls[0][0].offline_containers).toBe('skip')
@@ -92,9 +92,9 @@ describe('UnraidImportModal', () => {
     render(<UnraidImportModal {...defaultProps} />)
     fillHost()
     fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-import-mode"]' }))
-    expect(screen.queryByLabelText('Import offline containers')).toBeNull()
+    expect(screen.queryByLabelText('Import offline containers and VMs')).toBeNull()
     fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-offline"]' }))
-    fireEvent.click(screen.getByRole('button', { name: /fetch containers/i }))
+    fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
     await waitFor(() => expect(unraidApi.importNetwork).toHaveBeenCalled())
     expect(vi.mocked(unraidApi.importNetwork).mock.calls[0][0].offline_containers).toBe('canvas')
   })
@@ -103,7 +103,7 @@ describe('UnraidImportModal', () => {
     render(<UnraidImportModal {...defaultProps} />)
     fillHost()
     fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-import-mode"]' }))
-    fireEvent.click(screen.getByRole('button', { name: /fetch containers/i }))
+    fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
     fireEvent.click(await screen.findByRole('button', { name: /add 2 to canvas/i }))
     expect(defaultProps.onAddToCanvas).toHaveBeenCalledWith(sampleNodes, sampleEdges)
   })
@@ -118,5 +118,22 @@ describe('UnraidImportModal', () => {
     expect(vi.mocked(unraidApi.importToPending).mock.calls[0][0].api_key).toBe('secret')
     // Unraid ships a self-signed certificate, so verification starts off.
     expect(vi.mocked(unraidApi.importToPending).mock.calls[0][0].verify_tls).toBe(false)
+  })
+
+  it('lists VMs in their own group and warns when VMs were skipped', async () => {
+    const vm = {
+      id: 'unraid-abc-vm-u1', label: 'UbuntuServer', type: 'vm' as const,
+      ieee_address: 'unraid-abc-vm-u1', status: 'online', model: 'KVM', parent_ieee: 'unraid-host-abc',
+    }
+    vi.mocked(unraidApi.importNetwork).mockResolvedValue({
+      data: { nodes: [...sampleNodes, vm], edges: sampleEdges, device_count: 3, notice: 'VMs were not imported: x' },
+    } as never)
+    render(<UnraidImportModal {...defaultProps} />)
+    fillHost()
+    fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-import-mode"]' }))
+    fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
+    expect(await screen.findByText('Virtual Machines (1)')).toBeDefined()
+    expect(toast.success).toHaveBeenCalledWith('Found 1 container and 1 VM')
+    expect(toast.warning).toHaveBeenCalledWith('VMs were not imported: x')
   })
 })

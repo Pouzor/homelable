@@ -69,9 +69,9 @@ const SOURCES: ImportSource[] = [
     brandSlug: 'unraid',
     fallbackIcon: HardDrive,
     accent: '#e22828',
-    description: 'Reads the Unraid API for the server and every Docker container it runs.',
+    description: 'Reads the Unraid API for the server and every Docker container and VM it runs.',
     duration: '~5 s',
-    imports: ['Server', 'Containers'],
+    imports: ['Server', 'Containers', 'VMs'],
   },
   {
     key: 'unifi',

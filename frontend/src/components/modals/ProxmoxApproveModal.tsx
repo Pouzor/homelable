@@ -16,8 +16,8 @@ const SOURCE_COPY: Record<GuestHostSource, { accent: string; noun: string; detai
   },
   unraid: {
     accent: '#e22828',
-    noun: 'container',
-    detail: 'Docker containers this server runs, as recorded by the Unraid import.',
+    noun: 'guest',
+    detail: 'Docker containers and VMs this server runs, as recorded by the Unraid import.',
   },
 }
 
@@ -33,7 +33,7 @@ interface ProxmoxApproveModalProps {
   /** Guests the host runs, from `scanApi.proxmoxChildren`. Deliberately not
    * named `children` — React would treat the array as renderable child nodes. */
   guests: InventoryEntry[]
-  /** Unraid containers are always drawn linked, never nested. */
+  /** Unraid guests are always drawn linked, never nested. */
   source?: GuestHostSource
   onCancel: () => void
   onConfirm: (choice: ProxmoxApproveChoice) => void
@@ -47,7 +47,7 @@ function label(d: InventoryEntry): string {
  * Asked before a Proxmox host from the Device Inventory reaches a canvas: bring
  * its VMs/LXCs along, and if so draw them nested inside the host
  * (`container_mode`) or as separate nodes joined by virtual edges. An Unraid
- * server gets the same question about its containers, always drawn linked.
+ * server gets the same question about its containers and VMs, always drawn linked.
  *
  * Only shown when the host actually has guests in the inventory — a host with
  * none is approved straight away.

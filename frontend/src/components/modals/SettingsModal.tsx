@@ -662,7 +662,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             ) : (
               <>
                 <label className="flex items-center justify-between gap-2 cursor-pointer">
-                  <span className="text-xs text-foreground">Auto-sync Unraid containers</span>
+                  <span className="text-xs text-foreground">Auto-sync Unraid containers and VMs</span>
                   <input
                     type="checkbox"
                     checked={urSyncEnabled}
@@ -686,17 +686,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     <span className="text-xs text-muted-foreground">seconds</span>
                   </div>
                   <p className="text-[10px] text-muted-foreground leading-tight">
-                    Re-imports the server and its containers into the pending inventory. Min 300s (5 min).
+                    Re-imports the server, its containers and VMs into the pending inventory. Min 300s (5 min).
                   </p>
                 </div>
                 <label className="flex items-center justify-between gap-2 cursor-pointer">
-                  <span className="text-xs text-foreground">Import offline containers</span>
+                  <span className="text-xs text-foreground">Import offline containers and VMs</span>
                   <input
                     type="checkbox"
                     checked={urIncludeOffline}
                     onChange={(e) => setUrIncludeOffline(e.target.checked)}
                     className="cursor-pointer accent-[#e22828]"
-                    aria-label="Import offline Unraid containers"
+                    aria-label="Import offline Unraid containers and VMs"
                   />
                 </label>
                 <div className="flex items-center gap-2 pt-1">

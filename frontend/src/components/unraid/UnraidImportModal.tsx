@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Server, Container, HardDrive, CheckCircle2, XCircle, Loader2, Plus } from 'lucide-react'
+import { Server, Container, Box, HardDrive, CheckCircle2, XCircle, Loader2, Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,16 +37,19 @@ const DEFAULT_FORM: ConnectionForm = {
 const DEVICE_TYPE_ICON: Record<UnraidNodeType, typeof Server> = {
   docker_host: Server,
   docker_container: Container,
+  vm: Box,
 }
 
 const DEVICE_TYPE_LABEL: Record<UnraidNodeType, string> = {
   docker_host: 'Server',
   docker_container: 'Containers',
+  vm: 'Virtual Machines',
 }
 
 const DEVICE_TYPE_COLOR: Record<UnraidNodeType, string> = {
   docker_host: ACCENT,
   docker_container: '#00d4ff',
+  vm: '#a855f7',
 }
 
 const OFFLINE_CHOICES: { key: UnraidOfflineContainers; label: string }[] = [
@@ -110,15 +113,19 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
         setDevices(res.data.nodes)
         setEdges(res.data.edges)
         setChecked(new Set(res.data.nodes.map((n) => n.id)))
-        const containers = res.data.nodes.filter((n) => n.type === 'docker_container').length
-        if (containers === 0) {
-          toast.info('No containers found')
-        } else {
-          toast.success(`Found ${containers} container${containers !== 1 ? 's' : ''}`)
+        const count = (type: UnraidNodeType, noun: string) => {
+          const n = res.data.nodes.filter((d) => d.type === type).length
+          return `${n} ${noun}${n !== 1 ? 's' : ''}`
         }
+        if (res.data.nodes.every((n) => n.type === 'docker_host')) {
+          toast.info('No containers or VMs found')
+        } else {
+          toast.success(`Found ${count('docker_container', 'container')} and ${count('vm', 'VM')}`)
+        }
+        if (res.data.notice) toast.warning(res.data.notice)
       }
     } catch (err: unknown) {
-      toast.error(extractError(err) ?? 'Failed to fetch Unraid containers')
+      toast.error(extractError(err) ?? 'Failed to fetch Unraid devices')
     } finally {
       setLoading(false)
     }
@@ -158,6 +165,7 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
   const groupedDevices: Record<UnraidNodeType, UnraidNode[]> = {
     docker_host: devices.filter((d) => d.type === 'docker_host'),
     docker_container: devices.filter((d) => d.type === 'docker_container'),
+    vm: devices.filter((d) => d.type === 'vm'),
   }
 
   return (
@@ -268,11 +276,11 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                   className="w-3 h-3 cursor-pointer"
                   style={{ accentColor: ACCENT }}
                 />
-                Import offline containers
+                Import offline containers and VMs
               </label>
             ) : (
               <div className="space-y-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5">
-                <span className="block text-xs text-muted-foreground">Offline containers</span>
+                <span className="block text-xs text-muted-foreground">Offline containers and VMs</span>
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
                   {OFFLINE_CHOICES.map((choice) => (
                     <label key={choice.key} className="flex items-center gap-1.5 cursor-pointer text-foreground">
@@ -312,12 +320,12 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                 disabled={loading || connectionStatus === 'testing'}
               >
                 {loading ? <Loader2 size={13} className="animate-spin" /> : <HardDrive size={13} />}
-                {importMode === 'pending' ? 'Import to Inventory' : 'Fetch Containers'}
+                {importMode === 'pending' ? 'Import to Inventory' : 'Fetch Devices'}
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground italic">
               Leave the API key blank to use the key configured on the server (.env).
-              Create one under Settings &gt; Management Access &gt; API Keys with read access to Docker and Info.
+              Create one under Settings &gt; Management Access &gt; API Keys with read access to Docker, VMs and Info.
             </p>
           </div>
 

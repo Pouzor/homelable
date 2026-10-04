@@ -2,7 +2,7 @@
 
 import type { NodeProperty, ServiceInfo } from '@/types'
 
-export type UnraidNodeType = 'docker_host' | 'docker_container'
+export type UnraidNodeType = 'docker_host' | 'docker_container' | 'vm'
 
 export interface UnraidNode {
   id: string
@@ -13,7 +13,7 @@ export interface UnraidNode {
   ip?: string | null
   status: string
   vendor?: string | null
-  /** Image for a container, board maker + model for the host. */
+  /** Image for a container, board maker + model for the host, KVM for a VM. */
   model?: string | null
   parent_ieee?: string | null
   /** Device Inventory row this node draws - stamped by the import so the
@@ -33,4 +33,6 @@ export interface UnraidImportResponse {
   nodes: UnraidNode[]
   edges: UnraidEdge[]
   device_count: number
+  /** Why VMs were left out (e.g. the API key has no VM access). */
+  notice?: string | null
 }
