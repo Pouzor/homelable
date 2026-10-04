@@ -1003,6 +1003,21 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
           setDevices((prev) => prev.map((d) => (d.id === saved.id ? saved : d)))
           setSelected(saved)
         }}
+        onDuplicated={
+          demoDevices
+            ? undefined
+            : (copy) => {
+                // The copy is pending, so it only belongs in the pending list —
+                // right after its source, where the user just was.
+                if (statusFilter === 'pending') {
+                  setDevices((prev) => {
+                    const at = prev.findIndex((d) => d.id === selected?.id)
+                    return at === -1 ? [...prev, copy] : [...prev.slice(0, at + 1), copy, ...prev.slice(at + 1)]
+                  })
+                }
+                setSelected(copy)
+              }
+        }
       />
 
       <MergeDevicesModal

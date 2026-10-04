@@ -546,6 +546,56 @@ async def update_pending(
     return (await _with_canvas_counts(db, [device]))[0]
 
 
+# What a copy inherits: the facts two identical units share. Addresses, the
+# check target, services and the hostname describe one physical box, so they
+# stay behind — copied, they would make create_pending's dedup and every
+# importer treat the twin as the same device (issue #481).
+_DUPLICATED_FIELDS = (
+    "os", "suggested_type", "type", "model", "vendor", "friendly_name",
+    "device_subtype", "notes", "cpu_count", "cpu_model", "ram_gb", "disk_gb",
+    "show_hardware", "check_method", "rack_faceplate_id", "rack_u_height",
+    "rack_col_span", "rack_color",
+)
+
+
+@router.post("/pending/{device_id}/duplicate", response_model=InventoryDeviceResponse, status_code=201)
+async def duplicate_pending(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> InventoryDevice:
+    """Copy an inventory row into a new, hand-made one — the second unit of a
+    redundant pair, with the same specs and front panel but no identity yet."""
+    source = (
+        await db.execute(select(InventoryDevice).where(InventoryDevice.id == device_id))
+    ).scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    name = source.label or source.friendly_name or source.hostname or source.ip or source.ieee_address
+    discovery_source = "rack" if _is_rack_only(source) else "manual"
+    copy = InventoryDevice(
+        **{field: getattr(source, field) for field in _DUPLICATED_FIELDS},
+        label=f"{name} (copy)" if name else "Device (copy)",
+        properties=[dict(p) for p in source.properties or []],
+        services=[],
+        status="pending",
+        discovery_source=discovery_source,
+        discovery_sources=[discovery_source],
+        # Fresh port ids: a cable names a port by id, so the twin's ports must
+        # never be mistaken for the source's.
+        rack_ports=(
+            [{**p, "id": str(uuid.uuid4())} for p in source.rack_ports]
+            if source.rack_ports is not None
+            else None
+        ),
+    )
+    db.add(copy)
+    await db.commit()
+    await db.refresh(copy)
+    return (await _with_canvas_counts(db, [copy]))[0]
+
+
 @router.delete("/pending", response_model=dict)
 async def clear_pending(
     db: AsyncSession = Depends(get_db),
