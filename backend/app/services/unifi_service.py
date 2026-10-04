@@ -187,7 +187,8 @@ async def _login(
     Returns the session cookies, or raises UnifiLoginError naming why it
     failed: unreachable host, timeout, MFA, rate limit or rejected credentials.
     """
-    if host.lower().rstrip(".").endswith("ui.com"):
+    hostname = host.lower().rstrip(".")
+    if hostname == "ui.com" or hostname.endswith(".ui.com"):
         raise UnifiLoginError(
             f"Login failed: {host} is Ubiquiti's cloud portal, not a controller — "
             "enter the LAN IP of your gateway or controller"

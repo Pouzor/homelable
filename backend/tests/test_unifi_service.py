@@ -499,3 +499,13 @@ async def test_login_failure_reason_reaches_the_import() -> None:
     ctx, _ = _patch(handler)
     with ctx, pytest.raises(ConnectionError, match="MFA"):
         await fetch_unifi_inventory("unifi.local", 443, "default", "admin", "pw")
+
+
+@pytest.mark.asyncio
+async def test_a_host_merely_ending_in_ui_com_is_not_the_cloud_portal() -> None:
+    """Only ui.com and its subdomains are refused — not e.g. ``myui.com``."""
+    ctx, factory = _patch(_self_hosted(_DEVICES))
+    with ctx:
+        connected, _, _ = await check_connection("myui.com", 8443, "default", "admin", "pw")
+    assert connected is True
+    assert factory.requests
