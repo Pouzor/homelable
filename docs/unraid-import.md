@@ -1,7 +1,7 @@
 # Unraid Import
 
-Connects Homelable to an Unraid server, reads the server and its Docker
-containers over the Unraid API, and brings them into the Device Inventory (and,
+Connects Homelable to an Unraid server, reads the server, its Docker
+containers and its VMs over the Unraid API, and brings them into the Device Inventory (and,
 optionally, onto the canvas) as typed nodes. It can also **sync** on a schedule.
 
 > **Server-dependent feature** - requires the Homelable backend. It is hidden in
@@ -26,9 +26,14 @@ optionally, onto the canvas) as typed nodes. It can also **sync** on a schedule.
 Containers managed by Unraid's own Docker page and containers started by a
 Docker Compose plugin are both listed by the API and imported the same way.
 
-**Not imported yet: VMs.** The Unraid API reports a VM's name and state only -
-no NIC MAC, CPU or RAM - which is too little to match it against a device a
-network scan already found.
+- **Every VM** as a `vm` node, linked to the server with a `virtual` edge and
+  keyed on its libvirt UUID (a hidden **UUID** property). The Unraid API reports
+  a VM's name and run state only - no NIC MAC, IP, vCPUs or RAM - so a VM is
+  never matched to a device a network scan already found. If a scan found the
+  VM first, merge the two rows from the Device Inventory.
+
+If the API key cannot read VMs, the containers still import and the dialog
+(or the Scan History entry) says why VMs were left out.
 
 ---
 
@@ -37,7 +42,7 @@ network scan already found.
 1. A recent Unraid with the GraphQL API (tested on **Unraid 7.3.1**, API 4.37).
    Older releases may need the Unraid Connect plugin for the API.
 2. An **API key**: *Settings > Management Access > API Keys*. Read access to
-   **Docker** and **Info** is all the import needs.
+   **Docker**, **VMs** and **Info** is all the import needs.
 3. HTTPS reachable from the Homelable backend. Unraid ships a self-signed
    certificate, so **Verify TLS certificate** is off by default. Tick it in the
    dialog (or set `UNRAID_VERIFY_TLS=true`) when the server has a trusted
@@ -52,14 +57,14 @@ Open **Import** in the sidebar and pick **Unraid**. Enter the host, port
 
 - **Device inventory only** - runs in the background; follow it in Scan
   History, then approve devices from the Device Inventory. Approving the
-  server asks whether to bring its containers along, placed beside it and
+  server asks whether to bring its containers and VMs along, placed beside it and
   joined by virtual edges.
-- **Inventory + canvas** - fetches immediately, lists the server and containers,
+- **Inventory + canvas** - fetches immediately, lists the server, containers and VMs,
   and adds the ones you tick to the canvas. They land in the inventory too.
 
-### Offline containers
+### Offline containers and VMs
 
-Stopped containers can be handled three ways:
+Stopped containers and VMs can be handled three ways:
 
 | Choice | Inventory | Canvas |
 |---|---|---|
@@ -67,7 +72,7 @@ Stopped containers can be handled three ways:
 | Inventory only (default) | yes | no |
 | Inventory + canvas | yes | yes |
 
-In *Device inventory only* mode this is a single **Import offline containers**
+In *Device inventory only* mode this is a single **Import offline containers and VMs**
 checkbox.
 
 ---
@@ -112,5 +117,5 @@ UNRAID_VERIFY_TLS=false
 
 With those set, **Settings > Unraid auto-sync** turns on a scheduled import into
 the pending inventory (minimum 5 minutes), chooses whether stopped containers
-are included, and offers **Re-sync now**. The dialog can use the `.env` key for
+and VMs are included, and offers **Re-sync now**. The dialog can use the `.env` key for
 the configured host and port only; any other host needs its own key.
