@@ -200,6 +200,11 @@ export const scanApi = {
   updatePending: (id: string, data: Partial<Omit<InventoryEntry, 'id' | 'status' | 'discovered_at'>>) =>
     api.patch<InventoryEntry>(`/scan/pending/${id}`, data),
   /**
+   * Copy an inventory row into a new pending one: specs, properties and front
+   * panel carried, addresses and services left behind (issue #481).
+   */
+  duplicatePending: (id: string) => api.post<InventoryEntry>(`/scan/pending/${id}/duplicate`),
+  /**
    * Deep-rescan one known device: every TCP port, then re-fingerprint. Answers
    * "this device predates the scanner knowing that service" (issue #350).
    * Returns the ScanRun, so the caller polls `run` and can `stop` it.
