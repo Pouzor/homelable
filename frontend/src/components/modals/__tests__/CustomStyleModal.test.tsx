@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { CustomStyleModal } from '../CustomStyleModal'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
+import type { EdgeTypeStyle } from '@/types'
 
 vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
 import { toast } from 'sonner'
@@ -244,5 +245,58 @@ describe('CustomStyleModal', () => {
     const reopenedWidth = screen.getAllByRole('spinbutton')[0]
     // Draft was reset to saved style (default width 0) — edit did not leak.
     expect((reopenedWidth as HTMLInputElement).value).toBe('0')
+  })
+})
+
+describe('CustomStyleModal — animation speed / colour (#396)', () => {
+  beforeEach(() => {
+    useThemeStore.setState({ customStyle: { nodes: {}, edges: {} } })
+    useCanvasStore.setState({ markUnsaved: vi.fn() })
+  })
+
+  const openWifi = () => {
+    render(<CustomStyleModal open onClose={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edges' }))
+    fireEvent.click(screen.getByRole('button', { name: /Wi-Fi/ }))
+  }
+
+  it('defaults to 1× and "Same as line"', () => {
+    openWifi()
+    const slider = screen.getByRole('slider', { name: 'Animation speed multiplier' }) as HTMLInputElement
+    expect(slider.value).toBe('1')
+    expect(screen.getByText('Same as line')).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull()
+  })
+
+  it('Save Custom Style persists animSpeed and animColor on the type', () => {
+    openWifi()
+    fireEvent.change(screen.getByRole('slider', { name: 'Animation speed multiplier' }), { target: { value: '2.5' } })
+    fireEvent.input(screen.getByLabelText('Animation color'), { target: { value: '#ff8800' } })
+    expect(screen.getByText('#ff8800')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Save Custom Style' }))
+    const wifi = useThemeStore.getState().customStyle.edges.wifi!
+    expect(wifi.animSpeed).toBe(2.5)
+    expect(wifi.animColor).toBe('#ff8800')
+  })
+
+  it('Reset clears animColor back to the line colour', () => {
+    openWifi()
+    fireEvent.input(screen.getByLabelText('Animation color'), { target: { value: '#ff8800' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(screen.getByText('Same as line')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Save Custom Style' }))
+    expect(useThemeStore.getState().customStyle.edges.wifi!.animColor).toBeUndefined()
+  })
+
+  it('shows the saved values when reopened', () => {
+    useThemeStore.setState({
+      customStyle: { nodes: {}, edges: { wifi: {
+        color: '#58a6ff', opacity: 1, pathStyle: 'bezier', lineStyle: 'dashed', widthMult: 1,
+        animated: 'flow', arrowStart: 'none', arrowEnd: 'none', animSpeed: 0.5, animColor: '#123456',
+      } satisfies EdgeTypeStyle } },
+    })
+    openWifi()
+    expect((screen.getByRole('slider', { name: 'Animation speed multiplier' }) as HTMLInputElement).value).toBe('0.5')
+    expect(screen.getByText('#123456')).toBeDefined()
   })
 })
