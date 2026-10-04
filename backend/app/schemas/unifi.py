@@ -29,7 +29,7 @@ def _default_modes() -> UnifiImportModes:
 
 class UnifiConnectionRequest(BaseModel):
     host: str = Field(..., description="UniFi controller host or IP")
-    port: int = Field(8443, ge=1, le=65535, description="Controller port (8443 legacy, 443 UDM)")
+    port: int = Field(443, ge=1, le=65535, description="Controller port (443 UniFi OS, 8443 legacy)")
     site: str = Field("default", description="UniFi site name")
     username: str | None = Field(None, description="Controller username (falls back to server env)")
     password: str | None = Field(None, description="Controller password (falls back to server env)")

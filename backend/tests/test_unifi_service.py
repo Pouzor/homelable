@@ -400,3 +400,112 @@ async def test_every_icon_is_one_the_front_end_can_render() -> None:
     )
     used = {p["icon"] for d in devices for p in d["properties"] if p["icon"]}
     assert used and used <= known, f"unknown icon(s): {used - known}"
+
+
+# ── login failures say why (#551) ───────────────────────────────────────────
+# One catch-all "invalid credentials or unreachable host" hid every cause.
+
+
+async def _login_failure(handler, host: str = "unifi.local", port: int = 443) -> str:
+    ctx, _ = _patch(handler)
+    with ctx:
+        connected, message, _ = await check_connection(host, port, "default", "admin", "pw")
+    assert connected is False
+    return message
+
+
+@pytest.mark.asyncio
+async def test_mfa_account_is_named_as_the_cause() -> None:
+    """UniFi OS answers a UI.com account with MFA with a 499."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(499, json={"code": "MFA_AUTH_REQUIRED", "message": "MFA required"})
+
+    message = await _login_failure(handler)
+    assert "MFA" in message
+    assert "local admin" in message
+
+
+@pytest.mark.asyncio
+async def test_rejected_credentials_point_at_a_local_account() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == _LOGIN_OS:
+            return httpx.Response(
+                401, json={"code": "AUTHENTICATION_FAILED_INVALID_CREDENTIALS"}
+            )
+        return httpx.Response(404, text="<html>Not Found</html>")
+
+    message = await _login_failure(handler)
+    assert "credentials rejected" in message
+    assert "AUTHENTICATION_FAILED_INVALID_CREDENTIALS" in message
+    assert "local admin" in message
+
+
+@pytest.mark.asyncio
+async def test_closed_port_reports_unreachable_with_a_port_hint() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("Connection refused", request=request)
+
+    message = await _login_failure(handler, port=8443)
+    assert message.startswith("Cannot reach unifi.local:8443")
+    assert "443" in message
+
+
+@pytest.mark.asyncio
+async def test_timeout_is_reported_as_such() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("timed out", request=request)
+
+    message = await _login_failure(handler)
+    assert "did not answer in time" in message
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_is_reported_as_such() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"code": "TOO_MANY_REQUESTS"})
+
+    message = await _login_failure(handler)
+    assert "rate-limiting" in message
+
+
+@pytest.mark.asyncio
+async def test_no_login_endpoint_is_not_blamed_on_credentials() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, text="<html>Not Found</html>")
+
+    message = await _login_failure(handler)
+    assert "no UniFi login endpoint answered" in message
+    assert "credentials" not in message
+
+
+@pytest.mark.asyncio
+async def test_cloud_portal_host_is_refused_without_a_request() -> None:
+    ctx, factory = _patch(lambda request: httpx.Response(200))
+    with ctx:
+        connected, message, _ = await check_connection(
+            "unifi.ui.com", 443, "default", "admin", "pw"
+        )
+    assert connected is False
+    assert "cloud portal" in message
+    assert factory.requests == []
+
+
+@pytest.mark.asyncio
+async def test_login_failure_reason_reaches_the_import() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(499, json={"code": "MFA_AUTH_REQUIRED"})
+
+    ctx, _ = _patch(handler)
+    with ctx, pytest.raises(ConnectionError, match="MFA"):
+        await fetch_unifi_inventory("unifi.local", 443, "default", "admin", "pw")
+
+
+@pytest.mark.asyncio
+async def test_a_host_merely_ending_in_ui_com_is_not_the_cloud_portal() -> None:
+    """Only ui.com and its subdomains are refused — not e.g. ``myui.com``."""
+    ctx, factory = _patch(_self_hosted(_DEVICES))
+    with ctx:
+        connected, _, _ = await check_connection("myui.com", 8443, "default", "admin", "pw")
+    assert connected is True
+    assert factory.requests
