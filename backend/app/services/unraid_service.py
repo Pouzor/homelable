@@ -1,15 +1,14 @@
-"""Unraid inventory service: fetch the server + its Docker containers.
+"""Unraid inventory service: fetch the server, its Docker containers and VMs.
 
 Talks to the Unraid API (GraphQL at ``/graphql``, Unraid 7+ or the Unraid
 Connect plugin) with an API key in the ``x-api-key`` header. Returns plain
-homelable node dicts + host->container edge hints; DB persistence lives in the
+homelable node dicts + host->guest edge hints; DB persistence lives in the
 route layer (``app.api.routes.unraid``).
 
-Only containers are imported. The API reports VMs as name + state only (no NIC
-MAC, CPU or RAM), which is too little to match them against scanned devices.
-
 Container identity is the host UUID plus the container *name*: Unraid recreates
-a container on every update, so its Docker id is not stable.
+a container on every update, so its Docker id is not stable. A VM is keyed on
+its libvirt UUID. The API reports a VM as name + state only - no NIC MAC, IP,
+CPU or RAM - so a VM cannot be matched to a device a scan already found.
 """
 
 from __future__ import annotations
@@ -58,6 +57,13 @@ query {
 
 _VERSION_QUERY = "query { info { os { hostname } versions { core { unraid } } } }"
 
+# Asked apart from the inventory query: a key without VM access, or a server
+# with the VM manager off, must not cost the user the containers.
+_VM_QUERY = "query { vms { domains { id name state } } }"
+
+# libvirt states in which the guest is up. IDLE is a running guest blocked on I/O.
+_VM_ONLINE_STATES = {"RUNNING", "IDLE"}
+
 
 class UnraidAuthError(ConnectionError):
     """The API rejected the key (bad key, or missing permissions)."""
@@ -96,7 +102,7 @@ def _graphql_errors(payload: dict[str, Any]) -> None:
     if "UNAUTHENTICATED" in codes:
         raise UnraidAuthError("Authentication failed - check the API key")
     if "FORBIDDEN" in codes:
-        raise UnraidAuthError("The API key lacks permission - it needs read access to Docker and Info")
+        raise UnraidAuthError("The API key lacks permission - it needs read access to Docker, VMs and Info")
     first = errors[0].get("message") if isinstance(errors[0], dict) else None
     raise ValueError(f"Unraid API error: {first or 'unknown'}")
 
@@ -261,7 +267,33 @@ def _container_node(
     }
 
 
-def _parse_inventory(data: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _vm_node(raw: dict[str, Any], host_key: str) -> dict[str, Any] | None:
+    # PrefixedID is "<server>:<libvirt uuid>".
+    uuid = str(raw.get("id") or "").split(":")[-1].lower()
+    if not uuid:
+        return None
+    ieee = f"unraid-{host_key}-vm-{uuid}"
+    name = raw.get("name") or f"vm-{uuid[:8]}"
+    return {
+        "id": ieee,
+        "label": name,
+        "type": "vm",
+        "ieee_address": ieee,
+        "hostname": name,
+        "ip": None,
+        "mac": None,
+        "status": "online" if raw.get("state") in _VM_ONLINE_STATES else "offline",
+        "vendor": "Unraid",
+        "model": "KVM",
+        "uuid": uuid,
+        "services": [],
+        "parent_ieee": f"unraid-host-{host_key}",
+    }
+
+
+def _parse_inventory(
+    data: dict[str, Any], vms: list[dict[str, Any]] | None = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     info = data.get("info")
     docker = data.get("docker")
     if not isinstance(info, dict) or not isinstance(docker, dict):
@@ -295,6 +327,13 @@ def _parse_inventory(data: dict[str, Any]) -> tuple[list[dict[str, Any]], list[d
         seen.add(node["id"])
         nodes.append(node)
         edges.append({"source": host_ieee, "target": node["id"]})
+    for raw in vms or []:
+        node = _vm_node(raw, host_key)
+        if node is None or node["id"] in seen:
+            continue
+        seen.add(node["id"])
+        nodes.append(node)
+        edges.append({"source": host_ieee, "target": node["id"]})
     return nodes, edges
 
 
@@ -311,6 +350,9 @@ def build_unraid_properties(node: dict[str, Any]) -> list[dict[str, Any]]:
         add("CPU Model", node.get("cpu_model"), "Cpu")
         if node.get("cpu_count") is not None:
             add("CPU Threads", node["cpu_count"], "Cpu")
+    elif node.get("type") == "vm":
+        add("UUID", node.get("uuid"))
+        add("Kind", node.get("model"))
     else:
         add("Image", node.get("model"))
         add("Network", node.get("network"))
@@ -320,13 +362,29 @@ def build_unraid_properties(node: dict[str, Any]) -> list[dict[str, Any]]:
     return props
 
 
+async def _fetch_vms(client: httpx.AsyncClient) -> tuple[list[dict[str, Any]], str | None]:
+    """The server's VM list, or ([], why it could not be read). Never raises on a
+    GraphQL error: missing VM access must not fail the container import."""
+    try:
+        data = await _query(client, _VM_QUERY)
+    except UnraidAuthError:
+        return [], "VMs were not imported: the API key has no read access to VMs"
+    except ValueError as exc:
+        logger.warning("Unraid VM list unavailable: %s", exc)
+        return [], "VMs were not imported: the server did not return its VM list"
+    domains = (data.get("vms") or {}).get("domains")
+    return [d for d in domains or [] if isinstance(d, dict)], None
+
+
 async def fetch_unraid_inventory(
     host: str,
     port: int,
     api_key: str,
     verify_tls: bool = True,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Fetch the Unraid host and its Docker containers, return (nodes, edges).
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None]:
+    """Fetch the Unraid host, its containers and VMs: (nodes, edges, notice).
+
+    ``notice`` says why VMs were left out, when they were; None otherwise.
 
     Raises:
         ConnectionError: transport/TLS/auth failures (sanitized message).
@@ -335,11 +393,13 @@ async def fetch_unraid_inventory(
     try:
         async with _client(host, port, api_key, verify_tls) as client:
             data = await _query(client, _INVENTORY_QUERY)
+            vms, notice = await _fetch_vms(client)
     except UnraidAuthError:
         raise
     except httpx.HTTPError as exc:
         raise ConnectionError(_sanitize_unraid_error(exc)) from exc
-    return _parse_inventory(data)
+    nodes, edges = _parse_inventory(data, vms)
+    return nodes, edges, notice
 
 
 async def test_unraid_connection(
@@ -352,6 +412,7 @@ async def test_unraid_connection(
     try:
         async with _client(host, port, api_key, verify_tls) as client:
             data = await _query(client, _VERSION_QUERY)
+            _, notice = await _fetch_vms(client)
     except (httpx.HTTPError, UnraidAuthError) as exc:
         return False, _sanitize_unraid_error(exc)
     except Exception as exc:  # noqa: BLE001 - surface a safe message, log the rest
@@ -360,4 +421,5 @@ async def test_unraid_connection(
     info = data.get("info") or {}
     hostname = (info.get("os") or {}).get("hostname") or "Unraid"
     version = ((info.get("versions") or {}).get("core") or {}).get("unraid") or "?"
-    return True, f"Connected to {hostname} (Unraid {version})"
+    message = f"Connected to {hostname} (Unraid {version})"
+    return True, f"{message}. {notice}" if notice else message

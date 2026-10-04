@@ -53,6 +53,21 @@ def _inventory(*containers: dict) -> tuple[list[dict], list[dict]]:
     return nodes, [{"source": HOST, "target": c["id"]} for c in containers]
 
 
+def _fetched(*guests: dict, notice: str | None = None) -> tuple[list[dict], list[dict], str | None]:
+    """What fetch_unraid_inventory returns: nodes, edges and the VM notice."""
+    return (*_inventory(*guests), notice)
+
+
+def _vm(name: str, status: str = "online") -> dict:
+    ieee = f"unraid-abc-vm-{name}-uuid"
+    return {
+        "id": ieee, "label": name, "type": "vm", "ieee_address": ieee,
+        "hostname": name, "ip": None, "mac": None, "status": status,
+        "vendor": "Unraid", "model": "KVM", "uuid": f"{name}-uuid",
+        "services": [], "parent_ieee": HOST,
+    }
+
+
 BODY = {"host": "pearl", "port": 443, "api_key": "k"}
 WEB_UI = {
     "port": 32400, "protocol": "tcp", "service_name": "Web UI",
@@ -150,7 +165,7 @@ async def test_background_import_broadcasts_refresh() -> None:
     cm.__aenter__.return_value = fake_db
     cm.__aexit__.return_value = False
     with patch("app.api.routes.unraid.AsyncSessionLocal", MagicMock(return_value=cm)), \
-         patch("app.api.routes.unraid.fetch_unraid_inventory", new=AsyncMock(return_value=([], []))), \
+         patch("app.api.routes.unraid.fetch_unraid_inventory", new=AsyncMock(return_value=([], [], None))), \
          patch("app.api.routes.unraid._persist_pending_import",
                new=AsyncMock(return_value=SimpleNamespace(device_count=3))), \
          patch("app.api.routes.status.broadcast_scan_update", new=AsyncMock()) as bcast:
@@ -161,7 +176,7 @@ async def test_background_import_broadcasts_refresh() -> None:
 # --- offline policy on the canvas import -------------------------------------
 
 async def _canvas_import(client: AsyncClient, headers: dict, offline: str) -> dict:
-    inv = _inventory(_ct("plex"), _ct("old", status="offline"))
+    inv = _fetched(_ct("plex"), _ct("old", status="offline"), _vm("winvm", status="offline"))
     with patch("app.api.routes.unraid.fetch_unraid_inventory", new=AsyncMock(return_value=inv)):
         res = await client.post("/api/v1/unraid/import", json={**BODY, "offline_containers": offline}, headers=headers)
     assert res.status_code == 200
@@ -185,14 +200,14 @@ async def test_canvas_import_offline_to_inventory_only(client: AsyncClient, head
     data = await _canvas_import(client, headers, "inventory")
     assert {n["label"] for n in data["nodes"]} == {"Pearl", "plex"}
     assert len(data["edges"]) == 1
-    assert await _stored_names(db_session) == {"Pearl", "plex", "old"}
+    assert await _stored_names(db_session) == {"Pearl", "plex", "old", "winvm"}
 
 
 @pytest.mark.asyncio
 async def test_canvas_import_offline_to_canvas(client: AsyncClient, headers: dict, db_session) -> None:
     data = await _canvas_import(client, headers, "canvas")
-    assert {n["label"] for n in data["nodes"]} == {"Pearl", "plex", "old"}
-    assert len(data["edges"]) == 2
+    assert {n["label"] for n in data["nodes"]} == {"Pearl", "plex", "old", "winvm"}
+    assert len(data["edges"]) == 3
     # Every node points at the inventory row the import created.
     assert all(n["device_id"] for n in data["nodes"])
 
@@ -202,11 +217,35 @@ async def test_canvas_nodes_carry_the_row_lists(client: AsyncClient, headers: di
     # A dropped node's first save replaces the row's lists with the node's, so
     # the node must already hold what the import wrote.
     plex = {**_ct("plex"), "services": [WEB_UI]}
-    with patch("app.api.routes.unraid.fetch_unraid_inventory", new=AsyncMock(return_value=_inventory(plex))):
+    with patch("app.api.routes.unraid.fetch_unraid_inventory", new=AsyncMock(return_value=_fetched(plex))):
         res = await client.post("/api/v1/unraid/import", json=BODY, headers=headers)
     node = next(n for n in res.json()["nodes"] if n["label"] == "plex")
     assert node["services"] == [WEB_UI]
     assert {p["key"] for p in node["properties"]} >= {"Image", "Source"}
+
+
+@pytest.mark.asyncio
+async def test_canvas_import_returns_the_vm_notice(client: AsyncClient, headers: dict) -> None:
+    inv = _fetched(_ct("plex"), notice="VMs were not imported: no access")
+    with patch("app.api.routes.unraid.fetch_unraid_inventory", new=AsyncMock(return_value=inv)):
+        res = await client.post("/api/v1/unraid/import", json=BODY, headers=headers)
+    assert res.json()["notice"] == "VMs were not imported: no access"
+
+
+@pytest.mark.asyncio
+async def test_background_import_records_the_vm_notice_on_the_run(db_session) -> None:
+    from app.db.models import ScanRun
+
+    run = ScanRun(status="running", kind="unraid", ranges=["pearl:443"])
+    db_session.add(run)
+    await db_session.commit()
+    inv = _fetched(_ct("plex"), notice="VMs were not imported: no access")
+    with patch("app.api.routes.unraid.fetch_unraid_inventory", new=AsyncMock(return_value=inv)), \
+         patch("app.api.routes.status.broadcast_scan_update", new=AsyncMock()):
+        await _background_unraid_import(run.id, "pearl", 443, "k", False, True)
+    await db_session.refresh(run)
+    assert run.status == "done"
+    assert run.error == "VMs were not imported: no access"
 
 
 # --- persistence ---------------------------------------------------------------
@@ -223,6 +262,19 @@ async def test_persist_creates_rows_and_links(db_session) -> None:
     assert host.suggested_type == "docker_host"
     assert host.os == "Unraid 7.3.1"
     assert host.discovery_sources == ["unraid"]
+
+
+@pytest.mark.asyncio
+async def test_persist_stores_a_vm_linked_to_its_host(db_session) -> None:
+    nodes, edges = _inventory(_vm("winvm"))
+    await _persist_pending_import(db_session, nodes, edges)
+    vm = (await db_session.execute(
+        select(InventoryDevice).where(InventoryDevice.suggested_type == "vm")
+    )).scalar_one()
+    assert vm.ieee_address == "unraid-abc-vm-winvm-uuid"
+    assert {p["key"]: p["value"] for p in vm.properties}["UUID"] == "winvm-uuid"
+    link = (await db_session.execute(select(InventoryDeviceLink))).scalar_one()
+    assert (link.source_ieee, link.target_ieee) == (HOST, vm.ieee_address)
 
 
 @pytest.mark.asyncio

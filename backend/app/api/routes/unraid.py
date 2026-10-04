@@ -1,6 +1,6 @@
-"""FastAPI router for the Unraid import (Docker containers) + auto-sync config.
+"""FastAPI router for the Unraid import (containers and VMs) + auto-sync config.
 
-Fetches the server and its containers from the Unraid GraphQL API and upserts
+Fetches the server, its containers and VMs from the Unraid GraphQL API and upserts
 them into the Device Inventory (same review->approve flow as the Proxmox import).
 
 Credentials: the API key comes from the request body when provided, else falls
@@ -85,7 +85,7 @@ def _resolve_api_key(payload: UnraidConnectionRequest) -> str:
 
 
 def _keep(nodes_raw: list[dict[str, Any]], offline: OfflineContainers, *, canvas: bool) -> list[dict[str, Any]]:
-    """Drop stopped containers the offline policy excludes. The host always stays."""
+    """Drop stopped containers and VMs the offline policy excludes. The host always stays."""
     if offline == "canvas" or (offline == "inventory" and not canvas):
         return nodes_raw
     return [n for n in nodes_raw if n.get("type") == "docker_host" or n.get("status") == "online"]
@@ -118,15 +118,15 @@ async def import_unraid(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ) -> UnraidImportResponse:
-    """Fetch the containers and return nodes + edges ready for canvas drop.
+    """Fetch the containers and VMs and return nodes + edges ready for canvas drop.
 
     Everything the offline policy keeps lands in the Device Inventory; with
-    ``offline_containers="inventory"`` stopped containers stop there and are
-    left out of the returned canvas payload.
+    ``offline_containers="inventory"`` stopped containers and VMs stop there and
+    are left out of the returned canvas payload.
     """
     api_key = _resolve_api_key(payload)
     try:
-        nodes_raw, edges_raw = await fetch_unraid_inventory(
+        nodes_raw, edges_raw, notice = await fetch_unraid_inventory(
             host=payload.host,
             port=payload.port,
             api_key=api_key,
@@ -147,7 +147,7 @@ async def import_unraid(
     drawn = await _with_row_lists(db, drawn)
     nodes = [UnraidNodeOut(**n) for n in drawn]
     edges = [UnraidEdgeOut(**e) for e in _edges_between(edges_raw, drawn)]
-    return UnraidImportResponse(nodes=nodes, edges=edges, device_count=len(nodes))
+    return UnraidImportResponse(nodes=nodes, edges=edges, device_count=len(nodes), notice=notice)
 
 
 async def _with_row_lists(db: AsyncSession, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -238,7 +238,7 @@ async def _background_unraid_import(
 ) -> None:
     async with AsyncSessionLocal() as db:
         try:
-            nodes_raw, edges_raw = await fetch_unraid_inventory(
+            nodes_raw, edges_raw, notice = await fetch_unraid_inventory(
                 host=host,
                 port=port,
                 api_key=api_key,
@@ -251,6 +251,9 @@ async def _background_unraid_import(
                 run.status = "done"
                 run.devices_found = result.device_count
                 run.finished_at = datetime.now(timezone.utc)
+                # Non-fatal, like the Proxmox guest-visibility advisory: the run
+                # is done, the UI shows it as a warning.
+                run.error = notice
                 await db.commit()
             from app.api.routes.status import broadcast_scan_update
             await broadcast_scan_update(run_id=run_id, devices_found=result.device_count)
@@ -270,7 +273,7 @@ async def _persist_pending_import(
     nodes_raw: list[dict[str, Any]],
     edges_raw: list[dict[str, Any]],
 ) -> UnraidImportPendingResponse:
-    """Upsert the host + containers into device_inventory, replace the host's links.
+    """Upsert the host, containers and VMs into device_inventory, replace the host's links.
 
     Update-in-place only: nothing is deleted, hidden rows stay hidden, and a row
     approved earlier but drawn on no canvas any more is revived to pending.

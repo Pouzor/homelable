@@ -191,10 +191,37 @@ def test_sanitizer_hides_details() -> None:
     assert "TLS" in svc._sanitize_unraid_error(httpx.ConnectError("certificate verify failed"))
 
 
-@pytest.mark.asyncio
-async def test_fetch_inventory_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
+VMS = [
+    {"id": "server:AC4A600A-C5F8-C5A5-B82A-5F9B46FC8167", "name": "UbuntuServer", "state": "RUNNING"},
+    {"id": "server:bde24b48-b75b-24de-0280-c2aacec154b5", "name": "Mhmmint", "state": "SHUTOFF"},
+]
+
+
+def test_vm_nodes_are_keyed_on_their_uuid() -> None:
+    nodes, edges = svc._parse_inventory(_payload([]), VMS)
+    ubuntu, mint = nodes[1], nodes[2]
+    assert ubuntu["ieee_address"] == f"unraid-{HOST_KEY}-vm-ac4a600a-c5f8-c5a5-b82a-5f9b46fc8167"
+    assert ubuntu["type"] == "vm"
+    assert ubuntu["status"] == "online"
+    assert mint["status"] == "offline"
+    # No address of its own in the API: nothing to match a scanned row on.
+    assert ubuntu["ip"] is None and ubuntu["mac"] is None
+    assert edges[0] == {"source": f"unraid-host-{HOST_KEY}", "target": ubuntu["id"]}
+    props = {p["key"]: p["value"] for p in svc.build_unraid_properties(ubuntu)}
+    assert props["UUID"] == "ac4a600a-c5f8-c5a5-b82a-5f9b46fc8167"
+
+
+def _mock_client(monkeypatch: pytest.MonkeyPatch, vm_response: dict) -> None:
+    """Answer the inventory query with one container and the VM query with ``vm_response``."""
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["x-api-key"] == "k"
+        query = request.read().decode()
+        if "vms" in query:
+            return httpx.Response(200, json=vm_response)
+        if "versions" in query and "docker" not in query:
+            return httpx.Response(200, json={"data": {"info": {
+                "os": {"hostname": "Pearl"}, "versions": {"core": {"unraid": "7.3.1"}},
+            }}})
         return httpx.Response(200, json={"data": _payload([_container("plex", "host")])})
 
     def fake_client(host: str, port: int, api_key: str, verify_tls: bool) -> httpx.AsyncClient:
@@ -205,6 +232,32 @@ async def test_fetch_inventory_round_trip(monkeypatch: pytest.MonkeyPatch) -> No
         )
 
     monkeypatch.setattr(svc, "_client", fake_client)
-    nodes, edges = await svc.fetch_unraid_inventory("h", 443, "k", verify_tls=False)
-    assert len(nodes) == 2
-    assert len(edges) == 1
+
+
+FORBIDDEN = {"errors": [{"message": "Forbidden", "extensions": {"code": "FORBIDDEN"}}], "data": None}
+
+
+@pytest.mark.asyncio
+async def test_fetch_inventory_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
+    _mock_client(monkeypatch, {"data": {"vms": {"domains": VMS}}})
+    nodes, edges, notice = await svc.fetch_unraid_inventory("h", 443, "k", verify_tls=False)
+    assert [n["type"] for n in nodes] == ["docker_host", "docker_container", "vm", "vm"]
+    assert len(edges) == 3
+    assert notice is None
+
+
+@pytest.mark.asyncio
+async def test_no_vm_access_keeps_the_containers(monkeypatch: pytest.MonkeyPatch) -> None:
+    _mock_client(monkeypatch, FORBIDDEN)
+    nodes, _, notice = await svc.fetch_unraid_inventory("h", 443, "k", verify_tls=False)
+    assert [n["type"] for n in nodes] == ["docker_host", "docker_container"]
+    assert notice is not None and "no read access to VMs" in notice
+
+
+@pytest.mark.asyncio
+async def test_connection_test_mentions_missing_vm_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    _mock_client(monkeypatch, FORBIDDEN)
+    connected, message = await svc.test_unraid_connection("h", 443, "k", verify_tls=False)
+    assert connected is True
+    assert message.startswith("Connected to Pearl (Unraid 7.3.1)")
+    assert "no read access to VMs" in message

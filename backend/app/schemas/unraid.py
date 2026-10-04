@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-# What happens to stopped containers:
+# What happens to stopped containers and VMs:
 #   skip      - not imported at all
 #   inventory - imported to the Device Inventory, kept off the canvas
 #   canvas    - imported to the inventory and offered for the canvas too
@@ -36,7 +36,7 @@ class UnraidNodeOut(BaseModel):
 
     id: str
     label: str
-    type: str  # docker_host | docker_container
+    type: str  # docker_host | docker_container | vm
     ieee_address: str
     hostname: str | None = None
     ip: str | None = None
@@ -60,6 +60,8 @@ class UnraidImportResponse(BaseModel):
     nodes: list[UnraidNodeOut]
     edges: list[UnraidEdgeOut]
     device_count: int
+    # Why VMs were left out (e.g. the key has no VM access); None when they weren't.
+    notice: str | None = None
 
 
 class UnraidImportPendingResponse(BaseModel):
