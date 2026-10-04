@@ -26,7 +26,7 @@ interface ConnectionForm {
 
 const DEFAULT_FORM: ConnectionForm = {
   host: '',
-  port: '8443',
+  port: '443',
   site: 'default',
   username: '',
   password: '',
@@ -87,7 +87,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
 
   const buildPayload = () => ({
     host: form.host.trim(),
-    port: Number(form.port) || 8443,
+    port: Number(form.port) || 443,
     site: form.site.trim() || 'default',
     // Blank falls back to the server env, like every other import.
     username: form.username.trim() || undefined,
@@ -167,10 +167,13 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 <Input
                   value={form.port}
                   onChange={(e) => updateField('port', e.target.value)}
-                  placeholder="8443"
+                  placeholder="443"
                   type="number"
                   className="font-mono text-sm bg-[#0d1117] border-border"
                 />
+                <p className="text-[11px] text-muted-foreground/60">
+                  443 for UniFi OS (UDM, UCG), 8443 for a self-hosted controller
+                </p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Site</Label>
@@ -201,6 +204,10 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                   className="text-sm bg-[#0d1117] border-border"
                 />
               </div>
+              <p className="col-span-2 text-[11px] text-muted-foreground/60">
+                Use a local admin account of the controller. A UI.com cloud account with MFA
+                cannot log in over the API, and unifi.ui.com is not a controller address.
+              </p>
               <div className="col-span-2 flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                   <input
