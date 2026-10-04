@@ -409,6 +409,17 @@ export interface EdgeTypeStyle {
    * it is offered for the types the Zigbee import writes (`iot`, `zigbee_mesh`).
    */
   showLqi?: boolean
+  /**
+   * Animation speed multiplier (0.25×–4×) for every edge of this type. Read
+   * live like `showLqi`, never copied onto edges. Unset = 1×.
+   */
+  animSpeed?: number
+  /**
+   * Colour of the snake / flow highlight (`#rrggbb`), independent from the
+   * line colour. Read live. Unset = follow the line colour. Basic mode
+   * replaces the line itself, so it keeps the line colour.
+   */
+  animColor?: string
 }
 
 export interface CustomStyleDef {
