@@ -520,3 +520,7 @@ Or add it manually to `~/.claude.json`:
 - The MCP server communicates with the backend over the internal Docker network — the backend API is never directly exposed to MCP clients.
 
 ---
+
+## Optional Observatory monitoring (draft)
+
+An opt-in monitoring panel can read CPU, memory, guests and findings from an existing Observatory collector, with links to its retained history and operations. See [configuration and feed contract](docs/observatory.md). The collector and its compatible read-only feed are separate dependencies.

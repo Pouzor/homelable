@@ -89,6 +89,11 @@ class Settings(BaseSettings):
     auth_username: str = "admin"
     auth_password_hash: str = ""
 
+    # Optional Observatory bridge. Never persisted in settings overrides or returned to the browser.
+    observatory_snapshot_url: str = ""
+    observatory_dashboard_url: str = ""
+    observatory_token: str = Field(default="", repr=False)
+
     # OpenID Connect — required only when AUTH_MODE=oidc.
     oidc_discovery_url: str = ""
     oidc_client_id: str = ""
