@@ -1953,3 +1953,56 @@ async def test_process_host_still_updates_by_mac_when_ip_changed(mem_db):
     assert devices[0].id == "d1"
     assert devices[0].mac == "aa:bb:cc:dd:ee:05"
 
+
+@pytest.mark.asyncio
+async def test_dedupe_keeps_rows_with_different_macs_sharing_an_ip(mem_db):
+    """Two devices that took turns on one DHCP lease are not duplicates (#466)."""
+    from app.services.scanner import _dedupe_pending_by_ip
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="keep", ip="10.0.0.1", mac="aa:bb:cc:dd:ee:01", status="approved",
+            discovered_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ))
+        session.add(InventoryDevice(
+            id="other", ip="10.0.0.1", mac="aa:bb:cc:dd:ee:02", status="pending",
+            discovered_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        deleted = await _dedupe_pending_by_ip(session)
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert deleted == 0
+    assert {d.id: d.mac for d in devices} == {
+        "keep": "aa:bb:cc:dd:ee:01", "other": "aa:bb:cc:dd:ee:02",
+    }
+
+
+@pytest.mark.asyncio
+async def test_dedupe_still_folds_a_macless_row_into_one_with_a_mac(mem_db):
+    """A row with no MAC yet can't be told apart from its twin, so it still folds."""
+    from app.services.scanner import _dedupe_pending_by_ip
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="keep", ip="10.0.0.1", mac="aa:bb:cc:dd:ee:01", status="approved",
+            discovered_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        ))
+        session.add(InventoryDevice(
+            id="blank", ip="10.0.0.1", mac=None, status="pending",
+            discovered_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        deleted = await _dedupe_pending_by_ip(session)
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert deleted == 1
+    assert [d.id for d in devices] == ["keep"]
