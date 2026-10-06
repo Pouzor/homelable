@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import APP_VERSION, settings
@@ -93,10 +99,21 @@ async def _try_migrate(conn: AsyncConnection, sql: str, *, label: str) -> None:
 # Ensure the data directory exists before SQLite tries to open the file
 Path(settings.sqlite_path).parent.mkdir(parents=True, exist_ok=True)
 
-engine = create_async_engine(
-    f"sqlite+aiosqlite:///{settings.sqlite_path}",
-    echo=False,
-)
+# Seconds a connection waits for SQLite's write lock before giving up with
+# "database is locked". The driver's own default is 5, which a scan, a sync and
+# a status cycle landing in the same moment can outlast on slow storage.
+SQLITE_LOCK_TIMEOUT = 30
+
+
+def create_app_engine(sqlite_path: str | Path) -> AsyncEngine:
+    return create_async_engine(
+        f"sqlite+aiosqlite:///{sqlite_path}",
+        echo=False,
+        connect_args={"timeout": SQLITE_LOCK_TIMEOUT},
+    )
+
+
+engine = create_app_engine(settings.sqlite_path)
 
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
