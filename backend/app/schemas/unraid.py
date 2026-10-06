@@ -5,16 +5,9 @@ backend falls back to the server-configured key (env), for the configured host
 only. No response schema ever carries the key.
 """
 
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field
-
-# What happens to stopped containers and VMs:
-#   skip      - not imported at all
-#   inventory - imported to the Device Inventory, kept off the canvas
-#   canvas    - imported to the inventory and offered for the canvas too
-# An inventory-only import treats "inventory" and "canvas" the same.
-OfflineContainers = Literal["skip", "inventory", "canvas"]
 
 
 class UnraidConnectionRequest(BaseModel):
@@ -23,7 +16,9 @@ class UnraidConnectionRequest(BaseModel):
     api_key: str | None = Field(None, description="Unraid API key (falls back to server env)")
     # Off by default: Unraid ships a self-signed certificate.
     verify_tls: bool = Field(False, description="Verify the Unraid TLS certificate")
-    offline_containers: OfflineContainers = "inventory"
+    # Stopped containers and VMs: imported (and, in canvas mode, listed) like
+    # running ones, or left out entirely.
+    include_offline: bool = True
 
 
 class UnraidTestConnectionResponse(BaseModel):
@@ -62,9 +57,6 @@ class UnraidImportResponse(BaseModel):
     device_count: int
     # Why VMs were left out (e.g. the key has no VM access); None when they weren't.
     notice: str | None = None
-    # Stopped devices imported to the inventory but not offered for the canvas.
-    inventory_only_containers: int = 0
-    inventory_only_vms: int = 0
 
 
 class UnraidImportPendingResponse(BaseModel):

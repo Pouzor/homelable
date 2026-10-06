@@ -25,7 +25,6 @@ from app.db.database import AsyncSessionLocal, get_db
 from app.db.models import InventoryDevice, InventoryDeviceLink, Node, ScanRun
 from app.schemas.scan import ScanRunResponse
 from app.schemas.unraid import (
-    OfflineContainers,
     UnraidConfig,
     UnraidConnectionRequest,
     UnraidEdgeOut,
@@ -84,9 +83,9 @@ def _resolve_api_key(payload: UnraidConnectionRequest) -> str:
     return settings.unraid_api_key
 
 
-def _keep(nodes_raw: list[dict[str, Any]], offline: OfflineContainers, *, canvas: bool) -> list[dict[str, Any]]:
-    """Drop stopped containers and VMs the offline policy excludes. The host always stays."""
-    if offline == "canvas" or (offline == "inventory" and not canvas):
+def _keep(nodes_raw: list[dict[str, Any]], include_offline: bool) -> list[dict[str, Any]]:
+    """Drop stopped containers and VMs unless they are wanted. The host always stays."""
+    if include_offline:
         return nodes_raw
     return [n for n in nodes_raw if n.get("type") == "docker_host" or n.get("status") == "online"]
 
@@ -120,9 +119,9 @@ async def import_unraid(
 ) -> UnraidImportResponse:
     """Fetch the containers and VMs and return nodes + edges ready for canvas drop.
 
-    Everything the offline policy keeps lands in the Device Inventory; with
-    ``offline_containers="inventory"`` stopped containers and VMs stop there and
-    are left out of the returned canvas payload.
+    Like the Proxmox import, everything returned also lands in the Device
+    Inventory. Stopped containers and VMs are left out of both unless
+    ``include_offline`` is set.
     """
     api_key = _resolve_api_key(payload)
     try:
@@ -140,27 +139,14 @@ async def import_unraid(
         logger.exception("Unexpected error during Unraid import")
         raise HTTPException(status_code=500, detail="Unexpected error during Unraid import") from exc
 
-    stored = _keep(nodes_raw, payload.offline_containers, canvas=False)
+    stored = _keep(nodes_raw, payload.include_offline)
     await _persist_pending_import(db, stored, _edges_between(edges_raw, stored))
 
-    offered = _keep(stored, payload.offline_containers, canvas=True)
-    # Stopped devices the policy kept to the inventory: the dialog lists none of
-    # them, so it says how many there were rather than look like it lost them.
-    offered_ids = {n["id"] for n in offered}
-    held = [n for n in stored if n["id"] not in offered_ids]
-
-    drawn = await attach_device_ids(db, offered)
+    drawn = await attach_device_ids(db, stored)
     drawn = await _with_row_lists(db, drawn)
     nodes = [UnraidNodeOut(**n) for n in drawn]
     edges = [UnraidEdgeOut(**e) for e in _edges_between(edges_raw, drawn)]
-    return UnraidImportResponse(
-        nodes=nodes,
-        edges=edges,
-        device_count=len(nodes),
-        notice=notice,
-        inventory_only_containers=sum(1 for n in held if n.get("type") == "docker_container"),
-        inventory_only_vms=sum(1 for n in held if n.get("type") == "vm"),
-    )
+    return UnraidImportResponse(nodes=nodes, edges=edges, device_count=len(nodes), notice=notice)
 
 
 async def _with_row_lists(db: AsyncSession, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -204,7 +190,7 @@ async def import_unraid_to_pending(
         payload.port,
         api_key,
         payload.verify_tls,
-        payload.offline_containers != "skip",
+        payload.include_offline,
     )
     return run
 
@@ -257,7 +243,7 @@ async def _background_unraid_import(
                 api_key=api_key,
                 verify_tls=verify_tls,
             )
-            stored = _keep(nodes_raw, "inventory" if include_offline else "skip", canvas=False)
+            stored = _keep(nodes_raw, include_offline)
             result = await _persist_pending_import(db, stored, _edges_between(edges_raw, stored))
             run = await db.get(ScanRun, run_id)
             if run:

@@ -117,7 +117,7 @@ async def test_requires_auth(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_import_pending_creates_scan_run(client: AsyncClient, headers: dict) -> None:
     with patch("app.api.routes.unraid._background_unraid_import", new_callable=AsyncMock) as bg:
-        res = await client.post("/api/v1/unraid/import-pending", json={**BODY, "offline_containers": "skip"}, headers=headers)
+        res = await client.post("/api/v1/unraid/import-pending", json={**BODY, "include_offline": False}, headers=headers)
     assert res.status_code == 200
     assert res.json()["kind"] == "unraid"
     # include_offline is the last positional argument.
@@ -173,12 +173,14 @@ async def test_background_import_broadcasts_refresh() -> None:
     bcast.assert_awaited_once()
 
 
-# --- offline policy on the canvas import -------------------------------------
+# --- stopped devices on the canvas import -------------------------------------
 
-async def _canvas_import(client: AsyncClient, headers: dict, offline: str) -> dict:
+async def _canvas_import(client: AsyncClient, headers: dict, include_offline: bool) -> dict:
     inv = _fetched(_ct("plex"), _ct("old", status="offline"), _vm("winvm", status="offline"))
     with patch("app.api.routes.unraid.fetch_unraid_inventory", new=AsyncMock(return_value=inv)):
-        res = await client.post("/api/v1/unraid/import", json={**BODY, "offline_containers": offline}, headers=headers)
+        res = await client.post(
+            "/api/v1/unraid/import", json={**BODY, "include_offline": include_offline}, headers=headers
+        )
     assert res.status_code == 200
     return res.json()
 
@@ -189,30 +191,23 @@ async def _stored_names(db_session) -> set[str]:
 
 
 @pytest.mark.asyncio
-async def test_canvas_import_skip_offline(client: AsyncClient, headers: dict, db_session) -> None:
-    data = await _canvas_import(client, headers, "skip")
-    assert {n["label"] for n in data["nodes"]} == {"Pearl", "plex"}
-    assert await _stored_names(db_session) == {"Pearl", "plex"}
-
-
-@pytest.mark.asyncio
-async def test_canvas_import_offline_to_inventory_only(client: AsyncClient, headers: dict, db_session) -> None:
-    data = await _canvas_import(client, headers, "inventory")
-    assert {n["label"] for n in data["nodes"]} == {"Pearl", "plex"}
-    assert len(data["edges"]) == 1
-    # The stopped ones are counted, since the dialog cannot list them.
-    assert (data["inventory_only_containers"], data["inventory_only_vms"]) == (1, 1)
+async def test_canvas_import_includes_stopped_devices(client: AsyncClient, headers: dict, db_session) -> None:
+    data = await _canvas_import(client, headers, True)
+    assert {n["label"] for n in data["nodes"]} == {"Pearl", "plex", "old", "winvm"}
+    assert len(data["edges"]) == 3
+    # Every node points at the inventory row the import created.
+    assert all(n["device_id"] for n in data["nodes"])
     assert await _stored_names(db_session) == {"Pearl", "plex", "old", "winvm"}
 
 
 @pytest.mark.asyncio
-async def test_canvas_import_offline_to_canvas(client: AsyncClient, headers: dict, db_session) -> None:
-    data = await _canvas_import(client, headers, "canvas")
-    assert {n["label"] for n in data["nodes"]} == {"Pearl", "plex", "old", "winvm"}
-    assert (data["inventory_only_containers"], data["inventory_only_vms"]) == (0, 0)
-    assert len(data["edges"]) == 3
-    # Every node points at the inventory row the import created.
-    assert all(n["device_id"] for n in data["nodes"])
+async def test_canvas_import_leaves_stopped_devices_out_of_both(client: AsyncClient, headers: dict, db_session) -> None:
+    # What the dialog lists is what reaches the inventory - nothing stopped is
+    # saved behind the user's back.
+    data = await _canvas_import(client, headers, False)
+    assert {n["label"] for n in data["nodes"]} == {"Pearl", "plex"}
+    assert len(data["edges"]) == 1
+    assert await _stored_names(db_session) == {"Pearl", "plex"}
 
 
 @pytest.mark.asyncio
