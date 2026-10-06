@@ -12,6 +12,7 @@ user has now) / new (freshly generated from the live device). The contract:
 * a missing baseline is conservative: never a silent overwrite.
 """
 
+import time
 from datetime import date
 from types import SimpleNamespace
 
@@ -25,8 +26,12 @@ from app.services.doc_reconcile import (
     KEEP,
     SAME,
     Resolution,
+    _heading_level,
+    _parse_heading,
+    _row_from_line,
     preview_id,
     reconcile,
+    split_blocks,
 )
 
 
@@ -974,3 +979,59 @@ def test_document_drift_clears_after_apply_style_refresh():
     refreshed = reconcile(merged, _body(_device(ip="192.168.10.25")), baseline_body=_body(_device(ip="192.168.10.25")), snapshot=t.facts_snapshot(_device(ip="192.168.10.25")))
     assert refreshed.conflicts == []
     assert refreshed.proposed_body == merged
+
+
+# ── line parsers (hand-rolled: the regexes they replace were quadratic) ─────
+
+
+def test_parse_heading_reads_level_and_trimmed_name():
+    assert _parse_heading("# Title") == (1, "Title")
+    assert _parse_heading("##   Services  ") == (2, "Services")
+    assert _parse_heading("###\tPort 80") == (3, "Port 80")
+    assert _parse_heading("## ") == (2, "")
+    assert _parse_heading("## a # b") == (2, "a # b")
+    assert _parse_heading("# Title\n") == (1, "Title")
+
+
+def test_parse_heading_rejects_non_headings():
+    for line in ("", "#", "##", "#Title", "#### Too deep", " # Indented", "plain", "# a\nb"):
+        assert _parse_heading(line) is None, line
+        assert _heading_level(line) == 0, line
+
+
+def test_row_from_line_reads_label_and_cell():
+    assert _row_from_line("| IP | 192.168.1.1 |") == ("IP", "192.168.1.1")
+    assert _row_from_line("|IP|192.168.1.1|") == ("IP", "192.168.1.1")
+    assert _row_from_line("|  Host name  |   |") == ("Host name", "")
+    assert _row_from_line("| a ||") == ("a", "")
+    # Further pipes belong to the cell.
+    assert _row_from_line("| Ports | 80 | 443 |") == ("Ports", "80 | 443")
+    assert _row_from_line("| IP | 192.168.1.1 |\n") == ("IP", "192.168.1.1")
+
+
+def test_row_from_line_rejects_non_rows():
+    for line in (
+        "",
+        "|",
+        "||",
+        "| only one cell |",
+        "|| empty label |",
+        "|   | blank label |",
+        "| --- | --- |",
+        "| :-: | value |",
+        "IP | 192.168.1.1 |",
+        "| IP | 192.168.1.1",
+        "| IP | a\nb |",
+    ):
+        assert _row_from_line(line) is None, line
+
+
+def test_line_parsers_stay_linear_on_long_whitespace_runs():
+    """CodeQL py/polynomial-redos: these inputs took seconds with the regexes."""
+    pad = " " * 200_000
+    start = time.perf_counter()
+    assert _parse_heading(f"# {pad}x{pad}x") == (1, f"x{pad}x")
+    assert _row_from_line(f"|{pad}a{pad}a{pad}|{pad}b{pad}b") is None
+    assert _row_from_line(f"|{pad}a{pad}|{pad}b{pad}|") == ("a", "b")
+    assert len(split_blocks(f"## {pad}x{pad}x\nbody")) == 1
+    assert time.perf_counter() - start < 1.0

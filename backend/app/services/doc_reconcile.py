@@ -90,8 +90,6 @@ _USER_SECTION_NAMES = frozenset(
 )
 _ALL_SECTION_NAMES = _SECTION_NAMES | _USER_SECTION_NAMES
 
-_HEADING = re.compile(r"^(#{1,3})\s+(.*?)\s*$")
-_ROW = re.compile(r"^\|\s*([^|]+?)\s*\|\s*(.*?)\s*\|$")
 _TABLE_SEPARATOR = re.compile(r"^\|\s*:?-{3,}:?\s*\|\s*:?-{3,}:?\s*\|$")
 @dataclass
 class Block:
@@ -180,10 +178,9 @@ def split_blocks(body: str) -> list[Block]:
     blocks: list[Block] = []
     current = Block(level=0, heading=None, lines=[])
     for line in body.splitlines():
-        match = _HEADING.match(line)
-        if match:
-            level = len(match.group(1))
-            name = match.group(2)
+        parsed = _parse_heading(line)
+        if parsed:
+            level, name = parsed
             if level == 1 or level == 2 or name in _ALL_SECTION_NAMES:
                 if current.lines:
                     blocks.append(current)
@@ -209,10 +206,25 @@ def _first_h1(blocks: list[Block]) -> str | None:
     return None
 
 
+def _parse_heading(line: str) -> tuple[int, str] | None:
+    """The (level, name) of a `#`–`###` heading line, or None for anything else.
+
+    Parsed by hand rather than with a regex: the body is user-written, and a
+    lazy group between two whitespace runs backtracks quadratically on a long
+    run of spaces.
+    """
+    rest = line.lstrip("#")
+    level = len(line) - len(rest)
+    if not 1 <= level <= 3 or not rest[:1].isspace():
+        return None
+    name = rest.strip()
+    return None if "\n" in name else (level, name)
+
+
 def _heading_level(line: str) -> int:
     """The level (`#` count) of a heading line, or 0 for anything else."""
-    match = _HEADING.match(line)
-    return len(match.group(1)) if match else 0
+    parsed = _parse_heading(line)
+    return parsed[0] if parsed else 0
 
 
 def _block_text(block: Block) -> str:
@@ -232,13 +244,17 @@ def _content_text(block: Block | None) -> str:
 
 def _row_from_line(line: str) -> tuple[str, str] | None:
     """The (label, cell) of a markdown data row, or None for anything else."""
-    match = _ROW.match(line)
-    if not match:
+    # Split by hand, not with a regex — same quadratic backtracking as headings.
+    line = line.removesuffix("\n")
+    if len(line) < 2 or not line.startswith("|") or not line.endswith("|"):
         return None
-    label = match.group(1).strip()
+    first, pipe, cell = line[1:-1].partition("|")
+    label, cell = first.strip(), cell.strip()
+    if not pipe or not first or "\n" in cell:
+        return None
     if not label or set(label) <= {"-", ":"}:
         return None  # header or separator row
-    return label, match.group(2).strip()
+    return label, cell
 
 
 def _table_rows(text: str) -> list[tuple[str, str]]:
