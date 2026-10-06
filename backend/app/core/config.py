@@ -232,8 +232,10 @@ class Settings(BaseSettings):
     # is persisted.
     unraid_api_key: str = ""
     unraid_host: str = ""
-    unraid_port: int = 443
-    unraid_verify_tls: bool = False  # Unraid ships a self-signed certificate
+    # Unraid serves plain HTTP unless "Use SSL/TLS" is turned on in its settings.
+    unraid_use_https: bool = False
+    unraid_port: int | None = None  # None = 443 for HTTPS, 80 for HTTP
+    unraid_verify_tls: bool = False  # Unraid's own certificate is self-signed
     unraid_sync_enabled: bool = False
     unraid_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
     # Import stopped containers on auto-sync / sync-now too.
@@ -303,6 +305,11 @@ class Settings(BaseSettings):
             parsed = urlsplit(self.unifi_url)
             return parsed.hostname or self.unifi_url
         return self.unifi_host
+
+    @property
+    def unraid_effective_port(self) -> int:
+        """UNRAID_PORT if set, else the default port of the configured scheme."""
+        return self.unraid_port or (443 if self.unraid_use_https else 80)
 
     @property
     def unifi_effective_port(self) -> int:

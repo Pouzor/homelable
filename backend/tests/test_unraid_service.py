@@ -182,6 +182,23 @@ def test_other_graphql_error_is_value_error() -> None:
         svc._graphql_errors({"errors": [{"message": "boom"}]})
 
 
+def test_client_uses_the_chosen_scheme() -> None:
+    assert svc._client("tower", 8080, "k", False, False).base_url.scheme == "http"
+    assert svc._client("tower", 8443, "k", False, True).base_url.scheme == "https"
+
+
+def test_redirect_to_https_says_to_use_https() -> None:
+    req = httpx.Request("POST", "http://tower:80/graphql")
+    resp = httpx.Response(302, request=req, headers={"location": "https://tower/graphql"})
+    exc = httpx.HTTPStatusError("x", request=req, response=resp)
+    assert svc._sanitize_unraid_error(exc) == "This server uses HTTPS - tick 'Use HTTPS'"
+
+
+def test_https_to_a_plain_http_port_says_to_untick() -> None:
+    exc = httpx.ConnectError("[SSL: WRONG_VERSION_NUMBER] wrong version number (_ssl.c:1032)")
+    assert "untick 'Use HTTPS'" in svc._sanitize_unraid_error(exc)
+
+
 def test_sanitizer_hides_details() -> None:
     req = httpx.Request("POST", "https://h/graphql", headers={"x-api-key": "secret"})
     exc = httpx.HTTPStatusError("x", request=req, response=httpx.Response(403, request=req))
@@ -224,9 +241,9 @@ def _mock_client(monkeypatch: pytest.MonkeyPatch, vm_response: dict) -> None:
             }}})
         return httpx.Response(200, json={"data": _payload([_container("plex", "host")])})
 
-    def fake_client(host: str, port: int, api_key: str, verify_tls: bool) -> httpx.AsyncClient:
+    def fake_client(host: str, port: int, api_key: str, verify_tls: bool, use_https: bool) -> httpx.AsyncClient:
         return httpx.AsyncClient(
-            base_url=f"https://{host}:{port}",
+            base_url=f"{'https' if use_https else 'http'}://{host}:{port}",
             headers={"x-api-key": api_key},
             transport=httpx.MockTransport(handler),
         )

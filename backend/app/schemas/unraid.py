@@ -12,13 +12,19 @@ from pydantic import BaseModel, Field
 
 class UnraidConnectionRequest(BaseModel):
     host: str = Field(..., description="Unraid server host or IP")
-    port: int = Field(443, ge=1, le=65535, description="Unraid HTTPS port")
+    port: int | None = Field(None, ge=1, le=65535, description="Unraid port (default 443 for HTTPS, 80 for HTTP)")
     api_key: str | None = Field(None, description="Unraid API key (falls back to server env)")
-    # Off by default: Unraid ships a self-signed certificate.
+    # Off by default, like Unraid's own "Use SSL/TLS" setting.
+    use_https: bool = Field(False, description="Talk to the Unraid API over HTTPS")
+    # Off by default: Unraid's own certificate is self-signed. HTTPS only.
     verify_tls: bool = Field(False, description="Verify the Unraid TLS certificate")
     # Stopped containers and VMs: imported (and, in canvas mode, listed) like
     # running ones, or left out entirely.
     include_offline: bool = True
+
+    @property
+    def effective_port(self) -> int:
+        return self.port or (443 if self.use_https else 80)
 
 
 class UnraidTestConnectionResponse(BaseModel):
@@ -70,7 +76,8 @@ class UnraidConfig(BaseModel):
     """Non-secret Unraid connection + auto-sync config (GET response)."""
 
     host: str = ""
-    port: int = Field(443, ge=1, le=65535)
+    port: int = Field(80, ge=1, le=65535)
+    use_https: bool = False
     verify_tls: bool = False
     sync_enabled: bool = False
     sync_interval: int = Field(3600, ge=300)

@@ -64,11 +64,17 @@ def _resolve_api_key(payload: UnraidConnectionRequest) -> str:
     if (
         not configured_host
         or request_host != configured_host
-        or payload.port != settings.unraid_port
+        or payload.effective_port != settings.unraid_effective_port
     ):
         raise HTTPException(
             status_code=400,
             detail="Custom Unraid hosts require an explicit API key",
+        )
+    # Never send the env key in clear text to a server configured for HTTPS.
+    if settings.unraid_use_https and not payload.use_https:
+        raise HTTPException(
+            status_code=400,
+            detail="The server-configured Unraid API key requires HTTPS",
         )
     if settings.unraid_verify_tls and not payload.verify_tls:
         raise HTTPException(
@@ -104,9 +110,10 @@ async def test_connection_endpoint(
     api_key = _resolve_api_key(payload)
     connected, message = await test_unraid_connection(
         host=payload.host,
-        port=payload.port,
+        port=payload.effective_port,
         api_key=api_key,
         verify_tls=payload.verify_tls,
+        use_https=payload.use_https,
     )
     return UnraidTestConnectionResponse(connected=connected, message=message)
 
@@ -127,9 +134,10 @@ async def import_unraid(
     try:
         nodes_raw, edges_raw, notice = await fetch_unraid_inventory(
             host=payload.host,
-            port=payload.port,
+            port=payload.effective_port,
             api_key=api_key,
             verify_tls=payload.verify_tls,
+            use_https=payload.use_https,
         )
     except ConnectionError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -178,7 +186,7 @@ async def import_unraid_to_pending(
     run = ScanRun(
         status="running",
         kind="unraid",
-        ranges=[f"{payload.host}:{payload.port}"],
+        ranges=[f"{payload.host}:{payload.effective_port}"],
     )
     db.add(run)
     await db.commit()
@@ -187,9 +195,10 @@ async def import_unraid_to_pending(
         _background_unraid_import,
         run.id,
         payload.host,
-        payload.port,
+        payload.effective_port,
         api_key,
         payload.verify_tls,
+        payload.use_https,
         payload.include_offline,
     )
     return run
@@ -210,7 +219,7 @@ async def sync_unraid_now(
     run = ScanRun(
         status="running",
         kind="unraid",
-        ranges=[f"{settings.unraid_host}:{settings.unraid_port}"],
+        ranges=[f"{settings.unraid_host}:{settings.unraid_effective_port}"],
     )
     db.add(run)
     await db.commit()
@@ -219,9 +228,10 @@ async def sync_unraid_now(
         _background_unraid_import,
         run.id,
         settings.unraid_host,
-        settings.unraid_port,
+        settings.unraid_effective_port,
         settings.unraid_api_key,
         settings.unraid_verify_tls,
+        settings.unraid_use_https,
         settings.unraid_sync_include_offline,
     )
     return run
@@ -233,6 +243,7 @@ async def _background_unraid_import(
     port: int,
     api_key: str,
     verify_tls: bool,
+    use_https: bool,
     include_offline: bool,
 ) -> None:
     async with AsyncSessionLocal() as db:
@@ -242,6 +253,7 @@ async def _background_unraid_import(
                 port=port,
                 api_key=api_key,
                 verify_tls=verify_tls,
+                use_https=use_https,
             )
             stored = _keep(nodes_raw, include_offline)
             result = await _persist_pending_import(db, stored, _edges_between(edges_raw, stored))
@@ -426,7 +438,8 @@ async def get_unraid_config(_: str = Depends(get_current_user)) -> UnraidConfig:
     """Return non-secret Unraid config. Never includes the API key."""
     return UnraidConfig(
         host=settings.unraid_host,
-        port=settings.unraid_port,
+        port=settings.unraid_effective_port,
+        use_https=settings.unraid_use_https,
         verify_tls=settings.unraid_verify_tls,
         sync_enabled=settings.unraid_sync_enabled,
         sync_interval=settings.unraid_sync_interval,
@@ -442,7 +455,7 @@ async def save_unraid_config(
 ) -> UnraidConfig:
     """Persist the auto-sync activation and apply it live.
 
-    Connection settings (host, port, API key, verify_tls) are env-only and are
+    Connection settings (host, port, API key, use_https, verify_tls) are env-only and are
     never accepted or persisted here.
     """
     if payload.sync_enabled and not (settings.unraid_host and settings.unraid_api_key):

@@ -207,7 +207,7 @@ async def _run_unraid_sync() -> None:
         run = ScanRun(
             status="running",
             kind="unraid",
-            ranges=[f"{settings.unraid_host}:{settings.unraid_port}"],
+            ranges=[f"{settings.unraid_host}:{settings.unraid_effective_port}"],
         )
         db.add(run)
         await db.commit()
@@ -217,9 +217,10 @@ async def _run_unraid_sync() -> None:
     await _background_unraid_import(
         run_id,
         settings.unraid_host,
-        settings.unraid_port,
+        settings.unraid_effective_port,
         settings.unraid_api_key,
         settings.unraid_verify_tls,
+        settings.unraid_use_https,
         settings.unraid_sync_include_offline,
     )
 

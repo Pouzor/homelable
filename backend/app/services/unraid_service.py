@@ -1,7 +1,8 @@
 """Unraid inventory service: fetch the server, its Docker containers and VMs.
 
-Talks to the Unraid API (GraphQL at ``/graphql``, Unraid 7+ or the Unraid
-Connect plugin) with an API key in the ``x-api-key`` header. Returns plain
+Talks to the Unraid API (GraphQL at ``/graphql``, built in from Unraid 7.2, the
+Unraid Connect plugin before that) with an API key in the ``x-api-key`` header,
+over HTTP or HTTPS - Unraid serves its web UI over plain HTTP by default. Returns plain
 homelable node dicts + host->guest edge hints; DB persistence lives in the
 route layer (``app.api.routes.unraid``).
 
@@ -79,13 +80,19 @@ def _sanitize_unraid_error(exc: BaseException) -> str:
         if code in (401, 403):
             return "Authentication failed - check the API key and its permissions"
         if code == 404:
-            return "Unraid API not found - is this an Unraid 7+ server?"
+            return "Unraid API not found - is this Unraid 7.2+ (or has the Unraid Connect plugin)?"
+        if exc.response.is_redirect and exc.response.headers.get("location", "").startswith("https://"):
+            # A server with SSL on answers plain HTTP with a redirect to HTTPS.
+            return "This server uses HTTPS - tick 'Use HTTPS'"
         return f"Unraid API returned HTTP {code}"
     raw = str(exc).lower()
     if "name or service not known" in raw or "getaddrinfo" in raw or "nodename nor servname" in raw:
         return "Unraid host could not be resolved"
     if "refused" in raw:
         return "Connection refused by Unraid host"
+    if "wrong_version_number" in raw or "wrong version number" in raw or "record layer" in raw:
+        # HTTPS spoken to a port that answers plain HTTP.
+        return "This server does not answer HTTPS on that port - untick 'Use HTTPS'"
     if "certificate" in raw or "ssl" in raw or "tls" in raw:
         return "TLS verification failed - untick 'Verify TLS certificate' for self-signed certs"
     if "timed out" in raw or "timeout" in raw:
@@ -120,9 +127,11 @@ async def _query(client: httpx.AsyncClient, query: str) -> dict[str, Any]:
     return data
 
 
-def _client(host: str, port: int, api_key: str, verify_tls: bool) -> httpx.AsyncClient:
+def _client(host: str, port: int, api_key: str, verify_tls: bool, use_https: bool) -> httpx.AsyncClient:
+    # Never follows redirects: an HTTP request a server bounces to HTTPS is
+    # reported, not silently retried, so the key's transport stays the user's call.
     return httpx.AsyncClient(
-        base_url=f"https://{host}:{port}",
+        base_url=f"{'https' if use_https else 'http'}://{host}:{port}",
         headers={"x-api-key": api_key},
         verify=verify_tls,
         timeout=httpx.Timeout(_READ_TIMEOUT, connect=_CONNECT_TIMEOUT),
@@ -381,6 +390,7 @@ async def fetch_unraid_inventory(
     port: int,
     api_key: str,
     verify_tls: bool = True,
+    use_https: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None]:
     """Fetch the Unraid host, its containers and VMs: (nodes, edges, notice).
 
@@ -391,7 +401,7 @@ async def fetch_unraid_inventory(
         ValueError: malformed API response or a GraphQL error.
     """
     try:
-        async with _client(host, port, api_key, verify_tls) as client:
+        async with _client(host, port, api_key, verify_tls, use_https) as client:
             data = await _query(client, _INVENTORY_QUERY)
             vms, notice = await _fetch_vms(client)
     except UnraidAuthError:
@@ -407,10 +417,11 @@ async def test_unraid_connection(
     port: int,
     api_key: str,
     verify_tls: bool = True,
+    use_https: bool = False,
 ) -> tuple[bool, str]:
     """Quick reachability + auth check. Returns (connected, message)."""
     try:
-        async with _client(host, port, api_key, verify_tls) as client:
+        async with _client(host, port, api_key, verify_tls, use_https) as client:
             data = await _query(client, _VERSION_QUERY)
             _, notice = await _fetch_vms(client)
     except (httpx.HTTPError, UnraidAuthError) as exc:

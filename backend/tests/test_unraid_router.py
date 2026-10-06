@@ -20,13 +20,16 @@ HOST = "unraid-host-abc"
 @pytest.fixture(autouse=True)
 def _clear_env():
     """A clean env-config state per test; restored afterwards."""
-    saved = (settings.unraid_host, settings.unraid_port, settings.unraid_api_key, settings.unraid_verify_tls)
+    fields = ("unraid_host", "unraid_port", "unraid_api_key", "unraid_verify_tls", "unraid_use_https")
+    saved = {f: getattr(settings, f) for f in fields}
     settings.unraid_host = ""
-    settings.unraid_port = 443
+    settings.unraid_port = None
     settings.unraid_api_key = ""
     settings.unraid_verify_tls = False
+    settings.unraid_use_https = False
     yield
-    settings.unraid_host, settings.unraid_port, settings.unraid_api_key, settings.unraid_verify_tls = saved
+    for field, value in saved.items():
+        setattr(settings, field, value)
 
 
 def _host(ip: str = "10.1.1.231", mac: str = "a0:36:9f:77:f9:44") -> dict:
@@ -68,7 +71,7 @@ def _vm(name: str, status: str = "online") -> dict:
     }
 
 
-BODY = {"host": "pearl", "port": 443, "api_key": "k"}
+BODY = {"host": "pearl", "api_key": "k"}
 WEB_UI = {
     "port": 32400, "protocol": "tcp", "service_name": "Web UI",
     "host": "http://10.1.1.231:32400", "path": "/web/index.html",
@@ -90,9 +93,30 @@ async def test_env_key_used_for_configured_host(client: AsyncClient, headers: di
     settings.unraid_host = "pearl"
     settings.unraid_api_key = "envkey"
     with patch("app.api.routes.unraid.test_unraid_connection", new=AsyncMock(return_value=(True, "ok"))) as t:
-        res = await client.post("/api/v1/unraid/test-connection", json={"host": "Pearl", "port": 443}, headers=headers)
+        res = await client.post("/api/v1/unraid/test-connection", json={"host": "Pearl"}, headers=headers)
     assert res.status_code == 200
     assert t.await_args.kwargs["api_key"] == "envkey"
+    # Plain HTTP on port 80 by default, like Unraid's own default.
+    assert (t.await_args.kwargs["use_https"], t.await_args.kwargs["port"]) == (False, 80)
+
+
+@pytest.mark.asyncio
+async def test_https_defaults_to_port_443(client: AsyncClient, headers: dict) -> None:
+    with patch("app.api.routes.unraid.test_unraid_connection", new=AsyncMock(return_value=(True, "ok"))) as t:
+        await client.post("/api/v1/unraid/test-connection", json={**BODY, "use_https": True}, headers=headers)
+    assert (t.await_args.kwargs["use_https"], t.await_args.kwargs["port"]) == (True, 443)
+
+
+@pytest.mark.asyncio
+async def test_env_key_refused_over_http_when_the_server_uses_https(client: AsyncClient, headers: dict) -> None:
+    settings.unraid_host = "pearl"
+    settings.unraid_api_key = "envkey"
+    settings.unraid_use_https = True
+    res = await client.post(
+        "/api/v1/unraid/test-connection", json={"host": "pearl", "port": 443}, headers=headers
+    )
+    assert res.status_code == 400
+    assert "requires HTTPS" in res.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -100,12 +124,14 @@ async def test_env_key_refused_with_tls_verification_off(client: AsyncClient, he
     settings.unraid_host = "pearl"
     settings.unraid_api_key = "envkey"
     settings.unraid_verify_tls = True
+    settings.unraid_use_https = True
     res = await client.post(
         "/api/v1/unraid/test-connection",
-        json={"host": "pearl", "port": 443, "verify_tls": False},
+        json={"host": "pearl", "use_https": True, "verify_tls": False},
         headers=headers,
     )
     assert res.status_code == 400
+    assert "TLS verification" in res.json()["detail"]
 
 
 @pytest.mark.asyncio
@@ -169,7 +195,7 @@ async def test_background_import_broadcasts_refresh() -> None:
          patch("app.api.routes.unraid._persist_pending_import",
                new=AsyncMock(return_value=SimpleNamespace(device_count=3))), \
          patch("app.api.routes.status.broadcast_scan_update", new=AsyncMock()) as bcast:
-        await _background_unraid_import("run1", "h", 443, "k", True, True)
+        await _background_unraid_import("run1", "h", 443, "k", True, True, True)
     bcast.assert_awaited_once()
 
 
@@ -240,7 +266,7 @@ async def test_background_import_records_the_vm_notice_on_the_run(db_session) ->
     inv = _fetched(_ct("plex"), notice="VMs were not imported: no access")
     with patch("app.api.routes.unraid.fetch_unraid_inventory", new=AsyncMock(return_value=inv)), \
          patch("app.api.routes.status.broadcast_scan_update", new=AsyncMock()):
-        await _background_unraid_import(run.id, "pearl", 443, "k", False, True)
+        await _background_unraid_import(run.id, "pearl", 80, "k", False, False, True)
     await db_session.refresh(run)
     assert run.status == "done"
     assert run.error == "VMs were not imported: no access"
