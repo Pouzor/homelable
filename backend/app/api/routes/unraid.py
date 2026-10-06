@@ -143,11 +143,24 @@ async def import_unraid(
     stored = _keep(nodes_raw, payload.offline_containers, canvas=False)
     await _persist_pending_import(db, stored, _edges_between(edges_raw, stored))
 
-    drawn = await attach_device_ids(db, _keep(stored, payload.offline_containers, canvas=True))
+    offered = _keep(stored, payload.offline_containers, canvas=True)
+    # Stopped devices the policy kept to the inventory: the dialog lists none of
+    # them, so it says how many there were rather than look like it lost them.
+    offered_ids = {n["id"] for n in offered}
+    held = [n for n in stored if n["id"] not in offered_ids]
+
+    drawn = await attach_device_ids(db, offered)
     drawn = await _with_row_lists(db, drawn)
     nodes = [UnraidNodeOut(**n) for n in drawn]
     edges = [UnraidEdgeOut(**e) for e in _edges_between(edges_raw, drawn)]
-    return UnraidImportResponse(nodes=nodes, edges=edges, device_count=len(nodes), notice=notice)
+    return UnraidImportResponse(
+        nodes=nodes,
+        edges=edges,
+        device_count=len(nodes),
+        notice=notice,
+        inventory_only_containers=sum(1 for n in held if n.get("type") == "docker_container"),
+        inventory_only_vms=sum(1 for n in held if n.get("type") == "vm"),
+    )
 
 
 async def _with_row_lists(db: AsyncSession, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:

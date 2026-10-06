@@ -200,6 +200,8 @@ async def test_canvas_import_offline_to_inventory_only(client: AsyncClient, head
     data = await _canvas_import(client, headers, "inventory")
     assert {n["label"] for n in data["nodes"]} == {"Pearl", "plex"}
     assert len(data["edges"]) == 1
+    # The stopped ones are counted, since the dialog cannot list them.
+    assert (data["inventory_only_containers"], data["inventory_only_vms"]) == (1, 1)
     assert await _stored_names(db_session) == {"Pearl", "plex", "old", "winvm"}
 
 
@@ -207,6 +209,7 @@ async def test_canvas_import_offline_to_inventory_only(client: AsyncClient, head
 async def test_canvas_import_offline_to_canvas(client: AsyncClient, headers: dict, db_session) -> None:
     data = await _canvas_import(client, headers, "canvas")
     assert {n["label"] for n in data["nodes"]} == {"Pearl", "plex", "old", "winvm"}
+    assert (data["inventory_only_containers"], data["inventory_only_vms"]) == (0, 0)
     assert len(data["edges"]) == 3
     # Every node points at the inventory row the import created.
     assert all(n["device_id"] for n in data["nodes"])

@@ -62,6 +62,9 @@ class UnraidImportResponse(BaseModel):
     device_count: int
     # Why VMs were left out (e.g. the key has no VM access); None when they weren't.
     notice: str | None = None
+    # Stopped devices imported to the inventory but not offered for the canvas.
+    inventory_only_containers: int = 0
+    inventory_only_vms: int = 0
 
 
 class UnraidImportPendingResponse(BaseModel):
