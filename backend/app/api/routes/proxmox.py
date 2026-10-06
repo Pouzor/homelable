@@ -354,7 +354,8 @@ async def _persist_pending_import(
     # the address that would have matched them.
     await reconcile_duplicates(db)
 
-    links_recorded = await _replace_links(db, edges_raw, cluster_pairs)
+    imported = {n["ieee_address"] for n in nodes_raw if n.get("ieee_address")}
+    links_recorded = await _replace_links(db, imported, edges_raw, cluster_pairs)
     await db.commit()
 
     return ProxmoxImportPendingResponse(
@@ -532,17 +533,29 @@ async def _ensure_inventory_row(
 
 async def _replace_links(
     db: AsyncSession,
+    imported: set[str],
     edges_raw: list[dict[str, Any]],
     cluster_pairs: list[tuple[str, str]],
 ) -> int:
-    """Wipe all proxmox-source links and re-insert the freshly discovered set.
+    """Wipe this import's proxmox-source links and re-insert the fresh set.
 
     Two link shapes: host→guest (``proxmox`` → 'virtual' edges) and host↔host
     (``proxmox_cluster`` → 'cluster' edges).
+
+    Only links touching a device in ``imported`` (the ieees this import
+    returned) are wiped. One import is one Proxmox endpoint, not the whole
+    truth: a second standalone server imported after the first used to erase
+    the first one's host→guest links, since the wipe covered every proxmox
+    link in the table. A guest that moved to another host of the same cluster
+    still loses its old link — its previous host is part of this import.
     """
     await db.execute(
         sa_delete(InventoryDeviceLink).where(
-            InventoryDeviceLink.discovery_source.in_([_PROXMOX_GUEST_SOURCE, _PROXMOX_CLUSTER_SOURCE])
+            InventoryDeviceLink.discovery_source.in_([_PROXMOX_GUEST_SOURCE, _PROXMOX_CLUSTER_SOURCE]),
+            or_(
+                InventoryDeviceLink.source_ieee.in_(imported),
+                InventoryDeviceLink.target_ieee.in_(imported),
+            ),
         )
     )
     recorded = 0

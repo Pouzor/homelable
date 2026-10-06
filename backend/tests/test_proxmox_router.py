@@ -633,6 +633,73 @@ async def test_link_survives_and_resolves_onto_second_design(db_session) -> None
     assert (await db_session.execute(select(InventoryDeviceLink))).scalars().one()
 
 
+def _server(host: str, vmid: int, ip: str) -> tuple[list[dict], list[dict]]:
+    """One standalone Proxmox server: a host and one guest, as an import returns them."""
+    host_ieee = f"pve-node-{host}"
+    nodes = [
+        {**_host_node(), "id": host_ieee, "ieee_address": host_ieee, "hostname": host, "label": host},
+        _guest_node(vmid, ip, host=host),
+    ]
+    return nodes, [{"source": host_ieee, "target": f"pve-{host}-{vmid}"}]
+
+
+async def _proxmox_links(db_session) -> set[tuple[str, str, str]]:
+    links = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
+    return {(ln.source_ieee, ln.target_ieee, ln.discovery_source) for ln in links}
+
+
+@pytest.mark.asyncio
+async def test_importing_a_second_server_keeps_the_first_servers_links(db_session) -> None:
+    # Regression (#502): two standalone servers imported in turn. The link wipe
+    # covered every proxmox link, so importing B erased A's host→guest link.
+    await _persist_pending_import(db_session, *_server("alpha", 101, "10.0.0.5"))
+    await _persist_pending_import(db_session, *_server("beta", 201, "10.0.1.5"))
+
+    assert await _proxmox_links(db_session) == {
+        ("pve-node-alpha", "pve-alpha-101", "proxmox"),
+        ("pve-node-beta", "pve-beta-201", "proxmox"),
+    }
+
+
+@pytest.mark.asyncio
+async def test_importing_a_second_server_keeps_the_first_clusters_links(db_session) -> None:
+    cluster = [
+        {**_host_node(), "id": "pve-node-a", "ieee_address": "pve-node-a", "hostname": "a", "label": "a"},
+        {**_host_node(), "id": "pve-node-b", "ieee_address": "pve-node-b", "hostname": "b", "label": "b"},
+    ]
+    await _persist_pending_import(db_session, cluster, [])
+    await _persist_pending_import(db_session, *_server("beta", 201, "10.0.1.5"))
+
+    assert ("pve-node-a", "pve-node-b", "proxmox_cluster") in await _proxmox_links(db_session)
+    assert await _is_proxmox_cluster_member(db_session, "pve-node-a") is True
+
+
+@pytest.mark.asyncio
+async def test_reimport_still_drops_a_link_the_server_no_longer_reports(db_session) -> None:
+    # The wipe is narrower, not gone: within one endpoint a re-import is still
+    # the full truth. vm101 moved from host a to host b of the same cluster.
+    hosts = [
+        {**_host_node(), "id": "pve-node-a", "ieee_address": "pve-node-a", "hostname": "a", "label": "a"},
+        {**_host_node(), "id": "pve-node-b", "ieee_address": "pve-node-b", "hostname": "b", "label": "b"},
+    ]
+    mac = "bc:24:11:00:00:01"
+    await _persist_pending_import(
+        db_session,
+        [*hosts, _guest_node(101, "10.0.0.5", mac=mac, host="a")],
+        [{"source": "pve-node-a", "target": "pve-a-101"}],
+    )
+    await _persist_pending_import(
+        db_session,
+        [*hosts, _guest_node(101, "10.0.0.5", mac=mac, host="b")],
+        [{"source": "pve-node-b", "target": "pve-b-101"}],
+    )
+
+    assert await _proxmox_links(db_session) == {
+        ("pve-node-a", "pve-node-b", "proxmox_cluster"),
+        ("pve-node-b", "pve-b-101", "proxmox"),
+    }
+
+
 @pytest.mark.asyncio
 async def test_persist_never_deletes(db_session) -> None:
     await _persist_pending_import(db_session, [_guest_node(101, "10.0.0.5")], [])
