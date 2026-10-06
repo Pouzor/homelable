@@ -369,6 +369,27 @@ async def test_persist_merges_a_guest_that_moved_to_another_host(db_session) -> 
 
 
 @pytest.mark.asyncio
+async def test_persist_merges_a_moved_guest_whose_mac_was_seen_unpadded(db_session) -> None:
+    # A scan on macOS reads the MAC from `arp -a`, which drops leading zeros;
+    # Proxmox reports them. Compared as written the two differed, so the MAC
+    # fallback missed and a guest whose host was renamed was filed twice.
+    await _persist_pending_import(
+        db_session, [_guest_node(106, "10.0.0.5", mac="2:c4:b5:83:1a:71")], []
+    )
+
+    await _persist_pending_import(
+        db_session,
+        [_guest_node(106, "10.0.0.5", mac="02:C4:B5:83:1A:71", host="pve2")],
+        [],
+    )
+
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].ieee_address == "pve-pve2-106"
+    assert rows[0].mac == "02:c4:b5:83:1a:71"
+
+
+@pytest.mark.asyncio
 async def test_persist_never_repoints_a_mesh_ieee(db_session) -> None:
     # A zigbee/zwave ieee is a real hardware address. A Proxmox import that
     # merges into such a row by MAC must not overwrite it.
