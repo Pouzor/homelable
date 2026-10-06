@@ -330,15 +330,13 @@ export const proxmoxApi = {
     }>('/proxmox/sync-now'),
 }
 
-/** Stopped containers: left out, inventory only, or inventory + canvas. */
-export type UnraidOfflineContainers = 'skip' | 'inventory' | 'canvas'
-
 export interface UnraidConnection {
   host: string
   port: number
   api_key?: string
   verify_tls?: boolean
-  offline_containers?: UnraidOfflineContainers
+  /** Import (and list) stopped containers and VMs too. */
+  include_offline?: boolean
 }
 
 export interface UnraidConfigData {

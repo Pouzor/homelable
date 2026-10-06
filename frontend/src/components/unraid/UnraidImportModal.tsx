@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { unraidApi, type UnraidConnection, type UnraidOfflineContainers } from '@/api/client'
+import { unraidApi, type UnraidConnection } from '@/api/client'
 import { toast } from 'sonner'
 import type { UnraidNode, UnraidEdge, UnraidNodeType } from './types'
 
@@ -52,23 +52,8 @@ const DEVICE_TYPE_COLOR: Record<UnraidNodeType, string> = {
   vm: '#a855f7',
 }
 
-const OFFLINE_CHOICES: { key: UnraidOfflineContainers; label: string }[] = [
-  { key: 'skip', label: 'Skip' },
-  { key: 'inventory', label: 'Inventory only' },
-  { key: 'canvas', label: 'Inventory + canvas' },
-]
-
 function plural(n: number, noun: string): string {
   return `${n} ${noun}${n !== 1 ? 's' : ''}`
-}
-
-/** "15 stopped containers and 1 stopped VM were" - only the non-zero parts. */
-function heldBackSummary({ containers, vms }: { containers: number; vms: number }): string {
-  const parts = [
-    containers > 0 ? plural(containers, 'stopped container') : null,
-    vms > 0 ? plural(vms, 'stopped VM') : null,
-  ].filter(Boolean)
-  return `${parts.join(' and ')} ${containers + vms === 1 ? 'was' : 'were'}`
 }
 
 export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImported }: UnraidImportModalProps) {
@@ -80,9 +65,8 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
   const [edges, setEdges] = useState<UnraidEdge[]>([])
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [importMode, setImportMode] = useState<ImportMode>('pending')
-  const [offline, setOffline] = useState<UnraidOfflineContainers>('inventory')
-  // Stopped devices the offline choice kept to the inventory, so not listed.
-  const [heldBack, setHeldBack] = useState({ containers: 0, vms: 0 })
+  // Same meaning in both modes: stopped devices are imported and listed, or neither.
+  const [includeOffline, setIncludeOffline] = useState(true)
 
   const updateField = (field: keyof ConnectionForm, value: string) =>
     setForm((f) => ({ ...f, [field]: value }))
@@ -92,7 +76,7 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
     port: Number(form.port) || 443,
     api_key: form.api_key.trim() || undefined,
     verify_tls: form.verify_tls,
-    offline_containers: offline,
+    include_offline: includeOffline,
   })
 
   const extractError = (err: unknown): string | undefined => {
@@ -128,10 +112,6 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
         setDevices(res.data.nodes)
         setEdges(res.data.edges)
         setChecked(new Set(res.data.nodes.map((n) => n.id)))
-        setHeldBack({
-          containers: res.data.inventory_only_containers ?? 0,
-          vms: res.data.inventory_only_vms ?? 0,
-        })
         const count = (type: UnraidNodeType, noun: string) =>
           plural(res.data.nodes.filter((d) => d.type === type).length, noun)
         if (res.data.nodes.every((n) => n.type === 'docker_host')) {
@@ -175,8 +155,7 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
     setConnectionStatus('idle')
     setConnectionMsg('')
     setImportMode('pending')
-    setOffline('inventory')
-    setHeldBack({ containers: 0, vms: 0 })
+    setIncludeOffline(true)
     onClose()
   }
 
@@ -288,37 +267,16 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
               </div>
             </div>
 
-            {importMode === 'pending' ? (
-              <label className="flex items-center gap-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5 text-xs cursor-pointer text-foreground">
-                <input
-                  type="checkbox"
-                  checked={offline !== 'skip'}
-                  onChange={(e) => setOffline(e.target.checked ? 'inventory' : 'skip')}
-                  className="w-3 h-3 cursor-pointer"
-                  style={{ accentColor: ACCENT }}
-                />
-                Import offline containers and VMs
-              </label>
-            ) : (
-              <div className="space-y-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5">
-                <span className="block text-xs text-muted-foreground">Offline containers and VMs</span>
-                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
-                  {OFFLINE_CHOICES.map((choice) => (
-                    <label key={choice.key} className="flex items-center gap-1.5 cursor-pointer text-foreground">
-                      <input
-                        type="radio"
-                        name="unraid-offline"
-                        checked={offline === choice.key}
-                        onChange={() => setOffline(choice.key)}
-                        className="cursor-pointer"
-                        style={{ accentColor: ACCENT }}
-                      />
-                      {choice.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
+            <label className="flex items-center gap-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5 text-xs cursor-pointer text-foreground">
+              <input
+                type="checkbox"
+                checked={includeOffline}
+                onChange={(e) => setIncludeOffline(e.target.checked)}
+                className="w-3 h-3 cursor-pointer"
+                style={{ accentColor: ACCENT }}
+              />
+              Include stopped containers and VMs
+            </label>
 
             <div className="flex flex-wrap gap-2 pt-1">
               <Button
@@ -366,13 +324,6 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                   Devices ({checked.size}/{devices.length} selected)
                 </span>
               </div>
-
-              {(heldBack.containers > 0 || heldBack.vms > 0) && (
-                <p className="text-[11px] text-muted-foreground rounded-md border border-border bg-[#0d1117]/60 px-2 py-1.5">
-                  {heldBackSummary(heldBack)} added to the Device Inventory only, not listed here.
-                  To list them, choose Inventory + canvas under Offline containers and VMs.
-                </p>
-              )}
 
               {(Object.entries(groupedDevices) as [UnraidNodeType, UnraidNode[]][])
                 .filter(([, group]) => group.length > 0)

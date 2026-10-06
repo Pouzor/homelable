@@ -439,10 +439,10 @@ describe('SettingsModal - Unraid', () => {
     },
   })
 
-  it('persists the offline-containers choice with the sync fields', async () => {
+  it('persists the stopped-devices choice with the sync fields', async () => {
     vi.mocked(unraidApi.getConfig).mockResolvedValue(config() as never)
     render(<SettingsModal open onClose={vi.fn()} />)
-    const offline = await screen.findByLabelText('Import offline Unraid containers and VMs')
+    const offline = await screen.findByLabelText('Include stopped Unraid containers and VMs')
     await waitFor(() => expect(offline).toBeChecked())
     fireEvent.click(offline)
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))

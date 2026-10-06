@@ -690,13 +690,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   </p>
                 </div>
                 <label className="flex items-center justify-between gap-2 cursor-pointer">
-                  <span className="text-xs text-foreground">Import offline containers and VMs</span>
+                  <span className="text-xs text-foreground">Include stopped containers and VMs</span>
                   <input
                     type="checkbox"
                     checked={urIncludeOffline}
                     onChange={(e) => setUrIncludeOffline(e.target.checked)}
                     className="cursor-pointer accent-[#e22828]"
-                    aria-label="Import offline Unraid containers and VMs"
+                    aria-label="Include stopped Unraid containers and VMs"
                   />
                 </label>
                 <div className="flex items-center gap-2 pt-1">

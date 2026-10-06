@@ -70,33 +70,25 @@ describe('UnraidImportModal', () => {
     expect(unraidApi.testConnection).not.toHaveBeenCalled()
   })
 
-  it('imports offline containers to the inventory by default', async () => {
+  it('includes stopped containers and VMs by default', async () => {
     render(<UnraidImportModal {...defaultProps} />)
     fillHost()
     fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
     await waitFor(() => expect(unraidApi.importToPending).toHaveBeenCalled())
-    expect(vi.mocked(unraidApi.importToPending).mock.calls[0][0].offline_containers).toBe('inventory')
+    expect(vi.mocked(unraidApi.importToPending).mock.calls[0][0].include_offline).toBe(true)
     expect(defaultProps.onInventoryImported).toHaveBeenCalled()
   })
 
-  it('skips offline containers when the inventory checkbox is cleared', async () => {
-    render(<UnraidImportModal {...defaultProps} />)
-    fillHost()
-    fireEvent.click(screen.getByLabelText('Import offline containers and VMs'))
-    fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
-    await waitFor(() => expect(unraidApi.importToPending).toHaveBeenCalled())
-    expect(vi.mocked(unraidApi.importToPending).mock.calls[0][0].offline_containers).toBe('skip')
-  })
-
-  it('offers three offline choices in canvas mode and sends the one picked', async () => {
+  it('leaves stopped devices out when the checkbox is cleared, in either mode', async () => {
     render(<UnraidImportModal {...defaultProps} />)
     fillHost()
     fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-import-mode"]' }))
-    expect(screen.queryByLabelText('Import offline containers and VMs')).toBeNull()
-    fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-offline"]' }))
+    // One checkbox, the same in both modes - no separate canvas-only choice.
+    expect(screen.queryByRole('radio', { name: /skip/i })).toBeNull()
+    fireEvent.click(screen.getByLabelText('Include stopped containers and VMs'))
     fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
     await waitFor(() => expect(unraidApi.importNetwork).toHaveBeenCalled())
-    expect(vi.mocked(unraidApi.importNetwork).mock.calls[0][0].offline_containers).toBe('canvas')
+    expect(vi.mocked(unraidApi.importNetwork).mock.calls[0][0].include_offline).toBe(false)
   })
 
   it('adds the selected server and containers to the canvas', async () => {
@@ -155,28 +147,12 @@ describe('UnraidImportModal', () => {
     expect(await screen.findByText(/does not report a VM's IP or MAC/)).toBeDefined()
   })
 
-  it('says how many stopped devices went to the inventory only', async () => {
-    vi.mocked(unraidApi.importNetwork).mockResolvedValue({
-      data: {
-        nodes: sampleNodes, edges: sampleEdges, device_count: 2,
-        inventory_only_containers: 15, inventory_only_vms: 1,
-      },
-    } as never)
-    render(<UnraidImportModal {...defaultProps} />)
-    fillHost()
-    fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-import-mode"]' }))
-    fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
-    expect(await screen.findByText(/15 stopped containers and 1 stopped VM were added to the Device Inventory only/))
-      .toBeDefined()
-  })
-
-  it('shows no inventory-only note when nothing was held back', async () => {
+  it('shows no VM note when there are no VMs', async () => {
     render(<UnraidImportModal {...defaultProps} />)
     fillHost()
     fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-import-mode"]' }))
     fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
     await screen.findByRole('button', { name: /add 2 to canvas/i })
-    expect(screen.queryByText(/Device Inventory only/)).toBeNull()
     expect(screen.queryByText(/does not report a VM's IP/)).toBeNull()
   })
 })
