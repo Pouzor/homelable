@@ -144,6 +144,26 @@ def _host_key(info: dict[str, Any]) -> str | None:
     return str(key).lower() if key else None
 
 
+def _server_web_ui(host: str, port: int, use_https: bool) -> dict[str, Any]:
+    """A "Web UI" service for the server, at the address the import connected to.
+
+    The GraphQL API is served by the web UI's own web server, so that address is
+    known to answer. The server's advertised access URLs are not: they include
+    myunraid.net and Tailscale names the backend may not reach.
+    """
+    scheme = "https" if use_https else "http"
+    name = f"[{host}]" if ":" in host else host
+    default = 443 if use_https else 80
+    netloc = name if port == default else f"{name}:{port}"
+    return {
+        "port": port,
+        "protocol": "tcp",
+        "service_name": "Web UI",
+        "host": f"{scheme}://{netloc}",
+        "path": "",
+    }
+
+
 def _host_node(info: dict[str, Any], host_ieee: str) -> dict[str, Any]:
     system = info.get("system") or {}
     net = info.get("primaryNetwork") or {}
@@ -166,6 +186,7 @@ def _host_node(info: dict[str, Any], host_ieee: str) -> dict[str, Any]:
         "vendor": "Unraid",
         "model": model,
         "os_version": f"Unraid {version}" if version else None,
+        "services": [],
         "parent_ieee": None,
     }
 
@@ -301,7 +322,9 @@ def _vm_node(raw: dict[str, Any], host_key: str) -> dict[str, Any] | None:
 
 
 def _parse_inventory(
-    data: dict[str, Any], vms: list[dict[str, Any]] | None = None
+    data: dict[str, Any],
+    vms: list[dict[str, Any]] | None = None,
+    web_ui: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     info = data.get("info")
     docker = data.get("docker")
@@ -326,6 +349,8 @@ def _parse_inventory(
     }
 
     host = _host_node(info, host_ieee)
+    if web_ui:
+        host["services"] = [web_ui]
     nodes = [host]
     edges: list[dict[str, Any]] = []
     seen = {host_ieee}
@@ -408,7 +433,7 @@ async def fetch_unraid_inventory(
         raise
     except httpx.HTTPError as exc:
         raise ConnectionError(_sanitize_unraid_error(exc)) from exc
-    nodes, edges = _parse_inventory(data, vms)
+    nodes, edges = _parse_inventory(data, vms, _server_web_ui(host, port, use_https))
     return nodes, edges, notice
 
 

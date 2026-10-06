@@ -67,6 +67,14 @@ def test_host_key_falls_back_to_hostname() -> None:
     assert nodes[0]["ieee_address"] == "unraid-host-pearl"
 
 
+def test_server_web_ui_is_the_address_the_import_used() -> None:
+    assert svc._server_web_ui("10.1.1.231", 80, False)["host"] == "http://10.1.1.231"
+    assert svc._server_web_ui("10.1.1.231", 443, True)["host"] == "https://10.1.1.231"
+    custom = svc._server_web_ui("tower.local", 8443, True)
+    assert (custom["host"], custom["port"], custom["service_name"]) == ("https://tower.local:8443", 8443, "Web UI")
+    assert svc._server_web_ui("fd00::5", 80, False)["host"] == "http://[fd00::5]"
+
+
 def test_container_identity_is_host_and_name() -> None:
     nodes, edges = svc._parse_inventory(_payload([_container("plex", "host")]))
     plex = nodes[1]
@@ -257,8 +265,9 @@ FORBIDDEN = {"errors": [{"message": "Forbidden", "extensions": {"code": "FORBIDD
 @pytest.mark.asyncio
 async def test_fetch_inventory_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
     _mock_client(monkeypatch, {"data": {"vms": {"domains": VMS}}})
-    nodes, edges, notice = await svc.fetch_unraid_inventory("h", 443, "k", verify_tls=False)
+    nodes, edges, notice = await svc.fetch_unraid_inventory("h", 443, "k", verify_tls=False, use_https=True)
     assert [n["type"] for n in nodes] == ["docker_host", "docker_container", "vm", "vm"]
+    assert nodes[0]["services"] == [svc._server_web_ui("h", 443, True)]
     assert len(edges) == 3
     assert notice is None
 

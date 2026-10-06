@@ -302,6 +302,27 @@ async def test_persist_stores_a_vm_linked_to_its_host(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_server_web_ui_merges_into_a_scanned_port(db_session) -> None:
+    # A scan already found 443 on the server: the import adds the address to
+    # that entry rather than a second 443 beside it, and keeps the scan's name.
+    scanned = InventoryDevice(
+        id=str(uuid.uuid4()), ip="10.1.1.231", mac="a0:36:9f:77:f9:44",
+        discovery_source="arp", discovery_sources=["arp"], status="pending",
+        services=[{"port": 443, "protocol": "tcp", "service_name": "https"}],
+    )
+    db_session.add(scanned)
+    await db_session.commit()
+    web_ui = {"port": 443, "protocol": "tcp", "service_name": "Web UI", "host": "https://10.1.1.231", "path": ""}
+
+    await _persist_pending_import(db_session, [{**_host(), "services": [web_ui]}], [])
+
+    await db_session.refresh(scanned)
+    assert len(scanned.services) == 1
+    assert scanned.services[0]["host"] == "https://10.1.1.231"
+    assert scanned.services[0]["service_name"] == "https"
+
+
+@pytest.mark.asyncio
 async def test_persist_merges_host_into_scanned_row(db_session) -> None:
     scanned = InventoryDevice(
         id=str(uuid.uuid4()), ip="10.1.1.231", mac="a0:36:9f:77:f9:44",
