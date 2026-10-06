@@ -43,17 +43,20 @@ If the API key cannot read VMs, the containers still import and the dialog
    Older releases may need the Unraid Connect plugin for the API.
 2. An **API key**: *Settings > Management Access > API Keys*. Read access to
    **Docker**, **VMs** and **Info** is all the import needs.
-3. HTTPS reachable from the Homelable backend. Unraid ships a self-signed
-   certificate, so **Verify TLS certificate** is off by default. Tick it in the
-   dialog (or set `UNRAID_VERIFY_TLS=true`) when the server has a trusted
-   certificate, such as the `myunraid.net` address.
+3. The server reachable from the Homelable backend over HTTP or HTTPS. Unraid
+   serves plain HTTP unless *Settings > Management Access > Use SSL/TLS* is on,
+   so **Use HTTPS** is off by default; over HTTP the API key travels
+   unencrypted. With HTTPS, Unraid's own certificate is self-signed, so
+   **Verify TLS certificate** is off too; tick it when the server has a trusted
+   certificate, such as the `myunraid.net` address. Picking the wrong scheme
+   gets a message saying which one the server wants.
 
 ---
 
 ## Importing
 
 Open **Import** in the sidebar and pick **Unraid**. Enter the host, port
-(default `443`) and API key, then choose where devices go:
+(blank for 80, or 443 with **Use HTTPS**) and API key, then choose where devices go:
 
 - **Device inventory only** - runs in the background; follow it in Scan
   History, then approve devices from the Device Inventory. Approving the
@@ -107,12 +110,14 @@ written to disk by the app and never returned by the API.
 
 ```env
 UNRAID_HOST=192.168.1.20
-UNRAID_PORT=443
 UNRAID_API_KEY=xxxxxxxxxxxxxxxx
+UNRAID_USE_HTTPS=false
+# UNRAID_PORT=80        # defaults to 80, or 443 with UNRAID_USE_HTTPS=true
 UNRAID_VERIFY_TLS=false
 ```
 
 With those set, **Settings > Unraid auto-sync** turns on a scheduled import into
 the pending inventory (minimum 5 minutes), chooses whether stopped containers
 and VMs are included, and offers **Re-sync now**. The dialog can use the `.env` key for
-the configured host and port only; any other host needs its own key.
+the configured host and port only, and never over HTTP when
+`UNRAID_USE_HTTPS=true`; any other host needs its own key.
