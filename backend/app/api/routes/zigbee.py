@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -269,7 +269,7 @@ async def _persist_pending_import(
     """Upsert nodes/edges into device_inventory + device_inventory_links.
 
     Coordinator auto-approves to a canvas Node. Other devices upsert by IEEE.
-    All zigbee-source links are wiped and re-inserted from the new map.
+    This network's zigbee-source links are wiped and re-inserted from the new map.
     """
     # Repair any pre-existing duplicate nodes (same IEEE) before upserting, so
     # the by-IEEE lookups below resolve to a single row.
@@ -343,12 +343,20 @@ async def _persist_pending_import(
                 pass
             pending_updated += 1
 
-    # Replace all zigbee-source links with the freshly discovered set.
+    # Replace this network's zigbee-source links with the freshly discovered
+    # set. Only links touching a device this import returned: one import is one
+    # Zigbee2MQTT instance, and wiping every zigbee link erased the map of a
+    # second network imported earlier.
+    imported = {n["ieee_address"] for n in nodes_raw if n.get("ieee_address")}
     await db.execute(
         sa_delete(InventoryDeviceLink).where(
             # Both sources, or mesh links would pile up import after import:
             # the wipe below is what keeps this a replace, not an append.
-            InventoryDeviceLink.discovery_source.in_(["zigbee", "zigbee_mesh"])
+            InventoryDeviceLink.discovery_source.in_(["zigbee", "zigbee_mesh"]),
+            or_(
+                InventoryDeviceLink.source_ieee.in_(imported),
+                InventoryDeviceLink.target_ieee.in_(imported),
+            ),
         )
     )
 

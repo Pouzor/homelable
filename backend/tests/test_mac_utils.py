@@ -12,6 +12,22 @@ def test_normalize_mac_lowercases_and_unifies_separators() -> None:
     assert normalize_mac("  BC:24:11:AA:BB:CC  ") == "bc:24:11:aa:bb:cc"
 
 
+def test_normalize_mac_pads_octets() -> None:
+    # macOS `arp -a` drops leading zeros; Proxmox reports them.
+    assert normalize_mac("2:c4:b5:83:1a:71") == "02:c4:b5:83:1a:71"
+    assert normalize_mac("0:46:D8:3:93:2D") == "00:46:d8:03:93:2d"
+    assert normalize_mac("50-2-91-c2-f2-91") == "50:02:91:c2:f2:91"
+    assert normalize_mac("02:c4:b5:83:1a:71") == "02:c4:b5:83:1a:71"
+
+
+def test_normalize_mac_leaves_other_shapes_alone() -> None:
+    # Not six hex octets: lowercased, never padded into something it is not.
+    assert normalize_mac("0011.2233.4455") == "0011.2233.4455"
+    assert normalize_mac("2:c4:b5:83:1a") == "2:c4:b5:83:1a"
+    assert normalize_mac("2:c4:b5:83:1a:zz") == "2:c4:b5:83:1a:zz"
+    assert normalize_mac("2:c4:b5:83:1a:711") == "2:c4:b5:83:1a:711"
+
+
 def test_normalize_mac_blank_is_none() -> None:
     assert normalize_mac(None) is None
     assert normalize_mac("") is None
