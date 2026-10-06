@@ -5,6 +5,27 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.6.0] - 2026-10-07
+
+### Features
+
+- A device document can be updated from its device without losing what was written by hand. **Update from device** runs a three-way merge between the last generated baseline, the current body and the fresh device facts: device-only changes apply on their own, user-owned sections are preserved, and only true conflicts are shown, each with two choices — keep the actual documentation or take the new device information. A document is flagged as out of date only when the update has something to offer. Thanks @kreativmonkey! (#489, part of #484)
+- A documentation page takes uploaded media: pick a file from the `/` insert menu, drop it on the editor, or paste a screenshot. PNG, JPEG, WebP and SVG are inserted as images, a PDF as a link that opens in a new tab. Full mode only. (#548, closes #541)
+- **Duplicate** in the Device Inventory detail modal, so the second unit of a redundant pair starts as a copy of the first — type, model, hardware fields, properties and the full front panel, ports included. IP, MAC, IEEE address, hostname and services stay behind, since they identify one physical box. (#553, closes #481)
+- Each edge type can set its own animation speed (0.25x to 4x) and highlight colour in the Custom Style Editor. Both apply at once to every edge of that type. (#555, refs #396)
+- `STATUS_CHECKER_ENABLED`, an env-only master switch for status and service checks, for homelabs where another system already owns monitoring. It defaults to `true`; set to `false`, no probe is sent, approving a device no longer gives it a default ping, and Settings shows that checks are disabled server-side. Thanks @Tomvis! (#535)
+- Every MCP tool carries `readOnlyHint` / `destructiveHint` / `openWorldHint` annotations, so a client can let reads through without a prompt and ask before a delete or a network scan. Thanks @Tomvis! (#536)
+
+### Fixes
+
+- Status checks regularly failed with `database is locked` on larger inventories, and each affected device lost that cycle's status. A cycle now saves every result in one commit, and each result is broadcast as soon as its probe answers, independently of the save. (#557, closes #539)
+- Importing a second Proxmox server, Zigbee2MQTT instance or Z-Wave controller erased the links of the one imported before. A Proxmox guest could also be filed as a second inventory row after a host rename or a migration, because a MAC without leading zeros (`2:c4:…`) never matched its padded form. (#558, refs #502)
+- A failed UniFi login always reported "invalid credentials or unreachable host". It now names the cause — host unreachable or wrong port, timeout, MFA-enabled UI.com account, rate limit, rejected credentials — and a `*.ui.com` host is refused before any request. (#554, closes #551)
+- Once any settings section had been saved, `UNIFI_HOST` / `UNIFI_PORT` from `.env` were ignored and UniFi re-sync stayed unavailable. The UniFi connection config is now env-only; stale keys in an existing `scan_config.json` are ignored, so affected installs recover on upgrade. (#543, closes #538)
+- A Zigbee device placed twice on the same canvas sometimes left the new card without its mesh link, and an approved card could lose the link to its inventory row on the next save. (#542, closes #532)
+- Global keyboard shortcuts detect a focused field through a shadow root, so they no longer fire while typing when the app is embedded in one. (#547, refs #546)
+- Security: the two regexes behind "Update from device" backtracked polynomially on long runs of spaces and are replaced by linear-time parsers; frontend development dependencies flagged by Dependabot are bumped, along with axios 1.20.0 and PyJWT 2.15.0. (#559)
+
 ## [3.5.1] - 2026-09-25
 
 ### Features
