@@ -58,6 +58,19 @@ const OFFLINE_CHOICES: { key: UnraidOfflineContainers; label: string }[] = [
   { key: 'canvas', label: 'Inventory + canvas' },
 ]
 
+function plural(n: number, noun: string): string {
+  return `${n} ${noun}${n !== 1 ? 's' : ''}`
+}
+
+/** "15 stopped containers and 1 stopped VM were" - only the non-zero parts. */
+function heldBackSummary({ containers, vms }: { containers: number; vms: number }): string {
+  const parts = [
+    containers > 0 ? plural(containers, 'stopped container') : null,
+    vms > 0 ? plural(vms, 'stopped VM') : null,
+  ].filter(Boolean)
+  return `${parts.join(' and ')} ${containers + vms === 1 ? 'was' : 'were'}`
+}
+
 export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImported }: UnraidImportModalProps) {
   const [form, setForm] = useState<ConnectionForm>(DEFAULT_FORM)
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle')
@@ -68,6 +81,8 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [importMode, setImportMode] = useState<ImportMode>('pending')
   const [offline, setOffline] = useState<UnraidOfflineContainers>('inventory')
+  // Stopped devices the offline choice kept to the inventory, so not listed.
+  const [heldBack, setHeldBack] = useState({ containers: 0, vms: 0 })
 
   const updateField = (field: keyof ConnectionForm, value: string) =>
     setForm((f) => ({ ...f, [field]: value }))
@@ -113,10 +128,12 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
         setDevices(res.data.nodes)
         setEdges(res.data.edges)
         setChecked(new Set(res.data.nodes.map((n) => n.id)))
-        const count = (type: UnraidNodeType, noun: string) => {
-          const n = res.data.nodes.filter((d) => d.type === type).length
-          return `${n} ${noun}${n !== 1 ? 's' : ''}`
-        }
+        setHeldBack({
+          containers: res.data.inventory_only_containers ?? 0,
+          vms: res.data.inventory_only_vms ?? 0,
+        })
+        const count = (type: UnraidNodeType, noun: string) =>
+          plural(res.data.nodes.filter((d) => d.type === type).length, noun)
         if (res.data.nodes.every((n) => n.type === 'docker_host')) {
           toast.info('No containers or VMs found')
         } else {
@@ -159,6 +176,7 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
     setConnectionMsg('')
     setImportMode('pending')
     setOffline('inventory')
+    setHeldBack({ containers: 0, vms: 0 })
     onClose()
   }
 
@@ -349,6 +367,13 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                 </span>
               </div>
 
+              {(heldBack.containers > 0 || heldBack.vms > 0) && (
+                <p className="text-[11px] text-muted-foreground rounded-md border border-border bg-[#0d1117]/60 px-2 py-1.5">
+                  {heldBackSummary(heldBack)} added to the Device Inventory only, not listed here.
+                  To list them, choose Inventory + canvas under Offline containers and VMs.
+                </p>
+              )}
+
               {(Object.entries(groupedDevices) as [UnraidNodeType, UnraidNode[]][])
                 .filter(([, group]) => group.length > 0)
                 .map(([type, group]) => {
@@ -362,6 +387,12 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                           {DEVICE_TYPE_LABEL[type]} ({group.length})
                         </span>
                       </div>
+                      {type === 'vm' && (
+                        <p className="text-[11px] text-muted-foreground mb-1">
+                          Unraid does not report a VM&apos;s IP or MAC, so these come in without one. If a
+                          network scan already found a VM, merge the two in the Device Inventory.
+                        </p>
+                      )}
                       {group.map((device) => (
                         <div
                           key={device.id}

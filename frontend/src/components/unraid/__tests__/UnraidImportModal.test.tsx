@@ -139,4 +139,44 @@ describe('UnraidImportModal', () => {
     expect(toast.success).toHaveBeenCalledWith('Found 1 container and 1 VM')
     expect(toast.warning).toHaveBeenCalledWith('VMs were not imported: x')
   })
+
+  it('explains that VMs come without an IP', async () => {
+    const vm = {
+      id: 'unraid-abc-vm-u1', label: 'UbuntuServer', type: 'vm' as const,
+      ieee_address: 'unraid-abc-vm-u1', status: 'online', model: 'KVM', parent_ieee: 'unraid-host-abc',
+    }
+    vi.mocked(unraidApi.importNetwork).mockResolvedValue({
+      data: { nodes: [...sampleNodes, vm], edges: sampleEdges, device_count: 3 },
+    } as never)
+    render(<UnraidImportModal {...defaultProps} />)
+    fillHost()
+    fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-import-mode"]' }))
+    fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
+    expect(await screen.findByText(/does not report a VM's IP or MAC/)).toBeDefined()
+  })
+
+  it('says how many stopped devices went to the inventory only', async () => {
+    vi.mocked(unraidApi.importNetwork).mockResolvedValue({
+      data: {
+        nodes: sampleNodes, edges: sampleEdges, device_count: 2,
+        inventory_only_containers: 15, inventory_only_vms: 1,
+      },
+    } as never)
+    render(<UnraidImportModal {...defaultProps} />)
+    fillHost()
+    fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-import-mode"]' }))
+    fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
+    expect(await screen.findByText(/15 stopped containers and 1 stopped VM were added to the Device Inventory only/))
+      .toBeDefined()
+  })
+
+  it('shows no inventory-only note when nothing was held back', async () => {
+    render(<UnraidImportModal {...defaultProps} />)
+    fillHost()
+    fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-import-mode"]' }))
+    fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
+    await screen.findByRole('button', { name: /add 2 to canvas/i })
+    expect(screen.queryByText(/Device Inventory only/)).toBeNull()
+    expect(screen.queryByText(/does not report a VM's IP/)).toBeNull()
+  })
 })

@@ -35,4 +35,7 @@ export interface UnraidImportResponse {
   device_count: number
   /** Why VMs were left out (e.g. the API key has no VM access). */
   notice?: string | null
+  /** Stopped devices imported to the inventory but not offered for the canvas. */
+  inventory_only_containers?: number
+  inventory_only_vms?: number
 }
