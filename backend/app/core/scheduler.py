@@ -3,7 +3,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -32,44 +32,79 @@ async def _nodes_by_device(db: AsyncSession) -> dict[str, list[str]]:
     return out
 
 
+class _CheckOutcome(NamedTuple):
+    device_id: str
+    status: str
+    response_time_ms: int | None
+    checked_at: datetime
+
+
 async def _check_single_device(
     device_id: str,
     node_ids: list[str],
     check_method: str,
     check_target: str | None,
     ip: str | None,
-) -> tuple[str, dict[str, object] | None]:
-    """Run a single device check; returns (device_id, result_or_None).
+) -> _CheckOutcome | None:
+    """Probe one device and broadcast the result; returns None if the probe failed.
 
     Accepts plain scalars — not an ORM object — so there is no risk of
     DetachedInstanceError when the originating session has already closed.
+
+    It does not write: `_save_check_outcomes` persists the whole cycle at once.
+    The broadcast goes out here, as soon as the probe answers, so a canvas is
+    not kept waiting on the slowest device or on the database.
     """
     from app.api.routes.status import broadcast_status  # avoid circular import
 
     try:
         check_result = await check_node(check_method, check_target, ip)
-        raw_ms = check_result["response_time_ms"]
-        response_ms = raw_ms if isinstance(raw_ms, int) else None
-        now = datetime.now(timezone.utc)
-        async with AsyncSessionLocal() as db:
-            device = await db.get(InventoryDevice, device_id)
-            if device:
-                device.status_live = str(check_result["status"])
-                device.response_time_ms = response_ms
-                if check_result["status"] == "online":
-                    device.last_seen = now
-                await db.commit()
+    except Exception as exc:
+        logger.error("Status check failed for device %s: %s", device_id, exc)
+        return None
+    raw_ms = check_result["response_time_ms"]
+    outcome = _CheckOutcome(
+        device_id=device_id,
+        status=str(check_result["status"]),
+        response_time_ms=raw_ms if isinstance(raw_ms, int) else None,
+        checked_at=datetime.now(timezone.utc),
+    )
+    try:
         await broadcast_status(
             device_id=device_id,
             node_ids=node_ids,
-            status=str(check_result["status"]),
-            checked_at=now.isoformat(),
-            response_time_ms=response_ms,
+            status=outcome.status,
+            checked_at=outcome.checked_at.isoformat(),
+            response_time_ms=outcome.response_time_ms,
         )
-        return device_id, check_result
     except Exception as exc:
-        logger.error("Status check failed for device %s: %s", device_id, exc)
-        return device_id, None
+        logger.error("Status broadcast failed for device %s: %s", device_id, exc)
+    return outcome
+
+
+async def _save_check_outcomes(outcomes: list[_CheckOutcome]) -> None:
+    """Persist a whole status cycle in one write transaction.
+
+    One commit per device meant as many writers queueing on SQLite's single
+    write lock as there are devices, and the ones at the back of the queue gave
+    up with "database is locked" (#539). A failure here costs the stored state
+    of one cycle, never the live one: the broadcasts have already gone out.
+    """
+    by_id = {o.device_id: o for o in outcomes}
+    try:
+        async with AsyncSessionLocal() as db:
+            devices = (
+                await db.execute(select(InventoryDevice).where(InventoryDevice.id.in_(by_id)))
+            ).scalars().all()
+            for device in devices:
+                outcome = by_id[device.id]
+                device.status_live = outcome.status
+                device.response_time_ms = outcome.response_time_ms
+                if outcome.status == "online":
+                    device.last_seen = outcome.checked_at
+            await db.commit()
+    except Exception as exc:
+        logger.error("Could not save the status of %d device(s): %s", len(outcomes), exc)
 
 
 async def _run_status_checks() -> None:
@@ -108,10 +143,13 @@ async def _run_status_checks() -> None:
     if not checkable:
         return
 
-    await asyncio.gather(*[
+    results = await asyncio.gather(*[
         _check_single_device(device_id, node_ids, method, target, ip)
         for device_id, node_ids, method, target, ip in checkable
     ])
+    outcomes = [r for r in results if r is not None]
+    if outcomes:
+        await _save_check_outcomes(outcomes)
 
 
 def _node_host(ip: str | None, hostname: str | None) -> str | None:
