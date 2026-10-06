@@ -344,6 +344,34 @@ async def test_persist_replaces_links(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_importing_a_second_network_keeps_the_first_networks_links(db_session) -> None:
+    """Regression: the wipe covered every zwave link, so a second controller
+    imported after the first erased the first one's map."""
+    from sqlalchemy import select
+
+    from app.api.routes.zwave import _persist_pending_import
+    from app.db.models import InventoryDeviceLink
+
+    await _persist_pending_import(
+        db_session, _PENDING_NODES[:2], [{"source": "zwave-0xh-1", "target": "zwave-0xh-2"}]
+    )
+
+    other = [
+        {**_PENDING_NODES[0], "id": "zwave-0xb-1", "ieee_address": "zwave-0xb-1"},
+        {**_PENDING_NODES[1], "id": "zwave-0xb-2", "ieee_address": "zwave-0xb-2"},
+    ]
+    await _persist_pending_import(
+        db_session, other, [{"source": "zwave-0xb-1", "target": "zwave-0xb-2"}]
+    )
+
+    rows = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
+    assert {(r.source_ieee, r.target_ieee) for r in rows} == {
+        ("zwave-0xh-1", "zwave-0xh-2"),
+        ("zwave-0xb-1", "zwave-0xb-2"),
+    }
+
+
+@pytest.mark.asyncio
 async def test_persist_sets_coordinator_pending_fields(db_session) -> None:
     """Coordinator lands in pending carrying its vendor/model metadata."""
     from sqlalchemy import select
