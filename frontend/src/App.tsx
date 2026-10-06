@@ -38,6 +38,7 @@ import { ThemeModal } from '@/components/modals/ThemeModal'
 import { CustomStyleModal } from '@/components/modals/CustomStyleModal'
 import { SearchModal } from '@/components/modals/SearchModal'
 import { DeviceInventoryModal } from '@/components/modals/DeviceInventoryModal'
+import { AutoPlaceModal } from '@/components/modals/AutoPlaceModal'
 import { ScanHistoryModal } from '@/components/modals/ScanHistoryModal'
 import { ShortcutsModal } from '@/components/modals/ShortcutsModal'
 import { ConfirmAddToGroupModal } from '@/components/modals/ConfirmAddToGroupModal'
@@ -129,6 +130,7 @@ export default function App() {
   const [tourInventoryDemo, setTourInventoryDemo] = useState(false)
 
   const [themeModalOpen, setThemeModalOpen] = useState(false)
+  const [autoPlaceOpen, setAutoPlaceOpen] = useState(false)
   const [styleEditorType, setStyleEditorType] = useState<NodeType | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [scanHistoryOpen, setScanHistoryOpen] = useState(false)
@@ -1198,6 +1200,7 @@ export default function App() {
             <Toolbar
               onSave={handleSave}
               onAutoLayout={handleAutoLayout}
+              onAutoPlaceTopo={() => setAutoPlaceOpen(true)}
               onExport={handleExport}
               onChangeStyle={() => setThemeModalOpen(true)}
               onUndo={undo}
@@ -1539,6 +1542,12 @@ export default function App() {
           open={exportModalOpen}
           onClose={() => setExportModalOpen(false)}
           getElement={() => canvasRef.current?.querySelector<HTMLElement>('.react-flow') ?? null}
+        />
+
+        <AutoPlaceModal
+          open={autoPlaceOpen}
+          onClose={() => setAutoPlaceOpen(false)}
+          onDone={() => loadCanvasFromApi(activeDesignId ?? undefined)}
         />
 
         <Toaster theme="dark" position="bottom-right" />
