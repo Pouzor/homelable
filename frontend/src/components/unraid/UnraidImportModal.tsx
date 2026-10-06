@@ -162,10 +162,13 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
     onClose()
   }
 
+  // Key order is display order. VMs go before the containers: a server runs a
+  // handful of VMs and dozens of containers, and listed last they sat below
+  // the fold where nobody scrolled to them.
   const groupedDevices: Record<UnraidNodeType, UnraidNode[]> = {
     docker_host: devices.filter((d) => d.type === 'docker_host'),
-    docker_container: devices.filter((d) => d.type === 'docker_container'),
     vm: devices.filter((d) => d.type === 'vm'),
+    docker_container: devices.filter((d) => d.type === 'docker_container'),
   }
 
   return (

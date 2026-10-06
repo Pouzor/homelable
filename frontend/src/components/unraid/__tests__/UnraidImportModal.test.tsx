@@ -132,7 +132,10 @@ describe('UnraidImportModal', () => {
     fillHost()
     fireEvent.click(screen.getByLabelText('Inventory + canvas', { selector: 'input[name="unraid-import-mode"]' }))
     fireEvent.click(screen.getByRole('button', { name: /fetch devices/i }))
-    expect(await screen.findByText('Virtual Machines (1)')).toBeDefined()
+    const vmHeading = await screen.findByText('Virtual Machines (1)')
+    // VMs come before the containers, not below a long container list.
+    const containerHeading = screen.getByText('Containers (1)')
+    expect(vmHeading.compareDocumentPosition(containerHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(toast.success).toHaveBeenCalledWith('Found 1 container and 1 VM')
     expect(toast.warning).toHaveBeenCalledWith('VMs were not imported: x')
   })

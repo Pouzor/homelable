@@ -1091,9 +1091,12 @@ export default function App() {
     const COLS = 6
     const SPACING_X = 190
     const SPACING_Y = 110
-    // The server on its own row, containers in a grid below it.
+    // The server on its own row, its VMs then its containers in a grid below.
     const hosts = urNodes.filter((n) => n.type === 'docker_host')
-    const containers = urNodes.filter((n) => n.type !== 'docker_host')
+    const containers = [
+      ...urNodes.filter((n) => n.type === 'vm'),
+      ...urNodes.filter((n) => n.type === 'docker_container'),
+    ]
     const cols = Math.min(COLS, Math.max(containers.length, 1))
     const rows = Math.ceil(containers.length / COLS) + (hosts.length ? 1 : 0)
     const origin = getCenteredPosition(cols * SPACING_X, rows * SPACING_Y)
