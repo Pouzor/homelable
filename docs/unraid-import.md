@@ -62,18 +62,15 @@ Open **Import** in the sidebar and pick **Unraid**. Enter the host, port
 - **Inventory + canvas** - fetches immediately, lists the server, containers and VMs,
   and adds the ones you tick to the canvas. They land in the inventory too.
 
-### Offline containers and VMs
+### Stopped containers and VMs
 
-Stopped containers and VMs can be handled three ways:
+**Include stopped containers and VMs** (on by default) means the same in both
+modes: stopped devices are imported like running ones and, in *Inventory +
+canvas* mode, listed for the canvas. Untick it to leave them out of both.
 
-| Choice | Inventory | Canvas |
-|---|---|---|
-| Skip | no | no |
-| Inventory only (default) | yes | no |
-| Inventory + canvas | yes | yes |
-
-In *Device inventory only* mode this is a single **Import offline containers and VMs**
-checkbox.
+As with the Proxmox import, *Inventory + canvas* adds everything it lists to
+the Device Inventory when you fetch, including devices you then untick before
+adding to the canvas.
 
 ---
 
