@@ -21,16 +21,20 @@ const ACCENT = '#e22828'
 
 interface ConnectionForm {
   host: string
+  /** Blank = the scheme's default port. */
   port: string
   api_key: string
+  use_https: boolean
   verify_tls: boolean
 }
 
 const DEFAULT_FORM: ConnectionForm = {
   host: '',
-  port: '443',
+  port: '',
   api_key: '',
-  // Unraid ships a self-signed certificate.
+  // Off, like Unraid's own "Use SSL/TLS" default.
+  use_https: false,
+  // Unraid's own certificate is self-signed.
   verify_tls: false,
 }
 
@@ -73,9 +77,10 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
 
   const buildPayload = (): UnraidConnection => ({
     host: form.host.trim(),
-    port: Number(form.port) || 443,
+    port: Number(form.port) || undefined,
     api_key: form.api_key.trim() || undefined,
-    verify_tls: form.verify_tls,
+    use_https: form.use_https,
+    verify_tls: form.use_https && form.verify_tls,
     include_offline: includeOffline,
   })
 
@@ -191,11 +196,11 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">HTTPS Port</Label>
+                <Label className="text-xs text-muted-foreground">Port</Label>
                 <Input
                   value={form.port}
                   onChange={(e) => updateField('port', e.target.value)}
-                  placeholder="443"
+                  placeholder={form.use_https ? '443' : '80'}
                   type="number"
                   className="font-mono text-sm bg-[#0d1117] border-border"
                 />
@@ -214,14 +219,31 @@ export function UnraidImportModal({ open, onClose, onAddToCanvas, onInventoryImp
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={form.verify_tls}
-                    onChange={(e) => setForm((f) => ({ ...f, verify_tls: e.target.checked }))}
+                    checked={form.use_https}
+                    onChange={(e) => setForm((f) => ({ ...f, use_https: e.target.checked }))}
                     className="w-3 h-3 cursor-pointer"
                     style={{ accentColor: ACCENT }}
                   />
-                  Verify TLS certificate
+                  Use HTTPS
                 </label>
+                {form.use_https && (
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.verify_tls}
+                      onChange={(e) => setForm((f) => ({ ...f, verify_tls: e.target.checked }))}
+                      className="w-3 h-3 cursor-pointer"
+                      style={{ accentColor: ACCENT }}
+                    />
+                    Verify TLS certificate
+                  </label>
+                )}
               </div>
+              {!form.use_https && (
+                <p className="col-span-2 text-[11px] text-[#e3b341]">
+                  Over HTTP the API key is sent unencrypted. Tick Use HTTPS if the server has SSL turned on.
+                </p>
+              )}
             </div>
 
             {connectionStatus !== 'idle' && (

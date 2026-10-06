@@ -332,8 +332,10 @@ export const proxmoxApi = {
 
 export interface UnraidConnection {
   host: string
-  port: number
+  /** Omitted = 443 for HTTPS, 80 for HTTP. */
+  port?: number
   api_key?: string
+  use_https?: boolean
   verify_tls?: boolean
   /** Import (and list) stopped containers and VMs too. */
   include_offline?: boolean
@@ -342,6 +344,7 @@ export interface UnraidConnection {
 export interface UnraidConfigData {
   host: string
   port: number
+  use_https: boolean
   verify_tls: boolean
   sync_enabled: boolean
   sync_interval: number

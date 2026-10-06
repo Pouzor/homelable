@@ -155,4 +155,29 @@ describe('UnraidImportModal', () => {
     await screen.findByRole('button', { name: /add 2 to canvas/i })
     expect(screen.queryByText(/does not report a VM's IP/)).toBeNull()
   })
+
+  it('talks plain HTTP on the default port unless Use HTTPS is ticked', async () => {
+    render(<UnraidImportModal {...defaultProps} />)
+    fillHost()
+    expect(screen.getByText(/API key is sent unencrypted/)).toBeDefined()
+    expect(screen.queryByLabelText('Verify TLS certificate')).toBeNull()
+    expect(screen.getByPlaceholderText('80')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
+    await waitFor(() => expect(unraidApi.importToPending).toHaveBeenCalled())
+    const sent = vi.mocked(unraidApi.importToPending).mock.calls[0][0]
+    expect([sent.use_https, sent.port, sent.verify_tls]).toEqual([false, undefined, false])
+  })
+
+  it('offers TLS verification once HTTPS is ticked', async () => {
+    render(<UnraidImportModal {...defaultProps} />)
+    fillHost()
+    fireEvent.click(screen.getByLabelText('Use HTTPS'))
+    expect(screen.queryByText(/API key is sent unencrypted/)).toBeNull()
+    expect(screen.getByPlaceholderText('443')).toBeDefined()
+    fireEvent.click(screen.getByLabelText('Verify TLS certificate'))
+    fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
+    await waitFor(() => expect(unraidApi.importToPending).toHaveBeenCalled())
+    const sent = vi.mocked(unraidApi.importToPending).mock.calls[0][0]
+    expect([sent.use_https, sent.verify_tls]).toEqual([true, true])
+  })
 })
