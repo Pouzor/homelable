@@ -12,7 +12,8 @@ optionally, onto the canvas) as typed nodes. It can also **sync** on a schedule.
 ## What is imported
 
 - **The server** as a `docker_host` node: hostname, LAN IP, NIC MAC, board
-  maker/model, CPU model and thread count, Unraid version.
+  maker/model, CPU model and thread count, Unraid version, and a
+  **Web UI** service at the address the import connected to.
 - **Every Docker container** as a `docker_container` node, linked to the server
   with a `virtual` edge. Each container carries hidden-by-default properties:
   Image, Network, Ports and, for containers started by a Compose plugin,
