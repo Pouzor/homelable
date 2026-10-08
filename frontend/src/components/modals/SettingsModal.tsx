@@ -125,6 +125,9 @@ function MeshAutoSync({
 // Mirrors UnifiSyncConfig.sync_interval (ge=300, le=86400) on the backend.
 const UNIFI_MIN_INTERVAL = 300
 const UNIFI_MAX_INTERVAL = 86400
+// Mirrors UnraidSyncConfig.sync_interval (ge=300, le=86400) on the backend.
+const UNRAID_MIN_INTERVAL = 300
+const UNRAID_MAX_INTERVAL = 86400
 
 const UNIFI_SOURCES: { key: keyof UnifiImportModes; label: string; hint: string }[] = [
   { key: 'infrastructure', label: 'Infrastructure', hint: 'stat/device — adopted APs, switches, gateways.' },
@@ -325,10 +328,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         })
       }
       if (urConfig) {
-        // Connection config (host/port/key/verify) is env-only.
+        // Connection config (host/port/key/verify) is env-only. Clamped as for
+        // UniFi: the input's min/max never stop a typed value, and a 422 here
+        // would abort the save after the configs above already persisted.
+        const clamped = Math.min(UNRAID_MAX_INTERVAL, Math.max(UNRAID_MIN_INTERVAL, Math.round(urInterval)))
+        if (clamped !== urInterval) setUrInterval(clamped)
         await unraidApi.saveConfig({
           sync_enabled: urSyncEnabled,
-          sync_interval: urInterval,
+          sync_interval: clamped,
           include_offline: urIncludeOffline,
         })
       }

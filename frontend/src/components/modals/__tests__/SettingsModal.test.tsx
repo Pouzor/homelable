@@ -451,6 +451,17 @@ describe('SettingsModal - Unraid', () => {
     })
   })
 
+  it('clamps a typed sync interval into the range the backend accepts', async () => {
+    vi.mocked(unraidApi.getConfig).mockResolvedValue(config() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const input = await screen.findByLabelText('Unraid sync interval')
+    await waitFor(() => expect(input).toHaveValue(3600))
+    fireEvent.change(input, { target: { value: '100' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(unraidApi.saveConfig).toHaveBeenCalled())
+    expect(vi.mocked(unraidApi.saveConfig).mock.calls[0][0].sync_interval).toBe(300)
+  })
+
   it('shows the env vars to set when no server is configured', async () => {
     vi.mocked(unraidApi.getConfig).mockResolvedValue(config({ api_key_configured: false }) as never)
     render(<SettingsModal open onClose={vi.fn()} />)

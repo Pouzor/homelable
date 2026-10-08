@@ -89,5 +89,5 @@ class UnraidSyncConfig(BaseModel):
     """User-editable auto-sync config (POST body). Connection fields are env-only."""
 
     sync_enabled: bool = False
-    sync_interval: int = Field(3600, ge=300)
+    sync_interval: int = Field(3600, ge=300, le=86400)
     include_offline: bool = True

@@ -184,6 +184,15 @@ async def test_save_config_persists_only_sync_fields(client: AsyncClient, header
 
 
 @pytest.mark.asyncio
+async def test_save_config_rejects_an_interval_out_of_range(client: AsyncClient, headers: dict) -> None:
+    for interval in (100, 100_000):
+        res = await client.post(
+            "/api/v1/unraid/config", json={"sync_enabled": False, "sync_interval": interval}, headers=headers
+        )
+        assert res.status_code == 422, interval
+
+
+@pytest.mark.asyncio
 async def test_background_import_broadcasts_refresh() -> None:
     fake_db = AsyncMock()
     fake_db.get = AsyncMock(return_value=None)
