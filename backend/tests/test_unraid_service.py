@@ -159,6 +159,28 @@ def test_web_ui_service_unescapes_the_template_query() -> None:
     assert service["path"] == "/vnc.html?resize=remote&host=10.1.1.231&port=6080"
 
 
+def test_web_ui_service_drops_credentials() -> None:
+    service = svc._web_ui_service("http://admin:hunter2@10.1.1.231:8080/app?token=abc&lang=en&api_key=xyz")
+    assert service is not None
+    assert service["host"] == "http://10.1.1.231:8080"
+    assert service["path"] == "/app?lang=en"
+    assert "hunter2" not in str(service) and "abc" not in str(service) and "xyz" not in str(service)
+
+
+def test_web_ui_service_keeps_ordinary_params() -> None:
+    # Whole-name matching: these merely contain a secret-looking fragment.
+    service = svc._web_ui_service("http://10.1.1.231:6080/vnc.html?design=1&autoconnect=1&keyboard=us")
+    assert service is not None
+    assert service["path"] == "/vnc.html?design=1&autoconnect=1&keyboard=us"
+
+
+def test_secret_param_names() -> None:
+    for name in ("token", "X-Api-Key", "api_key", "access_token", "PASSWORD", "admin_password", "sig"):
+        assert svc._is_secret_param(name), name
+    for name in ("host", "port", "resize", "design", "autoconnect", "keyboard", "lang"):
+        assert not svc._is_secret_param(name), name
+
+
 def test_web_ui_service_defaults_the_scheme_port() -> None:
     service = svc._web_ui_service("https://10.1.1.231/")
     assert service is not None

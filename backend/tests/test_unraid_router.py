@@ -416,6 +416,20 @@ async def test_web_ui_service_is_stored_and_a_rename_survives(db_session) -> Non
 
 
 @pytest.mark.asyncio
+async def test_reimport_replaces_a_stored_secret_in_the_web_ui(db_session) -> None:
+    # A row imported before credentials were stripped heals on the next import:
+    # the service on the same port takes the clean address.
+    leaky = {**WEB_UI, "host": "http://admin:pw@10.1.1.231:32400", "path": "/web?token=abc"}
+    await _persist_pending_import(db_session, [{**_ct("plex"), "services": [leaky]}], [])
+    await _persist_pending_import(db_session, [{**_ct("plex"), "services": [WEB_UI]}], [])
+
+    row = (await db_session.execute(select(InventoryDevice))).scalar_one()
+    assert len(row.services) == 1
+    assert row.services[0]["host"] == WEB_UI["host"]
+    assert row.services[0]["path"] == WEB_UI["path"]
+
+
+@pytest.mark.asyncio
 async def test_reimport_keeps_status(db_session) -> None:
     nodes, edges = _inventory(_ct("plex"))
     await _persist_pending_import(db_session, nodes, edges)

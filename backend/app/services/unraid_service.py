@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import html
 import logging
+import re
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import httpx
 
@@ -219,6 +220,21 @@ def _lan_address(
     return None, None
 
 
+# Query parameter names that carry a credential. Compared on the whole name,
+# letters only ("api_key" -> "apikey"), so "design" or "autoconnect" survive.
+_SECRET_PARAMS = {
+    "key", "apikey", "token", "accesstoken", "authtoken", "auth", "password",
+    "passwd", "pass", "pwd", "secret", "sig", "signature", "session", "sessionid",
+    "sid", "jwt",
+}
+_SECRET_SUFFIXES = ("token", "apikey", "secret", "password")
+
+
+def _is_secret_param(name: str) -> bool:
+    letters = re.sub(r"[^a-z]", "", name.lower())
+    return letters in _SECRET_PARAMS or letters.endswith(_SECRET_SUFFIXES)
+
+
 def _web_ui_service(
     url: str | None, own_ip: str | None = None, server_ip: str | None = None
 ) -> dict[str, Any] | None:
@@ -231,6 +247,10 @@ def _web_ui_service(
     Unraid resolves the template's ``[IP]`` to the server even for a container
     with its own LAN address, where nothing answers on the server IP. Such a
     container gets its own address instead.
+
+    The service is stored and shown on canvases (a shared live view included),
+    so credentials never come along: userinfo is dropped and so are query
+    parameters named like a secret.
     """
     if not url:
         return None
@@ -241,10 +261,13 @@ def _web_ui_service(
         port = parts.port or (443 if parts.scheme == "https" else 80)
     except ValueError:
         return None
-    netloc = parts.netloc
-    if own_ip and server_ip and parts.hostname == server_ip:
-        netloc = f"{own_ip}:{parts.port}" if parts.port else own_ip
-    path = parts.path + (f"?{parts.query}" if parts.query else "")
+    hostname = own_ip if own_ip and server_ip and parts.hostname == server_ip else parts.hostname
+    name = f"[{hostname}]" if ":" in hostname else hostname
+    netloc = f"{name}:{parts.port}" if parts.port else name
+    query = urlencode(
+        [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if not _is_secret_param(k)]
+    )
+    path = parts.path + (f"?{query}" if query else "")
     return {
         "port": port,
         "protocol": "tcp",
