@@ -47,6 +47,7 @@ async def db_session():
             "app.api.routes.zwave",
             "app.api.routes.proxmox",
             "app.api.routes.unifi",
+            "app.api.routes.unraid",
             "app.api.routes.scan",
         )
     ]

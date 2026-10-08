@@ -335,6 +335,46 @@ export const proxmoxApi = {
     }>('/proxmox/sync-now'),
 }
 
+export interface UnraidConnection {
+  host: string
+  /** Omitted = 443 for HTTPS, 80 for HTTP. */
+  port?: number
+  api_key?: string
+  use_https?: boolean
+  verify_tls?: boolean
+  /** Import (and list) stopped containers and VMs too. */
+  include_offline?: boolean
+}
+
+export interface UnraidConfigData {
+  host: string
+  port: number
+  use_https: boolean
+  verify_tls: boolean
+  sync_enabled: boolean
+  sync_interval: number
+  include_offline: boolean
+  api_key_configured: boolean
+}
+
+export const unraidApi = {
+  testConnection: (data: UnraidConnection) =>
+    api.post<{ connected: boolean; message: string }>('/unraid/test-connection', data),
+
+  importNetwork: (data: UnraidConnection) =>
+    api.post<import('@/components/unraid/types').UnraidImportResponse>('/unraid/import', data),
+
+  importToPending: (data: UnraidConnection) =>
+    api.post<ScanRunResult>('/unraid/import-pending', data),
+
+  getConfig: () => api.get<UnraidConfigData>('/unraid/config'),
+  // Only the auto-sync activation is persisted; connection config is env-only.
+  saveConfig: (data: { sync_enabled: boolean; sync_interval: number; include_offline: boolean }) =>
+    api.post<UnraidConfigData>('/unraid/config', data),
+
+  syncNow: () => api.post<ScanRunResult>('/unraid/sync-now'),
+}
+
 export const designsApi = {
   list: () => api.get<import('@/types').Design[]>('/designs'),
   create: (data: { name: string; icon?: string; design_type?: string }) =>
