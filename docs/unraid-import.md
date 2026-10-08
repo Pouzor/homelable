@@ -1,8 +1,9 @@
 # Unraid Import
 
 Connects Homelable to an Unraid server, reads the server, its Docker
-containers and its VMs over the Unraid API, and brings them into the Device Inventory (and,
-optionally, onto the canvas) as typed nodes. It can also **sync** on a schedule.
+containers and its VMs over the Unraid API, and brings them into the Device
+Inventory (and, optionally, onto the canvas) as typed nodes. It can also
+**sync** on a schedule.
 
 > **Server-dependent feature** - requires the Homelable backend. It is hidden in
 > the no-backend standalone/demo build.
@@ -23,15 +24,14 @@ optionally, onto the canvas) as typed nodes. It can also **sync** on a schedule.
   checks on, gets checked. Unraid resolves the address to the server IP; a
   container with its own LAN IP gets that IP instead, since that is where it
   answers. Re-imports refresh the address but keep a name or icon you gave it.
-
-Containers managed by Unraid's own Docker page and containers started by a
-Docker Compose plugin are both listed by the API and imported the same way.
-
 - **Every VM** as a `vm` node, linked to the server with a `virtual` edge and
   keyed on its libvirt UUID (a hidden **UUID** property). The Unraid API reports
   a VM's name and run state only - no NIC MAC, IP, vCPUs or RAM - so a VM is
   never matched to a device a network scan already found. If a scan found the
   VM first, merge the two rows from the Device Inventory.
+
+Containers managed by Unraid's own Docker page and containers started by a
+Docker Compose plugin are both listed by the API and imported the same way.
 
 If the API key cannot read VMs, the containers still import and the dialog
 (or the Scan History entry) says why VMs were left out.
@@ -40,8 +40,9 @@ If the API key cannot read VMs, the containers still import and the dialog
 
 ## Prerequisites
 
-1. A recent Unraid with the GraphQL API (tested on **Unraid 7.3.1**, API 4.37).
-   Older releases may need the Unraid Connect plugin for the API.
+1. Unraid 7.2 or newer, where the GraphQL API is built in (tested on **Unraid
+   7.3.1**, API 4.37). Earlier releases get the API from the Unraid Connect
+   plugin; untested.
 2. An **API key**: *Settings > Management Access > API Keys*. Read access to
    **Docker**, **VMs** and **Info** is all the import needs.
 3. The server reachable from the Homelable backend over HTTP or HTTPS. Unraid
@@ -87,8 +88,8 @@ Docker networking decides what address a container has:
   neither is stored. Reach it through the server IP and the published ports in
   the **Ports** property.
 - **`br0` / custom macvlan or ipvlan networks**: the container has its own LAN
-  IP, which is stored. With **ipvlan** (Unraid's default for `br0`) every
-  container shares the server's MAC, so the MAC is never used for these.
+  IP, which is stored. With **ipvlan** every container shares the server's
+  MAC, so the MAC is never used for these.
 - **`host`**: no address of its own; it is the server.
 - **`container:<name>`**: shares another container's network (e.g. a VPN
   sidecar); the **Network** property names that container.

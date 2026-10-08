@@ -16,7 +16,7 @@ class UnraidConnectionRequest(BaseModel):
     api_key: str | None = Field(None, description="Unraid API key (falls back to server env)")
     # Off by default, like Unraid's own "Use SSL/TLS" setting.
     use_https: bool = Field(False, description="Talk to the Unraid API over HTTPS")
-    # Off by default: Unraid's own certificate is self-signed. HTTPS only.
+    # Off by default: Unraid's own certificate is self-signed. Only used over HTTPS.
     verify_tls: bool = Field(False, description="Verify the Unraid TLS certificate")
     # Stopped containers and VMs: imported (and, in canvas mode, listed) like
     # running ones, or left out entirely.
@@ -33,7 +33,7 @@ class UnraidTestConnectionResponse(BaseModel):
 
 
 class UnraidNodeOut(BaseModel):
-    """A homelable-ready node for the Unraid host or one of its containers."""
+    """A homelable-ready node for the Unraid host, one of its containers or a VM."""
 
     id: str
     label: str
