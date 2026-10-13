@@ -679,6 +679,18 @@ async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
         if len(group) < 2:
             continue
         keep, dups = _collapse_targets(group)
+        # homelable#466: a shared IP is not an identity when DHCP is involved.
+        # Two rows whose MACs are both known and different are two devices that
+        # took turns on one lease, so leave them both alone.
+        claimed = normalize_mac(keep.mac)
+        mergeable = []
+        for dup in dups:
+            dup_mac = normalize_mac(dup.mac)
+            if dup_mac and claimed and dup_mac != claimed:
+                continue
+            claimed = claimed or dup_mac
+            mergeable.append(dup)
+        dups = mergeable
         if dups:
             # Non-destructive, for the same reason as `process_host`: whatever
             # drew the duplicate follows it into `keep`.
@@ -746,11 +758,19 @@ async def process_host(
         .where(or_(*match_cond), InventoryDevice.status != "hidden")
         .order_by(InventoryDevice.discovered_at)
     )).scalars().all()
-    existing_rows = [
+        existing_rows = [
         row for row in candidates
-        if ip in ip_tokens(row.ip) or (norm_mac is not None and row.mac == norm_mac)
+        if (norm_mac is not None and row.mac == norm_mac)
+        or (
+            ip in ip_tokens(row.ip)
+            # homelable#466: a bare IP match is not enough to claim a row that
+            # already has a different MAC on file -- DHCP leases get reused
+            # for a new device. Only trust the IP-only match when the row has
+            # no MAC yet, or this scan couldn't determine one either.
+            and (not row.mac or norm_mac is None)
+        )
     ]
-
+        
     if existing_rows:
         # Prefer an approved row (it owns the canvas link semantics),
         # otherwise the oldest. Collapse any leftover duplicates created
