@@ -29,6 +29,7 @@ const REASONS: Record<DocRevision['reason'], string> = {
   scaffold: 'Generated',
   regenerate: 'Regenerated',
   mcp: 'Saved by an AI client',
+  sync: 'Updated from device',
 }
 
 function size(bytes: number): string {

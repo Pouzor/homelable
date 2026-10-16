@@ -132,6 +132,25 @@ describe('SettingsModal', () => {
     })
   })
 
+  it('shows that status checks are off server-side and disables their controls', async () => {
+    vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: true, service_check_interval: 300, status_checker_enabled: false } } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    expect(await screen.findByText(/STATUS_CHECKER_ENABLED=false/)).toBeDefined()
+    expect((screen.getByLabelText('Status check interval') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Toggle per-service status checks') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByLabelText('Service check interval') as HTMLInputElement).disabled).toBe(true)
+  })
+
+  it('leaves the check controls enabled when the server runs status checks', async () => {
+    vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: true, service_check_interval: 300, status_checker_enabled: true } } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await waitFor(() => expect(settingsApi.get).toHaveBeenCalledOnce())
+    await screen.findByDisplayValue('300')
+    expect(screen.queryByText(/STATUS_CHECKER_ENABLED=false/)).toBeNull()
+    expect((screen.getByLabelText('Status check interval') as HTMLInputElement).disabled).toBe(false)
+    expect((screen.getByLabelText('Toggle per-service status checks') as HTMLInputElement).disabled).toBe(false)
+  })
+
   it('persists only sync fields (not connection config) on Save', async () => {
     vi.mocked(proxmoxApi.getConfig).mockResolvedValue({
       data: { host: 'pve', port: 8006, verify_tls: true, sync_enabled: true, sync_interval: 3600, token_configured: true },
@@ -192,6 +211,35 @@ describe('SettingsModal', () => {
     await waitFor(() => {
       expect(zigbeeApi.saveConfig).toHaveBeenCalledWith({ sync_enabled: true, sync_interval: 1800 })
     })
+  })
+
+  it('hydrates the Zigbee mesh-links opt-in and persists a change on Save', async () => {
+    vi.mocked(zigbeeApi.getConfig).mockResolvedValue(zbConfig({ sync_enabled: true, sync_interval: 1800, include_mesh_links: false }) as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await screen.findByDisplayValue('60')
+    await waitFor(() => expect(screen.getByLabelText('Toggle Zigbee auto-sync')).toBeChecked())
+    const mesh = screen.getByLabelText('Import Zigbee mesh links')
+    expect(mesh).not.toBeChecked()
+    fireEvent.click(mesh)
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(zigbeeApi.saveConfig).toHaveBeenCalledWith({ sync_enabled: true, sync_interval: 1800, include_mesh_links: true })
+    })
+  })
+
+  it('shows a saved Zigbee mesh-links opt-in as checked, even with auto-sync off', async () => {
+    vi.mocked(zigbeeApi.getConfig).mockResolvedValue(zbConfig({ sync_enabled: false, include_mesh_links: true }) as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    // Re-sync now honours it too, so it stays usable while auto-sync is off.
+    await waitFor(() => expect(screen.getByLabelText('Import Zigbee mesh links')).toBeChecked())
+    expect(screen.getByLabelText('Import Zigbee mesh links')).toBeEnabled()
+  })
+
+  it('offers the mesh-links option on Zigbee only, not Z-Wave', async () => {
+    vi.mocked(zwaveApi.getConfig).mockResolvedValue(zwConfig() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await screen.findByText('Z-Wave auto-sync')
+    expect(screen.queryByLabelText('Import Zigbee mesh links')).toBeNull()
   })
 
   it('triggers an immediate Z-Wave sync from its Re-sync now button', async () => {

@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -29,6 +29,7 @@ from app.schemas.zigbee import (
     ZigbeeTestConnectionRequest,
     ZigbeeTestConnectionResponse,
 )
+from app.services.discovery_sources import add_source
 from app.services.import_jobs import create_job, fail_job, finish_job, get_job
 from app.services.inventory_sync import attach_device_ids
 from app.services.node_dedupe import dedupe_nodes_by_device
@@ -193,9 +194,9 @@ def env_import_request() -> ZigbeeImportRequest:
         base_topic=settings.zigbee_base_topic,
         mqtt_tls=settings.zigbee_mqtt_tls,
         mqtt_tls_insecure=settings.zigbee_mqtt_tls_insecure,
-        # The scheduled auto-sync keeps the readable parent tree. Importing the
-        # full mesh is a deliberate, per-import choice made in the UI.
-        include_mesh_links=False,
+        # Parent tree only unless the user opted into the mesh in Settings —
+        # the neighbour links multiply the edge count.
+        include_mesh_links=settings.zigbee_sync_include_mesh_links,
     )
 
 
@@ -268,7 +269,7 @@ async def _persist_pending_import(
     """Upsert nodes/edges into device_inventory + device_inventory_links.
 
     Coordinator auto-approves to a canvas Node. Other devices upsert by IEEE.
-    All zigbee-source links are wiped and re-inserted from the new map.
+    This network's zigbee-source links are wiped and re-inserted from the new map.
     """
     # Repair any pre-existing duplicate nodes (same IEEE) before upserting, so
     # the by-IEEE lookups below resolve to a single row.
@@ -315,6 +316,7 @@ async def _persist_pending_import(
                     properties=props,
                     status="pending",
                     discovery_source="zigbee",
+                    discovery_sources=["zigbee"],
                 )
             )
             pending_created += 1
@@ -327,6 +329,10 @@ async def _persist_pending_import(
             if n.get("lqi") is not None:
                 pending.lqi = n.get("lqi")
             pending.properties = merge_zigbee_properties(list(pending.properties or []), props)
+            # Record the import among the row's sources: the UI files a device
+            # by that list, so a row a canvas save listed as ["canvas"] only
+            # would otherwise stay out of the zigbee filter for good.
+            pending.discovery_sources = add_source(pending.discovery_sources, "zigbee")
             if pending.status == "approved" and not await _is_drawn(db, pending.id):
                 # Approved earlier but no canvas draws it any more — the node was
                 # deleted. Revive the row to "pending" so it reappears in the list
@@ -337,12 +343,20 @@ async def _persist_pending_import(
                 pass
             pending_updated += 1
 
-    # Replace all zigbee-source links with the freshly discovered set.
+    # Replace this network's zigbee-source links with the freshly discovered
+    # set. Only links touching a device this import returned: one import is one
+    # Zigbee2MQTT instance, and wiping every zigbee link erased the map of a
+    # second network imported earlier.
+    imported = {n["ieee_address"] for n in nodes_raw if n.get("ieee_address")}
     await db.execute(
         sa_delete(InventoryDeviceLink).where(
             # Both sources, or mesh links would pile up import after import:
             # the wipe below is what keeps this a replace, not an append.
-            InventoryDeviceLink.discovery_source.in_(["zigbee", "zigbee_mesh"])
+            InventoryDeviceLink.discovery_source.in_(["zigbee", "zigbee_mesh"]),
+            or_(
+                InventoryDeviceLink.source_ieee.in_(imported),
+                InventoryDeviceLink.target_ieee.in_(imported),
+            ),
         )
     )
 
@@ -416,6 +430,7 @@ async def get_zigbee_config(_: str = Depends(get_current_user)) -> ZigbeeConfig:
         mqtt_tls=settings.zigbee_mqtt_tls,
         sync_enabled=settings.zigbee_sync_enabled,
         sync_interval=settings.zigbee_sync_interval,
+        include_mesh_links=settings.zigbee_sync_include_mesh_links,
         host_configured=bool(settings.zigbee_mqtt_host),
     )
 
@@ -425,7 +440,7 @@ async def save_zigbee_config(
     payload: ZigbeeSyncConfig,
     _: str = Depends(get_current_user),
 ) -> ZigbeeConfig:
-    """Persist the auto-sync activation (enabled + interval) and apply it live.
+    """Persist the auto-sync activation (enabled, interval, mesh links) and apply it live.
 
     This is the ONLY Zigbee config the app writes. Connection settings
     (host/port/credentials/topic/tls) are env-only and are never accepted or
@@ -440,6 +455,7 @@ async def save_zigbee_config(
     try:
         settings.zigbee_sync_enabled = payload.sync_enabled
         settings.zigbee_sync_interval = payload.sync_interval
+        settings.zigbee_sync_include_mesh_links = payload.include_mesh_links
         settings.save_overrides()
         set_zigbee_sync_enabled(payload.sync_enabled)
         if payload.sync_enabled:

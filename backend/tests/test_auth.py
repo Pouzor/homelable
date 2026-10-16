@@ -4,9 +4,9 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from authlib.integrations.base_client.errors import OAuthError
-from authlib.jose.errors import ExpiredTokenError, JoseError
 from fastapi import WebSocketDisconnect
 from httpx import AsyncClient
+from joserfc.errors import BadSignatureError, ExpiredTokenError, JoseError
 from starlette.responses import RedirectResponse
 from starlette.testclient import TestClient
 
@@ -326,12 +326,22 @@ async def test_oidc_callback_hides_protocol_error_details(client: AsyncClient, o
 
 
 async def test_oidc_callback_hides_claim_validation_error_details(client: AsyncClient, oidc_settings):
-    fake_client = FakeOIDCClient(error=ExpiredTokenError())
+    fake_client = FakeOIDCClient(error=ExpiredTokenError("exp"))
     with patch("app.api.routes.auth.get_oidc_client", return_value=fake_client):
         res = await client.get("/api/v1/auth/oidc/callback")
     assert res.status_code == 401
     assert res.json() == {"detail": "OIDC authentication failed"}
     assert "expired" not in res.text.lower()
+
+
+async def test_oidc_callback_rejects_bad_id_token_signature(client: AsyncClient, oidc_settings):
+    # authlib 1.7 validates ID tokens with joserfc, whose errors are unrelated to
+    # the deprecated authlib.jose ones — they must still end in a clean 401.
+    fake_client = FakeOIDCClient(error=BadSignatureError())
+    with patch("app.api.routes.auth.get_oidc_client", return_value=fake_client):
+        res = await client.get("/api/v1/auth/oidc/callback")
+    assert res.status_code == 401
+    assert res.json() == {"detail": "OIDC authentication failed"}
 
 
 async def test_oidc_session_token_cannot_be_used_as_bearer(client: AsyncClient, oidc_settings):

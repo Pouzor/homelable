@@ -224,6 +224,7 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
   | `health` | GET `/health` |
 
 - Checks run on a timer (`STATUS_CHECKER_INTERVAL`, 60s by default) and stream to the UI over WebSocket, no refresh. The sidebar footer keeps a running online/offline tally.
+- **Monitoring handled elsewhere?** Set `STATUS_CHECKER_ENABLED=false` in `.env`: Homelable then sends no status or service probes at all, approved devices no longer default to `ping`, and Settings shows the checks as disabled.
 
 ---
 
@@ -277,7 +278,7 @@ Widget snippet lives in the [README](./README.md#gethomepage-widget-read-only-st
 2. `docker compose up -d mcp` (listens on `:8001`). No Docker? `sudo bash scripts/lxc-mcp-install.sh`.
 3. Point your client at `http://<your-homelab-ip>:8001/mcp` with header `X-API-Key: <your key>`.
 
-The AI can list nodes/edges/canvas/zones/designs/inventory/scans, add/update/delete nodes, edges and zones, kick off scans, triage and edit inventory entries, and work a rack canvas — create racks, mount and move gear, patch cables. Keep port 8001 firewalled to your LAN. Full setup in the [README](./README.md#mcp-server-ai-integration-optional).
+The AI can list nodes/edges/canvas/zones/designs/inventory/scans, add/update/delete nodes, edges and zones, kick off scans, triage and edit inventory entries, and work a rack canvas — create racks, mount and move gear, patch cables. Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`), so a client can let reads run freely and ask before a delete or a network scan. Keep port 8001 firewalled to your LAN. Full setup in the [README](./README.md#mcp-server-ai-integration-optional).
 
 ---
 

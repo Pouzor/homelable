@@ -7,10 +7,15 @@ here: device documents are pivoted client-side by zone, subnet, type and so on,
 because every one of those groupings is derivable from data the frontend already
 holds and re-pivoting must be instant.
 
-The generated header is written once, at creation. Nothing in this module ever
-rewrites a body the user owns; `GET /blocks` hands the editor a freshly generated
-section on request, and `facts_snapshot` is what lets the UI say the device has
-moved on since the document was written.
+The generated header is written once, at creation; `GET /blocks` hands the editor
+a freshly generated section on request, and `facts_snapshot` is what lets the UI
+say the device has moved on since the document was written. The one flow that
+rewrites a body is `POST /{id}/update-from-device`, and only through the guided
+three-way merge of `app.services.doc_reconcile`: nothing is overwritten unless
+the device simply moved on (automatic) or the user resolved the conflict
+explicitly. `baseline_body` records the body that was *generated* at the last
+sync — never the merged one — so a value the user deliberately kept is surfaced
+again when the device moves on once more.
 """
 
 import re
@@ -31,15 +36,26 @@ from app.schemas.documents import (
     DocumentResponse,
     DocumentSummary,
     DocumentUpdate,
+    ReconcileChange,
+    ResolutionItem,
     RevisionResponse,
     RevisionSummary,
     ScaffoldRequest,
     ScaffoldResponse,
     SearchHit,
     SearchResponse,
+    UpdateApplyRequest,
+    UpdatePreviewRequest,
+    UpdatePreviewResponse,
 )
 from app.services import doc_backlinks, doc_search
 from app.services.doc_export import ExportDoc, build_zip
+from app.services.doc_reconcile import (
+    Resolution,
+    Result,
+    preview_id,
+    reconcile,
+)
 from app.services.doc_template import (
     BLOCKS,
     TEMPLATE_DEVICE,
@@ -134,50 +150,101 @@ async def _record_revision(db: AsyncSession, doc: Document, reason: str) -> None
         await db.delete(revision)
 
 
-async def _device_context(db: AsyncSession, device_id: str) -> dict[str, Any]:
-    """Zone, rack placement and canvas neighbours for a device.
+async def _device_contexts(db: AsyncSession, device_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """Zone, rack placement and canvas neighbours for a batch of devices.
 
     All three are optional: a device may be on no canvas, in no rack and in no
     zone, and the template drops those sections rather than printing them empty.
+
+    The query count depends on how deep the zones nest, not on how many devices
+    are asked for — the document list resolves every drifted device at once.
     """
-    context: dict[str, Any] = {"zone_label": None, "rack": None, "connections": []}
+    contexts: dict[str, dict[str, Any]] = {
+        device_id: {"zone_label": None, "rack": None, "connections": []} for device_id in device_ids
+    }
+    if not contexts:
+        return contexts
 
-    node = (
-        await db.execute(select(Node).where(Node.device_id == device_id).order_by(Node.created_at))
-    ).scalars().first()
-    if node is not None:
-        parent_id = node.parent_id
-        seen: set[str] = set()
-        while parent_id and parent_id not in seen:
-            seen.add(parent_id)
-            parent = await db.get(Node, parent_id)
+    # A device placed on several canvases is described by its oldest node.
+    node_of: dict[str, Node] = {}
+    for node in (
+        await db.execute(select(Node).where(Node.device_id.in_(contexts)).order_by(Node.created_at))
+    ).scalars():
+        if node.device_id is not None:
+            node_of.setdefault(node.device_id, node)
+
+    # Walk every parent chain one level per query until each device has met a
+    # zone, run out of parents or looped.
+    known: dict[str, Node] = {}
+    cursor = {device_id: node.parent_id for device_id, node in node_of.items() if node.parent_id}
+    seen: dict[str, set[str]] = {device_id: set() for device_id in cursor}
+    while cursor:
+        missing = {parent_id for parent_id in cursor.values() if parent_id not in known}
+        if missing:
+            for found in (await db.execute(select(Node).where(Node.id.in_(missing)))).scalars():
+                known[found.id] = found
+        following: dict[str, str] = {}
+        for device_id, parent_id in cursor.items():
+            seen[device_id].add(parent_id)
+            parent = known.get(parent_id)
             if parent is None:
-                break
+                continue
             if parent.type in _ZONE_TYPES:
-                context["zone_label"] = parent.label
-                break
-            parent_id = parent.parent_id
+                contexts[device_id]["zone_label"] = parent.label
+            elif parent.parent_id and parent.parent_id not in seen[device_id]:
+                following[device_id] = parent.parent_id
+        cursor = following
 
+    device_of_node = {node.id: device_id for device_id, node in node_of.items()}
+    if device_of_node:
+        peers_of: dict[str, set[str]] = {device_id: set() for device_id in node_of}
         edges = (
-            await db.execute(select(Edge).where((Edge.source == node.id) | (Edge.target == node.id)))
+            await db.execute(
+                select(Edge).where(Edge.source.in_(device_of_node) | Edge.target.in_(device_of_node))
+            )
         ).scalars().all()
-        peer_ids = [e.target if e.source == node.id else e.source for e in edges]
+        for edge in edges:
+            if edge.source in device_of_node:
+                peers_of[device_of_node[edge.source]].add(edge.target)
+            if edge.target in device_of_node:
+                peers_of[device_of_node[edge.target]].add(edge.source)
+        peer_ids = set().union(*peers_of.values())
         if peer_ids:
-            peers = (await db.execute(select(Node.label).where(Node.id.in_(peer_ids)))).scalars().all()
-            context["connections"] = sorted({label for label in peers if label})
+            labels = dict(
+                (await db.execute(select(Node.id, Node.label).where(Node.id.in_(peer_ids)))).tuples().all()
+            )
+            for device_id, peers in peers_of.items():
+                contexts[device_id]["connections"] = sorted(
+                    {labels[peer] for peer in peers if labels.get(peer)}
+                )
 
-    mount = (
-        await db.execute(select(RackDevice).where(RackDevice.device_id == device_id))
-    ).scalars().first()
-    if mount is not None:
-        rack = await db.get(Rack, mount.rack_id)
-        context["rack"] = {
-            "name": rack.name if rack else None,
-            "u_start": mount.u_start,
-            "u_height": mount.u_height,
-            "col_span": mount.col_span,
+    mounts: dict[str, RackDevice] = {}
+    for mount in (
+        await db.execute(select(RackDevice).where(RackDevice.device_id.in_(contexts)))
+    ).scalars():
+        if mount.device_id is not None:
+            mounts.setdefault(mount.device_id, mount)
+    if mounts:
+        racks = {
+            rack.id: rack
+            for rack in (
+                await db.execute(select(Rack).where(Rack.id.in_({m.rack_id for m in mounts.values()})))
+            ).scalars()
         }
-    return context
+        for device_id, mount in mounts.items():
+            rack = racks.get(mount.rack_id)
+            contexts[device_id]["rack"] = {
+                "name": rack.name if rack else None,
+                "u_start": mount.u_start,
+                "u_height": mount.u_height,
+                "col_span": mount.col_span,
+            }
+    return contexts
+
+
+async def _device_context(db: AsyncSession, device_id: str) -> dict[str, Any]:
+    """Zone, rack placement and canvas neighbours for one device."""
+    return (await _device_contexts(db, [device_id]))[device_id]
 
 
 async def _scaffold_body(db: AsyncSession, doc: Document, template_id: str | None) -> None:
@@ -186,7 +253,9 @@ async def _scaffold_body(db: AsyncSession, doc: Document, template_id: str | Non
         device = await db.get(InventoryDevice, doc.device_id)
         if device is not None:
             context = await _device_context(db, doc.device_id)
-            _apply_body(doc, render_device_document(device, **context))
+            generated = render_device_document(device, **context)
+            _apply_body(doc, generated)
+            doc.baseline_body = generated
             doc.facts_snapshot = facts_snapshot(device)
             doc.facts_synced_at = _now()
             doc.template_id = TEMPLATE_DEVICE
@@ -195,17 +264,37 @@ async def _scaffold_body(db: AsyncSession, doc: Document, template_id: str | Non
     doc.template_id = template_id or "blank"
 
 
-def _has_drifted(doc: Document, device: InventoryDevice | None) -> bool:
-    """Whether the device has moved on since this document was snapshotted.
+async def _drifted_ids(
+    db: AsyncSession, pairs: list[tuple[Document, InventoryDevice | None]]
+) -> set[str]:
+    """The documents whose device has moved on in a way they do not show yet.
 
     The comparison lives on the server rather than in the UI because
     `facts_snapshot` is the server's own shape — `label` and `type` are stored
     through their fallbacks and `properties` as a flat map — so nothing else
     can compare it to a device row correctly. Same rule as the coverage count.
+
+    A snapshot that differs is necessary, not sufficient: the body may already
+    say what the device says now (the user wrote it, or the snapshot predates a
+    fact the body was generated with). "Update from device" would then have
+    nothing to offer, so the document is not flagged — the merge itself decides.
+    Only those candidates pay for a generated body, and their render contexts
+    are fetched together.
     """
-    if not doc.device_id or not doc.facts_snapshot or device is None:
-        return False
-    return doc.facts_snapshot != facts_snapshot(device)
+    candidates = [
+        (doc, device)
+        for doc, device in pairs
+        if doc.device_id and doc.facts_snapshot and device is not None
+        and doc.facts_snapshot != facts_snapshot(device)
+    ]
+    contexts = await _device_contexts(db, [device.id for _, device in candidates])
+    drifted: set[str] = set()
+    for doc, device in candidates:
+        generated = render_device_document(device, **contexts[device.id])
+        result = await _reconcile_document(doc, [], generated=generated, snapshot=_sync_snapshot(doc))
+        if result.auto or result.conflicts:
+            drifted.add(doc.id)
+    return drifted
 
 
 async def _devices_for(db: AsyncSession, docs: list[Document]) -> dict[str, InventoryDevice]:
@@ -219,17 +308,89 @@ async def _devices_for(db: AsyncSession, docs: list[Document]) -> dict[str, Inve
     return {device.id: device for device in rows}
 
 
-def _summary(doc: Document, device: InventoryDevice | None) -> DocumentSummary:
+def _summary(doc: Document, drifted: bool) -> DocumentSummary:
     payload = DocumentSummary.model_validate(doc)
-    payload.drifted = _has_drifted(doc, device)
+    payload.drifted = drifted
     return payload
 
 
 async def _response(db: AsyncSession, doc: Document) -> DocumentResponse:
     """One document, with the drift flag resolved against the live device."""
     payload = DocumentResponse.model_validate(doc)
-    payload.drifted = _has_drifted(doc, await db.get(InventoryDevice, doc.device_id) if doc.device_id else None)
+    device = await db.get(InventoryDevice, doc.device_id) if doc.device_id else None
+    payload.drifted = doc.id in await _drifted_ids(db, [(doc, device)])
     return payload
+
+
+def _sync_snapshot(doc: Document) -> dict[str, Any] | None:
+    """The facts the document's baseline was computed against, if it has one."""
+    return doc.facts_snapshot if isinstance(doc.facts_snapshot, dict) else None
+
+
+async def _reconcile_document(
+    doc: Document,
+    resolutions: list[ResolutionItem],
+    *,
+    generated: str,
+    snapshot: dict[str, Any] | None,
+) -> Result:
+    """The three-way merge of the live body against a fresh generation.
+
+    ``generated`` is the body the proposal is computed from — the caller has
+    already fetched the device context once and must pass the same body it will
+    record as the new baseline, so the merge never straddles two context reads.
+    """
+    return reconcile(
+        current=doc.body or "",
+        new=generated,
+        baseline_body=doc.baseline_body,
+        snapshot=snapshot,
+        resolutions=[Resolution(r.id, r.choice, r.custom) for r in resolutions],
+    )
+
+
+async def _generated_body(db: AsyncSession, device: InventoryDevice) -> tuple[dict[str, Any], str]:
+    """The render context for a device and the body it generates, fetched once.
+
+    Both the preview token and the saved baseline are derived from this single
+    snapshot, so the proposal and the recorded baseline can never come from two
+    different device contexts.
+    """
+    context = await _device_context(db, device.id)
+    return context, render_device_document(device, **context)
+
+
+def _live_binding(device: InventoryDevice, context: dict[str, Any], generated: str) -> dict[str, Any]:
+    """The live inputs a proposal was computed from.
+
+    Binds the facts, the render context and the generated body itself — a
+    rendered-only change such as a service URL override or the migrated notes
+    would otherwise slip the fact-level bindings.
+    """
+    return {"facts": facts_snapshot(device), "context": context, "generated": generated}
+
+
+def _preview_payload(doc: Document, result: Result, live: dict[str, Any]) -> UpdatePreviewResponse:
+    """The wire shape of a merge result, the preview id included.
+
+    The id binds the very inputs the merge began from — the document's `updated_at`,
+    the snapshot, the baseline, the body and the live device facts, context and
+    generated body the proposal was computed from — so a save is only valid
+    against the exact preview it was computed from.
+    """
+    return UpdatePreviewResponse(
+        preview_id=preview_id(
+            doc.updated_at.isoformat(),
+            _sync_snapshot(doc),
+            doc.body or "",
+            baseline_body=doc.baseline_body,
+            live=live,
+        ),
+        changes=[ReconcileChange.model_validate(change) for change in result.changes],
+        proposed_body=result.proposed_body,
+        summary=result.summary,
+        unresolved=[change.id for change in result.unresolved],
+    )
 
 
 # ── list / read ─────────────────────────────────────────────────────────────
@@ -256,7 +417,8 @@ async def list_documents(
         wanted = tag.lower()
         docs = [d for d in docs if any(str(t).lower() == wanted for t in (d.tags or []))]
     devices = await _devices_for(db, list(docs))
-    return [_summary(d, devices.get(d.device_id or "")) for d in docs]
+    drifted = await _drifted_ids(db, [(d, devices.get(d.device_id or "")) for d in docs])
+    return [_summary(d, d.id in drifted) for d in docs]
 
 
 @router.get("/coverage", response_model=CoverageResponse)
@@ -271,6 +433,9 @@ async def coverage(
     docs = (await db.execute(select(Document))).scalars().all()
     by_device = {d.device_id: d for d in docs if d.device_id}
 
+    drifted_ids = await _drifted_ids(
+        db, [(by_device[device.id], device) for device in devices if device.id in by_device]
+    )
     header_only = drifted = overdue = 0
     now = _now()
     for device in devices:
@@ -280,7 +445,7 @@ async def coverage(
         # Never edited since it was generated: the template is all there is.
         if doc.edited_at is None and doc.reviewed_at is None:
             header_only += 1
-        if doc.facts_snapshot and doc.facts_snapshot != facts_snapshot(device):
+        if doc.id in drifted_ids:
             drifted += 1
         interval = _parse_interval((doc.frontmatter or {}).get("review_every"))
         since = _aware(doc.reviewed_at) or _aware(doc.created_at)
@@ -607,6 +772,12 @@ async def update_document(
     if sent.get("resync_facts") and doc.device_id:
         device = await db.get(InventoryDevice, doc.device_id)
         if device is not None:
+            context = await _device_context(db, doc.device_id)
+            # Accepting the current facts also moves the merge baseline onto the
+            # body those facts *would* generate, so the next device change is
+            # still compared from a truthful common ancestor — the banner is
+            # dismissed, the safety of the three-way merge is not.
+            doc.baseline_body = render_device_document(device, **context)
             doc.facts_snapshot = facts_snapshot(device)
             doc.facts_synced_at = _now()
 
@@ -673,6 +844,113 @@ async def regenerate_document(
     return await _response(db, doc)
 
 
+@router.post("/{document_id}/update-preview", response_model=UpdatePreviewResponse)
+async def preview_device_update(
+    document_id: str,
+    body: UpdatePreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> UpdatePreviewResponse:
+    """Preview an update-from-device without changing anything.
+
+    The device document is re-rendered from the live facts and merged against
+    the body the user owns. The response is read-only: a changed device value
+    the user never touched is offered for automatic application, a value both
+    sides changed is a conflict to resolve, and the user's prose is untouched.
+    The caller folds resolutions in as they are chosen, so the previewed body is
+    always the server's merge rather than a local approximation.
+    """
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if doc.kind == "folder":
+        raise HTTPException(400, "A folder has no body to update from a device")
+    device = await db.get(InventoryDevice, doc.device_id) if doc.device_id else None
+    if device is None:
+        raise HTTPException(400, "This document has no device to update from")
+    context, generated = await _generated_body(db, device)
+    result = await _reconcile_document(
+        doc, body.resolutions, generated=generated, snapshot=_sync_snapshot(doc)
+    )
+    return _preview_payload(doc, result, _live_binding(device, context, generated))
+
+
+@router.post("/{document_id}/update-from-device", response_model=DocumentResponse)
+async def apply_device_update(
+    document_id: str,
+    body: UpdateApplyRequest,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> DocumentResponse:
+    """Apply a preview the user has reviewed.
+
+    The merge is recomputed from the current state with the given resolutions,
+    so whatever the modal showed last is exactly what lands. The echoed
+    `preview_id` guards the flow: if the document or the device changed while
+    the preview was open — a device value the proposal was made against moved
+    on, or the body/baseline was edited — the id no longer matches and a 409 is
+    returned instead of a silent overwrite; nothing is saved and no history is
+    written. Every conflict must be resolved first — the endpoint will not
+    guess. The previous body is snapshotted (reason `sync`) and the baseline
+    is replaced by the *freshly generated* body the proposal was computed from,
+    so a deliberately kept value surfaces again when the device moves on.
+    """
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if doc.kind == "folder":
+        raise HTTPException(400, "A folder has no body to update from a device")
+    device = await db.get(InventoryDevice, doc.device_id) if doc.device_id else None
+    if device is None:
+        raise HTTPException(400, "This document has no device to update from")
+
+    context, generated = await _generated_body(db, device)
+    expected = preview_id(
+        doc.updated_at.isoformat(),
+        _sync_snapshot(doc),
+        doc.body or "",
+        baseline_body=doc.baseline_body,
+        live=_live_binding(device, context, generated),
+    )
+    if body.preview_id != expected:
+        raise HTTPException(
+            409,
+            "The document or device changed while the preview was open — review it again",
+        )
+
+    result = await _reconcile_document(
+        doc, body.resolutions, generated=generated, snapshot=_sync_snapshot(doc)
+    )
+    if result.unresolved:
+        raise HTTPException(
+            400,
+            f"Resolve every conflict first: {', '.join(c.name for c in result.unresolved)}",
+        )
+
+    # A body that already matched the device, with no decision to record, is
+    # an acknowledgement, not an edit: the facts below are still stored so the
+    # drift clears, but history gets no revision identical to the body it would
+    # restore. A kept conflict is a decision and keeps its revision.
+    if body.resolutions or result.proposed_body != (doc.body or ""):
+        await _record_revision(db, doc, "sync")
+        _apply_body(doc, result.proposed_body)
+    # The baseline is the body the device *actually* read — the very generated
+    # body the proposal above was merged from, fetched once — not the merged
+    # one: a decision the user made (a kept line, a custom value) must stay
+    # visible when the device moves again, and only a fresh generation records
+    # it. The proposal and the saved baseline therefore never come from two
+    # different context snapshots.
+    doc.baseline_body = generated
+    doc.facts_snapshot = facts_snapshot(device)
+    doc.facts_synced_at = _now()
+    await _adopt_frontmatter_title(db, doc)
+    await db.flush()
+    await doc_search.index_document(db, doc)
+    await db.commit()
+    await db.refresh(doc)
+    return await _response(db, doc)
+
+
 @router.post("/scaffold", response_model=ScaffoldResponse)
 async def scaffold_documents(
     body: ScaffoldRequest,
@@ -706,17 +984,19 @@ async def scaffold_documents(
             skipped += 1
             continue
         context = await _device_context(db, device.id)
+        generated = render_device_document(device, **context)
         doc = Document(
             kind="device",
             title=device.label or device.friendly_name or device.hostname or device.ip or "device",
             slug="",
             device_id=device.id,
             template_id=TEMPLATE_DEVICE,
+            baseline_body=generated,
             facts_snapshot=facts_snapshot(device),
             facts_synced_at=_now(),
         )
         doc.slug = await unique_slug(db, doc.title, parent_id=None)
-        _apply_body(doc, render_device_document(device, **context))
+        _apply_body(doc, generated)
         db.add(doc)
         await db.flush()
         db.add(

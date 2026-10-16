@@ -200,6 +200,11 @@ export const scanApi = {
   updatePending: (id: string, data: Partial<Omit<InventoryEntry, 'id' | 'status' | 'discovered_at'>>) =>
     api.patch<InventoryEntry>(`/scan/pending/${id}`, data),
   /**
+   * Copy an inventory row into a new pending one: specs, properties and front
+   * panel carried, addresses and services left behind (issue #481).
+   */
+  duplicatePending: (id: string) => api.post<InventoryEntry>(`/scan/pending/${id}/duplicate`),
+  /**
    * Deep-rescan one known device: every TCP port, then re-fingerprint. Answers
    * "this device predates the scanner knowing that service" (issue #350).
    * Returns the ScanRun, so the caller polls `run` and can `stop` it.
@@ -260,9 +265,15 @@ export interface AppSettings {
   service_check_interval: number
 }
 
+/** What the server returns: the editable settings plus the env-only
+ *  STATUS_CHECKER_ENABLED switch (absent on older backends = enabled). */
+export interface AppSettingsResponse extends AppSettings {
+  status_checker_enabled?: boolean
+}
+
 export const settingsApi = {
-  get: () => api.get<AppSettings>('/settings'),
-  save: (data: AppSettings) => api.post<AppSettings>('/settings', data),
+  get: () => api.get<AppSettingsResponse>('/settings'),
+  save: (data: AppSettings) => api.post<AppSettingsResponse>('/settings', data),
 }
 
 export interface ProxmoxConnection {
@@ -375,6 +386,22 @@ export const documentsApi = {
     api.get<import('@/documentation/types').DocBacklink[]>(`/documents/${id}/backlinks`),
   regenerate: (id: string) =>
     api.post<import('@/documentation/types').Doc>(`/documents/${id}/regenerate`),
+  updatePreview: (
+    id: string,
+    resolutions: import('@/documentation/types').ResolutionItem[] = [],
+  ) =>
+    api.post<import('@/documentation/types').UpdatePreview>(`/documents/${id}/update-preview`, {
+      resolutions,
+    }),
+  updateFromDevice: (
+    id: string,
+    preview_id: string,
+    resolutions: import('@/documentation/types').ResolutionItem[] = [],
+  ) =>
+    api.post<import('@/documentation/types').Doc>(`/documents/${id}/update-from-device`, {
+      preview_id,
+      resolutions,
+    }),
   search: (q: string, limit = 25) =>
     api.get<import('@/documentation/types').DocSearchResult>('/documents/search', {
       params: { q, limit },
@@ -414,6 +441,7 @@ export interface ZigbeeConfigData {
   mqtt_tls: boolean
   sync_enabled: boolean
   sync_interval: number
+  include_mesh_links: boolean
   host_configured: boolean
 }
 
@@ -500,7 +528,7 @@ export const zigbeeApi = {
   getConfig: () => api.get<ZigbeeConfigData>('/zigbee/config'),
   // Only the auto-sync activation is persisted. MQTT connection config
   // (host/port/credentials/topic/tls) is env-only and never sent.
-  saveConfig: (data: { sync_enabled: boolean; sync_interval: number }) =>
+  saveConfig: (data: { sync_enabled: boolean; sync_interval: number; include_mesh_links: boolean }) =>
     api.post<ZigbeeConfigData>('/zigbee/config', data),
   syncNow: () => api.post<ScanRunResult>('/zigbee/sync-now'),
 }

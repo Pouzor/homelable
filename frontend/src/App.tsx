@@ -3,9 +3,10 @@ import { ReactFlowProvider, type Connection, type Edge } from '@xyflow/react'
 import { type Node } from '@xyflow/react'
 import { applyDagreLayout } from '@/utils/layout'
 import { groupIntoZones, liftEdgesToTopLevel, type AutoLayoutMode } from '@/utils/zoneGrouping'
-import { serializeNode, serializeEdge, deserializeApiNode, deserializeApiEdge, migrateClusterHandles, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
+import { serializeNode, serializeEdge, deserializeApiCanvas, migrateClusterHandles, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { generateUUID } from '@/utils/uuid'
 import { getCenteredPosition } from '@/utils/viewportCenter'
+import { isTypingTarget } from '@/utils/keyboard'
 import { resolveVirtualEdgeParent } from '@/utils/virtualEdgeParent'
 import { getDesignIdFromUrl, setDesignIdInUrl } from '@/utils/designUrl'
 import { useDocsUrlSync } from '@/hooks/useDocsUrlSync'
@@ -242,17 +243,9 @@ export default function App() {
     const { nodes: apiNodes, edges: apiEdges } = res.data
     const mode = decideCanvasLoad(apiNodes.length > 0, res.data.initialized === true)
     if (mode === 'real') {
-      const proxmoxContainerMap = new Map<string, boolean>(
-        (apiNodes as ApiNode[])
-          .filter((n) => n.type === 'group' || n.container_mode === true)
-          .map((n) => [n.id, true])
-      )
-      const zoneIds = new Set(
-        (apiNodes as ApiNode[]).filter((n) => n.type === 'groupRect').map((n) => n.id)
-      )
-      const { nodes: rfNodes, edges: rfEdges } = migrateClusterHandles(
-        (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxContainerMap, zoneIds)),
-        (apiEdges as ApiEdge[]).map(deserializeApiEdge),
+      const { nodes: rfNodes, edges: rfEdges } = deserializeApiCanvas(
+        apiNodes as ApiNode[],
+        apiEdges as ApiEdge[],
       )
       const savedTheme = res.data.viewport?.theme_id
       if (savedTheme) setTheme(savedTheme)
@@ -547,8 +540,7 @@ export default function App() {
     const handler = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey
       // Ignore shortcuts when typing in an input/textarea
-      const tag = (e.target as HTMLElement).tagName
-      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable
+      const isInput = isTypingTarget(e)
 
       if (ctrl && e.key === 's') { e.preventDefault(); handleSaveRef.current(); return }
       // Undo belongs to whatever is being typed in — the document editor keeps

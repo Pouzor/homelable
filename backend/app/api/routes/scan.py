@@ -546,6 +546,56 @@ async def update_pending(
     return (await _with_canvas_counts(db, [device]))[0]
 
 
+# What a copy inherits: the facts two identical units share. Addresses, the
+# check target, services and the hostname describe one physical box, so they
+# stay behind — copied, they would make create_pending's dedup and every
+# importer treat the twin as the same device (issue #481).
+_DUPLICATED_FIELDS = (
+    "os", "suggested_type", "type", "model", "vendor", "friendly_name",
+    "device_subtype", "notes", "cpu_count", "cpu_model", "ram_gb", "disk_gb",
+    "show_hardware", "check_method", "rack_faceplate_id", "rack_u_height",
+    "rack_col_span", "rack_color",
+)
+
+
+@router.post("/pending/{device_id}/duplicate", response_model=InventoryDeviceResponse, status_code=201)
+async def duplicate_pending(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> InventoryDevice:
+    """Copy an inventory row into a new, hand-made one — the second unit of a
+    redundant pair, with the same specs and front panel but no identity yet."""
+    source = (
+        await db.execute(select(InventoryDevice).where(InventoryDevice.id == device_id))
+    ).scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    name = source.label or source.friendly_name or source.hostname or source.ip or source.ieee_address
+    discovery_source = "rack" if _is_rack_only(source) else "manual"
+    copy = InventoryDevice(
+        **{field: getattr(source, field) for field in _DUPLICATED_FIELDS},
+        label=f"{name} (copy)" if name else "Device (copy)",
+        properties=[dict(p) for p in source.properties or []],
+        services=[],
+        status="pending",
+        discovery_source=discovery_source,
+        discovery_sources=[discovery_source],
+        # Fresh port ids: a cable names a port by id, so the twin's ports must
+        # never be mistaken for the source's.
+        rack_ports=(
+            [{**p, "id": str(uuid.uuid4())} for p in source.rack_ports]
+            if source.rack_ports is not None
+            else None
+        ),
+    )
+    db.add(copy)
+    await db.commit()
+    await db.refresh(copy)
+    return (await _with_canvas_counts(db, [copy]))[0]
+
+
 @router.delete("/pending", response_model=dict)
 async def clear_pending(
     db: AsyncSession = Depends(get_db),
@@ -772,7 +822,10 @@ async def bulk_approve_devices(
         elif not device.check_method:
             # Default to ping so the status checker actually polls it. Without
             # this the scheduler skips it (check_method NULL -> no check).
-            device.check_method = "ping" if device.ip else None
+            # With the checker switched off there is nothing to poll for: keep
+            # it NULL rather than store a probe that would start the moment the
+            # switch is flipped back.
+            device.check_method = "ping" if device.ip and settings.status_checker_enabled else None
         node = Node(
             label=device.label,
             type=device.type,
@@ -802,9 +855,11 @@ async def bulk_approve_devices(
         entry["existing_node_id"] = ref.id if isinstance(ref, Node) else ref
 
     all_edges: list[dict[str, Any]] = []
-    for device in approved_devices:
+    for device, node in zip(approved_devices, created_nodes, strict=True):
         all_edges.extend(
-            await _resolve_pending_links_for_ieee(db, device.ieee_address, default_design_id)
+            await _resolve_pending_links_for_ieee(
+                db, device.ieee_address, default_design_id, self_node=node
+            )
         )
 
     await db.commit()
@@ -954,7 +1009,7 @@ async def approve_device(
         device.status_live = "online"
     else:
         device.check_method = node_data.check_method or device.check_method or (
-            "ping" if device.ip else None
+            "ping" if device.ip and settings.status_checker_enabled else None
         )
         device.check_target = node_data.check_target or device.check_target
         if node_data.status:
@@ -974,7 +1029,9 @@ async def approve_device(
     await db.flush()
     node_id = node.id
 
-    edges = await _resolve_pending_links_for_ieee(db, device.ieee_address, node_design_id)
+    edges = await _resolve_pending_links_for_ieee(
+        db, device.ieee_address, node_design_id, self_node=node
+    )
 
     await db.commit()
     return {
@@ -1008,7 +1065,10 @@ async def _is_proxmox_cluster_member(db: AsyncSession, ieee: str | None) -> bool
 
 
 async def _resolve_pending_links_for_ieee(
-    db: AsyncSession, ieee: str | None, design_id: str | None
+    db: AsyncSession,
+    ieee: str | None,
+    design_id: str | None,
+    self_node: Node | None = None,
 ) -> list[dict[str, Any]]:
     """Materialize edges for any device_inventory_links involving ``ieee`` on the
     canvas identified by ``design_id``.
@@ -1019,6 +1079,11 @@ async def _resolve_pending_links_for_ieee(
     cluster topology and are wiped+reinserted wholesale on the next import
     (zigbee/zwave/proxmox). Keeping them lets the same devices be re-approved
     onto a second canvas with their edges intact.
+
+    ``self_node`` is the node just placed for ``ieee``. Pass it whenever the
+    caller has it: a device drawn twice on one design has two nodes for the same
+    ieee, and looking it up again could land on the older card — whose edges
+    already exist — leaving the new one unlinked.
     """
     if not ieee:
         return []
@@ -1052,6 +1117,8 @@ async def _resolve_pending_links_for_ieee(
     )
     by_ieee = {row_ieee: node for row_ieee, node in nodes_q.all() if row_ieee}
 
+    if self_node is not None:
+        by_ieee[ieee] = self_node
     self_node = by_ieee.get(ieee)
     if self_node is None:
         return []

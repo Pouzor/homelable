@@ -27,7 +27,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { nodeTypes } from '@/components/canvas/nodes/nodeTypes'
 import { edgeTypes } from '@/components/canvas/edges/edgeTypes'
-import { deserializeApiNode, deserializeApiEdge, migrateClusterHandles, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
+import { deserializeApiCanvas, type ApiNode, type ApiEdge } from '@/utils/canvasSerializer'
 import { computeCollapseInfo, rewireEdgesForCollapse } from '@/utils/collapseFilter'
 import { liveviewApi } from '@/api/client'
 import * as standaloneStorage from '@/utils/standaloneStorage'
@@ -80,18 +80,10 @@ function LiveViewCanvas() {
     liveviewApi.load(key, design)
       .then((res) => {
         const { nodes: apiNodes, edges: apiEdges } = res.data
-        const proxmoxMap = new Map<string, boolean>(
-          (apiNodes as ApiNode[])
-            .filter((n: ApiNode) => n.type === 'group' || n.container_mode === true)
-            .map((n: ApiNode) => [n.id, true])
-        )
         const savedTheme = res.data.viewport?.theme_id
         if (savedTheme) setTheme(savedTheme)
         if (res.data.custom_style) setCustomStyle(res.data.custom_style as CustomStyleDef)
-        const migrated = migrateClusterHandles(
-          (apiNodes as ApiNode[]).map((n) => deserializeApiNode(n, proxmoxMap)),
-          (apiEdges as ApiEdge[]).map(deserializeApiEdge),
-        )
+        const migrated = deserializeApiCanvas(apiNodes as ApiNode[], apiEdges as ApiEdge[])
         loadCanvas(migrated.nodes, migrated.edges)
         setViewState('ready')
       })

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import {
@@ -48,6 +48,8 @@ interface MeshAutoSyncProps {
   description: string
   syncing: boolean
   onSyncNow: () => void
+  /** Source-specific import options, applied to auto-sync and Re-sync now alike. */
+  options?: ReactNode
 }
 
 /**
@@ -58,7 +60,7 @@ interface MeshAutoSyncProps {
  */
 function MeshAutoSync({
   title, accent, hostConfigured, envHostVar, enabled, onEnabledChange,
-  interval, onIntervalChange, description, syncing, onSyncNow,
+  interval, onIntervalChange, description, syncing, onSyncNow, options,
 }: MeshAutoSyncProps) {
   return (
     <div className="pt-3 border-t border-border space-y-2">
@@ -96,6 +98,7 @@ function MeshAutoSync({
             </div>
             <p className="text-[10px] text-muted-foreground leading-tight">{description}</p>
           </div>
+          {options}
           <div className="flex items-center gap-2 pt-1">
             <Button
               variant="outline"
@@ -131,6 +134,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [interval, setIntervalValue] = useState(60)
   const [serviceCheckEnabled, setServiceCheckEnabled] = useState(false)
   const [serviceInterval, setServiceInterval] = useState(300)
+  // STATUS_CHECKER_ENABLED=false on the server: no check job runs, so the
+  // controls below would change nothing until it is switched back on.
+  const [checkerEnabled, setCheckerEnabled] = useState(true)
   const [saving, setSaving] = useState(false)
   const [pmConfig, setPmConfig] = useState<ProxmoxConfigData | null>(null)
   const [pmSyncEnabled, setPmSyncEnabled] = useState(false)
@@ -139,6 +145,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [zbConfig, setZbConfig] = useState<ZigbeeConfigData | null>(null)
   const [zbSyncEnabled, setZbSyncEnabled] = useState(false)
   const [zbInterval, setZbInterval] = useState(3600)
+  const [zbMeshLinks, setZbMeshLinks] = useState(false)
   const [zbSyncing, setZbSyncing] = useState(false)
   const [zwConfig, setZwConfig] = useState<ZwaveConfigData | null>(null)
   const [zwSyncEnabled, setZwSyncEnabled] = useState(false)
@@ -169,6 +176,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setIntervalValue(res.data.interval_seconds)
         setServiceCheckEnabled(res.data.service_check_enabled)
         setServiceInterval(res.data.service_check_interval)
+        setCheckerEnabled(res.data.status_checker_enabled !== false)
       })
       .catch(() => {/* use default */})
     proxmoxApi.getConfig()
@@ -183,6 +191,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setZbConfig(res.data)
         setZbSyncEnabled(res.data.sync_enabled)
         setZbInterval(res.data.sync_interval)
+        setZbMeshLinks(res.data.include_mesh_links)
       })
       .catch(() => {/* zigbee not configured */})
     zwaveApi.getConfig()
@@ -293,6 +302,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         await zigbeeApi.saveConfig({
           sync_enabled: zbSyncEnabled,
           sync_interval: zbInterval,
+          include_mesh_links: zbMeshLinks,
         })
       }
       if (zwConfig) {
@@ -338,11 +348,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           {!STANDALONE && (
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">Status check interval (s)</label>
-            <div className="flex items-center gap-2">
+            {!checkerEnabled && (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                Status checks are disabled on the server (STATUS_CHECKER_ENABLED=false): nodes and
+                services are not probed. These settings apply once it is switched back on.
+              </p>
+            )}
+            <div className={checkerEnabled ? 'flex items-center gap-2' : 'flex items-center gap-2 opacity-50'}>
               <input
                 type="number"
                 min={10}
                 max={3600}
+                disabled={!checkerEnabled}
+                aria-label="Status check interval"
                 value={interval}
                 onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setIntervalValue(v) }}
                 className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
@@ -358,19 +376,21 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <input
                 type="checkbox"
                 checked={serviceCheckEnabled}
+                disabled={!checkerEnabled}
                 onChange={(e) => setServiceCheckEnabled(e.target.checked)}
                 className="cursor-pointer accent-[#00d4ff]"
                 aria-label="Toggle per-service status checks"
               />
             </label>
 
-            <div className={serviceCheckEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+            <div className={serviceCheckEnabled && checkerEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
               <label className="text-xs text-muted-foreground">Service check interval (s)</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
                   min={30}
                   max={3600}
+                  disabled={!checkerEnabled}
                   value={serviceInterval}
                   onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setServiceInterval(v) }}
                   className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
@@ -495,6 +515,24 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               description="Re-imports the Zigbee mesh into the pending inventory. Min 300s (5 min)."
               syncing={zbSyncing}
               onSyncNow={handleZbSyncNow}
+              options={
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">
+                    Import mesh links
+                    <span className="block text-[10px] text-muted-foreground leading-tight">
+                      Neighbour links too, not only the parent tree — many more edges.
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={zbMeshLinks}
+                    onChange={(e) => setZbMeshLinks(e.target.checked)}
+                    className="cursor-pointer"
+                    style={{ accentColor: '#39d353' }}
+                    aria-label="Import Zigbee mesh links"
+                  />
+                </label>
+              }
             />
           )}
 

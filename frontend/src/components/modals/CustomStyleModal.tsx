@@ -21,6 +21,7 @@ import {
   EDGE_LINE_STYLES, EDGE_LINE_STYLE_LABELS, EDGE_TYPE_BASE_WIDTH, EDGE_TYPE_DEFAULT_LINE,
   clampWidthMult, dashArrayFor,
 } from '@/utils/edgeLineStyle'
+import { MIN_ANIM_SPEED, MAX_ANIM_SPEED, clampAnimSpeed, resolveAnimColor } from '@/utils/edgeAnimation'
 import { MarkerShapePicker } from './MarkerShapePicker'
 
 // ── Node types exposed for custom style, grouped by category (skip groupRect/group) ──
@@ -272,6 +273,9 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
     onChange({ ...style, [k]: v })
   }, [style, onChange])
 
+  const animSpeed = clampAnimSpeed(style.animSpeed)
+  const animColor = resolveAnimColor(style.animColor)
+
   return (
     <div className="flex flex-col gap-4">
       <div className="text-sm font-semibold text-[#e6edf3]">{EDGE_TYPE_LABELS[edgeType]}</div>
@@ -365,6 +369,51 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
             <option value="flow">Flow</option>
             <option value="snake">Snake</option>
           </select>
+        </div>
+
+        {/* Speed and highlight colour apply live to every edge of this type,
+            whatever its own animation mode — no "Apply to existing" needed. */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-[#8b949e]">Animation speed</span>
+            <span className="text-xs text-[#8b949e]">{animSpeed}×</span>
+          </div>
+          <input
+            type="range"
+            min={MIN_ANIM_SPEED}
+            max={MAX_ANIM_SPEED}
+            step={0.25}
+            value={animSpeed}
+            onChange={(e) => set('animSpeed', clampAnimSpeed(parseFloat(e.target.value)))}
+            aria-label="Animation speed multiplier"
+            className="w-full h-1 accent-[#00d4ff]"
+          />
+        </div>
+
+        <div>
+          <div className="text-xs text-[#8b949e] mb-1">Animation color</div>
+          <div className="text-xs text-[#8b949e]/60 mb-2">Snake and Flow highlight. Basic keeps the line color.</div>
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={animColor ?? style.color}
+              onChange={(e) => set('animColor', e.target.value)}
+              aria-label="Animation color"
+              className="w-7 h-7 rounded cursor-pointer border border-[#30363d] bg-transparent p-0.5"
+            />
+            <span className="text-xs text-[#8b949e] flex-1">
+              {animColor ? animColor : 'Same as line'}
+            </span>
+            {animColor && (
+              <button
+                type="button"
+                onClick={() => set('animColor', undefined)}
+                className="px-2 py-0.5 text-xs rounded border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3]"
+              >
+                Reset
+              </button>
+            )}
+          </div>
         </div>
 
         <div>

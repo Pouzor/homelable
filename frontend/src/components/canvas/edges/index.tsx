@@ -15,6 +15,7 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { THEMES } from '@/utils/themes'
 import { MARKER_GEOMETRY, normalizeMarker, type NonNoneMarkerShape } from '@/utils/edgeMarkers'
 import { clampWidthMult, dashArrayFor } from '@/utils/edgeLineStyle'
+import { animDuration, resolveAnimColor } from '@/utils/edgeAnimation'
 import { buildWaypointPath, getAddWaypointHandlePosition, getWaypointLabelPosition, snap45, snap45both } from './waypointUtils'
 
 const VLAN_COLORS = ['#00d4ff', '#a855f7', '#39d353', '#ff6e00', '#e3b341', '#f85149']
@@ -386,7 +387,11 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
     data?.animated === 'flow' ? 'flow' :
     data?.animated === 'basic' ? 'basic' : 'none'
 
-  const animColor = customColor ?? (edgeType === 'vlan' ? getVlanColor(data?.vlan_id as number | undefined) : edgeColors[edgeType as keyof typeof edgeColors] as string)
+  // Speed and highlight colour come from the edge type's custom style, read
+  // live like showLqi — they are never copied onto the edge.
+  const typeStyle = customEdgeStyles[edgeType]
+  const animSpeed = typeStyle?.animSpeed
+  const animColor = resolveAnimColor(typeStyle?.animColor) ?? customColor ?? (edgeType === 'vlan' ? getVlanColor(data?.vlan_id as number | undefined) : edgeColors[edgeType as keyof typeof edgeColors] as string)
 
   const midpoints = selected
     ? segmentMidpoints(sourceX, sourceY, waypoints, targetX, targetY, pathStyle, sourcePosition)
@@ -454,7 +459,7 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
             // from the endpoints' screen positions: an edge drawn bottom-to-top
             // marches the same way as one drawn top-to-bottom, like the snake
             // and flow modes.
-            animation: 'homelable-basic-dash 0.5s linear infinite',
+            animation: `homelable-basic-dash ${animDuration('basic', animSpeed)} linear infinite`,
           }}
         />
       )}
@@ -470,9 +475,9 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
           style={{
             pointerEvents: 'none',
             // CSS (not SMIL) so it pauses when the tab is hidden — see index.css.
-            // Bidirectional yo-yos via `alternate` (10s each way = 20s round trip,
-            // matching the old SMIL keyTimes); unidirectional loops in one direction.
-            animation: `homelable-snake 10s linear infinite${isBidirectional ? ' alternate' : ''}`,
+            // Bidirectional yo-yos via `alternate` (10s each way at 1× = 20s round
+            // trip, matching the old SMIL keyTimes); unidirectional loops in one direction.
+            animation: `homelable-snake ${animDuration('snake', animSpeed)} linear infinite${isBidirectional ? ' alternate' : ''}`,
           }}
         />
       )}
@@ -487,7 +492,7 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
           strokeOpacity={0.85}
           style={{
             pointerEvents: 'none',
-            animation: 'homelable-flow 1.2s linear infinite',
+            animation: `homelable-flow ${animDuration('flow', animSpeed)} linear infinite`,
           }}
         />
       )}

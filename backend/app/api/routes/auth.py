@@ -4,8 +4,8 @@ from collections.abc import Mapping
 from typing import cast
 
 from authlib.integrations.base_client.errors import OAuthError
-from authlib.jose.errors import JoseError
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from joserfc.errors import JoseError
 from pydantic import BaseModel
 from starlette.responses import RedirectResponse
 

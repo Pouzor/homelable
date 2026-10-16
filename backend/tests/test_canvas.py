@@ -829,3 +829,58 @@ async def test_save_canvas_drops_a_description_on_a_device_node(client: AsyncCli
     saved = (await client.get("/api/v1/canvas", headers=headers)).json()["nodes"][0]
     assert saved["description"] is None
     assert saved["notes"] == "Backs up nightly."
+
+
+async def test_save_canvas_keeps_the_row_a_node_was_linked_to(client: AsyncClient, headers: dict, db_session):
+    """A save that omits device_id must not detach a node the server linked.
+
+    A Zigbee device has no ip or mac, so once detached it cannot be re-matched:
+    every save minted another IEEE-less row, the real row showed on no canvas,
+    and the mesh links (resolved by IEEE) found nothing to attach to (#532).
+    """
+    from sqlalchemy import select
+
+    from app.db.models import InventoryDevice, Node
+
+    db_session.add(InventoryDevice(
+        id="d-zb", ieee_address="0x588e81fffef09c07", suggested_type="zigbee_router", status="pending",
+    ))
+    await db_session.commit()
+    node_id = (await client.post(
+        "/api/v1/scan/pending/d-zb/approve",
+        json={"type": "zigbee_router", "label": "Lidl PC"},
+        headers=headers,
+    )).json()["node_id"]
+
+    for _ in range(2):
+        res = await client.post(
+            "/api/v1/canvas/save",
+            json={"nodes": [{**node_payload(type="zigbee_router", label="Lidl PC"), "id": node_id}],
+                  "edges": [], "viewport": {}},
+            headers=headers,
+        )
+        assert res.status_code == 200
+
+    db_session.expire_all()
+    node = await db_session.get(Node, node_id)
+    assert node is not None and node.device_id == "d-zb"
+    rows = (await db_session.execute(select(InventoryDevice))).scalars().all()
+    assert [r.id for r in rows] == ["d-zb"]
+
+
+async def test_save_canvas_still_detaches_a_node_turned_into_furniture(client: AsyncClient, headers: dict, db_session):
+    """The keep-the-link guard must not pin a row onto canvas furniture."""
+    from app.db.models import InventoryDevice, Node
+
+    db_session.add(InventoryDevice(id="d-zb", ieee_address="0xAAAA", status="pending"))
+    await db_session.commit()
+    node_id = (await client.post(
+        "/api/v1/scan/pending/d-zb/approve",
+        json={"type": "zigbee_router", "label": "Plug"},
+        headers=headers,
+    )).json()["node_id"]
+
+    zone = {**node_payload(type="groupRect", label="Zone"), "id": node_id, "device_id": None}
+    await client.post("/api/v1/canvas/save", json={"nodes": [zone], "edges": [], "viewport": {}}, headers=headers)
+    db_session.expire_all()
+    assert (await db_session.get(Node, node_id)).device_id is None

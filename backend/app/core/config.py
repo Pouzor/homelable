@@ -179,6 +179,13 @@ class Settings(BaseSettings):
 
     # Status checker
     status_checker_interval: int = 60
+    # Master switch for node and service status checks. False = the checker
+    # jobs are never registered and approvals stop defaulting a device to
+    # `ping`, so the backend sends no reachability probes at all (for installs
+    # where another system owns monitoring). Env-only (STATUS_CHECKER_ENABLED):
+    # deliberately not in load_overrides/save_overrides, so the UI cannot
+    # switch it back on through scan_config.json.
+    status_checker_enabled: bool = True
 
     # Per-service status checker (independent of node checks). Off by default.
     service_check_enabled: bool = False
@@ -212,7 +219,7 @@ class Settings(BaseSettings):
     # 'user@realm!tokenname'; use a read-only PVEAuditor role.
     proxmox_token_id: str = ""
     proxmox_token_secret: str = ""
-    # Non-secret connection + auto-sync config (persisted via save_overrides).
+    # Connection config is env-only; only the auto-sync activation is persisted.
     proxmox_host: str = ""
     proxmox_port: int = 8006
     proxmox_verify_tls: bool = True
@@ -232,6 +239,9 @@ class Settings(BaseSettings):
     zigbee_mqtt_tls_insecure: bool = False
     zigbee_sync_enabled: bool = False
     zigbee_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+    # Also import the neighbour (mesh) links on auto-sync / sync-now, not only the
+    # parent tree. Off by default — a mesh multiplies the edge count ~3x.
+    zigbee_sync_include_mesh_links: bool = False
     # Seconds to wait for the Z2M bridge to answer a networkmap request. A mesh
     # of 200+ devices can take several minutes to build the map, so raise this
     # if imports fail with "Timed out waiting for networkmap response".
@@ -258,8 +268,8 @@ class Settings(BaseSettings):
     # Accepts UNIFI_USER or UNIFI_USERNAME; UNIFI_PASS or UNIFI_PASSWORD.
     unifi_username: str = Field("", alias="unifi_user", validation_alias=AliasChoices("unifi_username", "unifi_user"))
     unifi_password: str = Field("", alias="unifi_pass", validation_alias=AliasChoices("unifi_password", "unifi_pass"))
-    # Non-secret connection + auto-sync config (persisted via save_overrides).
-    # Accepts UNIFI_URL (full URL) or UNIFI_HOST (bare host/IP).
+    # Connection config is env-only; only the auto-sync activation and import
+    # modes are persisted. Accepts UNIFI_URL (full URL) or UNIFI_HOST (bare host/IP).
     unifi_url: str = ""
     unifi_host: str = ""
     unifi_port: int = 8443
@@ -332,10 +342,15 @@ class Settings(BaseSettings):
                 self.zigbee_sync_enabled = bool(data["zigbee_sync_enabled"])
             if "zigbee_sync_interval" in data:
                 self.zigbee_sync_interval = int(data["zigbee_sync_interval"])
+            if "zigbee_sync_include_mesh_links" in data:
+                self.zigbee_sync_include_mesh_links = bool(data["zigbee_sync_include_mesh_links"])
             if "zwave_sync_enabled" in data:
                 self.zwave_sync_enabled = bool(data["zwave_sync_enabled"])
             if "zwave_sync_interval" in data:
                 self.zwave_sync_interval = int(data["zwave_sync_interval"])
+            # UniFi: auto-sync activation and import modes only. Connection
+            # config (host, port, site, verify_tls) is env-only, same reason
+            # as Proxmox: a persisted empty host clobbered UNIFI_HOST.
             if "unifi_sync_enabled" in data:
                 self.unifi_sync_enabled = bool(data["unifi_sync_enabled"])
             if "unifi_sync_interval" in data:
@@ -344,14 +359,6 @@ class Settings(BaseSettings):
                 key = f"unifi_import_{mode}"
                 if key in data:
                     setattr(self, key, bool(data[key]))
-            if "unifi_host" in data:
-                self.unifi_host = str(data["unifi_host"])
-            if "unifi_port" in data:
-                self.unifi_port = int(data["unifi_port"])
-            if "unifi_site" in data:
-                self.unifi_site = str(data["unifi_site"])
-            if "unifi_verify_tls" in data:
-                self.unifi_verify_tls = bool(data["unifi_verify_tls"])
         except Exception:
             pass
 
@@ -375,19 +382,16 @@ class Settings(BaseSettings):
             # connection config (host/port/credentials/topic/tls) is env-only.
             "zigbee_sync_enabled": self.zigbee_sync_enabled,
             "zigbee_sync_interval": self.zigbee_sync_interval,
+            "zigbee_sync_include_mesh_links": self.zigbee_sync_include_mesh_links,
             "zwave_sync_enabled": self.zwave_sync_enabled,
             "zwave_sync_interval": self.zwave_sync_interval,
-            # UniFi: non-secret connection config + auto-sync activation persisted.
-            # Credentials (username/password) are env-only and never written here.
+            # UniFi: auto-sync activation and import modes only. Connection
+            # config (host/port/site/verify_tls) and credentials are env-only.
             "unifi_sync_enabled": self.unifi_sync_enabled,
             "unifi_sync_interval": self.unifi_sync_interval,
             "unifi_import_infrastructure": self.unifi_import_infrastructure,
             "unifi_import_known_clients": self.unifi_import_known_clients,
             "unifi_import_active_clients": self.unifi_import_active_clients,
-            "unifi_host": self.unifi_host,
-            "unifi_port": self.unifi_port,
-            "unifi_site": self.unifi_site,
-            "unifi_verify_tls": self.unifi_verify_tls,
         }))
 
 

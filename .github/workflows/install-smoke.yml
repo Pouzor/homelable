@@ -63,6 +63,33 @@ jobs:
           printf '#!/bin/sh\necho "[systemctl stub] $*"\n' > /usr/local/bin/systemctl
           chmod +x /usr/local/bin/systemctl
 
+      - name: Unsupported Python fails fast
+        # Python 3.14 used to die halfway through pip (#511). The guard runs
+        # right after the apt step, before the clone, venv or .env exist.
+        run: |
+          set -uo pipefail
+          printf '#!/bin/sh\necho 3.14\n' > /usr/local/bin/fake-python314
+          chmod +x /usr/local/bin/fake-python314
+          if INSTALL_DIR="$GITHUB_WORKSPACE" SKIP_NGINX=1 PYTHON=fake-python314 \
+               bash scripts/install-baremetal.sh 2>/tmp/py.err; then
+            echo "installer accepted Python 3.14" >&2; exit 1
+          fi
+          grep -q 'Python 3.14 is not supported yet' /tmp/py.err
+          test ! -e backend/.venv
+          test ! -e backend/.env
+
+      - name: Too little memory fails fast
+        # An OOM-killed vite build used to abort the run before the systemd unit
+        # and nginx site were written, with a bare "Killed" as the only output (#511).
+        run: |
+          set -uo pipefail
+          if INSTALL_DIR="$GITHUB_WORKSPACE" SKIP_NGINX=1 BUILD_MEMORY_MB=99999999 \
+               bash scripts/install-baremetal.sh 2>/tmp/mem.err; then
+            echo "installer ignored the memory check" >&2; exit 1
+          fi
+          grep -q 'would be killed by the kernel (out of memory)' /tmp/mem.err
+          test ! -e backend/.venv
+
       - name: Run the installer
         # INSTALL_DIR is the checkout, so the clone is skipped and the script
         # installs the tree under test rather than main. SKIP_NGINX because the

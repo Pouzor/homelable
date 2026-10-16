@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -27,6 +27,7 @@ from app.schemas.zwave import (
     ZwaveTestConnectionRequest,
     ZwaveTestConnectionResponse,
 )
+from app.services.discovery_sources import add_source
 from app.services.inventory_sync import attach_device_ids
 from app.services.node_dedupe import dedupe_nodes_by_device
 from app.services.zwave_service import (
@@ -202,7 +203,8 @@ async def _persist_pending_import(
     """Upsert nodes/edges into device_inventory + device_inventory_links.
 
     Coordinator auto-approves to a canvas Node. Other devices upsert by Z-Wave
-    identity. All zwave-source links are wiped and re-inserted from the new map.
+    identity. This network's zwave-source links are wiped and re-inserted from
+    the new map.
     """
     # Repair any pre-existing same-canvas duplicate nodes before upserting, so
     # the by-IEEE lookups below resolve cleanly.
@@ -247,6 +249,7 @@ async def _persist_pending_import(
                     properties=props,
                     status="pending",
                     discovery_source="zwave",
+                    discovery_sources=["zwave"],
                 )
             )
             pending_created += 1
@@ -257,6 +260,10 @@ async def _persist_pending_import(
             pending.model = n.get("model") or pending.model
             pending.vendor = n.get("vendor") or pending.vendor
             pending.properties = merge_zwave_properties(list(pending.properties or []), props)
+            # Record the import among the row's sources: the UI files a device
+            # by that list, so a row a canvas save listed as ["canvas"] only
+            # would otherwise stay out of the zwave filter for good.
+            pending.discovery_sources = add_source(pending.discovery_sources, "zwave")
             if pending.status == "approved" and not await _is_drawn(db, pending.id):
                 # Approved earlier but no canvas draws it any more (the node was
                 # deleted) — revive to "pending" so it reappears in the list.
@@ -265,9 +272,19 @@ async def _persist_pending_import(
                 pass
             pending_updated += 1
 
-    # Replace all zwave-source links with the freshly discovered set.
+    # Replace this network's zwave-source links with the freshly discovered
+    # set. Only links touching a device this import returned: one import is one
+    # controller, and wiping every zwave link erased the map of a second
+    # network imported earlier.
+    imported = {n["ieee_address"] for n in nodes_raw if n.get("ieee_address")}
     await db.execute(
-        sa_delete(InventoryDeviceLink).where(InventoryDeviceLink.discovery_source == "zwave")
+        sa_delete(InventoryDeviceLink).where(
+            InventoryDeviceLink.discovery_source == "zwave",
+            or_(
+                InventoryDeviceLink.source_ieee.in_(imported),
+                InventoryDeviceLink.target_ieee.in_(imported),
+            ),
+        )
     )
 
     links_recorded = 0

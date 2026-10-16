@@ -28,6 +28,24 @@ class UnifiApiError(ConnectionError):
     """
 
 
+class UnifiLoginError(ConnectionError):
+    """The controller refused or never answered the login, with the reason.
+
+    One catch-all "invalid credentials or unreachable host" made a closed port,
+    a UI.com account with MFA and a wrong password indistinguishable (#551).
+    """
+
+
+# UniFi OS answers a cloud (UI.com) account with MFA enabled with this
+# non-standard status and code; only a local admin can log in over the API.
+_MFA_STATUS = 499
+_MFA_CODE = "MFA_AUTH_REQUIRED"
+_PORT_HINT = "UniFi OS gateways (UDM, UCG) listen on 443, a self-hosted controller on 8443"
+_ACCOUNT_HINT = (
+    "use a local admin account of the controller — a UI.com cloud account is not accepted"
+)
+
+
 # discovery_source values. Infrastructure and clients are told apart in the
 # data; the UI buckets both under one UniFi filter.
 SOURCE_INFRA = "unifi"
@@ -163,20 +181,72 @@ async def _login(
     port: int,
     username: str,
     password: str,
-) -> dict[str, str] | None:
-    """Try both UniFi OS and legacy controller login paths."""
+) -> dict[str, str]:
+    """Try both UniFi OS and legacy controller login paths.
+
+    Returns the session cookies, or raises UnifiLoginError naming why it
+    failed: unreachable host, timeout, MFA, rate limit or rejected credentials.
+    """
+    hostname = host.lower().rstrip(".")
+    if hostname == "ui.com" or hostname.endswith(".ui.com"):
+        raise UnifiLoginError(
+            f"Login failed: {host} is Ubiquiti's cloud portal, not a controller — "
+            "enter the LAN IP of your gateway or controller"
+        )
+
     base = f"https://{host}:{port}"
     payload = {"username": username, "password": password}
+    failures: list[str] = []
+    rejected = False
 
     # UniFi OS (Dream Machine series) uses /api/auth/login
     for path in ["/api/auth/login", "/api/login"]:
         try:
             r = await client.post(f"{base}{path}", json=payload, follow_redirects=True)
-            if r.status_code in (200, 201):
-                return dict(r.cookies)
-        except Exception:
+        except httpx.ConnectError as exc:
+            # Same host and port for both paths: the next one cannot do better.
+            raise UnifiLoginError(f"Cannot reach {host}:{port} ({exc}) — {_PORT_HINT}") from exc
+        except httpx.TimeoutException as exc:
+            raise UnifiLoginError(
+                f"Login failed: {host}:{port} did not answer in time — {_PORT_HINT}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            failures.append(f"{path} → {exc}")
             continue
-    return None
+
+        detail = _error_detail(r)
+        if r.status_code in (200, 201):
+            if r.cookies:
+                return dict(r.cookies)
+            failures.append(f"{path} → HTTP {r.status_code} without a session cookie")
+        elif r.status_code == _MFA_STATUS or _MFA_CODE in detail:
+            raise UnifiLoginError(f"Login failed: this account has MFA enabled — {_ACCOUNT_HINT}")
+        elif r.status_code == 429:
+            raise UnifiLoginError(
+                "Login failed: the controller is rate-limiting logins after too many "
+                "attempts — wait a few minutes before retrying"
+            )
+        else:
+            rejected = rejected or r.status_code in (400, 401, 403)
+            failures.append(f"{path} → HTTP {r.status_code}" + (f" {detail}" if detail else ""))
+
+    tried = "; ".join(failures)
+    if rejected:
+        raise UnifiLoginError(f"Login failed: credentials rejected ({tried}) — {_ACCOUNT_HINT}")
+    raise UnifiLoginError(f"Login failed: no UniFi login endpoint answered ({tried}) — {_PORT_HINT}")
+
+
+def _error_detail(r: httpx.Response) -> str:
+    """The controller's own error code, from either API dialect, or ''."""
+    try:
+        body = r.json()
+    except ValueError:
+        return ""
+    if not isinstance(body, dict):
+        return ""
+    meta = body.get("meta")
+    legacy = meta.get("msg") if isinstance(meta, dict) else None
+    return str(body.get("code") or body.get("message") or legacy or "")
 
 
 async def _get_list(

@@ -3,6 +3,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.scheduler import (
@@ -202,6 +203,115 @@ async def test_run_status_checks_handles_check_error_gracefully(mem_db):
         await _run_status_checks()  # must not raise
 
     assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_run_status_checks_saves_the_cycle_in_one_commit(mem_db):
+    """One write transaction per cycle, not one per device (#539).
+
+    SQLite has a single write lock: a commit per device queued as many writers
+    as there are devices, and the last ones timed out with "database is locked".
+    """
+    async with mem_db() as session:
+        devices = [_make_device(check_method="ping", ip=f"10.0.0.{i}") for i in range(1, 4)]
+        session.add_all(devices)
+        await session.commit()
+        device_ids = [d.id for d in devices]
+
+    commits = 0
+    real_commit = AsyncSession.commit
+
+    async def counting_commit(self):
+        nonlocal commits
+        commits += 1
+        await real_commit(self)
+
+    with patch("app.core.scheduler.AsyncSessionLocal", mem_db), \
+         patch("app.core.scheduler.check_node", new_callable=AsyncMock,
+               return_value={"status": "online", "response_time_ms": 5}), \
+         patch("app.api.routes.status.broadcast_status", new_callable=AsyncMock), \
+         patch.object(AsyncSession, "commit", counting_commit):
+        await _run_status_checks()
+
+    assert commits == 1
+    async with mem_db() as session:
+        for device_id in device_ids:
+            updated = await session.get(InventoryDevice, device_id)
+            assert updated is not None
+            assert updated.status_live == "online"
+            assert updated.last_seen is not None
+
+
+@pytest.mark.asyncio
+async def test_run_status_checks_broadcasts_even_when_the_save_fails(mem_db):
+    """A locked database must not hide a probe that answered (#539)."""
+    async with mem_db() as session:
+        session.add_all([
+            _make_device(check_method="ping", ip="10.0.0.1"),
+            _make_device(check_method="ping", ip="10.0.0.2"),
+        ])
+        await session.commit()
+
+    async def locked_commit(self):
+        raise OperationalError("UPDATE device_inventory", {}, Exception("database is locked"))
+
+    with patch("app.core.scheduler.AsyncSessionLocal", mem_db), \
+         patch("app.core.scheduler.check_node", new_callable=AsyncMock,
+               return_value={"status": "online", "response_time_ms": 5}), \
+         patch("app.api.routes.status.broadcast_status", new_callable=AsyncMock) as mock_broadcast, \
+         patch.object(AsyncSession, "commit", locked_commit):
+        await _run_status_checks()  # must not raise
+
+    assert mock_broadcast.await_count == 2
+    assert {c.kwargs["status"] for c in mock_broadcast.await_args_list} == {"online"}
+
+
+@pytest.mark.asyncio
+async def test_run_status_checks_saves_even_when_the_broadcast_fails(mem_db):
+    """The stored status does not depend on a WebSocket client being reachable."""
+    async with mem_db() as session:
+        device = _make_device(check_method="ping", ip="10.0.0.1")
+        session.add(device)
+        await session.commit()
+        device_id = device.id
+
+    with patch("app.core.scheduler.AsyncSessionLocal", mem_db), \
+         patch("app.core.scheduler.check_node", new_callable=AsyncMock,
+               return_value={"status": "offline", "response_time_ms": None}), \
+         patch("app.api.routes.status.broadcast_status", new_callable=AsyncMock,
+               side_effect=RuntimeError("socket closed")):
+        await _run_status_checks()  # must not raise
+
+    async with mem_db() as session:
+        updated = await session.get(InventoryDevice, device_id)
+        assert updated is not None
+        assert updated.status_live == "offline"
+
+
+@pytest.mark.asyncio
+async def test_run_status_checks_keeps_the_devices_whose_probe_answered(mem_db):
+    """A probe that raises drops only its own device from the cycle's save."""
+    async with mem_db() as session:
+        broken = _make_device(check_method="ping", ip="10.0.0.1")
+        healthy = _make_device(check_method="ping", ip="10.0.0.2")
+        session.add_all([broken, healthy])
+        await session.commit()
+        broken_id, healthy_id = broken.id, healthy.id
+
+    async def flaky_check(method, target, ip):
+        if ip == "10.0.0.1":
+            raise RuntimeError("timeout")
+        return {"status": "online", "response_time_ms": 1}
+
+    with patch("app.core.scheduler.AsyncSessionLocal", mem_db), \
+         patch("app.core.scheduler.check_node", side_effect=flaky_check), \
+         patch("app.api.routes.status.broadcast_status", new_callable=AsyncMock) as mock_broadcast:
+        await _run_status_checks()
+
+    mock_broadcast.assert_awaited_once()
+    async with mem_db() as session:
+        assert (await session.get(InventoryDevice, healthy_id)).status_live == "online"
+        assert (await session.get(InventoryDevice, broken_id)).status_live == "unknown"
 
 
 # ---------------------------------------------------------------------------

@@ -21,6 +21,7 @@ import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
 import { getCenteredPosition } from '@/utils/viewportCenter'
 import { sourceBuckets, orderedSources, isRackDevice, SOURCE_META, type SourceBucket } from '@/utils/deviceSources'
 import { isRackable } from '@/utils/rackable'
+import { isTypingTarget } from '@/utils/keyboard'
 import { ProxmoxApproveModal, type ProxmoxApproveChoice } from '@/components/modals/ProxmoxApproveModal'
 import { MergeDevicesModal } from '@/components/modals/MergeDevicesModal'
 import { layoutProxmoxContainers, measureProxmoxContainers } from '@/utils/proxmoxContainerLayout'
@@ -136,6 +137,10 @@ function inventoryNodeData(d: InventoryEntry) {
     data: {
       label: deviceLabel(d),
       type,
+      // The row this card draws. Without it the next canvas save would re-match
+      // the node by ip/mac, which a Zigbee or Z-Wave device does not have, and
+      // mint a stray row instead.
+      device_id: d.id,
       ip: d.ip ?? undefined,
       mac: d.mac ?? undefined,
       hostname: d.hostname ?? undefined,
@@ -237,7 +242,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       if (rackableOnly && !isRackable(d)) return false
       if (q) {
         const hay = [
-          d.friendly_name, d.hostname, d.ip, d.mac, d.ieee_address, d.vendor, d.model,
+          d.label, d.friendly_name, d.hostname, deviceType(d), d.ip, d.mac, d.ieee_address, d.vendor, d.model,
           ...d.services.map((s) => s.service_name),
         ].filter(Boolean).join(' ').toLowerCase()
         if (!hay.includes(q)) return false
@@ -388,7 +393,11 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
         id: nodeId,
         type: nodeData.type,
         position: getCenteredPosition(),
-        data: { ...nodeData, status: wireless ? ('online' as const) : ('unknown' as const) },
+        data: {
+          ...nodeData,
+          device_id: device.id,
+          status: wireless ? ('online' as const) : ('unknown' as const),
+        },
       })
       injectAutoEdges(res.data.edges)
       const extra = res.data.edges_created > 0 ? ` (+${res.data.edges_created} link${res.data.edges_created !== 1 ? 's' : ''})` : ''
@@ -632,8 +641,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null
-      const inField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')
+      const inField = isTypingTarget(e)
       if (e.key === 'Escape') {
         if (selectMode && selectedIds.size > 0) { e.preventDefault(); setSelectedIds(new Set()) }
         return
@@ -995,6 +1003,21 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
           setDevices((prev) => prev.map((d) => (d.id === saved.id ? saved : d)))
           setSelected(saved)
         }}
+        onDuplicated={
+          demoDevices
+            ? undefined
+            : (copy) => {
+                // The copy is pending, so it only belongs in the pending list —
+                // right after its source, where the user just was.
+                if (statusFilter === 'pending') {
+                  setDevices((prev) => {
+                    const at = prev.findIndex((d) => d.id === selected?.id)
+                    return at === -1 ? [...prev, copy] : [...prev.slice(0, at + 1), copy, ...prev.slice(at + 1)]
+                  })
+                }
+                setSelected(copy)
+              }
+        }
       />
 
       <MergeDevicesModal

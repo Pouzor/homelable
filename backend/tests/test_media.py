@@ -92,3 +92,81 @@ async def test_delete_requires_auth_and_removes_file(client, headers, media_dir)
     assert res.status_code == 204
     assert not (media_dir / filename).exists()
     assert (await client.get(up.json()["url"])).status_code == 404
+
+
+# ── SVG and PDF ──────────────────────────────────────────────────────────────
+
+SVG_BYTES = b'<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+PDF_BYTES = b"%PDF-1.7\n" + b"0" * 32
+
+
+@pytest.mark.asyncio
+async def test_upload_accepts_svg(client, headers, media_dir):
+    res = await _upload(client, headers, name="rack.svg", data=SVG_BYTES, content_type="image/svg+xml")
+    assert res.status_code == 200
+    assert re.fullmatch(r"/api/v1/media/[0-9a-f]{32}\.svg", res.json()["url"])
+
+
+@pytest.mark.asyncio
+async def test_upload_accepts_svg_behind_a_bom_and_a_comment(client, headers, media_dir):
+    data = b"\xef\xbb\xbf  <!-- exported -->\n<SVG xmlns='http://www.w3.org/2000/svg'/>"
+    res = await _upload(client, headers, name="a.svg", data=data, content_type="image/svg+xml")
+    assert res.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("data", [b"<html><body>hi</body></html>", b"just text with <svg in it", PNG_BYTES])
+async def test_upload_rejects_svg_that_is_not_one(client, headers, media_dir, data):
+    res = await _upload(client, headers, name="a.svg", data=data, content_type="image/svg+xml")
+    assert res.status_code == 415
+
+
+@pytest.mark.asyncio
+async def test_svg_is_served_where_its_scripts_cannot_run(client, headers, media_dir):
+    up = await _upload(client, headers, name="rack.svg", data=SVG_BYTES, content_type="image/svg+xml")
+    res = await client.get(up.json()["url"])
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("image/svg+xml")
+    csp = res.headers["content-security-policy"]
+    assert "sandbox" in csp
+    assert "default-src 'none'" in csp
+    assert "script-src" not in csp
+    assert res.headers["x-content-type-options"] == "nosniff"
+
+
+@pytest.mark.asyncio
+async def test_other_types_are_served_nosniff_without_the_svg_policy(client, headers, media_dir):
+    up = await _upload(client, headers)
+    res = await client.get(up.json()["url"])
+    assert res.headers["content-type"] == "image/png"
+    assert res.headers["x-content-type-options"] == "nosniff"
+    # A sandboxed PDF does not open in the browser's viewer, so the policy
+    # stays on the one format that needs it.
+    assert "content-security-policy" not in res.headers
+
+
+@pytest.mark.asyncio
+async def test_upload_accepts_pdf_and_serves_it_as_one(client, headers, media_dir):
+    up = await _upload(client, headers, name="manual.pdf", data=PDF_BYTES, content_type="application/pdf")
+    assert up.status_code == 200
+    assert re.fullmatch(r"/api/v1/media/[0-9a-f]{32}\.pdf", up.json()["url"])
+
+    res = await client.get(up.json()["url"])
+    assert res.content == PDF_BYTES
+    assert res.headers["content-type"] == "application/pdf"
+    assert "content-security-policy" not in res.headers
+
+
+@pytest.mark.asyncio
+async def test_upload_rejects_pdf_that_is_not_one(client, headers, media_dir):
+    res = await _upload(client, headers, name="a.pdf", data=SVG_BYTES, content_type="application/pdf")
+    assert res.status_code == 415
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_an_svg(client, headers, media_dir):
+    up = await _upload(client, headers, name="rack.svg", data=SVG_BYTES, content_type="image/svg+xml")
+    filename = up.json()["filename"]
+    res = await client.delete(f"/api/v1/media/{filename}", headers=headers)
+    assert res.status_code == 204
+    assert not (media_dir / filename).exists()

@@ -19,6 +19,7 @@ import {
   BookOpen,
   Check,
   Copy,
+  CopyPlus,
   Factory,
   Fingerprint,
   HeartPulse,
@@ -72,6 +73,9 @@ interface InventoryDeviceModalProps {
   onIgnore: (device: InventoryEntry) => void
   /** Called with the saved row after an edit, so the list can refresh in place. */
   onSaved?: (device: InventoryEntry) => void
+  /** Called with the copy after a Duplicate, so the list can add it and point
+   *  this modal at it. Absent wherever there is no backend. */
+  onDuplicated?: (copy: InventoryEntry) => void
   /** Opens the Documentation section on this device, writing the document
    *  first if it has none. Absent wherever there is no backend. */
   onOpenDocumentation?: (deviceId: string, label: string) => void
@@ -287,7 +291,7 @@ function toRackModel(d: InventoryEntry): DeviceRackModel | null {
 const nullable = (v: string) => (v.trim() === '' ? null : v.trim())
 const numeric = (v: string) => (v.trim() === '' ? null : Number(v))
 
-export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgnore, onSaved, onOpenDocumentation }: InventoryDeviceModalProps) {
+export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgnore, onSaved, onDuplicated, onOpenDocumentation }: InventoryDeviceModalProps) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<EditForm>(() => (device ? toForm(device) : toForm({} as InventoryEntry)))
   const [properties, setProperties] = useState<NodeProperty[]>(device?.properties ?? [])
@@ -304,6 +308,10 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
   const [rescanStarting, setRescanStarting] = useState(false)
   // The port-range dialog, opened by the Deep scan link.
   const [deepScanOpen, setDeepScanOpen] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
+  // The copy a Duplicate just made: when the parent points the modal at it, it
+  // opens in edit mode, since its IP and MAC are the first thing to fill in.
+  const editOnOpenRef = useRef<string | null>(null)
   const activeTheme = useThemeStore((s) => s.activeTheme)
   // Kept in a ref so the poll effect below doesn't restart — and lose its
   // timer — every time the parent re-renders with a new callback identity.
@@ -332,7 +340,8 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
     setProperties(d.properties ?? [])
     setServices(d.services ?? [])
     setRackModel(toRackModel(d))
-    setEditing(false)
+    setEditing(editOnOpenRef.current === d.id)
+    editOnOpenRef.current = null
     setSvcModal(null)
     setRescanRunId(null)
     setDeepScanOpen(false)
@@ -407,6 +416,21 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
   const handleApprove = () => { onApprove(device) }
   const handleHide = () => { onHide(device); onClose() }
   const handleIgnore = () => { onIgnore(device); onClose() }
+
+  const handleDuplicate = async () => {
+    if (!onDuplicated || duplicating) return
+    setDuplicating(true)
+    try {
+      const res = await scanApi.duplicatePending(device.id)
+      editOnOpenRef.current = res.data.id
+      toast.success('Device duplicated — set its addresses')
+      onDuplicated(res.data)
+    } catch {
+      toast.error('Could not duplicate device')
+    } finally {
+      setDuplicating(false)
+    }
+  }
 
   const handleCancel = () => {
     setEditing(false)
@@ -569,6 +593,18 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                     title="Open this device's documentation page"
                   >
                     <BookOpen size={13} /> Documentation
+                  </Button>
+                )}
+                {onDuplicated && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={`gap-1.5 text-[#00d4ff] hover:text-[#00d4ff] hover:bg-[#00d4ff]/10 ${modalStyles['modal-interactive']}`}
+                    onClick={handleDuplicate}
+                    disabled={duplicating}
+                    title="Add a copy of this device — same specs and front panel, no addresses"
+                  >
+                    {duplicating ? <Loader2 size={13} className="animate-spin" /> : <CopyPlus size={13} />} Duplicate
                   </Button>
                 )}
                 <Button

@@ -462,6 +462,46 @@ class TestStatusOnLink:
 
         assert device is not None and device.status == "hidden"
 
+
+class TestSourcesOnLink:
+    """Drawing a discovered device adds ``canvas`` to its sources, never replaces them."""
+
+    @pytest.mark.asyncio
+    async def test_a_mesh_row_keeps_its_origin_when_a_node_draws_it(self, db_session):
+        """Regression for #532: the Zigbee import leaves `discovery_sources` empty,
+        and linking a node turned it into `["canvas"]` alone — the device then
+        dropped out of the Zigbee filter and showed a CANVAS chip."""
+        design = await _design(db_session)
+        db_session.add(InventoryDevice(
+            id="d-zb", ieee_address="0xAAAA", status="approved",
+            discovery_source="zigbee", discovery_sources=[],
+        ))
+        node = _node(design, device_id="d-zb")
+        db_session.add(node)
+        await db_session.commit()
+
+        device = await link_facts(db_session, node, {"label": "Lidl PC"})
+        await db_session.commit()
+
+        assert device is not None and device.discovery_sources == ["zigbee", "canvas"]
+
+    @pytest.mark.asyncio
+    async def test_a_row_already_filed_under_canvas_gets_its_origin_back(self, db_session):
+        """Rows the bug already rewrote to `["canvas"]` heal on their next save."""
+        design = await _design(db_session)
+        db_session.add(InventoryDevice(
+            id="d-zb", ieee_address="0xAAAA", status="approved",
+            discovery_source="zigbee", discovery_sources=["canvas"],
+        ))
+        node = _node(design, device_id="d-zb")
+        db_session.add(node)
+        await db_session.commit()
+
+        device = await link_facts(db_session, node, {"label": "Lidl PC"})
+        await db_session.commit()
+
+        assert device is not None and set(device.discovery_sources) == {"zigbee", "canvas"}
+
 # --- the backfill -----------------------------------------------------------
 
 

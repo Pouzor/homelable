@@ -20,7 +20,9 @@ This feature lets you connect Homelable to your MQTT broker, fetch the Zigbee2MQ
   edge per device. Tick **Import mesh links** to also draw neighbour-to-neighbour
   links, as a distinct `Zigbee Mesh` edge type in its own colour. Expect far more
   edges — a 37-device network goes from ~36 to ~115 — which is why it is off by
-  default and excluded from the scheduled auto-sync.
+  default. The scheduled auto-sync and **Re-sync now** have their own
+  **Import mesh links** toggle under Settings → Zigbee auto-sync, also off by
+  default.
 
 ---
 

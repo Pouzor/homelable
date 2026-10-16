@@ -840,7 +840,13 @@ async def link_facts(
             overwrite_scalars=overwrite_scalars,
             replace_lists=replace_lists,
         )
-        device.discovery_sources = add_source(device.discovery_sources, CANVAS_SOURCE)
+        # Seed the list with the row's origin first: the Zigbee and Z-Wave imports
+        # leave `discovery_sources` empty, and the UI reads the list over
+        # `discovery_source` once it has anything in it — `["canvas"]` alone
+        # would file a mesh device under Canvas and drop it from the Zigbee view.
+        device.discovery_sources = add_source(
+            add_source(device.discovery_sources, device.discovery_source), CANVAS_SOURCE
+        )
 
     # A row a node draws is past the pending queue — the mirror of the
     # "approved but no longer drawn -> pending" revival the imports do. A hidden
