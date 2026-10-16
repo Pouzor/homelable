@@ -160,7 +160,7 @@ def test_web_ui_service_unescapes_the_template_query() -> None:
 
 
 def test_web_ui_service_drops_credentials() -> None:
-    service = svc._web_ui_service("http://admin:hunter2@10.1.1.231:8080/app?token=abc&lang=en&api_key=xyz")
+    service = svc._web_ui_service("http://admin:hunter2@10.1.1.231:8080/app?token=abc&lang=en&api_key=xyz")  # trufflehog:ignore
     assert service is not None
     assert service["host"] == "http://10.1.1.231:8080"
     assert service["path"] == "/app?lang=en"
