@@ -22,6 +22,7 @@ def _configure(mock_settings, *, checker: bool, services: bool = False) -> None:
     mock_settings.zigbee_sync_enabled = False
     mock_settings.zwave_sync_enabled = False
     mock_settings.unifi_sync_enabled = False
+    mock_settings.unraid_sync_enabled = False
 
 
 def _job_ids(mock_sched: MagicMock) -> list[str]:

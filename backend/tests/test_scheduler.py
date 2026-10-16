@@ -18,6 +18,7 @@ from app.core.scheduler import (
     reschedule_zwave_sync,
     set_proxmox_sync_enabled,
     set_service_checks_enabled,
+    set_unraid_sync_enabled,
     set_zigbee_sync_enabled,
     set_zwave_sync_enabled,
     start_scheduler,
@@ -332,6 +333,8 @@ def test_start_scheduler_adds_service_job_when_enabled():
         mock_settings.proxmox_sync_enabled = False
         mock_settings.zigbee_sync_enabled = False
         mock_settings.zwave_sync_enabled = False
+        mock_settings.unifi_sync_enabled = False
+        mock_settings.unraid_sync_enabled = False
         start_scheduler()
     job_ids = [kw.get("id") for _, kw in mock_sched.add_job.call_args_list]
     assert "status_checks" in job_ids
@@ -559,6 +562,8 @@ def test_start_scheduler_adds_mesh_jobs_when_enabled():
         mock_settings.zigbee_sync_interval = 3600
         mock_settings.zwave_sync_enabled = True
         mock_settings.zwave_sync_interval = 3600
+        mock_settings.unifi_sync_enabled = False
+        mock_settings.unraid_sync_enabled = False
         start_scheduler()
     job_ids = [kw.get("id") for _, kw in mock_sched.add_job.call_args_list]
     assert "zigbee_sync" in job_ids
@@ -612,3 +617,54 @@ def test_reschedule_proxmox_sync_noop_when_not_running():
     with patch("app.core.scheduler.scheduler", mock_sched):
         reschedule_proxmox_sync(600)
     mock_sched.reschedule_job.assert_not_called()
+
+
+def _unraid_sync_seconds(mock_sched: MagicMock) -> int:
+    for _, kwargs in mock_sched.add_job.call_args_list:
+        if kwargs.get("id") == "unraid_sync":
+            return kwargs["seconds"]
+    raise AssertionError("unraid_sync job was not added")
+
+
+def test_start_scheduler_floors_a_short_unraid_sync_interval():
+    """A sub-300s UNRAID_SYNC_INTERVAL from .env must not reach the scheduler."""
+    mock_sched = MagicMock()
+    with patch("app.core.scheduler.settings") as mock_settings, \
+         patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
+        mock_settings.status_checker_interval = 60
+        mock_settings.service_check_enabled = False
+        mock_settings.proxmox_sync_enabled = False
+        mock_settings.zigbee_sync_enabled = False
+        mock_settings.zwave_sync_enabled = False
+        mock_settings.unifi_sync_enabled = False
+        mock_settings.unraid_sync_enabled = True
+        mock_settings.unraid_sync_interval = 5
+        start_scheduler()
+        assert _unraid_sync_seconds(mock_sched) == 300
+
+
+def test_start_scheduler_keeps_a_valid_unraid_sync_interval():
+    mock_sched = MagicMock()
+    with patch("app.core.scheduler.settings") as mock_settings, \
+         patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
+        mock_settings.status_checker_interval = 60
+        mock_settings.service_check_enabled = False
+        mock_settings.proxmox_sync_enabled = False
+        mock_settings.zigbee_sync_enabled = False
+        mock_settings.zwave_sync_enabled = False
+        mock_settings.unifi_sync_enabled = False
+        mock_settings.unraid_sync_enabled = True
+        mock_settings.unraid_sync_interval = 1800
+        start_scheduler()
+        assert _unraid_sync_seconds(mock_sched) == 1800
+
+
+def test_set_unraid_sync_enabled_floors_a_short_interval():
+    mock_sched = MagicMock()
+    mock_sched.running = True
+    mock_sched.get_job.return_value = None
+    with patch("app.core.scheduler.scheduler", mock_sched), \
+         patch("app.core.scheduler.settings") as mock_settings:
+        mock_settings.unraid_sync_interval = 5
+        set_unraid_sync_enabled(True)
+    assert _unraid_sync_seconds(mock_sched) == 300

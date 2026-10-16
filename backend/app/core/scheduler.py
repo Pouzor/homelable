@@ -324,11 +324,16 @@ def _add_proxmox_sync_job() -> None:
     )
 
 
+def _unraid_sync_interval() -> int:
+    # .env and the settings file bypass the >= 300 check on write, so clamp here
+    return max(300, settings.unraid_sync_interval)
+
+
 def _add_unraid_sync_job() -> None:
     scheduler.add_job(
         _run_unraid_sync,
         "interval",
-        seconds=settings.unraid_sync_interval,
+        seconds=_unraid_sync_interval(),
         id="unraid_sync",
         max_instances=1,
         coalesce=True,
@@ -490,7 +495,7 @@ def set_unraid_sync_enabled(enabled: bool) -> None:
     job = scheduler.get_job("unraid_sync")
     if enabled and not job:
         _add_unraid_sync_job()
-        logger.info("Unraid auto-sync enabled - every %ds", settings.unraid_sync_interval)
+        logger.info("Unraid auto-sync enabled - every %ds", _unraid_sync_interval())
     elif not enabled and job:
         scheduler.remove_job("unraid_sync")
         logger.info("Unraid auto-sync disabled")
