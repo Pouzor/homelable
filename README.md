@@ -309,6 +309,18 @@ Each host is linked to its guests with a `virtual` edge. vCPU / RAM / disk are i
 
 ---
 
+## Session duration
+
+With local auth, a login lasts 24 hours. Change it in your `.env` (value in minutes), then restart the backend:
+
+```env
+ACCESS_TOKEN_EXPIRE_MINUTES=10080   # 1 week
+```
+
+The session is kept per tab: closing the tab or the browser always asks for a new login. To keep the canvas on a screen permanently, use [Live View](#live-view-read-only-public-canvas) instead — it needs no login at all. OIDC sessions use `OIDC_SESSION_EXPIRE_MINUTES` (max 1440).
+
+---
+
 ## Live View (read-only public canvas)
 
 Live View lets you share a read-only snapshot of your canvas with anyone on your network — no login required. It is disabled by default.
