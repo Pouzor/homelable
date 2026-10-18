@@ -594,6 +594,42 @@ describe('NodeModal', () => {
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).show_port_numbers).toBe(true)
   })
 
+  describe('port labels (#495)', () => {
+    it('shows one field per connection point only while port numbers are on', () => {
+      renderModal({ initial: { ...BASE, top_handles: 1, bottom_handles: 7 } })
+      expect(screen.queryByLabelText('Top port 1 label')).toBeNull()
+      fireEvent.click(screen.getByLabelText('Toggle port numbers'))
+      expect(screen.getByLabelText('Top port 1 label')).toBeDefined()
+      expect(screen.getByLabelText('Bottom port 7 label')).toBeDefined()
+      expect(screen.queryByLabelText('Bottom port 8 label')).toBeNull()
+      expect(screen.queryByLabelText('Left port 1 label')).toBeNull()
+    })
+
+    it('uses the port number as the placeholder and caps the length', () => {
+      renderModal({ initial: { ...BASE, bottom_handles: 3, show_port_numbers: true } })
+      const field = screen.getByLabelText('Bottom port 3 label') as HTMLInputElement
+      expect(field.placeholder).toBe('3')
+      expect(field.maxLength).toBe(8)
+    })
+
+    it('submits the typed labels, without the blank ones', () => {
+      const { onSubmit } = renderModal({ initial: { ...BASE, bottom_handles: 7, show_port_numbers: true } })
+      fireEvent.change(screen.getByLabelText('Top port 1 label'), { target: { value: '8' } })
+      fireEvent.change(screen.getByLabelText('Bottom port 1 label'), { target: { value: '  ' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+      expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).port_labels).toEqual({ top: '8' })
+    })
+
+    it('pre-fills existing labels and submits undefined once they are all cleared', () => {
+      const { onSubmit } = renderModal({ initial: { ...BASE, show_port_numbers: true, port_labels: { top: '8' } } })
+      const field = screen.getByLabelText('Top port 1 label') as HTMLInputElement
+      expect(field.value).toBe('8')
+      fireEvent.change(field, { target: { value: '' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+      expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).port_labels).toBeUndefined()
+    })
+  })
+
   // ── Zigbee nodes ──────────────────────────────────────────────────────
 
   const zigbeeTypes = ['zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice'] as const

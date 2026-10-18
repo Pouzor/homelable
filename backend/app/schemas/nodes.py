@@ -1,9 +1,9 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ValidationInfo, field_validator
+from pydantic import BaseModel, ValidationInfo, field_validator, model_validator
 
-from app.schemas.utils import clamp_handles
+from app.schemas.utils import SIDES, clamp_handles, normalize_port_labels, prune_port_labels
 
 
 class NodeBase(BaseModel):
@@ -33,6 +33,8 @@ class NodeBase(BaseModel):
     disk_gb: float | None = None
     show_hardware: bool = False
     show_port_numbers: bool = False
+    # Text shown in place of a connection point's number, keyed by handle ID.
+    port_labels: dict[str, str] | None = None
     properties: list[dict[str, Any]] = []
     width: float | None = None
     height: float | None = None
@@ -52,6 +54,18 @@ class NodeBase(BaseModel):
             return None
         side = (info.field_name or '').removesuffix('_handles')
         return clamp_handles(side, v)
+
+    @field_validator('port_labels', mode='before')
+    @classmethod
+    def clean_port_labels(cls, v: object) -> object:
+        return normalize_port_labels(v)
+
+    @model_validator(mode="after")
+    def drop_unreachable_port_labels(self) -> "NodeBase":
+        """A label for a connection point the counts no longer draw is dead weight."""
+        counts = {side: getattr(self, f"{side}_handles") for side in SIDES}
+        self.port_labels = prune_port_labels(self.port_labels, counts)
+        return self
 
 
 class NodeCreate(NodeBase):
@@ -91,6 +105,7 @@ class NodeUpdate(BaseModel):
     disk_gb: float | None = None
     show_hardware: bool | None = None
     show_port_numbers: bool | None = None
+    port_labels: dict[str, str] | None = None
     properties: list[dict[str, Any]] | None = None
     width: float | None = None
     height: float | None = None
@@ -110,6 +125,13 @@ class NodeUpdate(BaseModel):
             return None
         side = (info.field_name or '').removesuffix('_handles')
         return clamp_handles(side, v)
+
+    # Pruning against the counts needs the stored ones too, so a partial update
+    # leaves it to the route (`update_node`).
+    @field_validator('port_labels', mode='before')
+    @classmethod
+    def clean_port_labels(cls, v: object) -> object:
+        return normalize_port_labels(v)
 
 
 class NodeResponse(NodeBase):

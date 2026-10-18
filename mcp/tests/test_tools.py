@@ -707,6 +707,14 @@ def test_node_schemas_expose_the_handle_counts(tool_name):
     assert "show_port_numbers" in props
 
 
+def test_node_schemas_expose_port_labels():
+    # The device's own port numbering per connection point (#495).
+    for tool_name in ("create_node", "update_node"):
+        props = _tool_schema(tool_name)
+        assert props["port_labels"]["type"] == "object"
+        assert props["port_labels"]["additionalProperties"] == {"type": "string", "maxLength": 8}
+
+
 def test_edge_schemas_expose_the_connection_points():
     for tool_name in ("create_edge", "update_edge"):
         props = _tool_schema(tool_name)

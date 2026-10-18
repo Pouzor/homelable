@@ -216,4 +216,13 @@ describe('exportCanvasToYaml', () => {
     const off = (yaml.load(exportCanvasToYaml([makeNode({ label: 'Off', type: 'server', show_port_numbers: false })], [])) as Record<string, unknown>[])[0]
     expect(off).not.toHaveProperty('showPortNumbers')
   })
+
+  it('exports portLabels only when a point carries one (#495)', () => {
+    const labelled = (yaml.load(exportCanvasToYaml([makeNode({
+      label: 'Sw', type: 'switch', show_port_numbers: true, port_labels: { top: '8', 'bottom-9': 'gone' },
+    })], [])) as Record<string, unknown>[])[0]
+    expect(labelled.portLabels).toEqual({ top: '8' })
+    const plain = (yaml.load(exportCanvasToYaml([makeNode({ label: 'Plain', type: 'switch' })], [])) as Record<string, unknown>[])[0]
+    expect(plain).not.toHaveProperty('portLabels')
+  })
 })

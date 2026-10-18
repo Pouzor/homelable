@@ -12,7 +12,7 @@ import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
 import { IconPickerPanel } from './IconPickerPanel'
-import { MAX_HANDLES, MIN_HANDLES, clampHandles, sideDefault, handleCountField, type Side } from '@/utils/handleUtils'
+import { MAX_HANDLES, MAX_PORT_LABEL_LENGTH, MIN_HANDLES, SIDES, clampHandles, handleId, normalizePortLabels, sideDefault, handleCountField, type Side } from '@/utils/handleUtils'
 import { isValidParentNode } from '@/utils/virtualEdgeParent'
 import { NODE_TYPE_GROUPS, isFurnitureType } from '@/utils/nodeTypeGroups'
 
@@ -126,6 +126,46 @@ interface NodeModalProps {
   onEditTypeStyle?: (type: NodeType) => void
 }
 
+const SIDE_LABELS: Record<Side, string> = { top: 'Top', bottom: 'Bottom', left: 'Left', right: 'Right' }
+
+/**
+ * One short text field per connection point, grouped by side, for the label the
+ * card prints in place of the point's number — the device's own port numbering
+ * (#495). An empty field keeps the number, shown as its placeholder.
+ */
+function PortLabelFields({ counts, labels, onChange }: {
+  counts: Record<Side, number>
+  labels: Record<string, string> | undefined
+  onChange: (id: string, value: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      {SIDES.filter((side) => counts[side] > 0).map((side) => (
+        <div key={side} className="flex items-start gap-2">
+          <span className="w-11 shrink-0 pt-1.5 text-[10px] text-muted-foreground/80">{SIDE_LABELS[side]}</span>
+          <div className="flex flex-wrap gap-1">
+            {Array.from({ length: counts[side] }, (_, idx) => {
+              const id = handleId(side, idx)
+              return (
+                <input
+                  key={id}
+                  type="text"
+                  value={labels?.[id] ?? ''}
+                  placeholder={String(idx + 1)}
+                  maxLength={MAX_PORT_LABEL_LENGTH}
+                  aria-label={`${SIDE_LABELS[side]} port ${idx + 1} label`}
+                  onChange={(e) => onChange(id, e.target.value)}
+                  className="w-10 h-6 rounded border border-[#30363d] bg-[#0d1117] text-center text-xs font-mono text-foreground outline-none placeholder:text-muted-foreground/40 focus:border-[#ff6e00]"
+                />
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // NodeModal is always mounted with a key that changes on open/edit, so useState
 // initial value is enough - no need for a reset effect.
 export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node', parentCandidates = [], currentNodeId, onEditTypeStyle }: NodeModalProps) {
@@ -183,6 +223,8 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
         left_handles: sideValue('left'),
         right_handles: sideValue('right'),
       }),
+      // Blank fields fall back to the number, so they are not stored.
+      port_labels: normalizePortLabels(form.port_labels),
       parent_id: safeParentId,
       container_mode: canUseContainerMode ? !!form.container_mode : false,
     })
@@ -592,6 +634,13 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                     />
                   </button>
                 </div>
+                {form.show_port_numbers && (
+                  <PortLabelFields
+                    counts={{ top: sideValue('top'), bottom: sideValue('bottom'), left: sideValue('left'), right: sideValue('right') }}
+                    labels={form.port_labels}
+                    onChange={(id, value) => setForm((f) => ({ ...f, port_labels: { ...f.port_labels, [id]: value } }))}
+                  />
+                )}
               </div>
             )}
 

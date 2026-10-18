@@ -578,6 +578,9 @@ async def init_db() -> None:
             # A zone or a group describes no device, so it has no inventory row to
             # keep its text on. Furniture keeps it here instead — see `Node.description`.
             ("nodes.description", "ALTER TABLE nodes ADD COLUMN description TEXT"),
+            # The device's own port numbering, per connection point (#495). Added
+            # before `_drop_legacy_node_columns`, whose rebuild copies it across.
+            ("nodes.port_labels", "ALTER TABLE nodes ADD COLUMN port_labels JSON"),
         ):
             await _try_migrate(conn, sql, label=label)
         # 3.3.x — the inventory row owns the device's rack modelisation: the
@@ -659,6 +662,7 @@ _NODE_COLUMNS_SQL = (
     "custom_icon VARCHAR,"
     "description TEXT,"
     "show_port_numbers BOOLEAN,"
+    "port_labels JSON,"
     "width FLOAT,"
     "height FLOAT,"
     "bottom_handles INTEGER,"
@@ -671,8 +675,8 @@ _NODE_COLUMNS_SQL = (
 
 _NODE_KEPT = (
     "id, type, label, design_id, device_id, display_view, pos_x, pos_y, parent_id, container_mode, "
-    "custom_colors, custom_icon, description, show_port_numbers, width, height, bottom_handles, "
-    "top_handles, left_handles, right_handles, created_at, updated_at"
+    "custom_colors, custom_icon, description, show_port_numbers, port_labels, width, height, "
+    "bottom_handles, top_handles, left_handles, right_handles, created_at, updated_at"
 )
 
 

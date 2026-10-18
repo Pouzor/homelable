@@ -4,7 +4,14 @@ from pydantic import BaseModel, ValidationInfo, field_validator, model_validator
 
 from app.schemas.edges import EdgeResponse
 from app.schemas.nodes import NodeResponse
-from app.schemas.utils import clamp_handles, normalize_animated, normalize_marker
+from app.schemas.utils import (
+    SIDES,
+    clamp_handles,
+    normalize_animated,
+    normalize_marker,
+    normalize_port_labels,
+    prune_port_labels,
+)
 
 
 class NodeSave(BaseModel):
@@ -44,6 +51,7 @@ class NodeSave(BaseModel):
     disk_gb: float | None = None
     show_hardware: bool = False
     show_port_numbers: bool = False
+    port_labels: dict[str, str] | None = None
     properties: list[Any] = []
     width: float | None = None
     height: float | None = None
@@ -63,6 +71,18 @@ class NodeSave(BaseModel):
             return None
         side = (info.field_name or '').removesuffix('_handles')
         return clamp_handles(side, v)
+
+    @field_validator('port_labels', mode='before')
+    @classmethod
+    def clean_port_labels(cls, v: object) -> object:
+        return normalize_port_labels(v)
+
+    @model_validator(mode="after")
+    def drop_unreachable_port_labels(self) -> "NodeSave":
+        """Same pruning as `NodeBase`: no label outlives its connection point."""
+        counts = {side: getattr(self, f"{side}_handles") for side in SIDES}
+        self.port_labels = prune_port_labels(self.port_labels, counts)
+        return self
 
     @model_validator(mode="after")
     def drop_self_parent(self) -> "NodeSave":

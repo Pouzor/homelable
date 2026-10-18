@@ -70,6 +70,10 @@ class Node(Base):
     # node that does draw a device: its notes belong to the inventory row.
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     show_port_numbers: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Text printed in place of a connection point's 1..N number, keyed by source
+    # handle ID ('top', 'bottom-3'…), so a node can carry the device's own port
+    # numbering (#495). NULL when every point shows its number.
+    port_labels: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
     width: Mapped[float | None] = mapped_column(Float, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)
     bottom_handles: Mapped[int] = mapped_column(Integer, default=1)

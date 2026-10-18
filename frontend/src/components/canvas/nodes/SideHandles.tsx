@@ -25,7 +25,10 @@ interface SideHandlesProps {
   labelColor: string
   /** Which sides to render. Defaults to all four. */
   sides?: readonly Side[]
-  /** When true, render port-number labels if data.show_port_numbers is set. */
+  /**
+   * When true, render port-number labels if data.show_port_numbers is set: the
+   * point's data.port_labels entry, else its 1-based slot on the side.
+   */
   showLabels?: boolean
 }
 
@@ -60,7 +63,7 @@ export function SideHandles({
                   className="absolute font-mono leading-none pointer-events-none select-none"
                   style={{ ...labelStyle, fontSize: 7, color: labelColor }}
                 >
-                  {idx + 1}
+                  {data.port_labels?.[sourceId] ?? idx + 1}
                 </span>
               )}
               <Handle

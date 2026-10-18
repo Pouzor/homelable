@@ -691,3 +691,27 @@ describe('furniture descriptions', () => {
     expect(node.data.description).toBe('Three Proxmox boxes.')
   })
 })
+
+describe('port labels (#495)', () => {
+  it('serializes labels, dropping blanks and points the counts no longer draw', () => {
+    const node = makeRfNode({
+      data: {
+        label: 'sw', type: 'switch', status: 'online', services: [],
+        bottom_handles: 2,
+        port_labels: { top: '8', bottom: ' ', 'bottom-2': '2', 'bottom-5': '5' },
+      },
+    })
+    expect(serializeNode(node).port_labels).toEqual({ top: '8', 'bottom-2': '2' })
+  })
+
+  it('serializes null when the node carries no label', () => {
+    expect(serializeNode(makeRfNode()).port_labels).toBeNull()
+  })
+
+  it('deserializes labels and maps the API null to unset', () => {
+    const withLabels = deserializeApiNode(makeApiNode({ port_labels: { top: '8' } }), new Map())
+    expect(withLabels.data.port_labels).toEqual({ top: '8' })
+    const without = deserializeApiNode(makeApiNode({ port_labels: null }), new Map())
+    expect(without.data.port_labels).toBeUndefined()
+  })
+})

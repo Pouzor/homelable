@@ -12,6 +12,7 @@ from app.schemas.utils import (
     SIDES,
     handle_count_field,
     handle_id,
+    prune_port_labels,
     removed_handle_ids,
     side_default,
 )
@@ -221,6 +222,11 @@ async def update_node(
     await _remap_shrunk_handles(db, node, sent)
     for field, value in node_columns(sent).items():
         setattr(node, field, value)
+    # Only now are both the labels and the counts final: a shrink drops the
+    # labels of the points it removed, whichever of the two the update sent.
+    node.port_labels = prune_port_labels(
+        node.port_labels, {side: getattr(node, handle_count_field(side)) for side in SIDES}
+    )
     # The user edited the device, not just its drawing: push the facts down.
     # Only what was sent counts — an omitted field must not clear the row, and
     # lists are replaced only when the client actually sent them.

@@ -1,7 +1,7 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData, EdgeType } from '@/types'
 import type { YamlNode, YamlNodeConnection } from '@/types/yaml'
-import { SIDES, sideDefault, sideHandleCount } from '@/utils/handleUtils'
+import { SIDES, prunePortLabels, sideDefault, sideHandleCount } from '@/utils/handleUtils'
 import yaml from 'js-yaml'
 
 /** Build a map of node id → label for edge resolution */
@@ -94,6 +94,8 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
 
     // Preserve the port-number toggle so it survives a round-trip (issue #272).
     if (d.show_port_numbers) entry.showPortNumbers = true
+    const portLabels = prunePortLabels(d)
+    if (portLabels) entry.portLabels = portLabels
 
     // Parent relationship: if this node has a parentId in React Flow,
     // encode it as a 'parent' connection using any virtual edge between them.

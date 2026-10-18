@@ -265,6 +265,11 @@ export interface NodeData extends Record<string, unknown> {
   right_handles?: number
   /** Show a port number (1..N) next to each connection point. */
   show_port_numbers?: boolean
+  /**
+   * Text shown in place of a connection point's number, keyed by source handle
+   * ID ('top', 'bottom-3'…). A point without one keeps its 1..N number (#495).
+   */
+  port_labels?: Record<string, string>
   /** Text node content (type === 'text') */
   text_content?: string
 }
