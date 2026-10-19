@@ -1,7 +1,7 @@
 import { type NodeProps, type Node } from '@xyflow/react'
 import {
   Globe, Router, Network, Server, Layers, Box, Container,
-  HardDrive, Cpu, Wifi, Circle, Cctv, Printer, Monitor, MonitorCog, Laptop, Smartphone, PlugZap, Anchor, Package, Flame, Radio, Antenna, RadioTower, Share2,
+  HardDrive, Cpu, Wifi, Circle, Cctv, Printer, Monitor, MonitorCog, Laptop, Smartphone, PlugZap, Anchor, Package, Flame, Home, Radio, Antenna, RadioTower, Share2,
   Grid3x3, Battery, Fuel, Sun, Repeat2, Split, ToggleLeft, Lightbulb, Gauge, Combine, Cable, Zap,
 } from 'lucide-react'
 import { BaseNode } from './BaseNode'
@@ -29,6 +29,7 @@ export const MobileNode   = (props: N) => <BaseNode {...props} icon={Smartphone}
 export const CplNode      = (props: N) => <BaseNode {...props} icon={PlugZap} />
 export const DockerHostNode      = (props: N) => <BaseNode {...props} icon={Anchor} />
 export const DockerContainerNode = (props: N) => <BaseNode {...props} icon={Package} />
+export const HubNode      = (props: N) => <BaseNode {...props} icon={Home} />
 export const GenericNode  = (props: N) => <BaseNode {...props} icon={Circle} />
 // Zigbee node types
 export const ZigbeeCoordinatorNode = (props: N) => <BaseNode {...props} icon={Network} />

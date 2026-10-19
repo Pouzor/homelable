@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Save, LayoutDashboard, ChevronDown, Download, Palette, Undo2, Redo2, HelpCircle, FileDown, Upload, Eye } from 'lucide-react'
+import { Save, LayoutDashboard, ChevronDown, Download, Palette, Undo2, Redo2, HelpCircle, FileDown, Upload, Eye, Network } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/ui/Logo'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -13,6 +13,7 @@ const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 interface ToolbarProps {
   onSave: () => void
   onAutoLayout: (mode: AutoLayoutMode) => void
+  onAutoPlaceTopo: () => void
   onExport: () => void
   onChangeStyle: () => void
   onUndo: () => void
@@ -23,7 +24,7 @@ interface ToolbarProps {
   onViewOnly: () => void
 }
 
-export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo, onRedo, onShortcuts, onExportYaml, onImportYaml, onViewOnly }: ToolbarProps) {
+export function Toolbar({ onSave, onAutoLayout, onAutoPlaceTopo, onExport, onChangeStyle, onUndo, onRedo, onShortcuts, onExportYaml, onImportYaml, onViewOnly }: ToolbarProps) {
   const { hasUnsavedChanges: canvasDirty, past, future } = useCanvasStore()
   const isRack = useDesignStore((s) => s.activeDesignType) === 'rack'
   const rackDirty = useRackStore((s) => s.hasUnsavedChanges)
@@ -74,6 +75,9 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       {!isRack && (
       <>
       <AutoLayoutButton onAutoLayout={onAutoLayout} />
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onAutoPlaceTopo} title="Place unplaced devices using LLDP topology">
+        <Network size={14} /> Auto Place
+      </Button>
       <Button data-tour="style" size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onChangeStyle}>
         <Palette size={14} /> Style
       </Button>
