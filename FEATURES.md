@@ -73,6 +73,7 @@ Here's what Homelable can do. One line on what each feature is, then how to swit
 - The **canvas switcher** is at the top of the sidebar. Click to jump between canvases, or **New Canvas** to start a fresh one.
 - Hover a canvas to **Edit** it (name, icon, floor plan) or **Delete** it. You can't delete the last one.
 - Each canvas saves on its own, so hit **Save Canvas** after you change something.
+- **Drill down:** in a node's edit modal, **Opens Design** links it to another canvas, so a host drawn as one card on the network map leads to the canvas of what runs inside it. The node shows a button that opens it, and the canvas' top-left corner shows the way back (**Network › Inside the host › …**); click a crumb to go back up.
 
 ---
 

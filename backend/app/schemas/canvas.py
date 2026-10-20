@@ -8,6 +8,7 @@ from app.schemas.utils import (
     SIDES,
     clamp_handles,
     normalize_animated,
+    normalize_linked_design,
     normalize_marker,
     normalize_port_labels,
     prune_port_labels,
@@ -52,6 +53,7 @@ class NodeSave(BaseModel):
     show_hardware: bool = False
     show_port_numbers: bool = False
     port_labels: dict[str, str] | None = None
+    linked_design_id: str | None = None
     properties: list[Any] = []
     width: float | None = None
     height: float | None = None
@@ -76,6 +78,11 @@ class NodeSave(BaseModel):
     @classmethod
     def clean_port_labels(cls, v: object) -> object:
         return normalize_port_labels(v)
+
+    @field_validator('linked_design_id', mode='before')
+    @classmethod
+    def clean_linked_design(cls, v: object) -> object:
+        return normalize_linked_design(v)
 
     @model_validator(mode="after")
     def drop_unreachable_port_labels(self) -> "NodeSave":

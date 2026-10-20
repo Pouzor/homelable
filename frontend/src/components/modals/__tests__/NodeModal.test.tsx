@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { NodeModal } from '../NodeModal'
-import type { NodeData } from '@/types'
+import { useDesignStore } from '@/stores/designStore'
+import type { Design, NodeData } from '@/types'
 
 // ── Mock Shadcn Select with native <select> for testability ───────────────
 
@@ -643,6 +644,51 @@ describe('NodeModal', () => {
       fireEvent.change(field, { target: { value: '' } })
       fireEvent.click(screen.getByRole('button', { name: 'Add' }))
       expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).port_labels).toBeUndefined()
+    })
+  })
+
+  describe('opens design (drill-down)', () => {
+    const design = (id: string, name: string): Design =>
+      ({ id, name, design_type: 'network', created_at: '', updated_at: '' })
+
+    beforeEach(() => {
+      useDesignStore.setState({
+        designs: [design('net', 'Network'), design('host', 'Inside the host')],
+        activeDesignId: 'net',
+        activeDesignType: 'network',
+        trail: [],
+      })
+    })
+    afterEach(() => {
+      useDesignStore.setState({ designs: [], activeDesignId: null, activeDesignType: null, trail: [] })
+    })
+
+    const linkSelect = () => screen.getByRole('option', { name: 'Inside the host' }).closest('select') as HTMLSelectElement
+
+    it('offers every other design, never the one being edited', () => {
+      renderModal({ initial: BASE })
+      expect(screen.getByText('Opens Design')).toBeDefined()
+      expect(screen.queryByRole('option', { name: 'Network' })).toBeNull()
+    })
+
+    it('submits the chosen design', () => {
+      const { onSubmit } = renderModal({ initial: BASE })
+      fireEvent.change(linkSelect(), { target: { value: 'host' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+      expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).linked_design_id).toBe('host')
+    })
+
+    it('pre-selects the current link and submits undefined once set to None', () => {
+      const { onSubmit } = renderModal({ initial: { ...BASE, linked_design_id: 'host' } })
+      expect(linkSelect().value).toBe('host')
+      fireEvent.change(linkSelect(), { target: { value: 'none' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+      expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).linked_design_id).toBeUndefined()
+    })
+
+    it('is not offered on canvas furniture', () => {
+      renderModal({ initial: { ...BASE, type: 'groupRect' } })
+      expect(screen.queryByText('Opens Design')).toBeNull()
     })
   })
 

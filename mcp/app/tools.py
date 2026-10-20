@@ -54,6 +54,7 @@ _NODE_FIELDS = {
     "parent_id":     {"type": "string", "description": "ID of the parent node (e.g. Proxmox host for a VM/LXC). Pass null to detach."},
     "container_mode": {"type": "boolean", "description": "Render this node as a container/group that can hold children."},
     "custom_icon":   {"type": "string", "description": "Override icon for the node: a generic icon key (e.g. \"database\"), \"brand:<dashboard-icons slug>\" (e.g. \"brand:plex\"), or \"url:<http(s) image link>\"."},
+    "linked_design_id": {"type": "string", "description": "ID of another design this node opens when clicked through (drill-down), e.g. a host drawn as one card that leads to the canvas of what runs inside it. Never the node's own design. Pass null to remove the link."},
     "cpu_count":     {"type": "integer", "description": "Number of CPU cores/threads."},
     "cpu_model":     {"type": "string", "description": "CPU model name."},
     "ram_gb":        {"type": "number", "description": "RAM in gigabytes."},

@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -265,6 +265,9 @@ async def delete_design(
     nodes = (await db.execute(select(Node).where(Node.design_id == design_id))).scalars().all()
     # Foreign keys are off, so orphan the documents by hand before the rows go.
     await unlink_documents(db, node_ids=[n.id for n in nodes], design_ids=[design_id])
+    # Same for drill-down links: a node on another canvas that opened this one
+    # now opens nothing, instead of a button that leads to a missing design.
+    await db.execute(update(Node).where(Node.linked_design_id == design_id).values(linked_design_id=None))
     for n in nodes:
         await db.delete(n)
     await db.delete(design)
