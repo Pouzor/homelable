@@ -40,12 +40,20 @@ async def _remap_shrunk_handles(db: AsyncSession, node: Node, sent: dict[str, An
     The canvas store does the same remap client-side (canvasStore.updateNode), so
     the UI never hits this; an API client — the MCP write tools — lowers a handle
     count without it, and React Flow silently drops an edge whose handle no longer
-    exists. Removed handles fall back to the side's slot-0 ID, or to 'bottom' when
-    the side went to zero and has no slot 0 left.
+    exists. Removed handles fall back to the side's slot-0 ID, or to a surviving
+    side (preferring bottom) when the side went to zero. Reject an update that
+    would leave an attached edge with no connection point.
 
     Call before the new counts are written to the node.
     """
-    fallbacks: dict[str, str] = {}
+    counts: dict[str, int] = {}
+    for side in SIDES:
+        field = handle_count_field(side)
+        count = sent.get(field, getattr(node, field, None))
+        counts[side] = count if isinstance(count, int) else side_default(side)
+    fallback_side = next((side for side in ('bottom', 'top', 'left', 'right') if counts[side] > 0), None)
+
+    fallbacks: dict[str, str | None] = {}
     for side in SIDES:
         field = handle_count_field(side)
         new_count = sent.get(field)
@@ -55,15 +63,27 @@ async def _remap_shrunk_handles(db: AsyncSession, node: Node, sent: dict[str, An
         old_count = raw_old if isinstance(raw_old, int) else side_default(side)
         if new_count >= old_count:
             continue
-        fallback = 'bottom' if new_count == 0 else handle_id(side, 0)
+        fallback = fallback_side if new_count == 0 else handle_id(side, 0)
         for hid in removed_handle_ids(side, old_count, new_count):
             fallbacks[hid] = fallback
+            # API-created edges can retain the invisible target handle's suffix.
+            fallbacks[f"{hid}-t"] = f"{fallback}-t" if fallback is not None else None
 
     if not fallbacks:
         return
 
     result = await db.execute(select(Edge).where(or_(Edge.source == node.id, Edge.target == node.id)))
-    for edge in result.scalars().all():
+    edges = result.scalars().all()
+    if fallback_side is None and any(
+        (edge.source == node.id and edge.source_handle in fallbacks)
+        or (edge.target == node.id and edge.target_handle in fallbacks)
+        for edge in edges
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Cannot remove all connection points from a node with attached edges",
+        )
+    for edge in edges:
         if edge.source == node.id and edge.source_handle in fallbacks:
             edge.source_handle = fallbacks[edge.source_handle]
         if edge.target == node.id and edge.target_handle in fallbacks:
