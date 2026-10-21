@@ -1,3 +1,4 @@
+import pytest
 from httpx import AsyncClient
 
 
@@ -635,7 +636,177 @@ async def test_a_side_dropped_to_zero_falls_back_to_bottom(client: AsyncClient, 
     assert (await _edge_by_id(client, headers, edge_id))["source_handle"] == "bottom"
 
 
-async def test_the_target_end_is_remapped_too(client: AsyncClient, headers: dict):
+@pytest.mark.parametrize(("endpoint", "suffix"), [("source", ""), ("target", ""), ("target", "-t")])
+@pytest.mark.parametrize(
+    ("counts", "update", "handles", "expected"),
+    [
+        (
+            {"top_handles": 3, "bottom_handles": 0, "right_handles": 2},
+            {"top_handles": 0},
+            ["top", "top-3"],
+            "right",
+        ),
+        (
+            {"top_handles": 3, "bottom_handles": 2, "right_handles": 2},
+            {"top_handles": 0, "bottom_handles": 0},
+            ["top-3", "bottom-2"],
+            "right",
+        ),
+        (
+            {"top_handles": 3, "bottom_handles": 0},
+            {"top_handles": 0, "left_handles": 2},
+            ["top-3"],
+            "left",
+        ),
+        (
+            {"bottom_handles": 3},
+            {"bottom_handles": 0},
+            ["bottom", "bottom-3"],
+            "top",
+        ),
+    ],
+    ids=["right-only", "simultaneous-shrink", "new-side", "default-top"],
+)
+async def test_zeroed_sides_remap_to_a_surviving_side(
+    client: AsyncClient, headers: dict, endpoint: str, suffix: str,
+    counts: dict, update: dict, handles: list[str], expected: str
+):
+    # Regression for #445: bottom is not a fallback if the final counts don't
+    # draw it. All counts in the PATCH must be considered together.
+    node = await client.post(
+        "/api/v1/nodes", json={"type": "switch", "label": "sw1", **counts}, headers=headers
+    )
+    assert node.status_code == 201
+    node_id = node.json()["id"]
+    other = await client.post("/api/v1/nodes", json={"type": "nas", "label": "nas1"}, headers=headers)
+    other_id = other.json()["id"]
+    other_endpoint = "target" if endpoint == "source" else "source"
+    edge_ids = []
+    for handle in handles:
+        edge = await client.post(
+            "/api/v1/edges",
+            json={endpoint: node_id, other_endpoint: other_id, f"{endpoint}_handle": f"{handle}{suffix}",
+                  f"{other_endpoint}_handle": "top"},
+            headers=headers,
+        )
+        assert edge.status_code == 201
+        edge_ids.append(edge.json()["id"])
+
+    res = await client.patch(f"/api/v1/nodes/{node_id}", json=update, headers=headers)
+
+    assert res.status_code == 200
+    assert res.json()[f"{expected}_handles"] > 0
+    for edge_id in edge_ids:
+        edge = await _edge_by_id(client, headers, edge_id)
+        assert edge[f"{endpoint}_handle"] == f"{expected}{suffix}"
+        assert edge[f"{other_endpoint}_handle"] == "top"
+
+
+@pytest.mark.parametrize(("endpoint", "suffix"), [("source", ""), ("target", ""), ("target", "-t")])
+async def test_removing_all_handles_rejects_attached_edges_without_changes(
+    client: AsyncClient, headers: dict, endpoint: str, suffix: str
+):
+    node = await client.post(
+        "/api/v1/nodes",
+        json={"type": "switch", "label": "sw1", "top_handles": 3, "bottom_handles": 2,
+              "port_labels": {"top-3": "uplink"}},
+        headers=headers,
+    )
+    node_id = node.json()["id"]
+    other = await client.post("/api/v1/nodes", json={"type": "nas", "label": "nas1"}, headers=headers)
+    other_endpoint = "target" if endpoint == "source" else "source"
+    edges = []
+    for handle in ("top-3", "bottom-2"):
+        edge = await client.post(
+            "/api/v1/edges",
+            json={endpoint: node_id, other_endpoint: other.json()["id"], f"{endpoint}_handle": f"{handle}{suffix}",
+                  f"{other_endpoint}_handle": "top"},
+            headers=headers,
+        )
+        assert edge.status_code == 201
+        edges.append(edge.json())
+
+    res = await client.patch(
+        f"/api/v1/nodes/{node_id}",
+        json={"top_handles": 0, "bottom_handles": 0, "label": "renamed"},
+        headers=headers,
+    )
+
+    assert res.status_code == 422
+    assert "connection point" in res.json()["detail"]
+    assert (await client.get(f"/api/v1/nodes/{node_id}", headers=headers)).json() == node.json()
+    for edge in edges:
+        assert await _edge_by_id(client, headers, edge["id"]) == edge
+
+
+async def test_auto_assigned_target_remaps_to_a_surviving_side(client: AsyncClient, headers: dict):
+    source = await client.post(
+        "/api/v1/nodes", json={"type": "router", "label": "r1", "pos_y": 0}, headers=headers
+    )
+    target = await client.post(
+        "/api/v1/nodes",
+        json={"type": "switch", "label": "sw1", "pos_y": 300,
+              "top_handles": 3, "bottom_handles": 0, "right_handles": 2},
+        headers=headers,
+    )
+    edge = await client.post(
+        "/api/v1/edges", json={"source": source.json()["id"], "target": target.json()["id"]}, headers=headers
+    )
+    assert edge.status_code == 201
+    assert edge.json()["target_handle"] == "top-t"
+
+    res = await client.patch(
+        f"/api/v1/nodes/{target.json()['id']}", json={"top_handles": 0}, headers=headers
+    )
+
+    assert res.status_code == 200
+    updated_edge = await _edge_by_id(client, headers, edge.json()["id"])
+    assert updated_edge["target_handle"] == "right-t"
+    assert updated_edge["source_handle"] == edge.json()["source_handle"]
+
+
+async def test_removing_all_handles_rejects_auto_assigned_target_without_changes(client: AsyncClient, headers: dict):
+    source = await client.post(
+        "/api/v1/nodes", json={"type": "router", "label": "r1", "pos_y": 0}, headers=headers
+    )
+    target = await client.post(
+        "/api/v1/nodes",
+        json={"type": "switch", "label": "sw1", "pos_y": 300, "port_labels": {"top": "uplink"}},
+        headers=headers,
+    )
+    edge = await client.post(
+        "/api/v1/edges", json={"source": source.json()["id"], "target": target.json()["id"]}, headers=headers
+    )
+    assert edge.status_code == 201
+    assert edge.json()["target_handle"] == "top-t"
+
+    res = await client.patch(
+        f"/api/v1/nodes/{target.json()['id']}",
+        json={"top_handles": 0, "bottom_handles": 0, "label": "renamed"},
+        headers=headers,
+    )
+
+    assert res.status_code == 422
+    assert "connection point" in res.json()["detail"]
+    assert (await client.get(f"/api/v1/nodes/{target.json()['id']}", headers=headers)).json() == target.json()
+    assert await _edge_by_id(client, headers, edge.json()["id"]) == edge.json()
+
+
+async def test_removing_all_handles_without_attached_edges_is_allowed(client: AsyncClient, headers: dict):
+    node = await client.post("/api/v1/nodes", json={"type": "switch", "label": "sw1"}, headers=headers)
+    node_id = node.json()["id"]
+
+    res = await client.patch(
+        f"/api/v1/nodes/{node_id}", json={"top_handles": 0, "bottom_handles": 0}, headers=headers
+    )
+
+    assert res.status_code == 200
+    assert res.json()["top_handles"] == 0
+    assert res.json()["bottom_handles"] == 0
+
+
+@pytest.mark.parametrize("suffix", ["", "-t"])
+async def test_the_target_end_is_remapped_too(client: AsyncClient, headers: dict, suffix: str):
     src = (await client.post("/api/v1/nodes", json={"type": "router", "label": "r1"}, headers=headers)).json()["id"]
     tgt = (
         await client.post(
@@ -645,7 +816,7 @@ async def test_the_target_end_is_remapped_too(client: AsyncClient, headers: dict
     edge_id = (
         await client.post(
             "/api/v1/edges",
-            json={"source": src, "target": tgt, "source_handle": "bottom", "target_handle": "top-3"},
+            json={"source": src, "target": tgt, "source_handle": "bottom", "target_handle": f"top-3{suffix}"},
             headers=headers,
         )
     ).json()["id"]
@@ -653,7 +824,7 @@ async def test_the_target_end_is_remapped_too(client: AsyncClient, headers: dict
     await client.patch(f"/api/v1/nodes/{tgt}", json={"top_handles": 1}, headers=headers)
 
     edge = await _edge_by_id(client, headers, edge_id)
-    assert edge["target_handle"] == "top"
+    assert edge["target_handle"] == f"top{suffix}"
     assert edge["source_handle"] == "bottom"
 
 
