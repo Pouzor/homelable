@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react'
 import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, Square, Settings, LogOut, Download, Type, PlusCircle, Pencil, Trash2, Rows3, BookOpen, Loader2 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -18,6 +18,8 @@ import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
 import { useScanRunning } from '@/hooks/useScanRunning'
 
+const ObservatoryModal = lazy(() => import('@/components/observatory/ObservatoryModal').then((m) => ({ default: m.ObservatoryModal })))
+
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 interface SidebarProps {
@@ -34,6 +36,7 @@ interface SidebarProps {
 
 export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenImports, onSave, onOpenSettings, onOpenHistory, onOpenInventory }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [observatoryOpen, setObservatoryOpen] = useState(false)
   const logout = useAuthStore((s) => s.logout)
   const { designs, activeDesignId, activeDesignType, setActiveDesign, addDesign, updateDesign, removeDesign } = useDesignStore()
   const view = useUiStore((s) => s.view)
@@ -322,6 +325,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
           badge={hasUnsavedChanges}
           accent
         />
+        {!STANDALONE && <SidebarItem icon={LayoutDashboard} label="Observatory" collapsed={collapsed} onClick={() => setObservatoryOpen(true)} />}
         <SidebarItem
           icon={Settings}
           label="Settings"
@@ -339,6 +343,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
       </div>
 
       {!collapsed && <VersionBadge />}
+
+      {observatoryOpen && <Suspense fallback={null}><ObservatoryModal open onClose={() => setObservatoryOpen(false)} /></Suspense>}
 
       <DesignModal
         key={`${designModal?.mode === 'edit' ? designModal.design?.id : 'create'}-${openSeq}`}
