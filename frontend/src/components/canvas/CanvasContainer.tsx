@@ -27,6 +27,7 @@ import { FloorMapLayer } from './FloorMapLayer'
 import { useAlignmentGuides } from '@/hooks/useAlignmentGuides'
 import { setViewportCenterProjector } from '@/utils/viewportCenter'
 import { isTypingTarget } from '@/utils/keyboard'
+import { readHoverHighlightSettings, subscribeHoverHighlightSettings } from '@/utils/hoverHighlightSettings'
 import type { NodeData, EdgeData } from '@/types'
 
 interface CanvasContainerProps {
@@ -43,6 +44,8 @@ interface CanvasContainerProps {
 export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDoubleClick, onNodeDragStart, onRequestAddToGroup, onRequestAddToContainer, onRequestAddToZone, onOpenInventory }: CanvasContainerProps) {
   const [lassoMode, setLassoMode] = useState(true)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const [hoverHighlight, setHoverHighlight] = useState(readHoverHighlightSettings)
+  useEffect(() => subscribeHoverHighlightSettings(setHoverHighlight), [])
   const {
     nodes, edges,
     onNodesChange, onEdgesChange,
@@ -125,7 +128,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
 
   // Hover highlight: dim nodes and edges not connected to the hovered node.
   const hoveredConnected = useMemo(() => {
-    if (!hoveredNodeId) return null
+    if (!hoverHighlight.enabled || !hoveredNodeId) return null
     const nodeIds = new Set<string>([hoveredNodeId])
     const edgeIds = new Set<string>()
     for (const e of visibleEdges) {
@@ -135,8 +138,25 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         nodeIds.add(e.target)
       }
     }
+    // A lit device container (Proxmox host, Docker host…) keeps what it holds
+    // lit, all the way down. Zones and groups don't: lighting one linked to the
+    // hovered node would light every member inside it.
+    const children = new Map<string, string[]>()
+    const furniture = new Set<string>()
+    for (const n of visibleNodes) {
+      if (n.data.type === 'groupRect' || n.data.type === 'group') furniture.add(n.id)
+      if (n.parentId) children.set(n.parentId, [...(children.get(n.parentId) ?? []), n.id])
+    }
+    const queue = [...nodeIds].filter((id) => !furniture.has(id))
+    while (queue.length > 0) {
+      for (const child of children.get(queue.pop()!) ?? []) {
+        if (nodeIds.has(child)) continue
+        nodeIds.add(child)
+        if (!furniture.has(child)) queue.push(child)
+      }
+    }
     return { nodeIds, edgeIds }
-  }, [hoveredNodeId, visibleEdges])
+  }, [hoverHighlight.enabled, hoveredNodeId, visibleEdges, visibleNodes])
 
   const displayNodes = useMemo(
     () => hoveredConnected
@@ -194,8 +214,12 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     []
   )
 
+  // Canvas furniture (zones, groups, text) carries no links of its own: hovering
+  // one would dim the whole canvas, and a zone background sits under the cursor
+  // most of the time, so it clears the highlight instead.
   const handleNodeMouseEnter = useCallback((_: React.MouseEvent, node: Node<NodeData>) => {
-    setHoveredNodeId(node.id)
+    const furniture = node.data.type === 'groupRect' || node.data.type === 'group' || node.data.type === 'text'
+    setHoveredNodeId(furniture ? null : node.id)
   }, [])
 
   const handleNodeMouseLeave = useCallback(() => {

@@ -116,6 +116,16 @@ describe('SettingsModal', () => {
     expect(localStorage.getItem('homelable.hideIp')).toBe('true')
   })
 
+  it('shows the hover highlight on by default and persists turning it off', async () => {
+    localStorage.removeItem('homelable.hoverHighlight')
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const checkbox = screen.getByLabelText('Toggle hover highlight') as HTMLInputElement
+    expect(checkbox.checked).toBe(true)
+    fireEvent.click(checkbox)
+    expect(checkbox.checked).toBe(false)
+    expect(JSON.parse(localStorage.getItem('homelable.hoverHighlight')!)).toEqual({ enabled: false })
+  })
+
   it('loads and toggles the per-service check setting, saving its interval', async () => {
     vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: true, service_check_interval: 600 } } as never)
     render(<SettingsModal open onClose={vi.fn()} />)

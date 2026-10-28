@@ -4,7 +4,8 @@ import { CanvasContainer } from '../CanvasContainer'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useThemeStore } from '@/stores/themeStore'
 import type { Node, Edge } from '@xyflow/react'
-import type { NodeData, EdgeData } from '@/types'
+import type { NodeData, EdgeData, NodeType } from '@/types'
+import { writeHoverHighlightSettings } from '@/utils/hoverHighlightSettings'
 
 // Capture props passed to ReactFlow so we can test the callbacks
 let rfProps: Record<string, unknown> = {}
@@ -509,5 +510,142 @@ describe('CanvasContainer', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // ── Hover highlight ───────────────────────────────────────────────────────
+
+  describe('hover highlight', () => {
+    beforeEach(() => {
+      localStorage.removeItem('homelable.hoverHighlight')
+    })
+
+    // n1 — n2 — n3, plus n4 on its own.
+    function setupChain() {
+      useCanvasStore.setState({
+        nodes: [makeNode('n1'), makeNode('n2'), makeNode('n3'), makeNode('n4')],
+        edges: [
+          { id: 'e12', source: 'n1', target: 'n2', type: 'ethernet', data: { type: 'ethernet' } },
+          { id: 'e23', source: 'n2', target: 'n3', type: 'ethernet', data: { type: 'ethernet' } },
+        ],
+      })
+      render(<CanvasContainer />)
+    }
+
+    const hover = (node: Node<NodeData>) => act(() => {
+      ;(rfProps.onNodeMouseEnter as (...args: unknown[]) => unknown)({}, node)
+    })
+    const opacities = (items: unknown) =>
+      Object.fromEntries((items as (Node | Edge)[]).map((i) => [i.id, i.style?.opacity]))
+
+    it('applies no opacity until a node is hovered', () => {
+      setupChain()
+      expect(opacities(rfProps.nodes)).toEqual({ n1: undefined, n2: undefined, n3: undefined, n4: undefined })
+      expect(opacities(rfProps.edges)).toEqual({ e12: undefined, e23: undefined })
+    })
+
+    it('keeps the hovered node, its neighbours and incident edges opaque and dims the rest', () => {
+      setupChain()
+      hover(makeNode('n1'))
+      expect(opacities(rfProps.nodes)).toEqual({ n1: 1, n2: 1, n3: 0.12, n4: 0.12 })
+      expect(opacities(rfProps.edges)).toEqual({ e12: 1, e23: 0.08 })
+    })
+
+    it('follows edges in both directions', () => {
+      setupChain()
+      hover(makeNode('n2'))
+      expect(opacities(rfProps.nodes)).toEqual({ n1: 1, n2: 1, n3: 1, n4: 0.12 })
+      expect(opacities(rfProps.edges)).toEqual({ e12: 1, e23: 1 })
+    })
+
+    it('restores everything when the pointer leaves the node', () => {
+      setupChain()
+      hover(makeNode('n1'))
+      act(() => {
+        ;(rfProps.onNodeMouseLeave as (...args: unknown[]) => unknown)({}, makeNode('n1'))
+      })
+      expect(opacities(rfProps.nodes)).toEqual({ n1: undefined, n2: undefined, n3: undefined, n4: undefined })
+      expect(opacities(rfProps.edges)).toEqual({ e12: undefined, e23: undefined })
+    })
+
+    it('never writes the hover opacity into the store', () => {
+      setupChain()
+      hover(makeNode('n1'))
+      expect(useCanvasStore.getState().nodes.every((n) => n.style?.opacity === undefined)).toBe(true)
+      expect(useCanvasStore.getState().edges.every((e) => e.style?.opacity === undefined)).toBe(true)
+    })
+
+    it.each(['groupRect', 'group', 'text'] as const)('does not dim the canvas when a %s is hovered', (type) => {
+      setupChain()
+      hover({ ...makeNode('furniture'), type, data: { ...makeNode('furniture').data, type } })
+      expect(opacities(rfProps.nodes)).toEqual({ n1: undefined, n2: undefined, n3: undefined, n4: undefined })
+    })
+
+    function child(id: string, parentId: string, type: NodeType = 'docker_container'): Node<NodeData> {
+      return { ...makeNode(id), type, parentId, data: { ...makeNode(id).data, type } }
+    }
+
+    it('keeps the children of a lit container lit, all the way down', () => {
+      useCanvasStore.setState({
+        nodes: [
+          makeNode('sw'),
+          { ...makeNode('pve'), type: 'proxmox', data: { ...makeNode('pve').data, type: 'proxmox' } },
+          child('docker', 'pve', 'docker_host'),
+          child('grafana', 'docker'),
+          makeNode('other'),
+        ],
+        edges: [{ id: 'e1', source: 'sw', target: 'pve', type: 'ethernet', data: { type: 'ethernet' } }],
+      })
+      render(<CanvasContainer />)
+      hover(makeNode('sw'))
+      expect(opacities(rfProps.nodes)).toEqual({ sw: 1, pve: 1, docker: 1, grafana: 1, other: 0.12 })
+    })
+
+    it('keeps the children of the hovered container itself lit', () => {
+      useCanvasStore.setState({
+        nodes: [makeNode('host'), child('c1', 'host'), child('c2', 'host'), makeNode('other')],
+        edges: [],
+      })
+      render(<CanvasContainer />)
+      hover(makeNode('host'))
+      expect(opacities(rfProps.nodes)).toEqual({ host: 1, c1: 1, c2: 1, other: 0.12 })
+    })
+
+    it('does not light the members of a zone linked to the hovered node', () => {
+      useCanvasStore.setState({
+        nodes: [
+          makeNode('sw'),
+          { ...makeNode('zone'), type: 'groupRect', data: { ...makeNode('zone').data, type: 'groupRect' } },
+          child('member', 'zone', 'server'),
+        ],
+        edges: [{ id: 'e1', source: 'sw', target: 'zone', type: 'ethernet', data: { type: 'ethernet' } }],
+      })
+      render(<CanvasContainer />)
+      hover(makeNode('sw'))
+      expect(opacities(rfProps.nodes)).toEqual({ sw: 1, zone: 1, member: 0.12 })
+    })
+
+    it('does nothing when the setting is off', () => {
+      writeHoverHighlightSettings({ enabled: false })
+      setupChain()
+      hover(makeNode('n1'))
+      expect(opacities(rfProps.nodes)).toEqual({ n1: undefined, n2: undefined, n3: undefined, n4: undefined })
+      expect(opacities(rfProps.edges)).toEqual({ e12: undefined, e23: undefined })
+    })
+
+    it('follows the setting live, without a remount', () => {
+      setupChain()
+      hover(makeNode('n1'))
+      act(() => writeHoverHighlightSettings({ enabled: false }))
+      expect(opacities(rfProps.edges)).toEqual({ e12: undefined, e23: undefined })
+      act(() => writeHoverHighlightSettings({ enabled: true }))
+      expect(opacities(rfProps.edges)).toEqual({ e12: 1, e23: 0.08 })
+    })
+
+    it('clears an active highlight when the pointer moves onto a zone', () => {
+      setupChain()
+      hover(makeNode('n1'))
+      hover({ ...makeNode('zone'), type: 'groupRect', data: { ...makeNode('zone').data, type: 'groupRect' } })
+      expect(opacities(rfProps.edges)).toEqual({ e12: undefined, e23: undefined })
+    })
   })
 })

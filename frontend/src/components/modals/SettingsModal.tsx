@@ -28,6 +28,12 @@ import {
   writeAutosaveSettings,
   subscribeAutosaveSettings,
 } from '@/utils/autosaveSettings'
+import {
+  type HoverHighlightSettings,
+  readHoverHighlightSettings,
+  writeHoverHighlightSettings,
+  subscribeHoverHighlightSettings,
+} from '@/utils/hoverHighlightSettings'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -162,6 +168,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [unSyncing, setUnSyncing] = useState(false)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
+  const [hoverHighlight, setHoverHighlight] = useState<HoverHighlightSettings>(readHoverHighlightSettings)
   const anyUnifiSource = unModes.infrastructure || unModes.known_clients || unModes.active_clients
   // Saving with every source unticked 422s on the backend, aborting the save
   // after the other configs already persisted — refuse it up front instead.
@@ -213,11 +220,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   useEffect(() => subscribeAlignmentSettings(setAlignment), [])
   useEffect(() => subscribeAutosaveSettings(setAutosave), [])
+  useEffect(() => subscribeHoverHighlightSettings(setHoverHighlight), [])
 
   const updateAlignment = (patch: Partial<AlignmentSettings>) => {
     const next = { ...alignment, ...patch }
     setAlignment(next)
     writeAlignmentSettings(next)
+  }
+
+  const updateHoverHighlight = (patch: Partial<HoverHighlightSettings>) => {
+    const next = { ...hoverHighlight, ...patch }
+    setHoverHighlight(next)
+    writeHoverHighlightSettings(next)
   }
 
   const updateAutosave = (patch: Partial<AutosaveSettings>) => {
@@ -428,6 +442,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 onChange={(e) => setHideIp(e.target.checked)}
                 className="cursor-pointer accent-[#00d4ff]"
                 aria-label="Toggle IP address masking"
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-2 cursor-pointer">
+              <span className="text-xs text-foreground">Highlight links on hover</span>
+              <input
+                type="checkbox"
+                checked={hoverHighlight.enabled}
+                onChange={(e) => updateHoverHighlight({ enabled: e.target.checked })}
+                className="cursor-pointer accent-[#00d4ff]"
+                aria-label="Toggle hover highlight"
               />
             </label>
 

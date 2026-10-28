@@ -290,7 +290,7 @@ function EndpointDot({ edgeId, role, x, y, position, color, source, target, sour
 
 // ── Main edge component ──────────────────────────────────────────────────────
 
-export function HomelableEdge({ id, source, target, sourceHandleId, targetHandleId, sourceX: rawSourceX, sourceY: rawSourceY, targetX: rawTargetX, targetY: rawTargetY, sourcePosition, targetPosition, data, selected }: EdgeProps<Edge<EdgeData>>) {
+export function HomelableEdge({ id, source, target, sourceHandleId, targetHandleId, sourceX: rawSourceX, sourceY: rawSourceY, targetX: rawTargetX, targetY: rawTargetY, sourcePosition, targetPosition, data, selected, style: rfStyle }: EdgeProps<Edge<EdgeData>>) {
   const [drag, setDrag] = useState<{ role: 'source' | 'target'; x: number; y: number } | null>(null)
 
   const sourceX = drag?.role === 'source' ? drag.x : rawSourceX
@@ -428,74 +428,81 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
     )
   }
 
+  // Opacity set on `edge.style` by the canvas (hover highlight). The stroke
+  // style above is built from the edge type, so the prop is otherwise unused;
+  // it fades the whole edge — line, markers, animation and labels — as one.
+  const fade: React.CSSProperties = { opacity: rfStyle?.opacity, transition: rfStyle?.transition }
+
   return (
     <>
-      {hasMarkers && (
-        <defs>
-          {startShape !== 'none' && arrowMarker(startMarkerId, startShape, 'auto-start-reverse')}
-          {endShape !== 'none' && arrowMarker(endMarkerId, endShape, 'auto')}
-        </defs>
-      )}
+      <g style={fade}>
+        {hasMarkers && (
+          <defs>
+            {startShape !== 'none' && arrowMarker(startMarkerId, startShape, 'auto-start-reverse')}
+            {endShape !== 'none' && arrowMarker(endMarkerId, endShape, 'auto')}
+          </defs>
+        )}
 
-      <BaseEdge
-        id={id}
-        path={edgePath}
-        style={animMode === 'basic' ? { ...style, stroke: 'transparent' } : style}
-        interactionWidth={16}
-        markerStart={startShape !== 'none' ? `url(#${startMarkerId})` : undefined}
-        markerEnd={endShape !== 'none' ? `url(#${endMarkerId})` : undefined}
-      />
+        <BaseEdge
+          id={id}
+          path={edgePath}
+          style={animMode === 'basic' ? { ...style, stroke: 'transparent' } : style}
+          interactionWidth={16}
+          markerStart={startShape !== 'none' ? `url(#${startMarkerId})` : undefined}
+          markerEnd={endShape !== 'none' ? `url(#${endMarkerId})` : undefined}
+        />
 
-      {animMode === 'basic' && (
-        <path
-          d={edgePath}
-          fill="none"
-          stroke={strokeColor}
-          strokeWidth={style.strokeWidth as number ?? 2}
-          strokeDasharray="5"
-          style={{
-            pointerEvents: 'none',
-            // Direction comes from the keyframes alone (see index.css), never
-            // from the endpoints' screen positions: an edge drawn bottom-to-top
-            // marches the same way as one drawn top-to-bottom, like the snake
-            // and flow modes.
-            animation: `homelable-basic-dash ${animDuration('basic', animSpeed)} linear infinite`,
-          }}
-        />
-      )}
+        {animMode === 'basic' && (
+          <path
+            d={edgePath}
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth={style.strokeWidth as number ?? 2}
+            strokeDasharray="5"
+            style={{
+              pointerEvents: 'none',
+              // Direction comes from the keyframes alone (see index.css), never
+              // from the endpoints' screen positions: an edge drawn bottom-to-top
+              // marches the same way as one drawn top-to-bottom, like the snake
+              // and flow modes.
+              animation: `homelable-basic-dash ${animDuration('basic', animSpeed)} linear infinite`,
+            }}
+          />
+        )}
 
-      {animMode === 'snake' && (
-        <path
-          d={edgePath}
-          fill="none"
-          stroke={animColor}
-          strokeWidth={((style.strokeWidth as number ?? 2) + 1.5) * 2}
-          strokeDasharray="20 10000"
-          strokeLinecap="round"
-          style={{
-            pointerEvents: 'none',
-            // CSS (not SMIL) so it pauses when the tab is hidden — see index.css.
-            // Bidirectional yo-yos via `alternate` (10s each way at 1× = 20s round
-            // trip, matching the old SMIL keyTimes); unidirectional loops in one direction.
-            animation: `homelable-snake ${animDuration('snake', animSpeed)} linear infinite${isBidirectional ? ' alternate' : ''}`,
-          }}
-        />
-      )}
-      {animMode === 'flow' && (
-        <path
-          d={edgePath}
-          fill="none"
-          stroke={animColor}
-          strokeWidth={Math.max(3, (style.strokeWidth as number ?? 2) * 1.8)}
-          strokeDasharray="6 12"
-          strokeLinecap="round"
-          strokeOpacity={0.85}
-          style={{
-            pointerEvents: 'none',
-            animation: `homelable-flow ${animDuration('flow', animSpeed)} linear infinite`,
-          }}
-        />
-      )}
+        {animMode === 'snake' && (
+          <path
+            d={edgePath}
+            fill="none"
+            stroke={animColor}
+            strokeWidth={((style.strokeWidth as number ?? 2) + 1.5) * 2}
+            strokeDasharray="20 10000"
+            strokeLinecap="round"
+            style={{
+              pointerEvents: 'none',
+              // CSS (not SMIL) so it pauses when the tab is hidden — see index.css.
+              // Bidirectional yo-yos via `alternate` (10s each way at 1× = 20s round
+              // trip, matching the old SMIL keyTimes); unidirectional loops in one direction.
+              animation: `homelable-snake ${animDuration('snake', animSpeed)} linear infinite${isBidirectional ? ' alternate' : ''}`,
+            }}
+          />
+        )}
+        {animMode === 'flow' && (
+          <path
+            d={edgePath}
+            fill="none"
+            stroke={animColor}
+            strokeWidth={Math.max(3, (style.strokeWidth as number ?? 2) * 1.8)}
+            strokeDasharray="6 12"
+            strokeLinecap="round"
+            strokeOpacity={0.85}
+            style={{
+              pointerEvents: 'none',
+              animation: `homelable-flow ${animDuration('flow', animSpeed)} linear infinite`,
+            }}
+          />
+        )}
+      </g>
 
       <EdgeLabelRenderer>
         {showLqi && (
@@ -507,6 +514,7 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
               background: theme.colors.edgeLabelBackground,
               color:      theme.colors.edgeLabelColor,
               border:     `1px solid ${theme.colors.edgeLabelBorder}`,
+              ...fade,
             }}
           >
             LQI {data!.lqi}
@@ -521,6 +529,7 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
               background: theme.colors.edgeLabelBackground,
               color:      theme.colors.edgeLabelColor,
               border:     `1px solid ${theme.colors.edgeLabelBorder}`,
+              ...fade,
             }}
           >
             {data.label as string}
