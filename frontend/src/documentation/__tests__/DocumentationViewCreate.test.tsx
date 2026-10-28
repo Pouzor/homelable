@@ -106,5 +106,22 @@ describe('DocumentationView — create inside a folder', () => {
     )
     await waitFor(() => expect(useDocsStore.getState().expanded).toContain('folder-1'))
     expect(api.get).not.toHaveBeenCalled()
+    expect(useDocsStore.getState().openDoc).toBeNull()
+  })
+
+  it('leaves the page being edited open, so its draft cannot be saved onto the new folder', async () => {
+    api.create.mockResolvedValue({ data: created({ id: 'folder-2', kind: 'folder', title: 'Storage' }) } as never)
+    vi.spyOn(window, 'prompt').mockReturnValue('Storage')
+    renderView()
+    const page = created({ id: 'page-1', title: 'Backups', parent_id: null, body: 'Old body' })
+    useDocsStore.setState({ openDoc: page, draft: 'Unsaved edit' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'New in Runbooks' }))
+    fireEvent.click(screen.getByText('Folder'))
+
+    await waitFor(() => expect(api.create).toHaveBeenCalled())
+    await waitFor(() => expect(useDocsStore.getState().docs.map((d) => d.id)).toContain('folder-2'))
+    expect(useDocsStore.getState().openDoc?.id).toBe('page-1')
+    expect(useDocsStore.getState().draft).toBe('Unsaved edit')
   })
 })

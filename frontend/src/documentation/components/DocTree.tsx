@@ -180,7 +180,8 @@ export function DocTreeItem({
         </button>
         {folderId && (
           // Shown on hover or keyboard focus; always on a touch screen, which has no hover.
-          <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100">
+          // Inset past the status dot, so the folder's state stays readable under it.
+          <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100">
             <NewDocMenu
               placement="down"
               parentId={folderId}
