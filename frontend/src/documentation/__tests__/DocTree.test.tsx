@@ -7,8 +7,8 @@
  * it is invisible to a test, but the `title` that goes with it is not, and it is
  * what makes a genuinely over-long name readable at all.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DocTreeGroups, DocTreeItem, type TreeDnd } from '../components/DocTree'
 import type { TreeGroup, TreeLeaf } from '../types'
@@ -161,5 +161,81 @@ describe('DocTree drag to file', () => {
     renderItem(page(), dnd)
     fireEvent.drop(screen.getByRole('button'), { dataTransfer: transfer() })
     expect(dnd.onDrop).not.toHaveBeenCalled()
+  })
+})
+
+describe('DocTree create in a folder (#574)', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  function renderFolder(leafValue: TreeLeaf, onCreateIn = vi.fn(), dnd?: TreeDnd, expanded: string[] = []) {
+    const onToggle = vi.fn()
+    render(
+      <DocTreeItem
+        leaf={leafValue}
+        depth={1}
+        activeId={null}
+        expanded={expanded}
+        starred={new Set()}
+        onSelect={vi.fn()}
+        onToggle={onToggle}
+        dnd={dnd}
+        onCreateIn={onCreateIn}
+      />,
+    )
+    return { onCreateIn, onToggle }
+  }
+
+  it('gives a folder a + and a page none', () => {
+    renderFolder(folder())
+    expect(screen.getByRole('button', { name: 'New in Runbooks' })).toBeInTheDocument()
+    cleanup()
+    renderFolder(page())
+    expect(screen.queryByRole('button', { name: /^New in/ })).not.toBeInTheDocument()
+  })
+
+  it('draws no + when the tree has no creation wired up', () => {
+    renderItem(folder())
+    expect(screen.queryByRole('button', { name: 'New in Runbooks' })).not.toBeInTheDocument()
+  })
+
+  it('files a page from a template inside the folder, without toggling it', () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('Reboot the NAS')
+    const { onCreateIn, onToggle } = renderFolder(folder())
+
+    fireEvent.click(screen.getByRole('button', { name: 'New in Runbooks' }))
+    fireEvent.click(screen.getByText('Runbook'))
+
+    expect(onCreateIn).toHaveBeenCalledWith({
+      title: 'Reboot the NAS',
+      templateId: 'runbook',
+      parentId: 'folder-1',
+    })
+    expect(onToggle).not.toHaveBeenCalled()
+  })
+
+  it('files a folder inside the folder', () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('  Storage  ')
+    const { onCreateIn } = renderFolder(folder())
+
+    fireEvent.click(screen.getByRole('button', { name: 'New in Runbooks' }))
+    fireEvent.click(screen.getByText('Folder'))
+
+    expect(onCreateIn).toHaveBeenCalledWith({ title: 'Storage', parentId: 'folder-1', kind: 'folder' })
+  })
+
+  it('targets the nested folder its + belongs to', () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('Disks')
+    const child = folder({ id: 'folder-2', docId: 'folder-2', label: 'Storage' })
+    const { onCreateIn } = renderFolder(folder({ children: [child] }), vi.fn(), undefined, ['folder-1'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'New in Storage' }))
+    fireEvent.click(screen.getByText('Folder'))
+
+    expect(onCreateIn).toHaveBeenCalledWith({ title: 'Disks', parentId: 'folder-2', kind: 'folder' })
+  })
+
+  it('hides the + while something is being dragged', () => {
+    renderFolder(folder(), vi.fn(), dndProps({ draggingId: 'doc-9' }))
+    expect(screen.queryByRole('button', { name: 'New in Runbooks' })).not.toBeInTheDocument()
   })
 })
