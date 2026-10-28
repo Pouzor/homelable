@@ -162,7 +162,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     () => hoveredConnected
       ? visibleNodes.map((n) => ({
           ...n,
-          style: { ...n.style, opacity: hoveredConnected.nodeIds.has(n.id) ? 1 : 0.12, transition: 'opacity 0.15s' },
+          style: { ...n.style, opacity: hoveredConnected.nodeIds.has(n.id) ? 1 : 0.12 },
         }))
       : visibleNodes,
     [visibleNodes, hoveredConnected],
@@ -172,7 +172,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
     () => hoveredConnected
       ? visibleEdges.map((e) => ({
           ...e,
-          style: { ...e.style, opacity: hoveredConnected.edgeIds.has(e.id) ? 1 : 0.08, transition: 'opacity 0.15s' },
+          style: { ...e.style, opacity: hoveredConnected.edgeIds.has(e.id) ? 1 : 0.08 },
         }))
       : visibleEdges,
     [visibleEdges, hoveredConnected],

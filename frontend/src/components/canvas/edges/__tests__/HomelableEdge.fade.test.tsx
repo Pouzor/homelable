@@ -23,7 +23,7 @@ vi.mock('@xyflow/react', async (importOriginal) => {
 
 const { HomelableEdge } = await import('../index')
 
-function renderEdge(style: React.CSSProperties | undefined, data: Partial<EdgeData> = {}) {
+function renderEdge(style: React.CSSProperties | undefined, data: Partial<EdgeData> = {}, selected = false) {
   const props = {
     id: 'e1',
     source: 'a',
@@ -35,7 +35,7 @@ function renderEdge(style: React.CSSProperties | undefined, data: Partial<EdgeDa
     sourcePosition: 'bottom',
     targetPosition: 'top',
     data: { type: 'ethernet', ...data } as EdgeData,
-    selected: false,
+    selected,
     style,
   } as unknown as EdgeProps<Edge<EdgeData>>
 
@@ -67,9 +67,26 @@ describe('HomelableEdge fade', () => {
     expect((getByText('LQI 120') as HTMLElement).style.opacity).toBe('0.08')
   })
 
-  it('sets no opacity when no style is passed', () => {
+  it('sets no opacity when no style is passed, but keeps the transition so the restore fades', () => {
     const { container, getByText } = renderEdge(undefined, { label: 'uplink' })
-    expect((container.querySelector('svg > g') as SVGGElement).style.opacity).toBe('')
+    const group = container.querySelector('svg > g') as SVGGElement
+    expect(group.style.opacity).toBe('')
+    expect(group.style.transition).toBe('opacity 0.15s')
     expect((getByText('uplink') as HTMLElement).style.opacity).toBe('')
+    expect((getByText('uplink') as HTMLElement).style.transition).toBe('opacity 0.15s')
+  })
+
+  it('fades the endpoint dots of a selected edge with the line', () => {
+    const { getAllByTitle } = renderEdge({ opacity: 0.08 }, {}, true)
+    const dots = getAllByTitle('Drag to reconnect')
+    expect(dots).toHaveLength(2)
+    for (const dot of dots) {
+      expect((dot.parentElement as HTMLElement).style.opacity).toBe('0.08')
+    }
+  })
+
+  it('renders no handle wrapper for an unselected edge', () => {
+    const { queryAllByTitle } = renderEdge({ opacity: 0.08 })
+    expect(queryAllByTitle('Drag to reconnect')).toHaveLength(0)
   })
 })

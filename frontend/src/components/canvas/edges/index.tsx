@@ -430,8 +430,10 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
 
   // Opacity set on `edge.style` by the canvas (hover highlight). The stroke
   // style above is built from the edge type, so the prop is otherwise unused;
-  // it fades the whole edge — line, markers, animation and labels — as one.
-  const fade: React.CSSProperties = { opacity: rfStyle?.opacity, transition: rfStyle?.transition }
+  // it fades the whole edge — line, markers, animation, labels and the
+  // selected-edge handles — as one. The transition is fixed so that dropping
+  // the opacity on leave fades back too.
+  const fade: React.CSSProperties = { opacity: rfStyle?.opacity, transition: 'opacity 0.15s' }
 
   return (
     <>
@@ -536,76 +538,80 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
           </div>
         )}
 
-        {/* Endpoint dots — visual indicators for reconnection targets */}
-        {selected && (
-          <>
-            <EndpointDot
-              edgeId={id}
-              role="source"
-              x={sourceX}
-              y={sourceY}
-              position={sourcePosition}
-              color={strokeColor}
-              source={source}
-              target={target}
-              sourceHandle={sourceHandleId}
-              targetHandle={targetHandleId}
-              onDrag={onSourceDrag}
-            />
-            <EndpointDot
-              edgeId={id}
-              role="target"
-              x={targetX}
-              y={targetY}
-              position={targetPosition}
-              color={strokeColor}
-              source={source}
-              target={target}
-              sourceHandle={sourceHandleId}
-              targetHandle={targetHandleId}
-              onDrag={onTargetDrag}
-            />
-          </>
-        )}
+        {/* Selected-edge handles, faded with the line. The wrapper is static, so
+            the absolutely-positioned handles still place against the renderer. */}
+        {selected && <div style={fade}>
+          {/* Endpoint dots — visual indicators for reconnection targets */}
+          {selected && (
+            <>
+              <EndpointDot
+                edgeId={id}
+                role="source"
+                x={sourceX}
+                y={sourceY}
+                position={sourcePosition}
+                color={strokeColor}
+                source={source}
+                target={target}
+                sourceHandle={sourceHandleId}
+                targetHandle={targetHandleId}
+                onDrag={onSourceDrag}
+              />
+              <EndpointDot
+                edgeId={id}
+                role="target"
+                x={targetX}
+                y={targetY}
+                position={targetPosition}
+                color={strokeColor}
+                source={source}
+                target={target}
+                sourceHandle={sourceHandleId}
+                targetHandle={targetHandleId}
+                onDrag={onTargetDrag}
+              />
+            </>
+          )}
 
-        {/* Existing waypoint drag handles */}
-        {selected && waypoints.map((wp, idx) => {
-          const prevPoint = idx === 0 ? { x: sourceX, y: sourceY } : waypoints[idx - 1]
-          const nextPoint = idx === waypoints.length - 1 ? { x: targetX, y: targetY } : waypoints[idx + 1]
-          return (
-            <WaypointHandle
-              key={`wp-${idx}`}
-              edgeId={id}
-              index={idx}
-              waypoint={wp}
-              waypoints={waypoints}
-              color={strokeColor}
-              pathStyle={pathStyle}
-              prevPoint={prevPoint}
-              nextPoint={nextPoint}
-            />
-          )
-        })}
+          {/* Existing waypoint drag handles */}
+          {selected && waypoints.map((wp, idx) => {
+            const prevPoint = idx === 0 ? { x: sourceX, y: sourceY } : waypoints[idx - 1]
+            const nextPoint = idx === waypoints.length - 1 ? { x: targetX, y: targetY } : waypoints[idx + 1]
+            return (
+              <WaypointHandle
+                key={`wp-${idx}`}
+                edgeId={id}
+                index={idx}
+                waypoint={wp}
+                waypoints={waypoints}
+                color={strokeColor}
+                pathStyle={pathStyle}
+                prevPoint={prevPoint}
+                nextPoint={nextPoint}
+              />
+            )
+          })}
 
-        {/* + handles at segment midpoints to add new waypoints */}
-        {selected && midpoints.map((mp) => {
-          const prevPoint = mp.insertIndex === 0
-            ? { x: sourceX, y: sourceY }
-            : waypoints[mp.insertIndex - 1]
-          return (
-            <AddWaypointHandle
-              key={`add-${mp.insertIndex}`}
-              edgeId={id}
-              insertIndex={mp.insertIndex}
-              x={mp.x}
-              y={mp.y}
-              waypoints={waypoints}
-              color={strokeColor}
-              pathStyle={pathStyle}
-              prevPoint={prevPoint}
-            />
-          )
-        })}
+          {/* + handles at segment midpoints to add new waypoints */}
+          {selected && midpoints.map((mp) => {
+            const prevPoint = mp.insertIndex === 0
+              ? { x: sourceX, y: sourceY }
+              : waypoints[mp.insertIndex - 1]
+            return (
+              <AddWaypointHandle
+                key={`add-${mp.insertIndex}`}
+                edgeId={id}
+                insertIndex={mp.insertIndex}
+                x={mp.x}
+                y={mp.y}
+                waypoints={waypoints}
+                color={strokeColor}
+                pathStyle={pathStyle}
+                prevPoint={prevPoint}
+              />
+            )
+          })}
+        </div>}
       </EdgeLabelRenderer>
     </>
   )

@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { act, render } from '@testing-library/react'
 import { CanvasContainer } from '../CanvasContainer'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -536,6 +538,16 @@ describe('CanvasContainer', () => {
     })
     const opacities = (items: unknown) =>
       Object.fromEntries((items as (Node | Edge)[]).map((i) => [i.id, i.style?.opacity]))
+
+    it('fades node opacity both ways through a stylesheet transition, not an inline one', () => {
+      // The inline opacity is dropped on leave; an inline transition would go
+      // with it and make the restore instant.
+      const css = readFileSync(resolve(__dirname, '../../../index.css'), 'utf8')
+      expect(css).toMatch(/\.react-flow__node\s*\{[^}]*transition:\s*opacity 0\.15s/)
+      setupChain()
+      hover(makeNode('n1'))
+      expect((rfProps.nodes as Node[]).every((n) => n.style?.transition === undefined)).toBe(true)
+    })
 
     it('applies no opacity until a node is hovered', () => {
       setupChain()
