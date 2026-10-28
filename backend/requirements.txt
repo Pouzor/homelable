@@ -8,7 +8,7 @@ pydantic==2.9.2
 pydantic-settings==2.5.2
 PyJWT==2.15.0
 bcrypt==4.2.1
-authlib==1.7.2
+authlib==1.9.1
 joserfc==1.7.4
 itsdangerous==2.2.0
 python-multipart==0.0.31
