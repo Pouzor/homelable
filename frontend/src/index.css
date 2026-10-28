@@ -149,6 +149,12 @@
     padding: 0 !important;
 }
 
+/* Hover highlight: the canvas dims a node with an inline opacity and drops it
+   on leave. The transition lives here, not inline, so the restore fades too. */
+.react-flow__node {
+    transition: opacity 0.15s;
+}
+
 /* Mono font utility */
 .font-mono {
     font-family: 'JetBrains Mono', monospace;

@@ -290,7 +290,7 @@ function EndpointDot({ edgeId, role, x, y, position, color, source, target, sour
 
 // ── Main edge component ──────────────────────────────────────────────────────
 
-export function HomelableEdge({ id, source, target, sourceHandleId, targetHandleId, sourceX: rawSourceX, sourceY: rawSourceY, targetX: rawTargetX, targetY: rawTargetY, sourcePosition, targetPosition, data, selected }: EdgeProps<Edge<EdgeData>>) {
+export function HomelableEdge({ id, source, target, sourceHandleId, targetHandleId, sourceX: rawSourceX, sourceY: rawSourceY, targetX: rawTargetX, targetY: rawTargetY, sourcePosition, targetPosition, data, selected, style: rfStyle }: EdgeProps<Edge<EdgeData>>) {
   const [drag, setDrag] = useState<{ role: 'source' | 'target'; x: number; y: number } | null>(null)
 
   const sourceX = drag?.role === 'source' ? drag.x : rawSourceX
@@ -428,74 +428,83 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
     )
   }
 
+  // Opacity set on `edge.style` by the canvas (hover highlight). The stroke
+  // style above is built from the edge type, so the prop is otherwise unused;
+  // it fades the whole edge — line, markers, animation, labels and the
+  // selected-edge handles — as one. The transition is fixed so that dropping
+  // the opacity on leave fades back too.
+  const fade: React.CSSProperties = { opacity: rfStyle?.opacity, transition: 'opacity 0.15s' }
+
   return (
     <>
-      {hasMarkers && (
-        <defs>
-          {startShape !== 'none' && arrowMarker(startMarkerId, startShape, 'auto-start-reverse')}
-          {endShape !== 'none' && arrowMarker(endMarkerId, endShape, 'auto')}
-        </defs>
-      )}
+      <g style={fade}>
+        {hasMarkers && (
+          <defs>
+            {startShape !== 'none' && arrowMarker(startMarkerId, startShape, 'auto-start-reverse')}
+            {endShape !== 'none' && arrowMarker(endMarkerId, endShape, 'auto')}
+          </defs>
+        )}
 
-      <BaseEdge
-        id={id}
-        path={edgePath}
-        style={animMode === 'basic' ? { ...style, stroke: 'transparent' } : style}
-        interactionWidth={16}
-        markerStart={startShape !== 'none' ? `url(#${startMarkerId})` : undefined}
-        markerEnd={endShape !== 'none' ? `url(#${endMarkerId})` : undefined}
-      />
+        <BaseEdge
+          id={id}
+          path={edgePath}
+          style={animMode === 'basic' ? { ...style, stroke: 'transparent' } : style}
+          interactionWidth={16}
+          markerStart={startShape !== 'none' ? `url(#${startMarkerId})` : undefined}
+          markerEnd={endShape !== 'none' ? `url(#${endMarkerId})` : undefined}
+        />
 
-      {animMode === 'basic' && (
-        <path
-          d={edgePath}
-          fill="none"
-          stroke={strokeColor}
-          strokeWidth={style.strokeWidth as number ?? 2}
-          strokeDasharray="5"
-          style={{
-            pointerEvents: 'none',
-            // Direction comes from the keyframes alone (see index.css), never
-            // from the endpoints' screen positions: an edge drawn bottom-to-top
-            // marches the same way as one drawn top-to-bottom, like the snake
-            // and flow modes.
-            animation: `homelable-basic-dash ${animDuration('basic', animSpeed)} linear infinite`,
-          }}
-        />
-      )}
+        {animMode === 'basic' && (
+          <path
+            d={edgePath}
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth={style.strokeWidth as number ?? 2}
+            strokeDasharray="5"
+            style={{
+              pointerEvents: 'none',
+              // Direction comes from the keyframes alone (see index.css), never
+              // from the endpoints' screen positions: an edge drawn bottom-to-top
+              // marches the same way as one drawn top-to-bottom, like the snake
+              // and flow modes.
+              animation: `homelable-basic-dash ${animDuration('basic', animSpeed)} linear infinite`,
+            }}
+          />
+        )}
 
-      {animMode === 'snake' && (
-        <path
-          d={edgePath}
-          fill="none"
-          stroke={animColor}
-          strokeWidth={((style.strokeWidth as number ?? 2) + 1.5) * 2}
-          strokeDasharray="20 10000"
-          strokeLinecap="round"
-          style={{
-            pointerEvents: 'none',
-            // CSS (not SMIL) so it pauses when the tab is hidden — see index.css.
-            // Bidirectional yo-yos via `alternate` (10s each way at 1× = 20s round
-            // trip, matching the old SMIL keyTimes); unidirectional loops in one direction.
-            animation: `homelable-snake ${animDuration('snake', animSpeed)} linear infinite${isBidirectional ? ' alternate' : ''}`,
-          }}
-        />
-      )}
-      {animMode === 'flow' && (
-        <path
-          d={edgePath}
-          fill="none"
-          stroke={animColor}
-          strokeWidth={Math.max(3, (style.strokeWidth as number ?? 2) * 1.8)}
-          strokeDasharray="6 12"
-          strokeLinecap="round"
-          strokeOpacity={0.85}
-          style={{
-            pointerEvents: 'none',
-            animation: `homelable-flow ${animDuration('flow', animSpeed)} linear infinite`,
-          }}
-        />
-      )}
+        {animMode === 'snake' && (
+          <path
+            d={edgePath}
+            fill="none"
+            stroke={animColor}
+            strokeWidth={((style.strokeWidth as number ?? 2) + 1.5) * 2}
+            strokeDasharray="20 10000"
+            strokeLinecap="round"
+            style={{
+              pointerEvents: 'none',
+              // CSS (not SMIL) so it pauses when the tab is hidden — see index.css.
+              // Bidirectional yo-yos via `alternate` (10s each way at 1× = 20s round
+              // trip, matching the old SMIL keyTimes); unidirectional loops in one direction.
+              animation: `homelable-snake ${animDuration('snake', animSpeed)} linear infinite${isBidirectional ? ' alternate' : ''}`,
+            }}
+          />
+        )}
+        {animMode === 'flow' && (
+          <path
+            d={edgePath}
+            fill="none"
+            stroke={animColor}
+            strokeWidth={Math.max(3, (style.strokeWidth as number ?? 2) * 1.8)}
+            strokeDasharray="6 12"
+            strokeLinecap="round"
+            strokeOpacity={0.85}
+            style={{
+              pointerEvents: 'none',
+              animation: `homelable-flow ${animDuration('flow', animSpeed)} linear infinite`,
+            }}
+          />
+        )}
+      </g>
 
       <EdgeLabelRenderer>
         {showLqi && (
@@ -507,6 +516,7 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
               background: theme.colors.edgeLabelBackground,
               color:      theme.colors.edgeLabelColor,
               border:     `1px solid ${theme.colors.edgeLabelBorder}`,
+              ...fade,
             }}
           >
             LQI {data!.lqi}
@@ -521,82 +531,87 @@ export function HomelableEdge({ id, source, target, sourceHandleId, targetHandle
               background: theme.colors.edgeLabelBackground,
               color:      theme.colors.edgeLabelColor,
               border:     `1px solid ${theme.colors.edgeLabelBorder}`,
+              ...fade,
             }}
           >
             {data.label as string}
           </div>
         )}
 
-        {/* Endpoint dots — visual indicators for reconnection targets */}
-        {selected && (
-          <>
-            <EndpointDot
-              edgeId={id}
-              role="source"
-              x={sourceX}
-              y={sourceY}
-              position={sourcePosition}
-              color={strokeColor}
-              source={source}
-              target={target}
-              sourceHandle={sourceHandleId}
-              targetHandle={targetHandleId}
-              onDrag={onSourceDrag}
-            />
-            <EndpointDot
-              edgeId={id}
-              role="target"
-              x={targetX}
-              y={targetY}
-              position={targetPosition}
-              color={strokeColor}
-              source={source}
-              target={target}
-              sourceHandle={sourceHandleId}
-              targetHandle={targetHandleId}
-              onDrag={onTargetDrag}
-            />
-          </>
-        )}
+        {/* Selected-edge handles, faded with the line. The wrapper is static, so
+            the absolutely-positioned handles still place against the renderer. */}
+        {selected && <div style={fade}>
+          {/* Endpoint dots — visual indicators for reconnection targets */}
+          {selected && (
+            <>
+              <EndpointDot
+                edgeId={id}
+                role="source"
+                x={sourceX}
+                y={sourceY}
+                position={sourcePosition}
+                color={strokeColor}
+                source={source}
+                target={target}
+                sourceHandle={sourceHandleId}
+                targetHandle={targetHandleId}
+                onDrag={onSourceDrag}
+              />
+              <EndpointDot
+                edgeId={id}
+                role="target"
+                x={targetX}
+                y={targetY}
+                position={targetPosition}
+                color={strokeColor}
+                source={source}
+                target={target}
+                sourceHandle={sourceHandleId}
+                targetHandle={targetHandleId}
+                onDrag={onTargetDrag}
+              />
+            </>
+          )}
 
-        {/* Existing waypoint drag handles */}
-        {selected && waypoints.map((wp, idx) => {
-          const prevPoint = idx === 0 ? { x: sourceX, y: sourceY } : waypoints[idx - 1]
-          const nextPoint = idx === waypoints.length - 1 ? { x: targetX, y: targetY } : waypoints[idx + 1]
-          return (
-            <WaypointHandle
-              key={`wp-${idx}`}
-              edgeId={id}
-              index={idx}
-              waypoint={wp}
-              waypoints={waypoints}
-              color={strokeColor}
-              pathStyle={pathStyle}
-              prevPoint={prevPoint}
-              nextPoint={nextPoint}
-            />
-          )
-        })}
+          {/* Existing waypoint drag handles */}
+          {selected && waypoints.map((wp, idx) => {
+            const prevPoint = idx === 0 ? { x: sourceX, y: sourceY } : waypoints[idx - 1]
+            const nextPoint = idx === waypoints.length - 1 ? { x: targetX, y: targetY } : waypoints[idx + 1]
+            return (
+              <WaypointHandle
+                key={`wp-${idx}`}
+                edgeId={id}
+                index={idx}
+                waypoint={wp}
+                waypoints={waypoints}
+                color={strokeColor}
+                pathStyle={pathStyle}
+                prevPoint={prevPoint}
+                nextPoint={nextPoint}
+              />
+            )
+          })}
 
-        {/* + handles at segment midpoints to add new waypoints */}
-        {selected && midpoints.map((mp) => {
-          const prevPoint = mp.insertIndex === 0
-            ? { x: sourceX, y: sourceY }
-            : waypoints[mp.insertIndex - 1]
-          return (
-            <AddWaypointHandle
-              key={`add-${mp.insertIndex}`}
-              edgeId={id}
-              insertIndex={mp.insertIndex}
-              x={mp.x}
-              y={mp.y}
-              waypoints={waypoints}
-              color={strokeColor}
-              pathStyle={pathStyle}
-              prevPoint={prevPoint}
-            />
-          )
-        })}
+          {/* + handles at segment midpoints to add new waypoints */}
+          {selected && midpoints.map((mp) => {
+            const prevPoint = mp.insertIndex === 0
+              ? { x: sourceX, y: sourceY }
+              : waypoints[mp.insertIndex - 1]
+            return (
+              <AddWaypointHandle
+                key={`add-${mp.insertIndex}`}
+                edgeId={id}
+                insertIndex={mp.insertIndex}
+                x={mp.x}
+                y={mp.y}
+                waypoints={waypoints}
+                color={strokeColor}
+                pathStyle={pathStyle}
+                prevPoint={prevPoint}
+              />
+            )
+          })}
+        </div>}
       </EdgeLabelRenderer>
     </>
   )
