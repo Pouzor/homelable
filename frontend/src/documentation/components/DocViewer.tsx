@@ -10,6 +10,7 @@ import { extractToc } from '../markdown/toc'
 import type { Doc, DocBacklink, DocRevision } from '../types'
 import type { LinkableDevice, LinkableDoc } from '../wikilinks'
 import { DocHistoryRail, RevisionPreview } from './DocHistory'
+import { IconPicker } from './IconPicker'
 
 /** Everything the history rail and the revision preview need, in one prop. */
 export interface HistoryControls {
@@ -62,6 +63,8 @@ interface Props {
   onToggleTask?: (body: string) => void
   /** Writes the whole tag list back into the document's frontmatter. */
   onSetTags?: (tags: string[]) => void
+  /** Sets the emoji the tree shows for this document; `null` clears it. */
+  onSetIcon?: (icon: string | null) => void
 }
 
 const NO_HISTORY: HistoryControls = {
@@ -102,6 +105,7 @@ export function DocViewer({
   onCreateFromLink,
   onToggleTask,
   onSetTags,
+  onSetIcon,
 }: Props) {
   const controls = history ?? NO_HISTORY
   const { data } = useMemo(() => parseFrontmatter(doc.body), [doc.body])
@@ -310,6 +314,32 @@ export function DocViewer({
                 className="w-28 rounded bg-muted px-1.5 py-0.5 text-[10px] text-foreground outline-none ring-1 ring-border focus:ring-primary"
               />
             ))}
+          {!readOnly && onSetIcon && (
+            <IconPicker
+              icon={doc.icon}
+              onChange={onSetIcon}
+              trigger={
+                doc.icon ? (
+                  <button
+                    type="button"
+                    title="Change the tree icon"
+                    aria-label={`Tree icon ${doc.icon} — change`}
+                    className="flex cursor-pointer items-center rounded bg-muted px-1.5 py-0.5 text-[11px] leading-none hover:bg-muted/70"
+                  >
+                    {doc.icon}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    title="Give this document an emoji in the tree"
+                    className="flex cursor-pointer items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
+                  >
+                    <Plus size={10} /> Icon
+                  </button>
+                )
+              }
+            />
+          )}
           {!doc.edited_at && (
             <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
               Only the generated header so far

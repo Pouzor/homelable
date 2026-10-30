@@ -78,6 +78,7 @@ export function DocumentationView() {
     move,
     remove,
     toggleStar,
+    setIcon,
     setHomepage,
     markReviewed,
     setTags,
@@ -763,6 +764,7 @@ export function DocumentationView() {
             onSetHomepage={handleSetHomepage}
             onMarkReviewed={() => void markReviewed(openDoc.id)}
             onSetTags={(tags) => void setTags(tags)}
+            onSetIcon={(icon) => void setIcon(openDoc.id, icon)}
             onUpdateFromDevice={() => void handleUpdatePreview()}
             onRegenerate={() => setRegenerateOpen(true)}
             onDownload={() => downloadDoc(openDoc)}

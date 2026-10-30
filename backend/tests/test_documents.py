@@ -432,6 +432,20 @@ async def test_starring_and_reviewing(client: AsyncClient, headers: dict):
     assert res.json()["reviewed_at"] is not None
 
 
+async def test_setting_and_clearing_the_tree_icon(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Page")
+    url = f"/api/v1/documents/{doc['id']}"
+    res = await client.patch(url, json={"icon": "🐳"}, headers=headers)
+    assert res.json()["icon"] == "🐳"
+    listed = (await client.get("/api/v1/documents", headers=headers)).json()
+    assert next(d for d in listed if d["id"] == doc["id"])["icon"] == "🐳"
+    # An unrelated patch leaves it alone; an explicit null takes it off.
+    res = await client.patch(url, json={"starred": True}, headers=headers)
+    assert res.json()["icon"] == "🐳"
+    res = await client.patch(url, json={"icon": None}, headers=headers)
+    assert res.json()["icon"] is None
+
+
 async def test_patching_a_missing_document_is_404(client: AsyncClient, headers: dict):
     res = await client.patch(f"/api/v1/documents/{uuid.uuid4()}", json={"title": "X"}, headers=headers)
     assert res.status_code == 404

@@ -192,6 +192,8 @@ export interface DocsState {
   /** Rewrite the `tags:` list in the open document's frontmatter. */
   setTags: (tags: string[]) => Promise<boolean>
   toggleStar: (id: string) => Promise<void>
+  /** The emoji the tree shows for a document; `null` restores the kind icon. */
+  setIcon: (id: string, icon: string | null) => Promise<boolean>
   /** Make this page the homepage; the server takes the flag off the old one. */
   setHomepage: (id: string) => Promise<boolean>
   markReviewed: (id: string) => Promise<void>
@@ -633,6 +635,22 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : d)),
       openDoc: state.openDoc?.id === id ? data : state.openDoc,
     }))
+  },
+
+  // A column, not frontmatter: unlike tags it is presentation for the tree and
+  // never part of the exported markdown, so it patches straight through.
+  setIcon: async (id, icon) => {
+    try {
+      const { data } = await documentsApi.update(id, { icon })
+      set((state) => ({
+        docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : d)),
+        openDoc: state.openDoc?.id === id ? data : state.openDoc,
+      }))
+      return true
+    } catch (error) {
+      set({ loadError: message(error, 'Could not set the icon') })
+      return false
+    }
   },
 
   setHomepage: async (id) => {

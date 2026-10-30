@@ -165,11 +165,21 @@ export function DocTreeItem({
             onDragEnd={dragHandle ? () => dnd?.onDragEnd() : undefined}
             className={cn('shrink-0', dragHandle && 'cursor-grab active:cursor-grabbing')}
           >
-            <Icon
-              size={13}
-              aria-label={isHome ? 'Homepage' : undefined}
-              className={cn(isHome ? 'text-primary' : 'opacity-70')}
-            />
+            {/* A chosen emoji stands in for the kind icon, the homepage's house included. */}
+            {leaf.icon ? (
+              <span
+                aria-label={isHome ? 'Homepage' : undefined}
+                className="flex size-[13px] items-center justify-center text-[12px] leading-none"
+              >
+                {leaf.icon}
+              </span>
+            ) : (
+              <Icon
+                size={13}
+                aria-label={isHome ? 'Homepage' : undefined}
+                className={cn(isHome ? 'text-primary' : 'opacity-70')}
+              />
+            )}
           </span>
           {/* `truncate` hides overflow at the content edge, and this box shrink-wraps
               to the text — so its edge is the advance width, which italic glyphs
