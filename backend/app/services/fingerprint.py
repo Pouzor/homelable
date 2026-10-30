@@ -176,9 +176,8 @@ def suggest_type_from_mac(mac: str | None) -> str | None:
 _PORT_TYPE_HINTS: dict[int, str] = {
     # Proxmox
     8006: "proxmox",
-    # NAS / storage
-    5000: "nas",   # Synology DSM
-    5001: "nas",   # Synology DSM HTTPS
+    # NAS / storage — no 5000/5001: Synology DSM shares them with AirPlay, Flask,
+    # KoboldCpp…; only a banner/title-confirmed DSM signature may suggest "nas".
     548: "nas",    # AFP
     873: "nas",    # rsync
     # Routers / network devices
@@ -214,7 +213,7 @@ def suggest_node_type(open_ports: list[dict[str, Any]], mac: str | None = None) 
         return "iot"
 
     priority = [
-        "proxmox", "nas", "kvm", "router", "lxc", "vm", "ap", "camera", "iot", "server", "switch",
+        "proxmox", "nas", "kvm", "router", "lxc", "vm", "ap", "ai_server", "camera", "iot", "server", "switch",
     ]
     found: set[str] = set()
     for p in open_ports:

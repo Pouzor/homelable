@@ -475,6 +475,7 @@ export function getFaceplate(id: string): FaceplateTemplate {
  */
 const FACEPLATE_BY_DEVICE_TYPE: Record<string, string> = {
   server: 'server-1u-bays',
+  ai_server: 'server-2u-bays',
   proxmox: 'server-2u-bays',
   nas: 'nas-2u',
   switch: 'switch-24',
