@@ -409,6 +409,7 @@ export const documentsApi = {
       parent_id?: string | null
       sort_order?: number
       starred?: boolean
+      is_homepage?: boolean
       reviewed?: boolean
       resync_facts?: boolean
     },

@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -767,6 +767,17 @@ async def update_document(
         doc.sort_order = sent["sort_order"]
     if "starred" in sent and sent["starred"] is not None:
         doc.starred = sent["starred"]
+    if "is_homepage" in sent and sent["is_homepage"] is not None:
+        if sent["is_homepage"] and doc.kind != "page":
+            raise HTTPException(400, "Only a page can be the homepage")
+        if sent["is_homepage"] and not doc.is_homepage:
+            # Cleared and flushed first: the partial unique index would refuse a
+            # second homepage even for the instant between the two writes.
+            await db.execute(
+                update(Document).where(Document.is_homepage.is_(True)).values(is_homepage=False)
+            )
+            await db.flush()
+        doc.is_homepage = sent["is_homepage"]
     if sent.get("reviewed"):
         doc.reviewed_at = _now()
     if sent.get("resync_facts") and doc.device_id:

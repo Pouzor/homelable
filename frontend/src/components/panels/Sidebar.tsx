@@ -10,6 +10,7 @@ import * as standaloneStorage from '@/utils/standaloneStorage'
 import { resolveDesignIcon, DEFAULT_DESIGN_ICON } from '@/utils/designIcons'
 import { DesignModal, type DesignFormData } from '@/components/modals/DesignModal'
 import { useUiStore } from '@/stores/uiStore'
+import { useDocsStore } from '@/documentation/store'
 import { AccessoryTray } from '@/rack/components/AccessoryTray'
 import { useRackStore } from '@/rack/store'
 import { freeUnits } from '@/rack/layout'
@@ -251,7 +252,11 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
             label="Documentation"
             collapsed={collapsed}
             active={view === 'documentation'}
-            onClick={() => setView('documentation')}
+            onClick={() => {
+              setView('documentation')
+              // Lands on the homepage, unless the open document has unsaved edits.
+              void useDocsStore.getState().openHome()
+            }}
             dataTour="documentation"
           />
         )}

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, File, FileText, Folder, FolderOpen, Plus, Star } from 'lucide-react'
+import { ChevronDown, ChevronRight, File, FileText, Folder, FolderOpen, House, Plus, Star } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import type { DocState, TreeGroup, TreeLeaf } from '../types'
@@ -70,6 +70,8 @@ interface ItemProps {
   activeId: string | null
   expanded: string[]
   starred: Set<string>
+  /** The homepage's document id; its row wears a house instead of a page. */
+  homeId?: string | null
   onSelect: (leaf: TreeLeaf) => void
   onToggle: (key: string) => void
   dnd?: TreeDnd
@@ -83,6 +85,7 @@ export function DocTreeItem({
   activeId,
   expanded,
   starred,
+  homeId = null,
   onSelect,
   onToggle,
   dnd,
@@ -91,7 +94,8 @@ export function DocTreeItem({
   const isFolder = leaf.kind === 'folder'
   const isOpen = expanded.includes(leaf.id)
   const active = activeId !== null && leaf.docId === activeId
-  const Icon = isFolder ? (isOpen ? FolderOpen : Folder) : leaf.docId ? FileText : File
+  const isHome = homeId !== null && leaf.docId === homeId
+  const Icon = isFolder ? (isOpen ? FolderOpen : Folder) : isHome ? House : leaf.docId ? FileText : File
   // The icon is the handle, not the row: a row-wide drag would fight the click
   // that opens a document and the double-click that opens a folder.
   const dragHandle = Boolean(dnd && leaf.docId)
@@ -161,7 +165,11 @@ export function DocTreeItem({
             onDragEnd={dragHandle ? () => dnd?.onDragEnd() : undefined}
             className={cn('shrink-0', dragHandle && 'cursor-grab active:cursor-grabbing')}
           >
-            <Icon size={13} className="opacity-70" />
+            <Icon
+              size={13}
+              aria-label={isHome ? 'Homepage' : undefined}
+              className={cn(isHome ? 'text-primary' : 'opacity-70')}
+            />
           </span>
           {/* `truncate` hides overflow at the content edge, and this box shrink-wraps
               to the text — so its edge is the advance width, which italic glyphs
@@ -211,6 +219,7 @@ export function DocTreeItem({
             activeId={activeId}
             expanded={expanded}
             starred={starred}
+            homeId={homeId}
             onSelect={onSelect}
             onToggle={onToggle}
             dnd={dnd}

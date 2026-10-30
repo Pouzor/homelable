@@ -387,6 +387,9 @@ class Document(Base):
     frontmatter: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
     starred: Mapped[bool] = mapped_column(Boolean, default=False)
+    # The page Documentation opens on. At most one row holds it — enforced by a
+    # partial unique index in `database.init_db` — and only a page may.
+    is_homepage: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     template_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # The device facts as they read when this document was scaffolded or last

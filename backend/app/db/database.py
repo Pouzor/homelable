@@ -55,6 +55,7 @@ DOCUMENT_DDL: tuple[tuple[str, str], ...] = (
     # is distinguishable from "edited" — `created_at` and `updated_at` are two
     # separate clock reads on insert and are never equal.
     ("documents.edited_at", "ALTER TABLE documents ADD COLUMN edited_at DATETIME"),
+    ("documents.is_homepage", "ALTER TABLE documents ADD COLUMN is_homepage BOOLEAN DEFAULT 0"),
     ("document_revisions.reason", "ALTER TABLE document_revisions ADD COLUMN reason TEXT"),
     (
         "documents_fts.table",
@@ -76,6 +77,11 @@ DOCUMENT_DDL: tuple[tuple[str, str], ...] = (
         "documents.design_id.unique",
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_documents_design "
         "ON documents(design_id) WHERE design_id IS NOT NULL",
+    ),
+    (
+        "documents.is_homepage.unique",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_documents_homepage "
+        "ON documents(is_homepage) WHERE is_homepage = 1",
     ),
 )
 
