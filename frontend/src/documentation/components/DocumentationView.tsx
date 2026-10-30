@@ -303,9 +303,10 @@ export function DocumentationView() {
     else void applyHomepage(openDoc.id)
   }, [applyHomepage, homepage, openDoc])
 
-  // The banner's shortcut: a page to write the homepage in, already set as one.
+  // The banner's shortcut: a page to write the homepage in, already set as one,
+  // and scaffolded server-side with links to the canvases, Library and gear.
   const handleCreateHomepage = useCallback(async () => {
-    const doc = await create({ title: 'Home' })
+    const doc = await create({ title: 'Home', templateId: 'homepage' })
     if (!doc) return
     await applyHomepage(doc.id)
     await open(doc.id)

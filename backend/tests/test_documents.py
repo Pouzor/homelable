@@ -958,3 +958,26 @@ async def test_deleting_the_homepage_leaves_none(client: AsyncClient, headers: d
     await client.delete(f"/api/v1/documents/{doc['id']}", headers=headers)
     listed = (await client.get("/api/v1/documents", headers=headers)).json()
     assert not any(d["is_homepage"] for d in listed)
+
+
+async def test_the_homepage_template_is_filled_from_the_database(client: AsyncClient, headers: dict):
+    design_id = await _design(client, headers)
+    page = await _create(client, headers, title="VLAN plan")
+    await _device(client, headers, type="nas")
+    home = await _create(client, headers, title="Home", template_id="homepage")
+    assert home["template_id"] == "homepage"
+    assert f"(?design={design_id})" in home["body"]
+    assert f"[[doc:{page['id']}|VLAN plan]]" in home["body"]
+    assert "nas-01" in home["body"].split("## Key devices")[1]
+    # It never lists itself.
+    assert f"[[doc:{home['id']}" not in home["body"]
+
+
+async def test_regenerating_the_homepage_picks_up_what_was_added_since(client: AsyncClient, headers: dict):
+    home = await _create(client, headers, title="Home", template_id="homepage")
+    page = await _create(client, headers, title="Backups")
+    res = await client.post(f"/api/v1/documents/{home['id']}/regenerate", headers=headers)
+    assert res.status_code == 200, res.text
+    body = res.json()["body"]
+    assert f"[[doc:{page['id']}|Backups]]" in body
+    assert f"[[doc:{home['id']}" not in body

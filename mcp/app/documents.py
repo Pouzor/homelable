@@ -39,6 +39,7 @@ DOC_TEMPLATES = [
     "procedure",
     "decision",
     "zone",
+    "homepage",
 ]
 
 # What the history records for anything written through this server. Not a tool

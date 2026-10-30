@@ -147,6 +147,20 @@ describe('DocumentationView — homepage', () => {
     expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'Home' }))
     await waitFor(() => expect(useDocsStore.getState().openDoc?.id).toBe('new-home'))
   })
+
+  it('scaffolds the created homepage from the homepage template', async () => {
+    const created = doc({ id: 'new-home', title: 'Home' })
+    api.create.mockResolvedValue({ data: created } as never)
+    api.update.mockResolvedValue({ data: { ...created, is_homepage: true } } as never)
+    api.get.mockResolvedValue({ data: { ...created, is_homepage: true } } as never)
+    renderView([doc()], null)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create homepage' }))
+
+    await waitFor(() =>
+      expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ title: 'Home', template_id: 'homepage' })),
+    )
+  })
 })
 
 describe('DocViewer — homepage button', () => {

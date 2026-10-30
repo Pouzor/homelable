@@ -59,9 +59,11 @@ from app.services.doc_reconcile import (
 from app.services.doc_template import (
     BLOCKS,
     TEMPLATE_DEVICE,
+    TEMPLATE_HOMEPAGE,
     facts_snapshot,
     render_block,
     render_device_document,
+    render_homepage_document,
     render_library_document,
 )
 from app.services.doc_tree import (
@@ -260,6 +262,20 @@ async def _scaffold_body(db: AsyncSession, doc: Document, template_id: str | Non
             doc.facts_synced_at = _now()
             doc.template_id = TEMPLATE_DEVICE
             return
+    if template_id == TEMPLATE_HOMEPAGE:
+        designs = (await db.execute(select(Design).order_by(Design.created_at))).scalars().all()
+        # Filtered here, not in SQL: a document being created has no id until it
+        # is flushed, and `id != NULL` matches nothing.
+        docs = [d for d in (await db.execute(select(Document))).scalars().all() if d is not doc]
+        devices = (
+            await db.execute(select(InventoryDevice).where(InventoryDevice.status != "hidden"))
+        ).scalars().all()
+        _apply_body(
+            doc,
+            render_homepage_document(doc.title, designs=list(designs), docs=docs, devices=list(devices)),
+        )
+        doc.template_id = TEMPLATE_HOMEPAGE
+        return
     _apply_body(doc, render_library_document(template_id or "blank", doc.title))
     doc.template_id = template_id or "blank"
 
