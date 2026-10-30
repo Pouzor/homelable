@@ -3,6 +3,8 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { Sidebar } from '../Sidebar'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
+import { useUiStore } from '@/stores/uiStore'
+import { useDocsStore } from '@/documentation/store'
 import { scanApi } from '@/api/client'
 import type { Node } from '@xyflow/react'
 import type { NodeData, Design } from '@/types'
@@ -521,5 +523,22 @@ describe('Sidebar (standalone)', () => {
     expect(standaloneStorage.listDesigns().map((d) => d.name)).toEqual(['Keep'])
     expect(ds.getState().designs.map((d) => d.name)).toEqual(['Keep'])
     confirmSpy.mockRestore()
+  })
+})
+
+describe('Sidebar — Documentation entry', () => {
+  beforeEach(() => {
+    mockStore()
+    mockAuth()
+    vi.clearAllMocks()
+  })
+
+  it('switches to Documentation and asks the docs store to open the homepage', () => {
+    const openHome = vi.fn().mockResolvedValue(true)
+    useDocsStore.setState({ openHome })
+    render(<Sidebar {...defaultProps} />)
+    fireEvent.click(screen.getByText('Documentation'))
+    expect(useUiStore.getState().view).toBe('documentation')
+    expect(openHome).toHaveBeenCalledTimes(1)
   })
 })

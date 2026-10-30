@@ -510,6 +510,7 @@ export default function App() {
     async (docId: string | null) => {
       setAppView('documentation')
       if (docId) await useDocsStore.getState().open(docId)
+      else await useDocsStore.getState().openHome()
     },
     [setAppView],
   )

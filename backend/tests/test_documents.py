@@ -890,3 +890,94 @@ async def test_coverage_counts_library_pages_separately(client: AsyncClient, hea
     await _create(client, headers, title="VLAN plan")
     await _create(client, headers, title="Runbooks", kind="folder")
     assert (await client.get("/api/v1/documents/coverage", headers=headers)).json()["library_pages"] == 2
+
+
+# ── homepage ────────────────────────────────────────────────────────────────
+
+
+async def test_no_page_is_the_homepage_by_default(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Welcome")
+    assert doc["is_homepage"] is False
+
+
+async def test_a_page_can_be_made_the_homepage(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Welcome")
+    res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"is_homepage": True}, headers=headers)
+    assert res.status_code == 200, res.text
+    assert res.json()["is_homepage"] is True
+    listed = (await client.get("/api/v1/documents", headers=headers)).json()
+    assert [d["id"] for d in listed if d["is_homepage"]] == [doc["id"]]
+
+
+async def test_a_new_homepage_takes_the_flag_off_the_old_one(client: AsyncClient, headers: dict):
+    first = await _create(client, headers, title="Old home")
+    second = await _create(client, headers, title="New home")
+    await client.patch(f"/api/v1/documents/{first['id']}", json={"is_homepage": True}, headers=headers)
+    res = await client.patch(f"/api/v1/documents/{second['id']}", json={"is_homepage": True}, headers=headers)
+    assert res.status_code == 200, res.text
+    listed = (await client.get("/api/v1/documents", headers=headers)).json()
+    assert [d["id"] for d in listed if d["is_homepage"]] == [second["id"]]
+
+
+async def test_setting_the_homepage_twice_keeps_it(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Welcome")
+    for _ in range(2):
+        res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"is_homepage": True}, headers=headers)
+        assert res.status_code == 200, res.text
+    assert res.json()["is_homepage"] is True
+
+
+async def test_the_homepage_can_be_unset(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Welcome")
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"is_homepage": True}, headers=headers)
+    res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"is_homepage": False}, headers=headers)
+    assert res.json()["is_homepage"] is False
+
+
+async def test_only_a_page_can_be_the_homepage(client: AsyncClient, headers: dict):
+    folder = await _create(client, headers, title="Runbooks", kind="folder")
+    res = await client.patch(f"/api/v1/documents/{folder['id']}", json={"is_homepage": True}, headers=headers)
+    assert res.status_code == 400
+    device = await _device(client, headers)
+    doc = await _create(client, headers, title="nas", kind="device", device_id=device["id"])
+    res = await client.patch(f"/api/v1/documents/{doc['id']}", json={"is_homepage": True}, headers=headers)
+    assert res.status_code == 400
+
+
+async def test_a_refused_homepage_leaves_the_current_one(client: AsyncClient, headers: dict):
+    home = await _create(client, headers, title="Welcome")
+    folder = await _create(client, headers, title="Runbooks", kind="folder")
+    await client.patch(f"/api/v1/documents/{home['id']}", json={"is_homepage": True}, headers=headers)
+    await client.patch(f"/api/v1/documents/{folder['id']}", json={"is_homepage": True}, headers=headers)
+    assert (await client.get(f"/api/v1/documents/{home['id']}", headers=headers)).json()["is_homepage"] is True
+
+
+async def test_deleting_the_homepage_leaves_none(client: AsyncClient, headers: dict):
+    doc = await _create(client, headers, title="Welcome")
+    await client.patch(f"/api/v1/documents/{doc['id']}", json={"is_homepage": True}, headers=headers)
+    await client.delete(f"/api/v1/documents/{doc['id']}", headers=headers)
+    listed = (await client.get("/api/v1/documents", headers=headers)).json()
+    assert not any(d["is_homepage"] for d in listed)
+
+
+async def test_the_homepage_template_is_filled_from_the_database(client: AsyncClient, headers: dict):
+    design_id = await _design(client, headers)
+    page = await _create(client, headers, title="VLAN plan")
+    await _device(client, headers, type="nas")
+    home = await _create(client, headers, title="Home", template_id="homepage")
+    assert home["template_id"] == "homepage"
+    assert f"(?design={design_id})" in home["body"]
+    assert f"[[doc:{page['id']}|VLAN plan]]" in home["body"]
+    assert "nas-01" in home["body"].split("## Key devices")[1]
+    # It never lists itself.
+    assert f"[[doc:{home['id']}" not in home["body"]
+
+
+async def test_regenerating_the_homepage_picks_up_what_was_added_since(client: AsyncClient, headers: dict):
+    home = await _create(client, headers, title="Home", template_id="homepage")
+    page = await _create(client, headers, title="Backups")
+    res = await client.post(f"/api/v1/documents/{home['id']}/regenerate", headers=headers)
+    assert res.status_code == 200, res.text
+    body = res.json()["body"]
+    assert f"[[doc:{page['id']}|Backups]]" in body
+    assert f"[[doc:{home['id']}" not in body

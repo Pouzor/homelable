@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -59,9 +59,11 @@ from app.services.doc_reconcile import (
 from app.services.doc_template import (
     BLOCKS,
     TEMPLATE_DEVICE,
+    TEMPLATE_HOMEPAGE,
     facts_snapshot,
     render_block,
     render_device_document,
+    render_homepage_document,
     render_library_document,
 )
 from app.services.doc_tree import (
@@ -260,6 +262,20 @@ async def _scaffold_body(db: AsyncSession, doc: Document, template_id: str | Non
             doc.facts_synced_at = _now()
             doc.template_id = TEMPLATE_DEVICE
             return
+    if template_id == TEMPLATE_HOMEPAGE:
+        designs = (await db.execute(select(Design).order_by(Design.created_at))).scalars().all()
+        # Filtered here, not in SQL: a document being created has no id until it
+        # is flushed, and `id != NULL` matches nothing.
+        docs = [d for d in (await db.execute(select(Document))).scalars().all() if d is not doc]
+        devices = (
+            await db.execute(select(InventoryDevice).where(InventoryDevice.status != "hidden"))
+        ).scalars().all()
+        _apply_body(
+            doc,
+            render_homepage_document(doc.title, designs=list(designs), docs=docs, devices=list(devices)),
+        )
+        doc.template_id = TEMPLATE_HOMEPAGE
+        return
     _apply_body(doc, render_library_document(template_id or "blank", doc.title))
     doc.template_id = template_id or "blank"
 
@@ -767,6 +783,17 @@ async def update_document(
         doc.sort_order = sent["sort_order"]
     if "starred" in sent and sent["starred"] is not None:
         doc.starred = sent["starred"]
+    if "is_homepage" in sent and sent["is_homepage"] is not None:
+        if sent["is_homepage"] and doc.kind != "page":
+            raise HTTPException(400, "Only a page can be the homepage")
+        if sent["is_homepage"] and not doc.is_homepage:
+            # Cleared and flushed first: the partial unique index would refuse a
+            # second homepage even for the instant between the two writes.
+            await db.execute(
+                update(Document).where(Document.is_homepage.is_(True)).values(is_homepage=False)
+            )
+            await db.flush()
+        doc.is_homepage = sent["is_homepage"]
     if sent.get("reviewed"):
         doc.reviewed_at = _now()
     if sent.get("resync_facts") and doc.device_id:

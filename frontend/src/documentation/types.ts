@@ -24,6 +24,8 @@ export interface DocumentSummary {
   /** The parsed frontmatter, so the tree can badge without loading bodies. */
   frontmatter: Record<string, unknown>
   starred: boolean
+  /** The page Documentation opens on. At most one document carries it. */
+  is_homepage?: boolean
   template_id?: string | null
   /**
    * The device has changed since this document's facts were snapshotted.

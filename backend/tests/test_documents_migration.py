@@ -156,3 +156,18 @@ async def test_a_fresh_database_has_every_column(tmp_path):
     # The re-stated ALTERs are idempotent: no column is added twice.
     assert len(columns) == len(set(columns))
     await engine.dispose()
+
+
+async def test_two_documents_cannot_both_be_the_homepage(tmp_path):
+    engine = await _boot(tmp_path)
+    async with engine.begin() as conn:
+        insert = (
+            "INSERT INTO documents (id, kind, title, slug, body, sort_order, "
+            "frontmatter, tags, starred, is_homepage, created_at, updated_at) "
+            "VALUES (?, 'page', 'home', ?, '', 0, '{}', '[]', 0, 1, "
+            "'2026-10-30', '2026-10-30')"
+        )
+        await conn.exec_driver_sql(insert, ("a", "home"))
+        with pytest.raises(IntegrityError):
+            await conn.exec_driver_sql(insert, ("b", "home-2"))
+    await engine.dispose()

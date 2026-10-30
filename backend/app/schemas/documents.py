@@ -54,6 +54,9 @@ class DocumentUpdate(BaseModel):
     parent_id: str | None = None
     sort_order: int | None = None
     starred: bool | None = None
+    # True makes this page the homepage and takes the flag off any other; false
+    # leaves Documentation with no homepage.
+    is_homepage: bool | None = None
     # Explicit: "I have re-read this and it is still true." Sent as a bare true
     # rather than a timestamp so the server owns the clock.
     reviewed: bool | None = None
@@ -91,6 +94,7 @@ class DocumentSummary(BaseModel):
     # document as due for review without fetching every body.
     frontmatter: dict[str, Any] = {}
     starred: bool = False
+    is_homepage: bool = False
     template_id: str | None = None
     # Whether the device has moved on since the snapshot was taken. Computed by
     # the server because only the server knows the snapshot's shape: it holds
