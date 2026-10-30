@@ -171,6 +171,11 @@ describe('faceplate catalog', () => {
     expect(suggestFaceplate('patch_panel')).toBe('patch-24')
   })
 
+  it('mounts an AI / LLM server on a 2U GPU-sized plate', () => {
+    expect(suggestFaceplate('ai_server')).toBe('server-2u-bays')
+    expect(UNRACKABLE_TYPES.has('ai_server')).toBe(false)
+  })
+
   it('falls back to the first plate on an unknown id', () => {
     expect(getFaceplate('does-not-exist')).toBe(FACEPLATES[0])
   })

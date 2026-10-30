@@ -3,11 +3,11 @@ import re
 
 import pytest
 
-from app.services.fingerprint import _load, match_service
+from app.services.fingerprint import _load, match_service, suggest_node_type
 
 _NODE_TYPES = {
     "isp", "router", "switch", "server", "proxmox", "vm", "lxc",
-    "nas", "kvm", "iot", "ap", "camera", "generic",
+    "nas", "kvm", "ai_server", "iot", "ap", "camera", "generic",
 }
 
 
@@ -68,3 +68,82 @@ def test_custom_port_identified_via_http_title(title, expected):
 def test_custom_port_without_probe_is_unknown():
     # Same custom port, deep scan off → no signal → no port-agnostic match.
     assert match_service(58000, "tcp", banner=None, http_signals=None) is None
+
+
+# ── Synology DSM ports (#582) ─────────────────────────────────────────────────
+
+@pytest.mark.parametrize("port", [5000, 5001])
+def test_bare_dsm_port_is_not_synology(port):
+    # A PC running a local LLM (KoboldCpp) on 5001, or a Mac's AirPlay on 5000.
+    sig = match_service(port, "tcp", banner=None, http_signals=None)
+    assert sig is not None
+    assert sig["suggested_node_type"] == "server"
+    assert "Synology" not in sig["service_name"]
+
+
+@pytest.mark.parametrize("port", [5000, 5001])
+def test_bare_dsm_port_suggests_server_not_nas(port):
+    assert suggest_node_type([{"port": port, "protocol": "tcp"}]) == "server"
+
+
+def test_unrelated_http_title_on_5001_is_not_synology():
+    sig = match_service(5001, "tcp", banner=None, http_signals={"title": "KoboldAI Lite", "headers": {}})
+    assert sig is not None
+    assert "Synology" not in sig["service_name"]
+
+
+@pytest.mark.parametrize("port", [5000, 5001, 5006])
+def test_dsm_banner_still_identifies_synology(port):
+    sig = match_service(port, "tcp", banner="Synology DSM nginx", http_signals=None)
+    assert sig is not None
+    assert sig["suggested_node_type"] == "nas"
+    assert suggest_node_type([{"port": port, "protocol": "tcp", "banner": "Synology DSM nginx"}]) == "nas"
+
+
+@pytest.mark.parametrize("port", [5001, 5006])
+def test_dsm_http_title_identifies_synology(port):
+    sig = match_service(port, "tcp", banner=None, http_signals={"title": "DiskStation - Synology", "headers": {}})
+    assert sig is not None
+    assert sig["suggested_node_type"] == "nas"
+
+
+# ── AI / LLM servers ──────────────────────────────────────────────────────────
+
+def test_ollama_port_suggests_ai_server():
+    sig = match_service(11434, "tcp", banner=None, http_signals=None)
+    assert sig is not None
+    assert sig["service_name"] == "Ollama"
+    assert suggest_node_type([{"port": 11434, "protocol": "tcp"}]) == "ai_server"
+
+
+def test_koboldcpp_on_5001_is_ai_server_once_confirmed():
+    # The #582 host: KoboldCpp on 5001, identified by its UI title.
+    port = {"port": 5001, "protocol": "tcp", "http_signals": {"title": "KoboldAI Lite", "headers": {}}}
+    sig = match_service(5001, "tcp", banner=None, http_signals=port["http_signals"])
+    assert sig is not None
+    assert sig["service_name"] == "KoboldCpp"
+    assert suggest_node_type([port]) == "ai_server"
+
+
+@pytest.mark.parametrize(("title", "expected"), [
+    ("Open WebUI", "Open WebUI"),
+    ("Text generation web UI", "text-generation-webui"),
+    ("ComfyUI", "ComfyUI"),
+    ("Stable Diffusion", "Stable Diffusion WebUI"),
+    ("AnythingLLM | Your personal LLM trained on anything", "AnythingLLM"),
+    ("SillyTavern", "SillyTavern"),
+])
+def test_ai_ui_titles_suggest_ai_server(title, expected):
+    sig = match_service(58000, "tcp", banner=None, http_signals={"title": title, "headers": {}})
+    assert sig is not None
+    assert sig["service_name"] == expected
+    assert sig["suggested_node_type"] == "ai_server"
+
+
+def test_ai_server_outranks_plain_server():
+    # A PC with SSH + a web port + Ollama is an AI box, not a generic server.
+    assert suggest_node_type([
+        {"port": 22, "protocol": "tcp"},
+        {"port": 80, "protocol": "tcp"},
+        {"port": 11434, "protocol": "tcp"},
+    ]) == "ai_server"

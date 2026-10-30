@@ -37,6 +37,7 @@ export type NodeType =
   | 'lxc'
   | 'nas'
   | 'kvm'
+  | 'ai_server'
   | 'iot'
   | 'ap'
   | 'camera'
@@ -323,6 +324,7 @@ export const NODE_TYPE_LABELS: Record<NodeType, string> = {
   lxc: 'LXC Container',
   nas: 'NAS',
   kvm: 'KVM Switch',
+  ai_server: 'AI / LLM Server',
   iot: 'IoT Device',
   ap: 'Access Point',
   camera: 'Camera',

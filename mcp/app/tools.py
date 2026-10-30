@@ -13,8 +13,8 @@ from .racks import RACK_TOOL_NAMES, RACK_TOOLS, dispatch_rack
 # group/groupRect/text are canvas annotations created via dedicated UI actions, not create_node).
 # Sync is enforced automatically by test_node_types_in_sync_with_frontend (mcp/tests/test_node_types_sync.py).
 NODE_TYPES = [
-    "isp", "router", "firewall", "switch", "server", "proxmox", "vm", "lxc", "nas", "kvm", "iot", "ap",
-    "camera", "printer", "computer", "laptop", "mobile", "cpl", "docker_host", "docker_container",
+    "isp", "router", "firewall", "switch", "server", "proxmox", "vm", "lxc", "nas", "kvm", "ai_server",
+    "iot", "ap", "camera", "printer", "computer", "laptop", "mobile", "cpl", "docker_host", "docker_container",
     "generic", "zigbee_coordinator", "zigbee_router", "zigbee_enddevice",
     "zwave_coordinator", "zwave_router", "zwave_enddevice", "grid", "ups", "battery", "generator",
     "solar_panel", "inverter", "circuit_breaker", "contactor", "electrical_switch", "socket",
