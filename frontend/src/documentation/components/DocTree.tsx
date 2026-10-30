@@ -1,7 +1,8 @@
-import { ChevronDown, ChevronRight, File, FileText, Folder, FolderOpen, Star } from 'lucide-react'
+import { ChevronDown, ChevronRight, File, FileText, Folder, FolderOpen, Plus, Star } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import type { DocState, TreeGroup, TreeLeaf } from '../types'
+import { NewDocMenu } from './NewDocMenu'
 
 /**
  * The navigator.
@@ -55,6 +56,14 @@ export interface TreeDnd {
   onDrop: (targetId: string | null) => void
 }
 
+/** What a folder's `+` asks for: a page from a template, or a folder. */
+export interface CreateInFolder {
+  title: string
+  parentId: string
+  kind?: 'folder'
+  templateId?: string
+}
+
 interface ItemProps {
   leaf: TreeLeaf
   depth: number
@@ -64,9 +73,21 @@ interface ItemProps {
   onSelect: (leaf: TreeLeaf) => void
   onToggle: (key: string) => void
   dnd?: TreeDnd
+  /** Library only: gives every folder a `+` that files the new item inside it. */
+  onCreateIn?: (input: CreateInFolder) => void | Promise<void>
 }
 
-export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect, onToggle, dnd }: ItemProps) {
+export function DocTreeItem({
+  leaf,
+  depth,
+  activeId,
+  expanded,
+  starred,
+  onSelect,
+  onToggle,
+  dnd,
+  onCreateIn,
+}: ItemProps) {
   const isFolder = leaf.kind === 'folder'
   const isOpen = expanded.includes(leaf.id)
   const active = activeId !== null && leaf.docId === activeId
@@ -77,82 +98,109 @@ export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect
   const dragging = dnd?.draggingId !== null && dnd?.draggingId === leaf.docId
   const dropTarget = Boolean(dnd && isFolder && dnd.canDrop(leaf.id))
   const over = dropTarget && dnd?.overId === leaf.id
+  // Hidden mid-drag, so it never sits between the pointer and the folder row.
+  const folderId = isFolder && onCreateIn && !dnd?.draggingId ? leaf.docId : null
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => (isFolder ? onToggle(leaf.id) : onSelect(leaf))}
-        onDoubleClick={() => isFolder && onSelect(leaf)}
-        onDragOver={
-          dropTarget
-            ? (event) => {
-                event.preventDefault()
-                event.dataTransfer.dropEffect = 'move'
-                dnd?.onDragOver(leaf.id)
-              }
-            : undefined
-        }
-        onDragLeave={dropTarget ? () => dnd?.onDragOver(null) : undefined}
-        onDrop={
-          dropTarget
-            ? (event) => {
-                event.preventDefault()
-                event.stopPropagation()
-                dnd?.onDrop(leaf.id)
-              }
-            : undefined
-        }
-        aria-current={active ? 'page' : undefined}
-        aria-expanded={isFolder ? isOpen : undefined}
-        style={{ paddingLeft: 8 + depth * 12 }}
-        className={cn(
-          'flex w-full cursor-pointer items-center gap-1.5 rounded py-1 pr-2 text-left text-xs',
-          active ? 'bg-primary/15 text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-          !leaf.docId && !isFolder && 'italic',
-          dragging && 'opacity-50',
-          over && 'bg-primary/20 text-foreground ring-1 ring-inset ring-primary/60',
-        )}
-      >
-        {isFolder ? (
-          isOpen ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />
-        ) : (
-          <span className="w-3 shrink-0" />
-        )}
-        <span
-          draggable={dragHandle || undefined}
-          data-testid={dragHandle ? `drag-${leaf.id}` : undefined}
-          aria-label={dragHandle ? `Drag ${leaf.label}` : undefined}
-          title={dragHandle ? 'Drag to file this elsewhere' : undefined}
-          onDragStart={
-            dragHandle
+      {/* The `+` is a sibling of the row, not a child: a button cannot hold one. */}
+      <div className="group relative">
+        <button
+          type="button"
+          onClick={() => (isFolder ? onToggle(leaf.id) : onSelect(leaf))}
+          onDoubleClick={() => isFolder && onSelect(leaf)}
+          onDragOver={
+            dropTarget
               ? (event) => {
-                  event.dataTransfer.effectAllowed = 'move'
-                  event.dataTransfer.setData('text/plain', leaf.docId ?? '')
-                  dnd?.onDragStart(leaf)
+                  event.preventDefault()
+                  event.dataTransfer.dropEffect = 'move'
+                  dnd?.onDragOver(leaf.id)
                 }
               : undefined
           }
-          onDragEnd={dragHandle ? () => dnd?.onDragEnd() : undefined}
-          className={cn('shrink-0', dragHandle && 'cursor-grab active:cursor-grabbing')}
+          onDragLeave={dropTarget ? () => dnd?.onDragOver(null) : undefined}
+          onDrop={
+            dropTarget
+              ? (event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  dnd?.onDrop(leaf.id)
+                }
+              : undefined
+          }
+          aria-current={active ? 'page' : undefined}
+          aria-expanded={isFolder ? isOpen : undefined}
+          style={{ paddingLeft: 8 + depth * 12 }}
+          className={cn(
+            'flex w-full cursor-pointer items-center gap-1.5 rounded py-1 pr-2 text-left text-xs',
+            active ? 'bg-primary/15 text-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
+            !leaf.docId && !isFolder && 'italic',
+            dragging && 'opacity-50',
+            over && 'bg-primary/20 text-foreground ring-1 ring-inset ring-primary/60',
+          )}
         >
-          <Icon size={13} className="opacity-70" />
-        </span>
-        {/* `truncate` hides overflow at the content edge, and this box shrink-wraps
-            to the text — so its edge is the advance width, which italic glyphs
-            lean past. An undocumented device is italic, and lost the tail of its
-            last letter. The padding gives that overhang somewhere to live;
-            `title` makes a name that really is too long readable on hover. */}
-        <span title={leaf.label} className="truncate pr-0.5">
-          {leaf.label}
-        </span>
-        {leaf.docId && starred.has(leaf.docId) && (
-          <Star size={11} className="shrink-0 fill-current text-[var(--accent-orange,#ff6e00)]" />
+          {isFolder ? (
+            isOpen ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />
+          ) : (
+            <span className="w-3 shrink-0" />
+          )}
+          <span
+            draggable={dragHandle || undefined}
+            data-testid={dragHandle ? `drag-${leaf.id}` : undefined}
+            aria-label={dragHandle ? `Drag ${leaf.label}` : undefined}
+            title={dragHandle ? 'Drag to file this elsewhere' : undefined}
+            onDragStart={
+              dragHandle
+                ? (event) => {
+                    event.dataTransfer.effectAllowed = 'move'
+                    event.dataTransfer.setData('text/plain', leaf.docId ?? '')
+                    dnd?.onDragStart(leaf)
+                  }
+                : undefined
+            }
+            onDragEnd={dragHandle ? () => dnd?.onDragEnd() : undefined}
+            className={cn('shrink-0', dragHandle && 'cursor-grab active:cursor-grabbing')}
+          >
+            <Icon size={13} className="opacity-70" />
+          </span>
+          {/* `truncate` hides overflow at the content edge, and this box shrink-wraps
+              to the text — so its edge is the advance width, which italic glyphs
+              lean past. An undocumented device is italic, and lost the tail of its
+              last letter. The padding gives that overhang somewhere to live;
+              `title` makes a name that really is too long readable on hover. */}
+          <span title={leaf.label} className="truncate pr-0.5">
+            {leaf.label}
+          </span>
+          {leaf.docId && starred.has(leaf.docId) && (
+            <Star size={11} className="shrink-0 fill-current text-[var(--accent-orange,#ff6e00)]" />
+          )}
+          <span className="ml-auto pl-1">
+            <DocStateDot state={leaf.state} />
+          </span>
+        </button>
+        {folderId && (
+          // Shown on hover or keyboard focus; always on a touch screen, which has no hover.
+          // Inset past the status dot, so the folder's state stays readable under it.
+          <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100">
+            <NewDocMenu
+              placement="down"
+              parentId={folderId}
+              onCreate={(input) => onCreateIn?.({ ...input, parentId: folderId })}
+              onCreateFolder={(input) => onCreateIn?.({ ...input, parentId: folderId, kind: 'folder' })}
+              trigger={
+                <button
+                  type="button"
+                  aria-label={`New in ${leaf.label}`}
+                  title={`New page or folder in “${leaf.label}”`}
+                  className="flex cursor-pointer items-center rounded bg-background p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  <Plus size={12} />
+                </button>
+              }
+            />
+          </div>
         )}
-        <span className="ml-auto pl-1">
-          <DocStateDot state={leaf.state} />
-        </span>
-      </button>
+      </div>
       {isFolder &&
         isOpen &&
         (leaf.children ?? []).map((child) => (
@@ -166,6 +214,7 @@ export function DocTreeItem({ leaf, depth, activeId, expanded, starred, onSelect
             onSelect={onSelect}
             onToggle={onToggle}
             dnd={dnd}
+            onCreateIn={onCreateIn}
           />
         ))}
     </>

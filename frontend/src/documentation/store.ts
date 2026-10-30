@@ -526,7 +526,13 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
         node_id: input.nodeId ?? null,
         template_id: input.templateId ?? null,
       })
-      set((state) => ({ docs: [...state.docs, data], openDoc: data }))
+      // A folder has nothing to read or write, so it never takes the viewer:
+      // swapping `openDoc` under a live `draft` would bind the editor — and its
+      // next save — to the folder.
+      set((state) => ({
+        docs: [...state.docs, data],
+        openDoc: data.kind === 'folder' ? state.openDoc : data,
+      }))
       return data
     } catch (error) {
       set({ loadError: message(error, 'Could not create that document') })

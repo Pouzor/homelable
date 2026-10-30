@@ -256,6 +256,16 @@ describe('mutations', () => {
     expect(useDocsStore.getState().openDoc?.id).toBe('new')
   })
 
+  it('adds a created folder without taking the viewer from the open document', async () => {
+    const page = doc({ id: 'page' })
+    useDocsStore.setState({ openDoc: page, draft: 'unsaved' })
+    api.create.mockResolvedValue({ data: doc({ id: 'f', kind: 'folder' }) } as never)
+    await useDocsStore.getState().create({ title: 'Storage', kind: 'folder' })
+    expect(useDocsStore.getState().docs.map((d) => d.id)).toContain('f')
+    expect(useDocsStore.getState().openDoc?.id).toBe('page')
+    expect(useDocsStore.getState().draft).toBe('unsaved')
+  })
+
   it('reports a create failure instead of adding nothing silently', async () => {
     api.create.mockRejectedValue({ response: { data: { detail: 'that already has a document' } } })
     expect(await useDocsStore.getState().create({ title: 'New' })).toBeNull()

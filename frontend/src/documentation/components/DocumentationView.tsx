@@ -25,7 +25,7 @@ import {
 } from '../tree'
 import { GROUP_BY_LABELS, type GroupBy, type TreeLeaf, type UpdatePreview } from '../types'
 import { DocEditor } from './DocEditor'
-import { DocTreeGroups, DocTreeItem, type TreeDnd } from './DocTree'
+import { DocTreeGroups, DocTreeItem, type CreateInFolder, type TreeDnd } from './DocTree'
 import { DocViewer } from './DocViewer'
 import { MigrateNotesBanner } from './MigrateNotesBanner'
 import { NewDocMenu } from './NewDocMenu'
@@ -194,6 +194,18 @@ export function DocumentationView() {
       }
     },
     [create, devices, dirty, open],
+  )
+
+  // A folder's `+`. The folder opens so the new item lands in sight; a page
+  // opens for writing, a folder has nothing to write yet.
+  const handleCreateIn = useCallback(
+    async (input: CreateInFolder) => {
+      const doc = await create(input)
+      if (!doc) return
+      if (!expanded.includes(input.parentId)) setExpanded([...expanded, input.parentId])
+      if (doc.kind !== 'folder') await open(doc.id)
+    },
+    [create, expanded, open, setExpanded],
   )
 
   // Filing by drag. The confirmation is the point — a document that moves
@@ -553,6 +565,7 @@ export function DocumentationView() {
                   onSelect={(item) => void handleSelect(item)}
                   onToggle={toggleExpanded}
                   dnd={dnd}
+                  onCreateIn={handleCreateIn}
                 />
               ))}
             {libraryOpen && libraryItems.length === 0 && (
