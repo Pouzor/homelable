@@ -14,6 +14,7 @@ import { copyToClipboard } from '@/utils/clipboard'
 import { formatRelative } from '@/utils/timeFormat'
 import { downloadAllDocs, downloadDoc } from '../export'
 import { isOverdue } from '../frontmatter'
+import { dismissHomepageBanner, isHomepageBannerDismissed } from '../homepageBanner'
 import { driftedIds, useDocsStore } from '../store'
 import {
   buildDeviceTree,
@@ -124,6 +125,7 @@ export function DocumentationView() {
   const [exporting, setExporting] = useState(false)
   const [homepageConfirm, setHomepageConfirm] = useState(false)
   const [settingHome, setSettingHome] = useState(false)
+  const [homeBannerDismissed, setHomeBannerDismissed] = useState(() => isHomepageBannerDismissed())
   const updateFlow = useRef(0)
 
   useEffect(() => {
@@ -677,7 +679,7 @@ export function DocumentationView() {
           <MigrateNotesBanner count={coverage.notes_unmigrated} onMigrate={() => void handleMigrate()} />
         )}
 
-        {loaded && !homepage && (
+        {loaded && !homepage && !homeBannerDismissed && (
           <div className="flex items-center gap-2 border-b border-border bg-primary/5 px-4 py-1.5 text-xs">
             <House size={13} className="shrink-0 text-primary" />
             <span className="text-muted-foreground">
@@ -691,6 +693,19 @@ export function DocumentationView() {
               onClick={() => void handleCreateHomepage()}
             >
               Create homepage
+            </Button>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label="Dismiss for two weeks"
+              title="Dismiss for two weeks"
+              className="cursor-pointer"
+              onClick={() => {
+                dismissHomepageBanner()
+                setHomeBannerDismissed(true)
+              }}
+            >
+              <X />
             </Button>
           </div>
         )}

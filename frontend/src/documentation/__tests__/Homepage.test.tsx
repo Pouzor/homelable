@@ -79,6 +79,18 @@ describe('DocumentationView — homepage', () => {
     expect(screen.queryByText(BANNER)).toBeNull()
   })
 
+  it('dismisses the banner and remembers it across visits', async () => {
+    renderView([doc()], null)
+    fireEvent.click(await screen.findByRole('button', { name: 'Dismiss for two weeks' }))
+    expect(screen.queryByText(BANNER)).toBeNull()
+    expect(localStorage.getItem('homelable_docs_homepage_banner_dismissed')).not.toBeNull()
+
+    cleanup()
+    renderView([doc()], null)
+    await waitFor(() => expect(api.list).toHaveBeenCalled())
+    expect(screen.queryByText(BANNER)).toBeNull()
+  })
+
   it('sets the first homepage without asking', async () => {
     const page = doc()
     api.update.mockResolvedValue({ data: { ...page, is_homepage: true } } as never)
