@@ -168,12 +168,23 @@ def _extract_net_mac(config_payload: dict[str, Any] | None) -> str | None:
     return normalize_mac(match.group(1)) if match else None
 
 
-def _host_node(raw: dict[str, Any]) -> dict[str, Any] | None:
+def _host_ieee(host_name: str, scope: str = "") -> str:
+    """Synthetic id of a Proxmox host. ``scope`` is the endpoint's ``name``."""
+    return f"pve-node-{scope}-{host_name}" if scope else f"pve-node-{host_name}"
+
+
+def _guest_ieee(host_name: str, vmid: Any, scope: str = "") -> str:
+    """Synthetic id of a guest. Scoped, it drops the host name: a VMID is
+    unique across a cluster, so the id survives a migration between nodes."""
+    return f"pve-{scope}-{vmid}" if scope else f"pve-{host_name}-{vmid}"
+
+
+def _host_node(raw: dict[str, Any], scope: str = "") -> dict[str, Any] | None:
     """Build a homelable ``proxmox`` host node from a ``/nodes`` entry."""
     name = raw.get("node")
     if not name:
         return None
-    ieee = f"pve-node-{name}"
+    ieee = _host_ieee(name, scope)
     return {
         "id": ieee,
         "label": name,
@@ -192,13 +203,18 @@ def _host_node(raw: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _guest_node(
-    raw: dict[str, Any], host_name: str, kind: str, ip: str | None, mac: str | None = None
+    raw: dict[str, Any],
+    host_name: str,
+    kind: str,
+    ip: str | None,
+    mac: str | None = None,
+    scope: str = "",
 ) -> dict[str, Any] | None:
     """Build a homelable vm/lxc node from a ``/qemu`` or ``/lxc`` list entry."""
     vmid = raw.get("vmid")
     if vmid is None:
         return None
-    ieee = f"pve-{host_name}-{vmid}"
+    ieee = _guest_ieee(host_name, vmid, scope)
     node_type = _guest_type_to_homelable(kind)
     name = raw.get("name") or f"{node_type}-{vmid}"
     return {
@@ -216,7 +232,7 @@ def _guest_node(
         "vendor": "Proxmox VE",
         "model": kind.upper(),
         "vmid": vmid,
-        "parent_ieee": f"pve-node-{host_name}",
+        "parent_ieee": _host_ieee(host_name, scope),
     }
 
 
@@ -260,6 +276,7 @@ def build_proxmox_cluster_links(nodes: list[dict[str, Any]]) -> list[tuple[str, 
 def _parse_inventory(
     hosts_raw: list[dict[str, Any]],
     guests_by_host: dict[str, list[dict[str, Any]]],
+    scope: str = "",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Assemble (nodes, edges) from fetched host + guest data.
 
@@ -272,14 +289,14 @@ def _parse_inventory(
     seen: set[str] = set()
 
     for raw in hosts_raw:
-        host = _host_node(raw)
+        host = _host_node(raw, scope)
         if host is None or host["id"] in seen:
             continue
         seen.add(host["id"])
         nodes.append(host)
 
     for host_name, guests in guests_by_host.items():
-        host_ieee = f"pve-node-{host_name}"
+        host_ieee = _host_ieee(host_name, scope)
         for guest in guests:
             if guest["id"] in seen:
                 continue
@@ -319,8 +336,12 @@ async def fetch_proxmox_inventory(
     token_id: str,
     token_secret: str,
     verify_tls: bool = True,
+    name: str = "",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Fetch hosts + VMs + LXC from a Proxmox VE host, return (nodes, edges).
+
+    ``name`` is the configured endpoint name; when set it scopes every
+    synthetic id (see ``ProxmoxEndpoint``).
 
     Raises:
         ConnectionError: transport/DNS/TLS failures (sanitized message).
@@ -342,21 +363,21 @@ async def fetch_proxmox_inventory(
                 raise ValueError("Malformed /nodes response")
 
             for host_entry in hosts_raw:
-                name = host_entry.get("node")
-                if not name or host_entry.get("status") != "online":
+                node_name = host_entry.get("node")
+                if not node_name or host_entry.get("status") != "online":
                     # Offline nodes can't be queried for guests; still shown as host.
                     continue
-                guests_by_host[name] = await _fetch_host_guests(client, name)
+                guests_by_host[node_name] = await _fetch_host_guests(client, node_name, name)
     except httpx.HTTPStatusError as exc:
         raise ConnectionError(_sanitize_proxmox_error(exc)) from exc
     except httpx.HTTPError as exc:
         raise ConnectionError(_sanitize_proxmox_error(exc)) from exc
 
-    return _parse_inventory(hosts_raw, guests_by_host)
+    return _parse_inventory(hosts_raw, guests_by_host, name)
 
 
 async def _fetch_host_guests(
-    client: httpx.AsyncClient, host_name: str
+    client: httpx.AsyncClient, host_name: str, scope: str = ""
 ) -> list[dict[str, Any]]:
     """Fetch qemu + lxc guests for one host, resolving guest IPs best-effort."""
     guests: list[dict[str, Any]] = []
@@ -371,7 +392,7 @@ async def _fetch_host_guests(
             continue
         for raw in entries:
             ip, mac = await _resolve_guest_net(client, host_name, kind, raw)
-            node = _guest_node(raw, host_name, kind, ip, mac)
+            node = _guest_node(raw, host_name, kind, ip, mac, scope)
             if node:
                 guests.append(node)
 

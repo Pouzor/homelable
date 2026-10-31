@@ -4,10 +4,33 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
+
+
+class ProxmoxEndpoint(BaseModel):
+    """One Proxmox VE endpoint: a standalone server or one node of a cluster.
+
+    ``name`` is optional. When set it scopes the synthetic ids of everything
+    the endpoint returns (host ``pve-node-{name}-{node}``, guest
+    ``pve-{name}-{vmid}``). Without it the ids are built from the Proxmox node
+    name alone, so two standalone servers sharing a node name (the installer
+    default is ``pve``) and a VMID overwrite each other's inventory rows.
+    """
+
+    name: str = ""
+    host: str
+    port: int = Field(8006, ge=1, le=65535)
+    token_id: str
+    token_secret: str
+    verify_tls: bool = True
+
+    @field_validator("name", "host")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        return value.strip()
 
 
 def origin_of(url: str) -> str:
@@ -223,6 +246,10 @@ class Settings(BaseSettings):
     proxmox_host: str = ""
     proxmox_port: int = 8006
     proxmox_verify_tls: bool = True
+    # More endpoints, as a JSON list of ProxmoxEndpoint (PROXMOX_ENDPOINTS).
+    # Synced alongside the single PROXMOX_HOST endpoint above, which stays
+    # supported as-is.
+    proxmox_endpoints: list[ProxmoxEndpoint] = []
     proxmox_sync_enabled: bool = False
     proxmox_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
 
@@ -425,6 +452,38 @@ class Settings(BaseSettings):
             "unifi_import_known_clients": self.unifi_import_known_clients,
             "unifi_import_active_clients": self.unifi_import_active_clients,
         }))
+
+
+def proxmox_sync_endpoints(s: Settings) -> list[ProxmoxEndpoint]:
+    """Every fully configured Proxmox endpoint, the legacy single one first.
+
+    The legacy ``PROXMOX_HOST`` / ``PROXMOX_TOKEN_*`` endpoint counts only with
+    a host and both token fields. A ``PROXMOX_ENDPOINTS`` entry repeating an
+    endpoint already listed (same host and port) is dropped, so a server is
+    never synced twice per run.
+    """
+    endpoints: list[ProxmoxEndpoint] = []
+    if s.proxmox_host and s.proxmox_token_id and s.proxmox_token_secret:
+        endpoints.append(ProxmoxEndpoint(
+            host=s.proxmox_host,
+            port=s.proxmox_port,
+            token_id=s.proxmox_token_id,
+            token_secret=s.proxmox_token_secret,
+            verify_tls=s.proxmox_verify_tls,
+        ))
+    seen = {(normalize_host(e.host), e.port) for e in endpoints}
+    for endpoint in s.proxmox_endpoints:
+        key = (normalize_host(endpoint.host), endpoint.port)
+        if key in seen:
+            continue
+        seen.add(key)
+        endpoints.append(endpoint)
+    return endpoints
+
+
+def normalize_host(host: str) -> str:
+    """Compare-ready host: trimmed, no trailing dot, lowercase."""
+    return host.strip().rstrip(".").lower()
 
 
 settings = Settings()  # type: ignore[call-arg]

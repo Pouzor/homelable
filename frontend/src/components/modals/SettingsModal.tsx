@@ -627,7 +627,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             {!pmConfig.token_configured ? (
               <p className="text-[10px] text-[#e3b341] leading-tight">
                 No API token configured. Set <span className="font-mono">PROXMOX_TOKEN_ID</span> and{' '}
-                <span className="font-mono">PROXMOX_TOKEN_SECRET</span> in the server .env to enable auto-sync.
+                <span className="font-mono">PROXMOX_TOKEN_SECRET</span> (or{' '}
+                <span className="font-mono">PROXMOX_ENDPOINTS</span>) in the server .env to enable auto-sync.
               </p>
             ) : (
               <>
@@ -659,7 +660,24 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     Re-imports hosts/VMs/LXC into the pending inventory. Min 300s (5 min).
                   </p>
                 </div>
-                {pmConfig.host ? (
+                {(pmConfig.endpoints ?? []).length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Servers synced</span>
+                    <ul className="space-y-0.5" aria-label="Proxmox servers synced">
+                      {(pmConfig.endpoints ?? []).map((ep) => (
+                        <li key={`${ep.host}:${ep.port}`} className="flex items-center gap-2 text-xs">
+                          {ep.name && <span className="text-foreground">{ep.name}</span>}
+                          <span className="font-mono text-muted-foreground">{ep.host}:{ep.port}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Servers come from <span className="font-mono">PROXMOX_HOST</span> and{' '}
+                      <span className="font-mono">PROXMOX_ENDPOINTS</span> in the server .env.
+                    </p>
+                  </div>
+                )}
+                {pmConfig.host || (pmConfig.endpoints ?? []).length > 0 ? (
                   <div className="flex items-center gap-2 pt-1">
                     <Button
                       variant="outline"
@@ -670,7 +688,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       {pmSyncing ? 'Syncing…' : 'Re-sync now'}
                     </Button>
                     <span className="text-[10px] text-muted-foreground leading-tight">
-                      Runs one import immediately using the server .env config.
+                      Runs one import per server immediately using the server .env config.
                     </span>
                   </div>
                 ) : (

@@ -23,6 +23,19 @@ def test_credentials():
     settings.auth_password_hash = hash_password("admin")
 
 
+@pytest.fixture(autouse=True)
+def _no_proxmox_endpoints_from_env():
+    """Start every test with no PROXMOX_ENDPOINTS. A developer's backend/.env
+    listing real servers would otherwise make every "nothing configured" test
+    see them; tests that need endpoints set their own."""
+    from app.core.config import settings
+
+    saved = settings.proxmox_endpoints
+    settings.proxmox_endpoints = []
+    yield
+    settings.proxmox_endpoints = saved
+
+
 @pytest.fixture
 async def db_session():
     engine = create_async_engine(TEST_DB_URL)

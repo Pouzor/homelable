@@ -11,6 +11,8 @@ export interface ScanRun {
   status: string
   kind?: string
   ranges: string[]
+  /** Source the run covers (a Proxmox server's name, else its host). */
+  label?: string | null
   devices_found: number
   started_at: string
   finished_at: string | null
@@ -118,7 +120,8 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
         }
         if (prev?.status === 'running' && run.status === 'done') {
           if (run.kind === 'zigbee' || run.kind === 'zwave' || run.kind === 'proxmox' || run.kind === 'unifi' || run.kind === 'unraid') {
-            const label = KIND_META[runKind(run.kind)].label
+            const kindLabel = KIND_META[runKind(run.kind)].label
+            const label = run.label ? `${kindLabel} (${run.label})` : kindLabel
             // A done run can still carry a non-fatal advisory (e.g. Proxmox
             // imported hosts but the token couldn't see any VMs/LXC).
             if (run.error) {
@@ -267,6 +270,11 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
                     <KindIcon size={10} />
                     {meta.label}
                   </span>
+                  {r.label && (
+                    <span className="text-xs font-mono text-foreground truncate" title={r.label}>
+                      {r.label}
+                    </span>
+                  )}
                   <span className="ml-auto text-xs text-muted-foreground font-mono">
                     {r.devices_found} found
                   </span>

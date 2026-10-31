@@ -274,4 +274,37 @@ describe('ScanHistoryModal', () => {
       expect(toast.warning).toHaveBeenCalledWith('UniFi import: Controller returned no active clients')
     )
   })
+
+  it('tells apart the Proxmox runs of several servers by their label', async () => {
+    vi.mocked(scanApi.runs).mockResolvedValue({
+      data: [
+        { ...PROXMOX_RUN, id: 'pve-a', label: 'lab1', ranges: ['10.0.0.11:8006'] },
+        { ...PROXMOX_RUN, id: 'pve-b', label: '10.0.0.12', ranges: ['10.0.0.12:8006'] },
+      ],
+    } as never)
+    renderModal()
+    expect(await screen.findByTitle('lab1')).toBeDefined()
+    expect(screen.getByTitle('10.0.0.12')).toBeDefined()
+  })
+
+  it('shows no label for a run that has none', async () => {
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [PROXMOX_RUN] } as never)
+    renderModal()
+    await screen.findByText('9 found')
+    expect(screen.queryByTitle('pve')).toBeNull()
+  })
+
+  it('names the server in the toast when a Proxmox run finishes', async () => {
+    const done = { ...PROXMOX_RUN, label: 'lab1' }
+    vi.mocked(scanApi.runs).mockResolvedValue({
+      data: [{ ...done, status: 'running', finished_at: null, devices_found: 0 }],
+    } as never)
+    renderModal()
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [done] } as never)
+    fireEvent.click(screen.getByTitle('Refresh'))
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Proxmox (lab1) import done — 9 devices')
+    )
+  })
 })

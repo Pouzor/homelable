@@ -9,7 +9,7 @@ pydantic-settings==2.5.2
 PyJWT==2.15.0
 bcrypt==4.2.1
 authlib==1.9.1
-joserfc==1.7.4
+joserfc==1.7.7
 itsdangerous==2.2.0
 python-multipart==0.0.31
 apscheduler==3.10.4
