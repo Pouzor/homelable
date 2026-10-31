@@ -72,10 +72,15 @@ PROXMOX_VERIFY_TLS=true            # set false only for self-signed certs
 
 ### Several Proxmox servers
 
-Add the others as a JSON list in `PROXMOX_ENDPOINTS`, one entry per standalone
-server (a cluster needs one entry: any of its nodes returns the whole cluster).
-They are synced alongside the `PROXMOX_HOST` server, which keeps working as
-before. `port` defaults to `8006`, `verify_tls` to `true`, `name` is optional.
+List your servers in `PROXMOX_ENDPOINTS`, a JSON list with one entry per
+standalone server (a cluster needs one entry: any of its nodes returns the whole
+cluster). `port` defaults to `8006`, `verify_tls` to `true`, `name` is optional.
+
+You can put every server in the list and leave `PROXMOX_HOST` /
+`PROXMOX_TOKEN_*` unset — that is the simplest setup. Those variables keep
+working for existing installs: when set, that server is synced first, then the
+list. Don't configure the same server in both places — the `PROXMOX_HOST` one
+wins and the list entry (its `name` included) is ignored.
 
 ```env
 PROXMOX_ENDPOINTS=[{"name":"lab1","host":"192.168.1.11","token_id":"root@pam!homelable","token_secret":"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"},{"name":"lab2","host":"192.168.1.12","token_id":"root@pam!homelable","token_secret":"yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy","verify_tls":false}]
