@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { SettingsModal } from '../SettingsModal'
 
 vi.mock('sonner', async () => (await import('@/test/mocks')).mockSonner())
@@ -204,6 +204,35 @@ describe('SettingsModal', () => {
     render(<SettingsModal open onClose={vi.fn()} />)
     await screen.findByText('PROXMOX_HOST')
     expect(screen.queryByRole('button', { name: 'Re-sync now' })).toBeNull()
+  })
+
+  it('lists the Proxmox servers auto-sync covers, named or not', async () => {
+    vi.mocked(proxmoxApi.getConfig).mockResolvedValue({
+      data: {
+        host: 'pve', port: 8006, verify_tls: true, sync_enabled: false, sync_interval: 3600, token_configured: true,
+        endpoints: [
+          { name: '', host: 'pve', port: 8006, verify_tls: true },
+          { name: 'lab2', host: '10.0.0.12', port: 8007, verify_tls: false },
+        ],
+      },
+    } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const list = await screen.findByRole('list', { name: 'Proxmox servers synced' })
+    const items = within(list).getAllByRole('listitem')
+    expect(items.map((li) => li.textContent)).toEqual(['pve:8006', 'lab210.0.0.12:8007'])
+    expect(within(items[1]).getByText('lab2')).toBeInTheDocument()
+  })
+
+  it('offers Re-sync now when only PROXMOX_ENDPOINTS is configured', async () => {
+    vi.mocked(proxmoxApi.getConfig).mockResolvedValue({
+      data: {
+        host: '', port: 8006, verify_tls: true, sync_enabled: false, sync_interval: 3600, token_configured: true,
+        endpoints: [{ name: 'lab1', host: '10.0.0.11', port: 8006, verify_tls: true }],
+      },
+    } as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    expect(await screen.findByRole('button', { name: 'Re-sync now' })).toBeInTheDocument()
+    expect(screen.queryByText(/to enable manual re-sync/)).toBeNull()
   })
 
   it('hides Re-sync now when no Proxmox token is configured', async () => {

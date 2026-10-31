@@ -70,6 +70,33 @@ PROXMOX_PORT=8006
 PROXMOX_VERIFY_TLS=true            # set false only for self-signed certs
 ```
 
+### Several Proxmox servers
+
+Add the others as a JSON list in `PROXMOX_ENDPOINTS`, one entry per standalone
+server (a cluster needs one entry: any of its nodes returns the whole cluster).
+They are synced alongside the `PROXMOX_HOST` server, which keeps working as
+before. `port` defaults to `8006`, `verify_tls` to `true`, `name` is optional.
+
+```env
+PROXMOX_ENDPOINTS=[{"name":"lab1","host":"192.168.1.11","token_id":"root@pam!homelable","token_secret":"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"},{"name":"lab2","host":"192.168.1.12","token_id":"root@pam!homelable","token_secret":"yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy","verify_tls":false}]
+```
+
+**When to set `name`.** Homelable identifies Proxmox devices by the Proxmox node
+name: `pve-node-{node}` for a host, `pve-{node}-{vmid}` for a guest. Two
+standalone servers that share a node name (the installer default is `pve`) and
+a VMID therefore land on the same inventory row, and the last import overwrites
+the other server's VM or LXC. Giving each such server a distinct `name` —
+different from your node names — scopes its ids: `pve-node-{name}-{node}` and
+`pve-{name}-{vmid}`. Without a name the ids stay as they are.
+
+Naming a server you already imported moves its guests to the new ids (matched
+by MAC address); its previous host row stays in the Device Inventory, delete it
+there.
+
+A one-off import from the dialog to a host listed in `PROXMOX_ENDPOINTS` uses
+that entry's token when the token fields are left blank, and its `name` either
+way, so it files devices exactly as auto-sync does.
+
 ---
 
 ## Step-by-step Usage
@@ -131,7 +158,7 @@ Nodes are placed in a grid; host→guest `virtual` edges connect them. Use
 | `maxcpu` | CPU Cores property | hidden by default |
 | `maxmem` | RAM property (GB) | hidden by default |
 | `maxdisk` | Disk property (GB) | hidden by default |
-| VMID + host | synthetic identity (`pve-{host}-{vmid}`) | stable across re-imports |
+| VMID + host | synthetic identity (`pve-{host}-{vmid}`, or `pve-{name}-{vmid}` for a named endpoint) | stable across re-imports |
 
 Guest hierarchy is rendered as `virtual` edges (host ↔ VM/LXC).
 
@@ -139,11 +166,16 @@ Guest hierarchy is rendered as `virtual` edges (host ↔ VM/LXC).
 
 ## Auto-sync configuration
 
-1. Configure `PROXMOX_TOKEN_ID` / `PROXMOX_TOKEN_SECRET` (and optionally
-   `PROXMOX_HOST`) in `backend/.env` and restart the backend.
+1. Configure `PROXMOX_HOST` / `PROXMOX_TOKEN_ID` / `PROXMOX_TOKEN_SECRET`,
+   and/or `PROXMOX_ENDPOINTS`, in `backend/.env` and restart the backend.
 2. Open **Settings** — a **Proxmox auto-sync** section appears once a server token
-   is configured.
-3. Toggle **Auto-sync Proxmox inventory** and set the interval (min 300 s).
+   is configured, listing every server it covers.
+3. Toggle **Auto-sync Proxmox inventory** and set the interval (min 300 s). One
+   toggle and one interval cover all servers; connection details stay in `.env`.
+
+Each run syncs the servers one after another and records one scan run per
+server in Scan History, so a server that fails does not hide the others.
+**Re-sync now** does the same immediately.
 
 On each run, Homelable re-imports the inventory into the pending section:
 - New VMs/LXC appear as **pending** for review.

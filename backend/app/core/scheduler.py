@@ -9,7 +9,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.config import proxmox_sync_endpoints, settings
 from app.db.database import AsyncSessionLocal
 from app.db.models import InventoryDevice, Node
 from app.services.status_checker import check_node, check_services
@@ -194,41 +194,36 @@ async def _run_service_checks() -> None:
 
 
 async def _run_proxmox_sync() -> None:
-    """Fetch the Proxmox inventory and upsert it into pending (auto-sync).
+    """Fetch every configured Proxmox inventory and upsert it into pending
+    (auto-sync).
 
-    Records a ScanRun (kind=proxmox) so the scheduled sync shows in Scan
-    history, exactly like the manual /sync-now and /import-pending paths.
+    Records one ScanRun (kind=proxmox) per endpoint so the scheduled sync shows
+    in Scan history, exactly like the manual /sync-now and /import-pending
+    paths. Endpoints run one after another; a failing one marks its own run
+    as errored and the next still syncs.
     """
     if not settings.proxmox_sync_enabled:
         return
-    if not (settings.proxmox_host and settings.proxmox_token_id and settings.proxmox_token_secret):
+    endpoints = proxmox_sync_endpoints(settings)
+    if not endpoints:
         logger.warning("Proxmox auto-sync enabled but host/token not configured — skipping")
         return
     # Lazy import to avoid a circular import at module load.
-    from app.api.routes.proxmox import _background_proxmox_import
-    from app.db.models import ScanRun
-
-    async with AsyncSessionLocal() as db:
-        run = ScanRun(
-            status="running",
-            kind="proxmox",
-            ranges=[f"{settings.proxmox_host}:{settings.proxmox_port}"],
-        )
-        db.add(run)
-        await db.commit()
-        await db.refresh(run)
-        run_id = run.id
-
-    # Shares the manual-sync flow: fetch + persist + mark the run done/error +
-    # broadcast the inventory-reload signal.
-    await _background_proxmox_import(
-        run_id,
-        settings.proxmox_host,
-        settings.proxmox_port,
-        settings.proxmox_token_id,
-        settings.proxmox_token_secret,
-        settings.proxmox_verify_tls,
+    from app.api.routes.proxmox import (
+        _background_proxmox_import,
+        create_proxmox_run,
+        proxmox_import_args,
     )
+
+    for endpoint in endpoints:
+        async with AsyncSessionLocal() as db:
+            run = await create_proxmox_run(db, endpoint)
+            run_id = run.id
+
+        # Shares the manual-sync flow: fetch + persist + mark the run done/error +
+        # broadcast the inventory-reload signal.
+        args, kwargs = proxmox_import_args(run_id, endpoint)
+        await _background_proxmox_import(*args, **kwargs)
 
 
 async def _run_unraid_sync() -> None:

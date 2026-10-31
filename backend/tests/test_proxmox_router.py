@@ -100,7 +100,7 @@ async def test_sync_now_creates_scan_run(client: AsyncClient, headers: dict) -> 
     with patch("app.api.routes.proxmox._background_proxmox_import", new_callable=AsyncMock):
         res = await client.post("/api/v1/proxmox/sync-now", headers=headers)
     assert res.status_code == 200
-    data = res.json()
+    [data] = res.json()
     assert data["kind"] == "proxmox"
     assert data["status"] == "running"
 

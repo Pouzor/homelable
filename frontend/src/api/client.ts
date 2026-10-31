@@ -284,6 +284,14 @@ export interface ProxmoxConnection {
   verify_tls?: boolean
 }
 
+/** One env-configured Proxmox endpoint, for display. Never carries a token. */
+export interface ProxmoxEndpointInfo {
+  name: string
+  host: string
+  port: number
+  verify_tls: boolean
+}
+
 export interface ProxmoxConfigData {
   host: string
   port: number
@@ -291,6 +299,8 @@ export interface ProxmoxConfigData {
   sync_enabled: boolean
   sync_interval: number
   token_configured: boolean
+  /** Every endpoint auto-sync covers: PROXMOX_HOST, then PROXMOX_ENDPOINTS. */
+  endpoints?: ProxmoxEndpointInfo[]
 }
 
 export const proxmoxApi = {
@@ -322,6 +332,7 @@ export const proxmoxApi = {
   saveConfig: (data: { sync_enabled: boolean; sync_interval: number }) =>
     api.post<ProxmoxConfigData>('/proxmox/config', data),
 
+  /** One scan run per configured server, in sync order. */
   syncNow: () =>
     api.post<{
       id: string
@@ -332,7 +343,7 @@ export const proxmoxApi = {
       started_at: string
       finished_at: string | null
       error: string | null
-    }>('/proxmox/sync-now'),
+    }[]>('/proxmox/sync-now'),
 }
 
 export interface UnraidConnection {

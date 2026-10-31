@@ -4,9 +4,9 @@ Fetches hosts/VMs/LXC from the Proxmox REST API and upserts them into the
 pending inventory (same review→approve flow as scans and mesh imports).
 
 Credentials: the API token comes from the request body when provided, else
-falls back to the server-configured env token (``settings.proxmox_token_*``) —
-only for the configured host and port, and never with TLS verification off
-when the server keeps it on.
+falls back to the token of the env-configured endpoint (``PROXMOX_HOST`` or a
+``PROXMOX_ENDPOINTS`` entry) — only for that endpoint's host and port, and
+never with TLS verification off when the server keeps it on.
 The token is never persisted by the app and never returned by any endpoint.
 """
 
@@ -20,7 +20,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.core.config import settings
+from app.core.config import ProxmoxEndpoint, normalize_host, proxmox_sync_endpoints, settings
 from app.core.scheduler import reschedule_proxmox_sync, set_proxmox_sync_enabled
 from app.db.database import AsyncSessionLocal, get_db
 from app.db.models import InventoryDevice, InventoryDeviceLink, Node, ScanRun
@@ -28,6 +28,7 @@ from app.schemas.proxmox import (
     ProxmoxConfig,
     ProxmoxConnectionRequest,
     ProxmoxEdgeOut,
+    ProxmoxEndpointOut,
     ProxmoxImportPendingResponse,
     ProxmoxImportResponse,
     ProxmoxNodeOut,
@@ -56,29 +57,49 @@ router = APIRouter()
 _PROXMOX_GUEST_SOURCE = "proxmox"
 _PROXMOX_CLUSTER_SOURCE = "proxmox_cluster"
 # Every imported guest/host carries a synthetic ieee under this prefix
-# (``pve-node-{host}`` / ``pve-{host}-{vmid}``), built in proxmox_service.
+# (``pve-node-{host}`` / ``pve-{host}-{vmid}``, or scoped by the endpoint name),
+# built in proxmox_service.
 _PVE_IEEE_PREFIX = "pve-"
 
 
-def _resolve_credentials(payload: ProxmoxConnectionRequest) -> tuple[str, str]:
-    """Resolve credentials without sending server secrets to custom hosts.
+def _configured_endpoint(host: str, port: int) -> ProxmoxEndpoint | None:
+    """The env-configured endpoint at this host and port, if any."""
+    wanted = (normalize_host(host), port)
+    for endpoint in proxmox_sync_endpoints(settings):
+        if (normalize_host(endpoint.host), endpoint.port) == wanted:
+            return endpoint
+    return None
+
+
+def _resolve_credentials(payload: ProxmoxConnectionRequest) -> tuple[str, str, str]:
+    """Resolve ``(token_id, token_secret, name)`` without sending server
+    secrets to custom hosts.
 
     Environment credentials are only valid for the configured Proxmox endpoint.
-    A custom endpoint must provide both token fields explicitly.
+    A custom endpoint must provide both token fields explicitly. ``name`` is
+    the configured endpoint's, also with a request token, so a GUI import of a
+    configured server files its devices under the same ids auto-sync does.
     """
+    endpoint = _configured_endpoint(payload.host, payload.port)
+    name = endpoint.name if endpoint else ""
     has_request_token = bool(payload.token_id or payload.token_secret)
     if has_request_token:
         if not payload.token_id or not payload.token_secret:
             raise HTTPException(status_code=400, detail="Provide both Proxmox token fields")
-        return payload.token_id, payload.token_secret
+        return payload.token_id, payload.token_secret, name
 
-    configured_host = settings.proxmox_host.strip().rstrip(".").lower()
-    request_host = payload.host.strip().rstrip(".").lower()
-    if (
-        not configured_host
-        or request_host != configured_host
-        or payload.port != settings.proxmox_port
-    ):
+    if endpoint is None:
+        legacy_host = normalize_host(settings.proxmox_host)
+        if (
+            legacy_host
+            and normalize_host(payload.host) == legacy_host
+            and payload.port == settings.proxmox_port
+        ):
+            # PROXMOX_HOST is set but its token is not.
+            raise HTTPException(
+                status_code=400,
+                detail="No Proxmox API token provided and none configured on the server.",
+            )
         raise HTTPException(
             status_code=400,
             detail="Custom Proxmox hosts require an explicit API token",
@@ -86,17 +107,12 @@ def _resolve_credentials(payload: ProxmoxConnectionRequest) -> tuple[str, str]:
     # Verifying more strictly than configured is fine (the modal's checkbox
     # defaults to on, over a self-signed env setup); turning off verification
     # the server keeps on would hand the env token to an unverified peer.
-    if settings.proxmox_verify_tls and not payload.verify_tls:
+    if endpoint.verify_tls and not payload.verify_tls:
         raise HTTPException(
             status_code=400,
             detail="The server-configured Proxmox token requires TLS verification",
         )
-    if not settings.proxmox_token_id or not settings.proxmox_token_secret:
-        raise HTTPException(
-            status_code=400,
-            detail="No Proxmox API token provided and none configured on the server.",
-        )
-    return settings.proxmox_token_id, settings.proxmox_token_secret
+    return endpoint.token_id, endpoint.token_secret, name
 
 
 @router.post("/test-connection", response_model=ProxmoxTestConnectionResponse)
@@ -105,7 +121,7 @@ async def test_connection_endpoint(
     _: str = Depends(get_current_user),
 ) -> ProxmoxTestConnectionResponse:
     """Validate host reachability + token before importing."""
-    token_id, token_secret = _resolve_credentials(payload)
+    token_id, token_secret, _name = _resolve_credentials(payload)
     connected, message = await test_proxmox_connection(
         host=payload.host,
         port=payload.port,
@@ -123,7 +139,7 @@ async def import_proxmox(
     _: str = Depends(get_current_user),
 ) -> ProxmoxImportResponse:
     """Fetch the inventory and return nodes + edges ready for canvas drop."""
-    token_id, token_secret = _resolve_credentials(payload)
+    token_id, token_secret, name = _resolve_credentials(payload)
     try:
         nodes_raw, edges_raw = await fetch_proxmox_inventory(
             host=payload.host,
@@ -131,6 +147,7 @@ async def import_proxmox(
             token_id=token_id,
             token_secret=token_secret,
             verify_tls=payload.verify_tls,
+            name=name,
         )
     except ConnectionError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -159,7 +176,7 @@ async def import_proxmox_to_pending(
     _: str = Depends(get_current_user),
 ) -> ScanRun:
     """Queue a Proxmox pending import as a background scan run (kind=proxmox)."""
-    token_id, token_secret = _resolve_credentials(payload)
+    token_id, token_secret, name = _resolve_credentials(payload)
     run = ScanRun(
         status="running",
         kind="proxmox",
@@ -176,45 +193,68 @@ async def import_proxmox_to_pending(
         token_id,
         token_secret,
         payload.verify_tls,
+        name,
     )
     return run
 
 
-@router.post("/sync-now", response_model=ScanRunResponse)
+@router.post("/sync-now", response_model=list[ScanRunResponse])
 async def sync_proxmox_now(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
-) -> ScanRun:
+) -> list[ScanRun]:
     """Trigger an immediate Proxmox inventory sync using the server env config.
 
-    Same background flow as ``/import-pending`` but sources host + token from
+    Same background flow as ``/import-pending`` but sources hosts + tokens from
     ``settings`` (env) rather than the request body — the manual counterpart to
-    the scheduled auto-sync job. Requires the env token to be configured.
+    the scheduled auto-sync job. Requires at least one configured endpoint.
+
+    Queues one scan run per endpoint, so each server's outcome shows on its own
+    in Scan history, and returns them in sync order.
     """
-    if not (settings.proxmox_host and settings.proxmox_token_id and settings.proxmox_token_secret):
+    endpoints = proxmox_sync_endpoints(settings)
+    if not endpoints:
         raise HTTPException(
             status_code=400,
             detail="Cannot sync: no Proxmox host/token configured on the server.",
         )
+    runs = []
+    for endpoint in endpoints:
+        run = await create_proxmox_run(db, endpoint)
+        args, kwargs = proxmox_import_args(run.id, endpoint)
+        background_tasks.add_task(_background_proxmox_import, *args, **kwargs)
+        runs.append(run)
+    return runs
+
+
+async def create_proxmox_run(db: AsyncSession, endpoint: ProxmoxEndpoint) -> ScanRun:
+    """A running ``kind=proxmox`` scan run for one endpoint."""
     run = ScanRun(
         status="running",
         kind="proxmox",
-        ranges=[f"{settings.proxmox_host}:{settings.proxmox_port}"],
+        ranges=[f"{endpoint.host}:{endpoint.port}"],
     )
     db.add(run)
     await db.commit()
     await db.refresh(run)
-    background_tasks.add_task(
-        _background_proxmox_import,
-        run.id,
-        settings.proxmox_host,
-        settings.proxmox_port,
-        settings.proxmox_token_id,
-        settings.proxmox_token_secret,
-        settings.proxmox_verify_tls,
-    )
     return run
+
+
+def proxmox_import_args(
+    run_id: str, endpoint: ProxmoxEndpoint
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    """``_background_proxmox_import`` arguments for one env endpoint. ``name``
+    is passed only when set, keeping an unnamed endpoint's call unchanged."""
+    args = (
+        run_id,
+        endpoint.host,
+        endpoint.port,
+        endpoint.token_id,
+        endpoint.token_secret,
+        endpoint.verify_tls,
+    )
+    return args, ({"name": endpoint.name} if endpoint.name else {})
 
 
 async def _background_proxmox_import(
@@ -224,6 +264,7 @@ async def _background_proxmox_import(
     token_id: str,
     token_secret: str,
     verify_tls: bool,
+    name: str = "",
 ) -> None:
     async with AsyncSessionLocal() as db:
         try:
@@ -233,6 +274,7 @@ async def _background_proxmox_import(
                 token_id=token_id,
                 token_secret=token_secret,
                 verify_tls=verify_tls,
+                name=name,
             )
             result = await _persist_pending_import(db, nodes_raw, edges_raw)
             run = await db.get(ScanRun, run_id)
@@ -579,15 +621,22 @@ async def _replace_links(
 
 @router.get("/config", response_model=ProxmoxConfig)
 async def get_proxmox_config(_: str = Depends(get_current_user)) -> ProxmoxConfig:
-    """Return non-secret Proxmox config. Never includes the token — only whether
+    """Return non-secret Proxmox config. Never includes a token — only whether
     one is configured on the server."""
+    endpoints = proxmox_sync_endpoints(settings)
     return ProxmoxConfig(
         host=settings.proxmox_host,
         port=settings.proxmox_port,
         verify_tls=settings.proxmox_verify_tls,
         sync_enabled=settings.proxmox_sync_enabled,
         sync_interval=settings.proxmox_sync_interval,
-        token_configured=bool(settings.proxmox_token_id and settings.proxmox_token_secret),
+        token_configured=bool(
+            (settings.proxmox_token_id and settings.proxmox_token_secret) or endpoints
+        ),
+        endpoints=[
+            ProxmoxEndpointOut(name=e.name, host=e.host, port=e.port, verify_tls=e.verify_tls)
+            for e in endpoints
+        ],
     )
 
 
@@ -600,12 +649,11 @@ async def save_proxmox_config(
 
     This is the ONLY Proxmox config the app writes. Connection settings
     (host, port, token, verify_tls) are env-only and are never accepted or
-    persisted here — enabling auto-sync requires host + token already set in the
-    server env, since the scheduled job reads them from there.
+    persisted here — enabling auto-sync requires at least one endpoint (host +
+    token) already set in the server env, since the scheduled job reads them
+    from there.
     """
-    if payload.sync_enabled and not (
-        settings.proxmox_host and settings.proxmox_token_id and settings.proxmox_token_secret
-    ):
+    if payload.sync_enabled and not proxmox_sync_endpoints(settings):
         raise HTTPException(
             status_code=400,
             detail="Cannot enable auto-sync: no Proxmox host/token configured in the server env.",
