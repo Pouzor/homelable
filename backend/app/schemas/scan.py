@@ -215,6 +215,7 @@ class ScanRunResponse(BaseModel):
     status: str
     kind: str = "ip"
     ranges: list[str]
+    label: str | None = None
     devices_found: int
     started_at: datetime
     finished_at: datetime | None

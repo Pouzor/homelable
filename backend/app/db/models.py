@@ -333,6 +333,9 @@ class ScanRun(Base):
     status: Mapped[str] = mapped_column(String, default="running")
     kind: Mapped[str] = mapped_column(String, default="ip", server_default="ip")
     ranges: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Which source a run covers, for display: the Proxmox endpoint's name, else
+    # its host. Tells apart the runs of one sync across several servers.
+    label: Mapped[str | None] = mapped_column(String)
     devices_found: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

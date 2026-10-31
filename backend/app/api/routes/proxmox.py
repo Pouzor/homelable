@@ -181,6 +181,7 @@ async def import_proxmox_to_pending(
         status="running",
         kind="proxmox",
         ranges=[f"{payload.host}:{payload.port}"],
+        label=name or payload.host,
     )
     db.add(run)
     await db.commit()
@@ -229,11 +230,13 @@ async def sync_proxmox_now(
 
 
 async def create_proxmox_run(db: AsyncSession, endpoint: ProxmoxEndpoint) -> ScanRun:
-    """A running ``kind=proxmox`` scan run for one endpoint."""
+    """A running ``kind=proxmox`` scan run for one endpoint, labelled with its
+    name (else its host) so Scan history tells the servers apart."""
     run = ScanRun(
         status="running",
         kind="proxmox",
         ranges=[f"{endpoint.host}:{endpoint.port}"],
+        label=endpoint.name or endpoint.host,
     )
     db.add(run)
     await db.commit()

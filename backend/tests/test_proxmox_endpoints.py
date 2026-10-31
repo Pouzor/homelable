@@ -257,6 +257,8 @@ async def test_sync_now_queues_one_run_per_endpoint(
         res = await client.post("/api/v1/proxmox/sync-now", headers=headers)
     assert res.status_code == 200, res.text
     assert [r["ranges"] for r in res.json()] == [["pve.lan:8006"], ["pve2.lan:8006"]]
+    # Scan history tells the two runs apart: the name, else the host.
+    assert [r["label"] for r in res.json()] == ["pve.lan", "lab2"]
 
     runs = (await db_session.execute(select(ScanRun))).scalars().all()
     assert sorted(r.ranges[0] for r in runs) == ["pve.lan:8006", "pve2.lan:8006"]
@@ -296,6 +298,22 @@ async def test_sync_can_be_enabled_with_listed_endpoints_only(
         )
     assert res.status_code == 200, res.text
     assert res.json()["sync_enabled"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("host", "label"), [("pve2.lan", "lab2"), ("other.lan", "other.lan")])
+async def test_gui_pending_import_labels_its_run(
+    client: AsyncClient, headers: dict, host: str, label: str
+) -> None:
+    settings.proxmox_endpoints = [_endpoint("pve2.lan", name="lab2")]
+    with patch("app.api.routes.proxmox._background_proxmox_import", new_callable=AsyncMock):
+        res = await client.post(
+            "/api/v1/proxmox/import-pending",
+            json={"host": host, "port": 8006, "token_id": "x@pam!t", "token_secret": "x"},
+            headers=headers,
+        )
+    assert res.status_code == 200, res.text
+    assert res.json()["label"] == label
 
 
 # --- scheduler -------------------------------------------------------------

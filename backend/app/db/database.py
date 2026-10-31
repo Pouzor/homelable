@@ -261,6 +261,7 @@ async def init_db() -> None:
             await conn.exec_driver_sql("UPDATE device_inventory SET properties = '[]' WHERE properties IS NULL")
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE scan_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'ip'")
+        await _try_migrate(conn, "ALTER TABLE scan_runs ADD COLUMN label TEXT", label="scan_runs.label")
         # --- Zigbee schema migrations (logged variant per CLAUDE.md feedback) ---
         zigbee_migrations: list[tuple[str, str]] = [
             ("nodes.ieee_address", "ALTER TABLE nodes ADD COLUMN ieee_address TEXT"),
