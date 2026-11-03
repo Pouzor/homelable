@@ -4,10 +4,33 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import AliasChoices, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
+
+
+class ProxmoxEndpoint(BaseModel):
+    """One Proxmox VE endpoint: a standalone server or one node of a cluster.
+
+    ``name`` is optional. When set it scopes the synthetic ids of everything
+    the endpoint returns (host ``pve-node-{name}-{node}``, guest
+    ``pve-{name}-{vmid}``). Without it the ids are built from the Proxmox node
+    name alone, so two standalone servers sharing a node name (the installer
+    default is ``pve``) and a VMID overwrite each other's inventory rows.
+    """
+
+    name: str = ""
+    host: str
+    port: int = Field(8006, ge=1, le=65535)
+    token_id: str
+    token_secret: str
+    verify_tls: bool = True
+
+    @field_validator("name", "host")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        return value.strip()
 
 
 def origin_of(url: str) -> str:
@@ -179,6 +202,13 @@ class Settings(BaseSettings):
 
     # Status checker
     status_checker_interval: int = 60
+    # Master switch for node and service status checks. False = the checker
+    # jobs are never registered and approvals stop defaulting a device to
+    # `ping`, so the backend sends no reachability probes at all (for installs
+    # where another system owns monitoring). Env-only (STATUS_CHECKER_ENABLED):
+    # deliberately not in load_overrides/save_overrides, so the UI cannot
+    # switch it back on through scan_config.json.
+    status_checker_enabled: bool = True
 
     # Per-service status checker (independent of node checks). Off by default.
     service_check_enabled: bool = False
@@ -212,12 +242,31 @@ class Settings(BaseSettings):
     # 'user@realm!tokenname'; use a read-only PVEAuditor role.
     proxmox_token_id: str = ""
     proxmox_token_secret: str = ""
-    # Non-secret connection + auto-sync config (persisted via save_overrides).
+    # Connection config is env-only; only the auto-sync activation is persisted.
     proxmox_host: str = ""
     proxmox_port: int = 8006
     proxmox_verify_tls: bool = True
+    # More endpoints, as a JSON list of ProxmoxEndpoint (PROXMOX_ENDPOINTS).
+    # Synced alongside the single PROXMOX_HOST endpoint above, which stays
+    # supported as-is.
+    proxmox_endpoints: list[ProxmoxEndpoint] = []
     proxmox_sync_enabled: bool = False
     proxmox_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+
+    # Unraid import (Docker containers). Same rules as Proxmox: the API key is a
+    # credential -> env/.env ONLY, never persisted by the app and never returned
+    # by the API. Connection config is env-only; only the auto-sync activation
+    # is persisted.
+    unraid_api_key: str = ""
+    unraid_host: str = ""
+    # Unraid serves plain HTTP unless "Use SSL/TLS" is turned on in its settings.
+    unraid_use_https: bool = False
+    unraid_port: int | None = None  # None = 443 for HTTPS, 80 for HTTP
+    unraid_verify_tls: bool = False  # Unraid's own certificate is self-signed
+    unraid_sync_enabled: bool = False
+    unraid_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+    # Import stopped containers on auto-sync / sync-now too.
+    unraid_sync_include_offline: bool = True
 
     # Zigbee2MQTT auto-sync import.
     # MQTT credentials are secrets → env/.env ONLY, never persisted by the app to
@@ -261,8 +310,8 @@ class Settings(BaseSettings):
     # Accepts UNIFI_USER or UNIFI_USERNAME; UNIFI_PASS or UNIFI_PASSWORD.
     unifi_username: str = Field("", alias="unifi_user", validation_alias=AliasChoices("unifi_username", "unifi_user"))
     unifi_password: str = Field("", alias="unifi_pass", validation_alias=AliasChoices("unifi_password", "unifi_pass"))
-    # Non-secret connection + auto-sync config (persisted via save_overrides).
-    # Accepts UNIFI_URL (full URL) or UNIFI_HOST (bare host/IP).
+    # Connection config is env-only; only the auto-sync activation and import
+    # modes are persisted. Accepts UNIFI_URL (full URL) or UNIFI_HOST (bare host/IP).
     unifi_url: str = ""
     unifi_host: str = ""
     unifi_port: int = 8443
@@ -283,6 +332,11 @@ class Settings(BaseSettings):
             parsed = urlsplit(self.unifi_url)
             return parsed.hostname or self.unifi_url
         return self.unifi_host
+
+    @property
+    def unraid_effective_port(self) -> int:
+        """UNRAID_PORT if set, else the default port of the configured scheme."""
+        return self.unraid_port or (443 if self.unraid_use_https else 80)
 
     @property
     def unifi_effective_port(self) -> int:
@@ -328,6 +382,13 @@ class Settings(BaseSettings):
                 self.proxmox_sync_enabled = bool(data["proxmox_sync_enabled"])
             if "proxmox_sync_interval" in data:
                 self.proxmox_sync_interval = int(data["proxmox_sync_interval"])
+            # Unraid: auto-sync activation only, same reason as Proxmox.
+            if "unraid_sync_enabled" in data:
+                self.unraid_sync_enabled = bool(data["unraid_sync_enabled"])
+            if "unraid_sync_interval" in data:
+                self.unraid_sync_interval = int(data["unraid_sync_interval"])
+            if "unraid_sync_include_offline" in data:
+                self.unraid_sync_include_offline = bool(data["unraid_sync_include_offline"])
             # Zigbee/Z-Wave: only the auto-sync activation is persisted. MQTT
             # connection config (host, port, credentials, topic, tls) is env-only
             # by design — never read from or written to this file.
@@ -341,6 +402,9 @@ class Settings(BaseSettings):
                 self.zwave_sync_enabled = bool(data["zwave_sync_enabled"])
             if "zwave_sync_interval" in data:
                 self.zwave_sync_interval = int(data["zwave_sync_interval"])
+            # UniFi: auto-sync activation and import modes only. Connection
+            # config (host, port, site, verify_tls) is env-only, same reason
+            # as Proxmox: a persisted empty host clobbered UNIFI_HOST.
             if "unifi_sync_enabled" in data:
                 self.unifi_sync_enabled = bool(data["unifi_sync_enabled"])
             if "unifi_sync_interval" in data:
@@ -349,14 +413,6 @@ class Settings(BaseSettings):
                 key = f"unifi_import_{mode}"
                 if key in data:
                     setattr(self, key, bool(data[key]))
-            if "unifi_host" in data:
-                self.unifi_host = str(data["unifi_host"])
-            if "unifi_port" in data:
-                self.unifi_port = int(data["unifi_port"])
-            if "unifi_site" in data:
-                self.unifi_site = str(data["unifi_site"])
-            if "unifi_verify_tls" in data:
-                self.unifi_verify_tls = bool(data["unifi_verify_tls"])
         except Exception:
             pass
 
@@ -376,6 +432,11 @@ class Settings(BaseSettings):
             # be written to disk — that is the single source of truth.
             "proxmox_sync_enabled": self.proxmox_sync_enabled,
             "proxmox_sync_interval": self.proxmox_sync_interval,
+            # Unraid: only the auto-sync activation. Host/port/key/verify_tls
+            # are env-only.
+            "unraid_sync_enabled": self.unraid_sync_enabled,
+            "unraid_sync_interval": self.unraid_sync_interval,
+            "unraid_sync_include_offline": self.unraid_sync_include_offline,
             # Zigbee/Z-Wave: only the auto-sync activation is persisted. MQTT
             # connection config (host/port/credentials/topic/tls) is env-only.
             "zigbee_sync_enabled": self.zigbee_sync_enabled,
@@ -383,18 +444,46 @@ class Settings(BaseSettings):
             "zigbee_sync_include_mesh_links": self.zigbee_sync_include_mesh_links,
             "zwave_sync_enabled": self.zwave_sync_enabled,
             "zwave_sync_interval": self.zwave_sync_interval,
-            # UniFi: non-secret connection config + auto-sync activation persisted.
-            # Credentials (username/password) are env-only and never written here.
+            # UniFi: auto-sync activation and import modes only. Connection
+            # config (host/port/site/verify_tls) and credentials are env-only.
             "unifi_sync_enabled": self.unifi_sync_enabled,
             "unifi_sync_interval": self.unifi_sync_interval,
             "unifi_import_infrastructure": self.unifi_import_infrastructure,
             "unifi_import_known_clients": self.unifi_import_known_clients,
             "unifi_import_active_clients": self.unifi_import_active_clients,
-            "unifi_host": self.unifi_host,
-            "unifi_port": self.unifi_port,
-            "unifi_site": self.unifi_site,
-            "unifi_verify_tls": self.unifi_verify_tls,
         }))
+
+
+def proxmox_sync_endpoints(s: Settings) -> list[ProxmoxEndpoint]:
+    """Every fully configured Proxmox endpoint, the legacy single one first.
+
+    The legacy ``PROXMOX_HOST`` / ``PROXMOX_TOKEN_*`` endpoint counts only with
+    a host and both token fields. A ``PROXMOX_ENDPOINTS`` entry repeating an
+    endpoint already listed (same host and port) is dropped, so a server is
+    never synced twice per run.
+    """
+    endpoints: list[ProxmoxEndpoint] = []
+    if s.proxmox_host and s.proxmox_token_id and s.proxmox_token_secret:
+        endpoints.append(ProxmoxEndpoint(
+            host=s.proxmox_host,
+            port=s.proxmox_port,
+            token_id=s.proxmox_token_id,
+            token_secret=s.proxmox_token_secret,
+            verify_tls=s.proxmox_verify_tls,
+        ))
+    seen = {(normalize_host(e.host), e.port) for e in endpoints}
+    for endpoint in s.proxmox_endpoints:
+        key = (normalize_host(endpoint.host), endpoint.port)
+        if key in seen:
+            continue
+        seen.add(key)
+        endpoints.append(endpoint)
+    return endpoints
+
+
+def normalize_host(host: str) -> str:
+    """Compare-ready host: trimmed, no trailing dot, lowercase."""
+    return host.strip().rstrip(".").lower()
 
 
 settings = Settings()  # type: ignore[call-arg]

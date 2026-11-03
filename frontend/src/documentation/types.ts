@@ -24,6 +24,8 @@ export interface DocumentSummary {
   /** The parsed frontmatter, so the tree can badge without loading bodies. */
   frontmatter: Record<string, unknown>
   starred: boolean
+  /** The page Documentation opens on. At most one document carries it. */
+  is_homepage?: boolean
   template_id?: string | null
   /**
    * The device has changed since this document's facts were snapshotted.
@@ -46,9 +48,48 @@ export interface DocRevision {
   id: string
   document_id: string
   title: string
-  reason: 'edit' | 'restore' | 'import' | 'migrate' | 'scaffold' | 'regenerate' | 'mcp'
+  reason: 'edit' | 'restore' | 'import' | 'migrate' | 'scaffold' | 'regenerate' | 'mcp' | 'sync'
   saved_at: string
   size: number
+}
+
+/**
+ * How update-from-device disposed of one fact or section. Mirrors
+ * `doc_reconcile.py`; the server is the single source of truth for the words.
+ */
+export type ChangeStatus = 'same' | 'auto' | 'conflict'
+
+/** How a conflict is settled. `custom` carries the user's own text. */
+export type ResolutionChoice = 'keep' | 'device' | 'custom'
+
+/** One fact or section the update preview surfaced, and its disposition. */
+export interface ReconcileChange {
+  id: string
+  name: string
+  kind: 'field' | 'section'
+  status: ChangeStatus
+  documented: string
+  device: string
+  previous: string
+  resolution?: ResolutionChoice | null
+  custom?: string | null
+}
+
+/** What the user wants for one conflict; echoed to the server. */
+export interface ResolutionItem {
+  id: string
+  choice: ResolutionChoice
+  custom?: string | null
+}
+
+/** The read-only result of an update-from-device merge. */
+export interface UpdatePreview {
+  preview_id: string
+  changes: ReconcileChange[]
+  proposed_body: string
+  summary: string[]
+  /** Conflict ids still waiting on a decision — the apply refuses while any remain. */
+  unresolved: string[]
 }
 
 /** A document pointing at the open one. Inverted server-side — see the route. */

@@ -18,7 +18,11 @@ import {
   handleCountField,
   isVerticalSide,
   SIDES,
+  MAX_PORT_LABEL_LENGTH,
+  normalizePortLabels,
+  prunePortLabels,
 } from '../handleUtils'
+import type { NodeData } from '@/types'
 
 describe('bottomHandleId', () => {
   it('first id is always "bottom" for backward compatibility', () => {
@@ -339,5 +343,54 @@ describe('zero connection points on top/bottom (issue: min was 1)', () => {
 
   it('removes every top handle when going 2 → 0', () => {
     expect(removedHandleIds('top', 2, 0)).toEqual(new Set(['top', 'top-2']))
+  })
+})
+
+describe('normalizePortLabels (#495)', () => {
+  it('keeps trimmed labels keyed by source handle ID', () => {
+    expect(normalizePortLabels({ top: ' 8 ', 'bottom-3': 'SFP1' })).toEqual({ top: '8', 'bottom-3': 'SFP1' })
+  })
+
+  it('drops blank labels and returns undefined when none are left', () => {
+    expect(normalizePortLabels({ top: '   ', bottom: '' })).toBeUndefined()
+  })
+
+  it('drops keys that are not source handle IDs', () => {
+    const labels = { 'top-t': 'a', 'bottom-1': 'b', 'left-02': 'c', 'cluster-left': 'd', 'right-65': 'e', front: 'f', left: 'ok' }
+    expect(normalizePortLabels(labels)).toEqual({ left: 'ok' })
+  })
+
+  it('drops non-string values', () => {
+    expect(normalizePortLabels({ top: 8, bottom: null, left: 'x' })).toEqual({ left: 'x' })
+  })
+
+  it('truncates to MAX_PORT_LABEL_LENGTH', () => {
+    expect(normalizePortLabels({ top: 'x'.repeat(20) })).toEqual({ top: 'x'.repeat(MAX_PORT_LABEL_LENGTH) })
+  })
+
+  it('returns undefined for anything that is not a plain object', () => {
+    expect(normalizePortLabels(undefined)).toBeUndefined()
+    expect(normalizePortLabels(null)).toBeUndefined()
+    expect(normalizePortLabels('top')).toBeUndefined()
+    expect(normalizePortLabels(['top'])).toBeUndefined()
+  })
+})
+
+describe('prunePortLabels (#495)', () => {
+  const base: NodeData = { label: 'sw', type: 'switch', status: 'online', services: [] }
+
+  it('drops labels of points beyond the side count', () => {
+    const data = { ...base, bottom_handles: 2, port_labels: { bottom: '1', 'bottom-2': '2', 'bottom-3': '3' } }
+    expect(prunePortLabels(data)).toEqual({ bottom: '1', 'bottom-2': '2' })
+  })
+
+  it('uses side defaults when a count is unset (left/right → 0)', () => {
+    const data = { ...base, port_labels: { top: '8', left: 'x' } }
+    expect(prunePortLabels(data)).toEqual({ top: '8' })
+  })
+
+  it('returns undefined when nothing survives', () => {
+    expect(prunePortLabels({ ...base, top_handles: 0, port_labels: { top: '8' } })).toBeUndefined()
+    expect(prunePortLabels(base)).toBeUndefined()
   })
 })

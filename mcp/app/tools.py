@@ -13,8 +13,8 @@ from .racks import RACK_TOOL_NAMES, RACK_TOOLS, dispatch_rack
 # group/groupRect/text are canvas annotations created via dedicated UI actions, not create_node).
 # Sync is enforced automatically by test_node_types_in_sync_with_frontend (mcp/tests/test_node_types_sync.py).
 NODE_TYPES = [
-    "isp", "router", "firewall", "switch", "server", "proxmox", "vm", "lxc", "nas", "kvm", "iot", "ap",
-    "camera", "printer", "computer", "laptop", "mobile", "cpl", "docker_host", "docker_container",
+    "isp", "router", "firewall", "switch", "server", "proxmox", "vm", "lxc", "nas", "kvm", "ai_server",
+    "iot", "ap", "camera", "printer", "computer", "laptop", "mobile", "cpl", "docker_host", "docker_container",
     "generic", "zigbee_coordinator", "zigbee_router", "zigbee_enddevice",
     "zwave_coordinator", "zwave_router", "zwave_enddevice", "grid", "ups", "battery", "generator",
     "solar_panel", "inverter", "circuit_breaker", "contactor", "electrical_switch", "socket",
@@ -73,6 +73,15 @@ _NODE_FIELDS = {
     "left_handles":   {"type": "integer", "minimum": 0, "maximum": 64, "description": "Connection points on the left side (default 0). Their IDs are 'left', 'left-2', 'left-3', ..."},
     "right_handles":  {"type": "integer", "minimum": 0, "maximum": 64, "description": "Connection points on the right side (default 0). Their IDs are 'right', 'right-2', 'right-3', ..."},
     "show_port_numbers": {"type": "boolean", "description": "Number each connection point on the node card."},
+    "port_labels":   {
+        "type": "object",
+        "description": (
+            "Text shown in place of a connection point's number when show_port_numbers is on, "
+            "keyed by handle ID — e.g. {\"top\": \"8\"} for an uplink printed as port 8. "
+            "At most 8 characters; a point without a label keeps its number."
+        ),
+        "additionalProperties": {"type": "string", "maxLength": 8},
+    },
     "properties":    {
         "type": "array",
         "description": "Key/value metadata shown on the node. `key` is the identity: two properties sharing one are the same property.",

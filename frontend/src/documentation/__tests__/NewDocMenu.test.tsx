@@ -106,3 +106,30 @@ describe('NewDocMenu', () => {
     expect(onCreate).not.toHaveBeenCalled()
   })
 })
+
+describe('NewDocMenu folder entry', () => {
+  it('offers no Folder entry unless the caller can create one', () => {
+    open()
+    expect(screen.queryByText('Folder')).toBeNull()
+  })
+
+  it('creates a folder under the given parent', () => {
+    vi.spyOn(window, 'prompt').mockReturnValue(' Storage ')
+    const onCreateFolder = vi.fn()
+    const onCreate = vi.fn()
+    render(
+      <NewDocMenu
+        parentId="folder-1"
+        onCreate={onCreate}
+        onCreateFolder={onCreateFolder}
+        trigger={<button>New</button>}
+      />,
+    )
+    fireEvent.click(screen.getByText('New'))
+    fireEvent.click(screen.getByText('Folder'))
+
+    expect(onCreateFolder).toHaveBeenCalledWith({ title: 'Storage', parentId: 'folder-1' })
+    expect(onCreate).not.toHaveBeenCalled()
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+})

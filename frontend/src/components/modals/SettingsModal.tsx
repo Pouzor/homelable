@@ -4,10 +4,12 @@ import { Button } from '@/components/ui/button'
 import {
   settingsApi,
   proxmoxApi,
+  unraidApi,
   zigbeeApi,
   zwaveApi,
   unifiApi,
   type ProxmoxConfigData,
+  type UnraidConfigData,
   type ZigbeeConfigData,
   type ZwaveConfigData,
   type UnifiConfigData,
@@ -28,6 +30,12 @@ import {
   writeAutosaveSettings,
   subscribeAutosaveSettings,
 } from '@/utils/autosaveSettings'
+import {
+  type HoverHighlightSettings,
+  readHoverHighlightSettings,
+  writeHoverHighlightSettings,
+  subscribeHoverHighlightSettings,
+} from '@/utils/hoverHighlightSettings'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -123,6 +131,9 @@ function MeshAutoSync({
 // Mirrors UnifiSyncConfig.sync_interval (ge=300, le=86400) on the backend.
 const UNIFI_MIN_INTERVAL = 300
 const UNIFI_MAX_INTERVAL = 86400
+// Mirrors UnraidSyncConfig.sync_interval (ge=300, le=86400) on the backend.
+const UNRAID_MIN_INTERVAL = 300
+const UNRAID_MAX_INTERVAL = 86400
 
 const UNIFI_SOURCES: { key: keyof UnifiImportModes; label: string; hint: string }[] = [
   { key: 'infrastructure', label: 'Infrastructure', hint: 'stat/device — adopted APs, switches, gateways.' },
@@ -134,11 +145,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [interval, setIntervalValue] = useState(60)
   const [serviceCheckEnabled, setServiceCheckEnabled] = useState(false)
   const [serviceInterval, setServiceInterval] = useState(300)
+  // STATUS_CHECKER_ENABLED=false on the server: no check job runs, so the
+  // controls below would change nothing until it is switched back on.
+  const [checkerEnabled, setCheckerEnabled] = useState(true)
   const [saving, setSaving] = useState(false)
   const [pmConfig, setPmConfig] = useState<ProxmoxConfigData | null>(null)
   const [pmSyncEnabled, setPmSyncEnabled] = useState(false)
   const [pmInterval, setPmInterval] = useState(3600)
   const [pmSyncing, setPmSyncing] = useState(false)
+  const [urConfig, setUrConfig] = useState<UnraidConfigData | null>(null)
+  const [urSyncEnabled, setUrSyncEnabled] = useState(false)
+  const [urInterval, setUrInterval] = useState(3600)
+  const [urIncludeOffline, setUrIncludeOffline] = useState(true)
+  const [urSyncing, setUrSyncing] = useState(false)
   const [zbConfig, setZbConfig] = useState<ZigbeeConfigData | null>(null)
   const [zbSyncEnabled, setZbSyncEnabled] = useState(false)
   const [zbInterval, setZbInterval] = useState(3600)
@@ -159,6 +178,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [unSyncing, setUnSyncing] = useState(false)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
+  const [hoverHighlight, setHoverHighlight] = useState<HoverHighlightSettings>(readHoverHighlightSettings)
   const anyUnifiSource = unModes.infrastructure || unModes.known_clients || unModes.active_clients
   // Saving with every source unticked 422s on the backend, aborting the save
   // after the other configs already persisted — refuse it up front instead.
@@ -173,6 +193,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setIntervalValue(res.data.interval_seconds)
         setServiceCheckEnabled(res.data.service_check_enabled)
         setServiceInterval(res.data.service_check_interval)
+        setCheckerEnabled(res.data.status_checker_enabled !== false)
       })
       .catch(() => {/* use default */})
     proxmoxApi.getConfig()
@@ -182,6 +203,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setPmInterval(res.data.sync_interval)
       })
       .catch(() => {/* proxmox not configured */})
+    unraidApi.getConfig()
+      .then((res) => {
+        setUrConfig(res.data)
+        setUrSyncEnabled(res.data.sync_enabled)
+        setUrInterval(res.data.sync_interval)
+        setUrIncludeOffline(res.data.include_offline)
+      })
+      .catch(() => {/* unraid not configured */})
     zigbeeApi.getConfig()
       .then((res) => {
         setZbConfig(res.data)
@@ -209,11 +238,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   useEffect(() => subscribeAlignmentSettings(setAlignment), [])
   useEffect(() => subscribeAutosaveSettings(setAutosave), [])
+  useEffect(() => subscribeHoverHighlightSettings(setHoverHighlight), [])
 
   const updateAlignment = (patch: Partial<AlignmentSettings>) => {
     const next = { ...alignment, ...patch }
     setAlignment(next)
     writeAlignmentSettings(next)
+  }
+
+  const updateHoverHighlight = (patch: Partial<HoverHighlightSettings>) => {
+    const next = { ...hoverHighlight, ...patch }
+    setHoverHighlight(next)
+    writeHoverHighlightSettings(next)
   }
 
   const updateAutosave = (patch: Partial<AutosaveSettings>) => {
@@ -231,6 +267,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       toast.error('Failed to start Proxmox sync')
     } finally {
       setPmSyncing(false)
+    }
+  }
+
+  const handleUrSyncNow = async () => {
+    setUrSyncing(true)
+    try {
+      await unraidApi.syncNow()
+      toast.success('Unraid sync started')
+    } catch {
+      toast.error('Failed to start Unraid sync')
+    } finally {
+      setUrSyncing(false)
     }
   }
 
@@ -293,6 +341,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           sync_interval: pmInterval,
         })
       }
+      if (urConfig) {
+        // Connection config (host/port/key/verify) is env-only. Clamped as for
+        // UniFi: the input's min/max never stop a typed value, and a 422 here
+        // would abort the save after the configs above already persisted.
+        const clamped = Math.min(UNRAID_MAX_INTERVAL, Math.max(UNRAID_MIN_INTERVAL, Math.round(urInterval)))
+        if (clamped !== urInterval) setUrInterval(clamped)
+        await unraidApi.saveConfig({
+          sync_enabled: urSyncEnabled,
+          sync_interval: clamped,
+          include_offline: urIncludeOffline,
+        })
+      }
       if (zbConfig) {
         // MQTT connection config is env-only; only the activation is persisted.
         await zigbeeApi.saveConfig({
@@ -344,11 +404,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           {!STANDALONE && (
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">Status check interval (s)</label>
-            <div className="flex items-center gap-2">
+            {!checkerEnabled && (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                Status checks are disabled on the server (STATUS_CHECKER_ENABLED=false): nodes and
+                services are not probed. These settings apply once it is switched back on.
+              </p>
+            )}
+            <div className={checkerEnabled ? 'flex items-center gap-2' : 'flex items-center gap-2 opacity-50'}>
               <input
                 type="number"
                 min={10}
                 max={3600}
+                disabled={!checkerEnabled}
+                aria-label="Status check interval"
                 value={interval}
                 onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setIntervalValue(v) }}
                 className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
@@ -364,19 +432,21 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               <input
                 type="checkbox"
                 checked={serviceCheckEnabled}
+                disabled={!checkerEnabled}
                 onChange={(e) => setServiceCheckEnabled(e.target.checked)}
                 className="cursor-pointer accent-[#00d4ff]"
                 aria-label="Toggle per-service status checks"
               />
             </label>
 
-            <div className={serviceCheckEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+            <div className={serviceCheckEnabled && checkerEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
               <label className="text-xs text-muted-foreground">Service check interval (s)</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
                   min={30}
                   max={3600}
+                  disabled={!checkerEnabled}
                   value={serviceInterval}
                   onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setServiceInterval(v) }}
                   className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
@@ -414,6 +484,17 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 onChange={(e) => setHideIp(e.target.checked)}
                 className="cursor-pointer accent-[#00d4ff]"
                 aria-label="Toggle IP address masking"
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-2 cursor-pointer">
+              <span className="text-xs text-foreground">Highlight links on hover</span>
+              <input
+                type="checkbox"
+                checked={hoverHighlight.enabled}
+                onChange={(e) => updateHoverHighlight({ enabled: e.target.checked })}
+                className="cursor-pointer accent-[#00d4ff]"
+                aria-label="Toggle hover highlight"
               />
             </label>
 
@@ -546,7 +627,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             {!pmConfig.token_configured ? (
               <p className="text-[10px] text-[#e3b341] leading-tight">
                 No API token configured. Set <span className="font-mono">PROXMOX_TOKEN_ID</span> and{' '}
-                <span className="font-mono">PROXMOX_TOKEN_SECRET</span> in the server .env to enable auto-sync.
+                <span className="font-mono">PROXMOX_TOKEN_SECRET</span> (or{' '}
+                <span className="font-mono">PROXMOX_ENDPOINTS</span>) in the server .env to enable auto-sync.
               </p>
             ) : (
               <>
@@ -578,7 +660,24 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     Re-imports hosts/VMs/LXC into the pending inventory. Min 300s (5 min).
                   </p>
                 </div>
-                {pmConfig.host ? (
+                {(pmConfig.endpoints ?? []).length > 0 && (
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">Servers synced</span>
+                    <ul className="space-y-0.5" aria-label="Proxmox servers synced">
+                      {(pmConfig.endpoints ?? []).map((ep) => (
+                        <li key={`${ep.host}:${ep.port}`} className="flex items-center gap-2 text-xs">
+                          {ep.name && <span className="text-foreground">{ep.name}</span>}
+                          <span className="font-mono text-muted-foreground">{ep.host}:{ep.port}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Servers come from <span className="font-mono">PROXMOX_HOST</span> and{' '}
+                      <span className="font-mono">PROXMOX_ENDPOINTS</span> in the server .env.
+                    </p>
+                  </div>
+                )}
+                {pmConfig.host || (pmConfig.endpoints ?? []).length > 0 ? (
                   <div className="flex items-center gap-2 pt-1">
                     <Button
                       variant="outline"
@@ -589,7 +688,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       {pmSyncing ? 'Syncing…' : 'Re-sync now'}
                     </Button>
                     <span className="text-[10px] text-muted-foreground leading-tight">
-                      Runs one import immediately using the server .env config.
+                      Runs one import per server immediately using the server .env config.
                     </span>
                   </div>
                 ) : (
@@ -597,6 +696,72 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     Set <span className="font-mono">PROXMOX_HOST</span> in the server .env to enable manual re-sync.
                   </p>
                 )}
+              </>
+            )}
+          </div>
+          )}
+          {/* Unraid auto-sync */}
+          {!STANDALONE && urConfig && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Unraid auto-sync</span>
+            {!(urConfig.api_key_configured && urConfig.host) ? (
+              <p className="text-[10px] text-[#e3b341] leading-tight">
+                No Unraid server configured. Set <span className="font-mono">UNRAID_HOST</span> and{' '}
+                <span className="font-mono">UNRAID_API_KEY</span> in the server .env to enable auto-sync.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Auto-sync Unraid containers and VMs</span>
+                  <input
+                    type="checkbox"
+                    checked={urSyncEnabled}
+                    onChange={(e) => setUrSyncEnabled(e.target.checked)}
+                    className="cursor-pointer accent-[#e22828]"
+                    aria-label="Toggle Unraid auto-sync"
+                  />
+                </label>
+                <div className={urSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={300}
+                      max={86400}
+                      value={urInterval}
+                      onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setUrInterval(v) }}
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#e22828]"
+                      aria-label="Unraid sync interval"
+                    />
+                    <span className="text-xs text-muted-foreground">seconds</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    Re-imports the server, its containers and VMs into the pending inventory. Min 300s (5 min).
+                  </p>
+                </div>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Include stopped containers and VMs</span>
+                  <input
+                    type="checkbox"
+                    checked={urIncludeOffline}
+                    onChange={(e) => setUrIncludeOffline(e.target.checked)}
+                    className="cursor-pointer accent-[#e22828]"
+                    aria-label="Include stopped Unraid containers and VMs"
+                  />
+                </label>
+                <div className="flex items-center gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    onClick={handleUrSyncNow}
+                    disabled={urSyncing}
+                    className="h-7 text-xs border-[#e22828] text-[#e22828] hover:bg-[#e22828]/10"
+                  >
+                    {urSyncing ? 'Syncing...' : 'Re-sync now'}
+                  </Button>
+                  <span className="text-[10px] text-muted-foreground leading-tight">
+                    Runs one import immediately using the server .env config.
+                  </span>
+                </div>
               </>
             )}
           </div>

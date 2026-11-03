@@ -224,6 +224,7 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
   | `health` | GET `/health` |
 
 - Checks run on a timer (`STATUS_CHECKER_INTERVAL`, 60s by default) and stream to the UI over WebSocket, no refresh. The sidebar footer keeps a running online/offline tally.
+- **Monitoring handled elsewhere?** Set `STATUS_CHECKER_ENABLED=false` in `.env`: Homelable then sends no status or service probes at all, approved devices no longer default to `ping`, and Settings shows the checks as disabled.
 
 ---
 

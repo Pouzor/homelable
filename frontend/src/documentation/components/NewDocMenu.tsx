@@ -11,6 +11,8 @@ interface Props {
   placement?: 'up' | 'down'
   parentId?: string | null
   onCreate: (input: { title: string; templateId: string; parentId?: string | null }) => void | Promise<void>
+  /** Adds a Folder entry above the templates, so one trigger files both. */
+  onCreateFolder?: (input: { title: string; parentId?: string | null }) => void | Promise<void>
 }
 
 /**
@@ -34,7 +36,7 @@ const MENU_WIDTH = 256
 const MARGIN = 8
 const GAP = 4
 
-export function NewDocMenu({ trigger, placement = 'up', parentId, onCreate }: Props) {
+export function NewDocMenu({ trigger, placement = 'up', parentId, onCreate, onCreateFolder }: Props) {
   const [open, setOpen] = useState(false)
   const [at, setAt] = useState<{ left: number; top?: number; bottom?: number } | null>(null)
   const anchor = useRef<HTMLDivElement>(null)
@@ -101,6 +103,22 @@ export function NewDocMenu({ trigger, placement = 'up', parentId, onCreate }: Pr
               'fixed z-50 w-64 overflow-hidden rounded-lg border border-border bg-popover shadow-lg',
             )}
           >
+            {onCreateFolder && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={async () => {
+                  setOpen(false)
+                  const title = window.prompt('Folder name')
+                  if (!title?.trim()) return
+                  await onCreateFolder({ title: title.trim(), parentId })
+                }}
+                className="flex w-full cursor-pointer flex-col items-start border-b border-border px-3 py-1.5 text-left hover:bg-muted"
+              >
+                <span className="text-xs">Folder</span>
+                <span className="text-[10px] text-muted-foreground">Group pages and other folders</span>
+              </button>
+            )}
             {DOC_TEMPLATES.map((template) => (
               <button
                 key={template.id}

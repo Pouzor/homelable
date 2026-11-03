@@ -19,6 +19,7 @@ import {
   type Viewport,
 } from '@xyflow/react'
 import { Plus } from 'lucide-react'
+import { isTypingTarget } from '@/utils/keyboard'
 import { rackHeight, rackWidth } from '../layout'
 import { useRackStore } from '../store'
 import { useRackPalette } from '../rackTheme'
@@ -101,9 +102,7 @@ function RackCanvasInner() {
   useEffect(() => {
     if (!selectedCableId && !cableDraft) return
     const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null
-      const tag = target?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+      if (isTypingTarget(e)) return
       if (selectedCableId && (e.key === 'Delete' || e.key === 'Backspace')) {
         e.preventDefault()
         removeSelectedCable()

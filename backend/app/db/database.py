@@ -9,7 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase
 
 from app.core.config import APP_VERSION, settings
@@ -41,10 +47,15 @@ DOCUMENT_DDL: tuple[tuple[str, str], ...] = (
     ("documents.facts_snapshot", "ALTER TABLE documents ADD COLUMN facts_snapshot JSON"),
     ("documents.facts_synced_at", "ALTER TABLE documents ADD COLUMN facts_synced_at DATETIME"),
     ("documents.reviewed_at", "ALTER TABLE documents ADD COLUMN reviewed_at DATETIME"),
+    # The generated body as it was when the document was scaffolded or last
+    # reconciled. Three-way update-from-device compares `current <-> baseline <-
+    # fresh-generate`; NULL means "no baseline yet", which forces the safe side.
+    ("documents.baseline_body", "ALTER TABLE documents ADD COLUMN baseline_body TEXT"),
     # Set only when a body is edited, so "never touched since it was generated"
     # is distinguishable from "edited" — `created_at` and `updated_at` are two
     # separate clock reads on insert and are never equal.
     ("documents.edited_at", "ALTER TABLE documents ADD COLUMN edited_at DATETIME"),
+    ("documents.is_homepage", "ALTER TABLE documents ADD COLUMN is_homepage BOOLEAN DEFAULT 0"),
     ("document_revisions.reason", "ALTER TABLE document_revisions ADD COLUMN reason TEXT"),
     (
         "documents_fts.table",
@@ -66,6 +77,11 @@ DOCUMENT_DDL: tuple[tuple[str, str], ...] = (
         "documents.design_id.unique",
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_documents_design "
         "ON documents(design_id) WHERE design_id IS NOT NULL",
+    ),
+    (
+        "documents.is_homepage.unique",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_documents_homepage "
+        "ON documents(is_homepage) WHERE is_homepage = 1",
     ),
 )
 
@@ -89,10 +105,21 @@ async def _try_migrate(conn: AsyncConnection, sql: str, *, label: str) -> None:
 # Ensure the data directory exists before SQLite tries to open the file
 Path(settings.sqlite_path).parent.mkdir(parents=True, exist_ok=True)
 
-engine = create_async_engine(
-    f"sqlite+aiosqlite:///{settings.sqlite_path}",
-    echo=False,
-)
+# Seconds a connection waits for SQLite's write lock before giving up with
+# "database is locked". The driver's own default is 5, which a scan, a sync and
+# a status cycle landing in the same moment can outlast on slow storage.
+SQLITE_LOCK_TIMEOUT = 30
+
+
+def create_app_engine(sqlite_path: str | Path) -> AsyncEngine:
+    return create_async_engine(
+        f"sqlite+aiosqlite:///{sqlite_path}",
+        echo=False,
+        connect_args={"timeout": SQLITE_LOCK_TIMEOUT},
+    )
+
+
+engine = create_app_engine(settings.sqlite_path)
 
 AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -234,6 +261,7 @@ async def init_db() -> None:
             await conn.exec_driver_sql("UPDATE device_inventory SET properties = '[]' WHERE properties IS NULL")
         with suppress(OperationalError):
             await conn.exec_driver_sql("ALTER TABLE scan_runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'ip'")
+        await _try_migrate(conn, "ALTER TABLE scan_runs ADD COLUMN label TEXT", label="scan_runs.label")
         # --- Zigbee schema migrations (logged variant per CLAUDE.md feedback) ---
         zigbee_migrations: list[tuple[str, str]] = [
             ("nodes.ieee_address", "ALTER TABLE nodes ADD COLUMN ieee_address TEXT"),
@@ -557,6 +585,9 @@ async def init_db() -> None:
             # A zone or a group describes no device, so it has no inventory row to
             # keep its text on. Furniture keeps it here instead — see `Node.description`.
             ("nodes.description", "ALTER TABLE nodes ADD COLUMN description TEXT"),
+            # The device's own port numbering, per connection point (#495). Added
+            # before `_drop_legacy_node_columns`, whose rebuild copies it across.
+            ("nodes.port_labels", "ALTER TABLE nodes ADD COLUMN port_labels JSON"),
         ):
             await _try_migrate(conn, sql, label=label)
         # 3.3.x — the inventory row owns the device's rack modelisation: the
@@ -638,6 +669,7 @@ _NODE_COLUMNS_SQL = (
     "custom_icon VARCHAR,"
     "description TEXT,"
     "show_port_numbers BOOLEAN,"
+    "port_labels JSON,"
     "width FLOAT,"
     "height FLOAT,"
     "bottom_handles INTEGER,"
@@ -650,8 +682,8 @@ _NODE_COLUMNS_SQL = (
 
 _NODE_KEPT = (
     "id, type, label, design_id, device_id, display_view, pos_x, pos_y, parent_id, container_mode, "
-    "custom_colors, custom_icon, description, show_port_numbers, width, height, bottom_handles, "
-    "top_handles, left_handles, right_handles, created_at, updated_at"
+    "custom_colors, custom_icon, description, show_port_numbers, port_labels, width, height, "
+    "bottom_handles, top_handles, left_handles, right_handles, created_at, updated_at"
 )
 
 

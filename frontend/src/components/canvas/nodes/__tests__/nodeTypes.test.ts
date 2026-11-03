@@ -18,6 +18,12 @@ describe('nodeTypes registry', () => {
     expect(nodeTypes.kvm).toBeDefined()
   })
 
+  it('gives the AI / LLM server type a label, an icon and a component', () => {
+    expect(NODE_TYPE_LABELS.ai_server).toBe('AI / LLM Server')
+    expect(NODE_TYPE_DEFAULT_ICONS.ai_server).toBeDefined()
+    expect(nodeTypes.ai_server).toBeDefined()
+  })
+
   it('registers a component for every wireless mesh node type', () => {
     // Regression: zwave_* types were missing, so React Flow fell back to the
     // default (unstyled) node — no icon, no accent. (Zigbee covered too.)

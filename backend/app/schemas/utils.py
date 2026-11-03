@@ -1,5 +1,6 @@
 import math
 import re
+from collections.abc import Mapping
 
 
 def normalize_animated(v: object) -> str:
@@ -110,3 +111,57 @@ def parse_side_handle(handle: str) -> tuple[str, int] | None:
         return side, 0
     idx = int(slot) - 1
     return side, (idx if idx >= 1 else -1)
+
+
+# ---------------------------------------------------------------------------
+# Port labels
+# ---------------------------------------------------------------------------
+# The text printed next to a connection point in place of its 1..N number, so a
+# node can carry the numbering of the real device (#495). Keyed by source handle
+# ID. Mirrors normalizePortLabels / prunePortLabels in handleUtils.ts.
+
+MAX_PORT_LABEL_LENGTH = 8
+
+
+def normalize_port_labels(v: object) -> dict[str, str] | None:
+    """Keep the well-formed labels: a source-form handle ID → trimmed, non-empty text.
+
+    Text is cut to MAX_PORT_LABEL_LENGTH, the most the card has room for. A bad
+    entry is dropped rather than rejected, like the handle-count clamp: it must
+    not cost the user a whole canvas save. None when nothing is left.
+    """
+    if not isinstance(v, dict):
+        return None
+    out: dict[str, str] = {}
+    for key, label in v.items():
+        if not isinstance(key, str) or not isinstance(label, str):
+            continue
+        parsed = parse_side_handle(key)
+        # The round trip rejects the '-t' target form and padded slots ('top-02').
+        if parsed is None or not 0 <= parsed[1] < MAX_HANDLES or handle_id(*parsed) != key:
+            continue
+        text = label.strip()[:MAX_PORT_LABEL_LENGTH]
+        if text:
+            out[key] = text
+    return out or None
+
+
+def prune_port_labels(
+    labels: dict[str, str] | None, counts: Mapping[str, int | None]
+) -> dict[str, str] | None:
+    """Drop the labels of connection points a side's count no longer reaches.
+
+    A side with no count falls back to its default, as everywhere else.
+    """
+    if not labels:
+        return None
+    kept: dict[str, str] = {}
+    for key, text in labels.items():
+        parsed = parse_side_handle(key)
+        if parsed is None:
+            continue
+        side, idx = parsed
+        count = counts.get(side)
+        if idx < (side_default(side) if count is None else count):
+            kept[key] = text
+    return kept or None

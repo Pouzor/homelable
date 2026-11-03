@@ -53,7 +53,7 @@ describe('UnifiImportModal', () => {
       active_clients: false,
     })
     expect(payload.site).toBe('default')
-    expect(payload.port).toBe(8443)
+    expect(payload.port).toBe(443)
   })
 
   it('sends the sources the user ticked', async () => {
@@ -175,5 +175,21 @@ describe('UnifiImportModal', () => {
 
     expect(unifiApi.importToPending).not.toHaveBeenCalled()
     expect(toast.error).toHaveBeenCalledWith('Enter a controller host')
+  })
+
+  it('tells the user a local admin account is required', () => {
+    render(<UnifiImportModal {...defaultProps} />)
+    expect(screen.getByText(/local admin account/i)).toBeInTheDocument()
+    expect(screen.getByText(/443 for UniFi OS/i)).toBeInTheDocument()
+  })
+
+  it('falls back to 443 when the port is cleared', async () => {
+    render(<UnifiImportModal {...defaultProps} />)
+    typeHost()
+    fireEvent.change(screen.getByPlaceholderText('443'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
+
+    await waitFor(() => expect(unifiApi.importToPending).toHaveBeenCalled())
+    expect(vi.mocked(unifiApi.importToPending).mock.calls[0][0].port).toBe(443)
   })
 })

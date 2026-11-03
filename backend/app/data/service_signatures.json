@@ -2,8 +2,8 @@
   {"port": 8006,  "protocol": "tcp", "banner_regex": null,                              "service_name": "Proxmox VE",              "icon": "layers",      "category": "hypervisor",    "suggested_node_type": "proxmox"},
 
   {"port": 5000,  "protocol": "tcp", "banner_regex": "synology|DSM",                    "service_name": "Synology DSM",            "icon": "hard-drive",  "category": "nas",           "suggested_node_type": "nas"},
-  {"port": 5001,  "protocol": "tcp", "banner_regex": null,                              "service_name": "Synology DSM HTTPS",      "icon": "hard-drive",  "category": "nas",           "suggested_node_type": "nas"},
-  {"port": 5006,  "protocol": "tcp", "banner_regex": null,                              "service_name": "Synology DSM Mobile",     "icon": "hard-drive",  "category": "nas",           "suggested_node_type": "nas"},
+  {"port": 5001,  "protocol": "tcp", "banner_regex": "synology|DSM", "http_regex": "Synology|DiskStation", "service_name": "Synology DSM HTTPS",      "icon": "hard-drive",  "category": "nas",           "suggested_node_type": "nas"},
+  {"port": 5006,  "protocol": "tcp", "banner_regex": "synology|DSM", "http_regex": "Synology|DiskStation", "service_name": "Synology DSM Mobile",     "icon": "hard-drive",  "category": "nas",           "suggested_node_type": "nas"},
   {"port": 8080,  "protocol": "tcp", "banner_regex": "QNAP|qnap|QTS",                  "service_name": "QNAP NAS",                "icon": "hard-drive",  "category": "nas",           "suggested_node_type": "nas"},
   {"port": 5005,  "protocol": "tcp", "banner_regex": null,                              "service_name": "TrueNAS",                 "icon": "hard-drive",  "category": "nas",           "suggested_node_type": "nas"},
   {"port": 445,   "protocol": "tcp", "banner_regex": null,                              "service_name": "SMB / CIFS",              "icon": "share-2",     "category": "storage",       "suggested_node_type": "nas"},
@@ -133,6 +133,7 @@
   {"port": 9000,  "protocol": "tcp", "banner_regex": null,                              "service_name": "Web service",             "icon": "globe",       "category": "web",           "suggested_node_type": "server"},
   {"port": 9443,  "protocol": "tcp", "banner_regex": null,                              "service_name": "HTTPS Alt",               "icon": "lock",        "category": "web",           "suggested_node_type": "server"},
   {"port": 5000,  "protocol": "tcp", "banner_regex": null,                              "service_name": "Web service",             "icon": "globe",       "category": "web",           "suggested_node_type": "server"},
+  {"port": 5001,  "protocol": "tcp", "banner_regex": null,                              "service_name": "HTTPS Alt",               "icon": "lock",        "category": "web",           "suggested_node_type": "server"},
 
   {"port": 8448,  "protocol": "tcp", "banner_regex": null,                              "service_name": "Matrix (Synapse)",        "icon": "message-square", "category": "communication", "suggested_node_type": "server"},
   {"port": 64738, "protocol": "tcp", "banner_regex": null,                              "service_name": "Mumble",                  "icon": "mic",         "category": "communication", "suggested_node_type": "server"},
@@ -211,5 +212,18 @@
 
   {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "openmediavault",           "service_name": "OpenMediaVault",      "icon": "hard-drive",  "category": "nas",        "suggested_node_type": "nas"},
   {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Unraid",                   "service_name": "Unraid",              "icon": "hard-drive",  "category": "nas",        "suggested_node_type": "nas"},
-  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Cockpit",                  "service_name": "Cockpit",             "icon": "monitor",     "category": "nas",        "suggested_node_type": "server"}
+  {"port": null, "protocol": "tcp", "banner_regex": null, "http_regex": "Cockpit",                  "service_name": "Cockpit",             "icon": "monitor",     "category": "nas",        "suggested_node_type": "server"},
+  {"port": 11434, "protocol": "tcp", "banner_regex": null,                              "service_name": "Ollama",                  "icon": "braincircuit", "category": "ai",          "suggested_node_type": "ai_server"},
+  {"port": 5001,  "protocol": "tcp", "banner_regex": "kobold", "http_regex": "Kobold",  "service_name": "KoboldCpp",               "icon": "braincircuit", "category": "ai",          "suggested_node_type": "ai_server"},
+  {"port": 8188,  "protocol": "tcp", "banner_regex": null, "http_regex": "ComfyUI",     "service_name": "ComfyUI",                 "icon": "braincircuit", "category": "ai",          "suggested_node_type": "ai_server"},
+  {"port": null,  "protocol": "tcp", "banner_regex": null,  "http_regex": "Open WebUI",               "service_name": "Open WebUI",          "icon": "braincircuit", "category": "ai",         "suggested_node_type": "ai_server"},
+  {"port": null,  "protocol": "tcp", "banner_regex": null,  "http_regex": "Kobold",                   "service_name": "KoboldCpp",           "icon": "braincircuit", "category": "ai",         "suggested_node_type": "ai_server"},
+  {"port": null,  "protocol": "tcp", "banner_regex": null,  "http_regex": "Text generation web UI",   "service_name": "text-generation-webui", "icon": "braincircuit", "category": "ai",         "suggested_node_type": "ai_server"},
+  {"port": null,  "protocol": "tcp", "banner_regex": null,  "http_regex": "ComfyUI",                  "service_name": "ComfyUI",             "icon": "braincircuit", "category": "ai",         "suggested_node_type": "ai_server"},
+  {"port": null,  "protocol": "tcp", "banner_regex": null,  "http_regex": "Stable Diffusion",         "service_name": "Stable Diffusion WebUI", "icon": "braincircuit", "category": "ai",         "suggested_node_type": "ai_server"},
+  {"port": null,  "protocol": "tcp", "banner_regex": null,  "http_regex": "InvokeAI",                 "service_name": "InvokeAI",            "icon": "braincircuit", "category": "ai",         "suggested_node_type": "ai_server"},
+  {"port": null,  "protocol": "tcp", "banner_regex": null,  "http_regex": "LocalAI",                  "service_name": "LocalAI",             "icon": "braincircuit", "category": "ai",         "suggested_node_type": "ai_server"},
+  {"port": null,  "protocol": "tcp", "banner_regex": null,  "http_regex": "AnythingLLM",              "service_name": "AnythingLLM",         "icon": "braincircuit", "category": "ai",         "suggested_node_type": "ai_server"},
+  {"port": null,  "protocol": "tcp", "banner_regex": null,  "http_regex": "LibreChat",                "service_name": "LibreChat",           "icon": "braincircuit", "category": "ai",         "suggested_node_type": "ai_server"},
+  {"port": null,  "protocol": "tcp", "banner_regex": null,  "http_regex": "SillyTavern",              "service_name": "SillyTavern",         "icon": "braincircuit", "category": "ai",         "suggested_node_type": "ai_server"}
 ]

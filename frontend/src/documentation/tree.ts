@@ -254,6 +254,7 @@ export function buildDeviceTree(options: DeviceTreeOptions): TreeGroup[] {
         drifted: doc ? options.drifted?.has(doc.id) : false,
         overdue: doc ? options.overdue?.has(doc.id) : false,
       }),
+      icon: doc?.icon,
     }
     for (const bucket of bucketsFor(device, groupBy, facts[device.id], doc, context)) {
       const items = groups.get(bucket) ?? []

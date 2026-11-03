@@ -24,6 +24,10 @@ describe('sourceBuckets', () => {
     expect([...buckets].sort()).toEqual(['ip', 'proxmox'])
   })
 
+  it('files an Unraid container under its own bucket, not the IP scan', () => {
+    expect(orderedSources(device({ discovery_sources: ['unraid', 'arp'] }))).toEqual(['ip', 'unraid'])
+  })
+
   it('buckets UniFi infrastructure and clients together', () => {
     // Both must be recognised explicitly: the fallback branch sends anything
     // unknown to the ip bucket, which would hide them behind the IP filter.

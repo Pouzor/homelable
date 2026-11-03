@@ -113,6 +113,55 @@ export function removedHandleIds(side: Side, oldCount: number, newCount: number)
 }
 
 // ---------------------------------------------------------------------------
+// Port labels — text shown in place of a connection point's 1..N number, so a
+// node can carry the real device's numbering (#495). Keyed by source handle ID.
+// Mirrors normalize_port_labels / prune_port_labels in backend/app/schemas/utils.py.
+// ---------------------------------------------------------------------------
+
+/** The most a label can hold: the card prints it at 7px beside the handle. */
+export const MAX_PORT_LABEL_LENGTH = 8
+
+/** Splits a source handle ID into side and slot, or null when it is not one. */
+function parseSourceHandle(id: string): { side: Side; idx: number } | null {
+  const m = id.match(/^(top|bottom|left|right)(?:-(\d+))?$/)
+  if (!m) return null
+  const side = m[1] as Side
+  const idx = m[2] === undefined ? 0 : Number(m[2]) - 1
+  // The round trip rejects the forms the canvas never emits ('top-1', 'top-02').
+  if (idx < 0 || idx >= MAX_HANDLES || handleId(side, idx) !== id) return null
+  return { side, idx }
+}
+
+/**
+ * Keep the well-formed labels: a source handle ID → trimmed, non-empty text of
+ * at most MAX_PORT_LABEL_LENGTH characters. Undefined when nothing is left, so
+ * an emptied form clears the field instead of storing `{}`.
+ */
+export function normalizePortLabels(labels: unknown): Record<string, string> | undefined {
+  if (!labels || typeof labels !== 'object' || Array.isArray(labels)) return undefined
+  const out: Record<string, string> = {}
+  for (const [id, text] of Object.entries(labels)) {
+    if (typeof text !== 'string' || !parseSourceHandle(id)) continue
+    const trimmed = text.trim().slice(0, MAX_PORT_LABEL_LENGTH)
+    if (trimmed) out[id] = trimmed
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
+/** The node's labels minus those of connection points its counts no longer draw. */
+export function prunePortLabels(data: NodeData): Record<string, string> | undefined {
+  const labels = normalizePortLabels(data.port_labels)
+  if (!labels) return undefined
+  const kept = Object.fromEntries(
+    Object.entries(labels).filter(([id]) => {
+      const parsed = parseSourceHandle(id)
+      return parsed !== null && parsed.idx < sideHandleCount(data, parsed.side)
+    }),
+  )
+  return Object.keys(kept).length ? kept : undefined
+}
+
+// ---------------------------------------------------------------------------
 // Deprecated bottom-only aliases — kept so existing call sites don't churn.
 // Prefer the side-generic functions above.
 // ---------------------------------------------------------------------------

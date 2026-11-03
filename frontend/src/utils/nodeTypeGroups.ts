@@ -9,7 +9,7 @@ import type { NodeType } from '@/types'
  * those are created from the toolbar, never picked here.
  */
 export const NODE_TYPE_GROUPS: { label: string; types: NodeType[] }[] = [
-  { label: 'Hardware',       types: ['isp', 'router', 'firewall', 'switch', 'server', 'nas', 'kvm', 'ap', 'printer'] },
+  { label: 'Hardware',       types: ['isp', 'router', 'firewall', 'switch', 'server', 'ai_server', 'nas', 'kvm', 'ap', 'printer'] },
   { label: 'Virtualization', types: ['proxmox', 'vm', 'lxc', 'docker_host', 'docker_container'] },
   { label: 'IoT',            types: ['iot', 'camera', 'cpl'] },
   { label: 'Zigbee',         types: ['zigbee_coordinator', 'zigbee_router', 'zigbee_enddevice'] },

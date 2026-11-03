@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, BookOpen, ChevronDown, ChevronRight, FilePlus, FolderPlus, Link2, Search, X } from 'lucide-react'
+import { Archive, BookOpen, ChevronDown, ChevronRight, FilePlus, FolderPlus, House, Link2, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { docsviewApi, scanApi } from '@/api/client'
@@ -9,11 +9,12 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import type { InventoryEntry } from '@/types'
 import { cn } from '@/lib/utils'
-import { withBase } from '@/utils/basePath'
+import { DOCS_VIEW_SEGMENT, withBase } from '@/utils/basePath'
 import { copyToClipboard } from '@/utils/clipboard'
 import { formatRelative } from '@/utils/timeFormat'
 import { downloadAllDocs, downloadDoc } from '../export'
 import { isOverdue } from '../frontmatter'
+import { dismissHomepageBanner, isHomepageBannerDismissed } from '../homepageBanner'
 import { driftedIds, useDocsStore } from '../store'
 import {
   buildDeviceTree,
@@ -23,17 +24,31 @@ import {
   filterGroups,
   filterTree,
 } from '../tree'
-import { GROUP_BY_LABELS, type GroupBy, type TreeLeaf } from '../types'
+import { GROUP_BY_LABELS, type GroupBy, type TreeLeaf, type UpdatePreview } from '../types'
 import { DocEditor } from './DocEditor'
-import { DocTreeGroups, DocTreeItem, type TreeDnd } from './DocTree'
+import { DocTreeGroups, DocTreeItem, type CreateInFolder, type TreeDnd } from './DocTree'
 import { DocViewer } from './DocViewer'
 import { MigrateNotesBanner } from './MigrateNotesBanner'
 import { NewDocMenu } from './NewDocMenu'
 import { RegenerateDocModal } from './RegenerateDocModal'
+import { SetHomepageModal } from './SetHomepageModal'
+import { UpdateFromDeviceModal } from './UpdateFromDeviceModal'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 const GROUP_OPTIONS = Object.keys(GROUP_BY_LABELS) as GroupBy[]
+
+function updateConfirmation(result: UpdatePreview): string {
+  const names = [...new Set(
+    result.changes
+      .filter((change) => change.status !== 'same')
+      .map((change) => change.name.trim())
+      .filter(Boolean),
+  )]
+  if (names.length === 0) return 'Documentation already matched the device — marked as up to date'
+  const shown = names.slice(0, 3).join(', ')
+  return `Documentation updated: ${shown}${names.length > 3 ? `, and ${names.length - 3} more` : ''}`
+}
 
 /**
  * The Documentation section.
@@ -63,6 +78,8 @@ export function DocumentationView() {
     move,
     remove,
     toggleStar,
+    setIcon,
+    setHomepage,
     markReviewed,
     setTags,
     regenerate,
@@ -78,6 +95,13 @@ export function DocumentationView() {
     coverage,
     loadCoverage,
     scaffold,
+    preview,
+    previewLoading,
+    resolutions,
+    openUpdatePreview,
+    setResolution,
+    clearResolutions,
+    applyUpdate,
     groupBy,
     setGroupBy,
     expanded,
@@ -98,7 +122,17 @@ export function DocumentationView() {
   const [regenerateOpen, setRegenerateOpen] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [updateOpen, setUpdateOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [homepageConfirm, setHomepageConfirm] = useState(false)
+  const [settingHome, setSettingHome] = useState(false)
+  const [homeBannerDismissed, setHomeBannerDismissed] = useState(() => isHomepageBannerDismissed())
+  const updateFlow = useRef(0)
+
+  useEffect(() => {
+    updateFlow.current++
+    setUpdateOpen(false)
+  }, [openDoc?.id])
 
   useEffect(() => {
     void loadDocs()
@@ -142,6 +176,7 @@ export function DocumentationView() {
 
   const libraryItems = useMemo(() => filterTree(buildLibraryTree(docs), filter), [docs, filter])
   const starred = useMemo(() => new Set(docs.filter((d) => d.starred).map((d) => d.id)), [docs])
+  const homepage = useMemo(() => docs.find((d) => d.is_homepage) ?? null, [docs])
   const linkableDevices = useMemo(
     () => devices.map((d) => ({ id: d.id, label: deviceLabel(d) })),
     [devices],
@@ -167,6 +202,18 @@ export function DocumentationView() {
       }
     },
     [create, devices, dirty, open],
+  )
+
+  // A folder's `+`. The folder opens so the new item lands in sight; a page
+  // opens for writing, a folder has nothing to write yet.
+  const handleCreateIn = useCallback(
+    async (input: CreateInFolder) => {
+      const doc = await create(input)
+      if (!doc) return
+      if (!expanded.includes(input.parentId)) setExpanded([...expanded, input.parentId])
+      if (doc.kind !== 'folder') await open(doc.id)
+    },
+    [create, expanded, open, setExpanded],
   )
 
   // Filing by drag. The confirmation is the point — a document that moves
@@ -238,6 +285,34 @@ export function DocumentationView() {
     toast.success('Document deleted')
   }, [openDoc, remove])
 
+  // Taking the homepage from another page is asked first; the first one is not.
+  const applyHomepage = useCallback(
+    async (id: string) => {
+      setSettingHome(true)
+      const ok = await setHomepage(id)
+      setSettingHome(false)
+      setHomepageConfirm(false)
+      if (ok) toast.success('Homepage set')
+      else toast.error('Could not set the homepage')
+    },
+    [setHomepage],
+  )
+
+  const handleSetHomepage = useCallback(() => {
+    if (!openDoc || openDoc.is_homepage) return
+    if (homepage) setHomepageConfirm(true)
+    else void applyHomepage(openDoc.id)
+  }, [applyHomepage, homepage, openDoc])
+
+  // The banner's shortcut: a page to write the homepage in, already set as one,
+  // and scaffolded server-side with links to the canvases, Library and gear.
+  const handleCreateHomepage = useCallback(async () => {
+    const doc = await create({ title: 'Home', templateId: 'homepage' })
+    if (!doc) return
+    await applyHomepage(doc.id)
+    await open(doc.id)
+  }, [applyHomepage, create, open])
+
   // The whole space, zipped server-side: the tree only holds summaries, so the
   // bodies to write are not in the browser yet.
   const handleExportAll = useCallback(async () => {
@@ -264,6 +339,63 @@ export function DocumentationView() {
     setRegenerateOpen(false)
     toast.success('Document regenerated — the old body is in its history')
   }, [openDoc, regenerate])
+
+  const handleCancelUpdate = useCallback(() => {
+    updateFlow.current++
+    setUpdateOpen(false)
+    clearResolutions()
+  }, [clearResolutions])
+
+  const finishUpdate = useCallback(async (review: UpdatePreview, flow: number, docId: string) => {
+    const result = await applyUpdate()
+    const current = useDocsStore.getState()
+    if (
+      flow !== updateFlow.current ||
+      current.openDoc?.id !== docId ||
+      (current.preview !== null && current.preview.preview_id !== review.preview_id)
+    ) return
+    if (result === 'failed') {
+      toast.error('Could not apply the update')
+      return
+    }
+    if (result === 'stale') {
+      // The document moved under the preview; show it again and re-compare,
+      // so the user is never applying against a body they have not seen.
+      setUpdateOpen(true)
+      await open(docId)
+      if (flow !== updateFlow.current || useDocsStore.getState().openDoc?.id !== docId) return
+      toast.error('That preview was out of date — review the current document again')
+      await openUpdatePreview()
+      return
+    }
+    setUpdateOpen(false)
+    clearResolutions()
+    toast.success(updateConfirmation(review), {
+      action: { label: 'View history', onClick: () => setHistoryOpen(true) },
+    })
+  }, [applyUpdate, clearResolutions, open, openUpdatePreview])
+
+  // The comparison only ever opens the review. Even an update with no conflict
+  // waits for the Update button: nothing is written to a document unseen.
+  const handleUpdatePreview = useCallback(async () => {
+    if (!openDoc) return
+    const flow = ++updateFlow.current
+    const docId = openDoc.id
+    setUpdateOpen(true)
+    const result = await openUpdatePreview()
+    if (flow !== updateFlow.current || useDocsStore.getState().openDoc?.id !== docId) return
+    if (result === null) toast.error('Could not compare this document with the device')
+  }, [openDoc, openUpdatePreview])
+
+  const handleApplyUpdate = useCallback(async () => {
+    if (!openDoc || !preview) return
+    const flow = ++updateFlow.current
+    await finishUpdate(preview, flow, openDoc.id)
+  }, [finishUpdate, openDoc, preview])
+
+  // Applying the merge on a doc with an edit in flight would silently destroy
+  // the draft text it replaced; the button is hidden while editing instead.
+  const showUpdate = openDoc !== null && draft === null
 
   // The rail is loaded when it is opened, and again whenever the document it is
   // showing changes underneath it — a save adds a revision to the list.
@@ -314,7 +446,7 @@ export function DocumentationView() {
       .then(({ data }) =>
         setDocsLink(
           data.enabled && data.key
-            ? `${window.location.origin}${withBase('docs')}?key=${encodeURIComponent(data.key)}`
+            ? `${window.location.origin}${withBase(DOCS_VIEW_SEGMENT)}?key=${encodeURIComponent(data.key)}`
             : null,
         ),
       )
@@ -466,9 +598,11 @@ export function DocumentationView() {
                   activeId={openDoc?.id ?? null}
                   expanded={expanded}
                   starred={starred}
+                  homeId={homepage?.id ?? null}
                   onSelect={(item) => void handleSelect(item)}
                   onToggle={toggleExpanded}
                   dnd={dnd}
+                  onCreateIn={handleCreateIn}
                 />
               ))}
             {libraryOpen && libraryItems.length === 0 && (
@@ -547,6 +681,37 @@ export function DocumentationView() {
           <MigrateNotesBanner count={coverage.notes_unmigrated} onMigrate={() => void handleMigrate()} />
         )}
 
+        {loaded && !homepage && !homeBannerDismissed && (
+          <div className="flex items-center gap-2 border-b border-border bg-primary/5 px-4 py-1.5 text-xs">
+            <House size={13} className="shrink-0 text-primary" />
+            <span className="text-muted-foreground">
+              You don&apos;t seem to have a homepage yet — create one, or open an existing page and
+              set it as the homepage.
+            </span>
+            <Button
+              size="xs"
+              variant="secondary"
+              className="ml-auto cursor-pointer"
+              onClick={() => void handleCreateHomepage()}
+            >
+              Create homepage
+            </Button>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              aria-label="Dismiss for two weeks"
+              title="Dismiss for two weeks"
+              className="cursor-pointer"
+              onClick={() => {
+                dismissHomepageBanner()
+                setHomeBannerDismissed(true)
+              }}
+            >
+              <X />
+            </Button>
+          </div>
+        )}
+
         {pendingDraft !== null && (
           <div className="flex items-center gap-2 border-b border-border bg-[var(--status-pending,#e3b341)]/10 px-4 py-1.5 text-xs">
             <span className="text-[var(--status-pending,#e3b341)]">
@@ -596,8 +761,11 @@ export function DocumentationView() {
             }}
             onEdit={startEdit}
             onToggleStar={() => void toggleStar(openDoc.id)}
+            onSetHomepage={handleSetHomepage}
             onMarkReviewed={() => void markReviewed(openDoc.id)}
             onSetTags={(tags) => void setTags(tags)}
+            onSetIcon={(icon) => void setIcon(openDoc.id, icon)}
+            onUpdateFromDevice={() => void handleUpdatePreview()}
             onRegenerate={() => setRegenerateOpen(true)}
             onDownload={() => downloadDoc(openDoc)}
             onDelete={() => void handleDelete()}
@@ -637,6 +805,27 @@ export function DocumentationView() {
           busy={regenerating}
           onCancel={() => setRegenerateOpen(false)}
           onConfirm={() => void handleRegenerate()}
+        />
+        <SetHomepageModal
+          open={homepageConfirm && openDoc !== null}
+          title={openDoc?.title ?? ''}
+          currentTitle={homepage?.title ?? ''}
+          busy={settingHome}
+          onCancel={() => setHomepageConfirm(false)}
+          onConfirm={() => openDoc && void applyHomepage(openDoc.id)}
+        />
+        <UpdateFromDeviceModal
+          open={showUpdate && updateOpen}
+          docTitle={openDoc?.title ?? ''}
+          preview={preview}
+          loading={previewLoading}
+          resolutions={resolutions}
+          onPreview={() => void handleUpdatePreview()}
+          onResolve={(id, item) => setResolution(id, item)}
+          onCancel={handleCancelUpdate}
+          onApply={() => void handleApplyUpdate()}
+          docs={docs}
+          devices={linkableDevices}
         />
       </div>
     </div>

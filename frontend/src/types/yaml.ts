@@ -37,4 +37,7 @@ export interface YamlNode {
   // Whether port-number labels are shown next to connection points. Only written
   // when enabled so the toggle round-trips through export/import (issue #272).
   showPortNumbers?: boolean
+  // The device's own numbering per connection point, keyed by handle ID — only
+  // written when at least one point carries a label (#495).
+  portLabels?: Record<string, string>
 }

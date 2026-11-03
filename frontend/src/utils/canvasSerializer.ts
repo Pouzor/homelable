@@ -1,6 +1,6 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData, Waypoint } from '@/types'
-import { normalizeHandle, clampHandles, handleId, handleCountField, type Side } from '@/utils/handleUtils'
+import { normalizeHandle, clampHandles, handleId, handleCountField, normalizePortLabels, prunePortLabels, type Side } from '@/utils/handleUtils'
 import { normalizeMarker } from '@/utils/edgeMarkers'
 import { changedFactFields, type FactsBaseline } from '@/utils/deviceFacts'
 
@@ -41,6 +41,7 @@ export interface ApiNode extends Record<string, unknown> {
   left_handles?: number
   right_handles?: number
   show_port_numbers?: boolean
+  port_labels?: Record<string, string> | null
 }
 
 export interface ApiEdge {
@@ -167,6 +168,7 @@ export function serializeNode(
     left_handles: clampHandles('left', n.data.left_handles ?? 0),
     right_handles: clampHandles('right', n.data.right_handles ?? 0),
     show_port_numbers: n.data.show_port_numbers ?? false,
+    port_labels: prunePortLabels(n.data) ?? null,
     pos_x: n.position.x,
     pos_y: n.position.y,
   }
@@ -245,6 +247,8 @@ export function deserializeApiNode(
       bottom_handles: clampHandles('bottom', n.bottom_handles ?? 1),
       left_handles: clampHandles('left', n.left_handles ?? 0),
       right_handles: clampHandles('right', n.right_handles ?? 0),
+      // The API reports NULL for "no labels"; the canvas leaves the field unset.
+      port_labels: normalizePortLabels(n.port_labels),
       collapsed: Boolean(n.custom_colors?.collapsed),
     } as unknown as NodeData,
     ...(n.parent_id && parentIsZone

@@ -297,6 +297,7 @@ def get_faceplate(faceplate_id: str) -> dict[str, Any] | None:
 # the device's free-form `suggested_type` (faceplates.ts:476).
 FACEPLATE_BY_DEVICE_TYPE = {
     "server": "server-1u-bays",
+    "ai_server": "server-2u-bays",
     "proxmox": "server-2u-bays",
     "nas": "nas-2u",
     "switch": "switch-24",

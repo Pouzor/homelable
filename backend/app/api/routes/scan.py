@@ -546,6 +546,56 @@ async def update_pending(
     return (await _with_canvas_counts(db, [device]))[0]
 
 
+# What a copy inherits: the facts two identical units share. Addresses, the
+# check target, services and the hostname describe one physical box, so they
+# stay behind — copied, they would make create_pending's dedup and every
+# importer treat the twin as the same device (issue #481).
+_DUPLICATED_FIELDS = (
+    "os", "suggested_type", "type", "model", "vendor", "friendly_name",
+    "device_subtype", "notes", "cpu_count", "cpu_model", "ram_gb", "disk_gb",
+    "show_hardware", "check_method", "rack_faceplate_id", "rack_u_height",
+    "rack_col_span", "rack_color",
+)
+
+
+@router.post("/pending/{device_id}/duplicate", response_model=InventoryDeviceResponse, status_code=201)
+async def duplicate_pending(
+    device_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> InventoryDevice:
+    """Copy an inventory row into a new, hand-made one — the second unit of a
+    redundant pair, with the same specs and front panel but no identity yet."""
+    source = (
+        await db.execute(select(InventoryDevice).where(InventoryDevice.id == device_id))
+    ).scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    name = source.label or source.friendly_name or source.hostname or source.ip or source.ieee_address
+    discovery_source = "rack" if _is_rack_only(source) else "manual"
+    copy = InventoryDevice(
+        **{field: getattr(source, field) for field in _DUPLICATED_FIELDS},
+        label=f"{name} (copy)" if name else "Device (copy)",
+        properties=[dict(p) for p in source.properties or []],
+        services=[],
+        status="pending",
+        discovery_source=discovery_source,
+        discovery_sources=[discovery_source],
+        # Fresh port ids: a cable names a port by id, so the twin's ports must
+        # never be mistaken for the source's.
+        rack_ports=(
+            [{**p, "id": str(uuid.uuid4())} for p in source.rack_ports]
+            if source.rack_ports is not None
+            else None
+        ),
+    )
+    db.add(copy)
+    await db.commit()
+    await db.refresh(copy)
+    return (await _with_canvas_counts(db, [copy]))[0]
+
+
 @router.delete("/pending", response_model=dict)
 async def clear_pending(
     db: AsyncSession = Depends(get_db),
@@ -611,12 +661,13 @@ async def list_proxmox_children(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ) -> list[InventoryDevice]:
-    """Inventory rows for the guests a Proxmox host runs.
+    """Inventory rows for the guests a Proxmox host (or Unraid server) runs.
 
-    The Proxmox import records host -> guest as a ``device_inventory_links`` row
-    with ``discovery_source == "proxmox"``, keyed by IEEE. This resolves those
-    targets back to inventory rows so the UI can offer "add the children too"
-    when a host is placed on a canvas. Empty for anything that is not a host.
+    The Proxmox and Unraid imports record host -> guest/container as a
+    ``device_inventory_links`` row with ``discovery_source`` "proxmox" or
+    "unraid", keyed by IEEE. This resolves those targets back to inventory rows
+    so the UI can offer "add the children too" when a host is placed on a
+    canvas. Empty for anything that is not a host.
     """
     device = await db.get(InventoryDevice, device_id)
     if device is None:
@@ -628,7 +679,7 @@ async def list_proxmox_children(
             await db.execute(
                 select(InventoryDeviceLink.target_ieee).where(
                     InventoryDeviceLink.source_ieee == device.ieee_address,
-                    InventoryDeviceLink.discovery_source == "proxmox",
+                    InventoryDeviceLink.discovery_source.in_(("proxmox", "unraid")),
                 )
             )
         )
@@ -772,7 +823,10 @@ async def bulk_approve_devices(
         elif not device.check_method:
             # Default to ping so the status checker actually polls it. Without
             # this the scheduler skips it (check_method NULL -> no check).
-            device.check_method = "ping" if device.ip else None
+            # With the checker switched off there is nothing to poll for: keep
+            # it NULL rather than store a probe that would start the moment the
+            # switch is flipped back.
+            device.check_method = "ping" if device.ip and settings.status_checker_enabled else None
         node = Node(
             label=device.label,
             type=device.type,
@@ -956,7 +1010,7 @@ async def approve_device(
         device.status_live = "online"
     else:
         device.check_method = node_data.check_method or device.check_method or (
-            "ping" if device.ip else None
+            "ping" if device.ip and settings.status_checker_enabled else None
         )
         device.check_target = node_data.check_target or device.check_target
         if node_data.status:
@@ -1106,9 +1160,10 @@ async def _resolve_pending_links_for_ieee(
         # '-t' target id does not resolve here and RF falls back to the top
         # handle, so never emit one.
         #   proxmox         → 'virtual' host→guest, vertical (bottom → top)
+        #   unraid          -> 'virtual' host->container, same shape
         #   proxmox_cluster → 'cluster' host↔host, horizontal (right → left)
         #   anything else   → 'iot' mesh link, vertical
-        if link.discovery_source == "proxmox":
+        if link.discovery_source in ("proxmox", "unraid"):
             edge_type, src_handle, tgt_handle = "virtual", "bottom", "top"
         elif link.discovery_source == "proxmox_cluster":
             edge_type, src_handle, tgt_handle = "cluster", "right", "left"

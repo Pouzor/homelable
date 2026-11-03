@@ -11,6 +11,8 @@ import type {
   DocSearchResult,
   DocumentSummary,
   GroupBy,
+  ResolutionItem,
+  UpdatePreview,
 } from './types'
 
 /**
@@ -30,6 +32,22 @@ const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 const UI_KEY = 'homelable_docs_ui'
 const DRAFT_PREFIX = 'homelable_docdraft:'
+
+// The update preview is re-fetched for every decision, and those requests can
+// overlap. `previewRequest` names the request currently in charge: only the
+// latest, still aimed at the still-open document, may land its answer. Anything
+// older is a merged body computed over decisions the user has already moved
+// past — landing it would silently undo the preview on screen (responses can
+// arrive out of order) or resurrect one after the review was cancelled. Every
+// invalidation — closing the document, opening another, dropping the
+// resolutions, starting an apply — bumps the counter as well, so an answer for
+// a review nobody is looking at is discarded rather than installed.
+let previewRequest = 0
+
+// The resolutions an installed preview was merged under, kept in lockstep with
+// it. `applyUpdate` refuses when the two drift apart — sending a newer set of
+// resolutions against an older preview would land a merge nobody has seen.
+let previewBinding: ResolutionItem[] = []
 
 interface DraftRecord {
   body: string
@@ -102,6 +120,21 @@ export interface DocsState {
   openDoc: Doc | null
   openLoading: boolean
 
+  /** The update-from-device preview of the open document. Null when not comparing. */
+  preview: UpdatePreview | null
+  previewLoading: boolean
+  /** The conflicts the user has decided on so far, keyed by change id. */
+  resolutions: Record<string, ResolutionItem>
+  /** Re-run the merge against the device, folding any pending resolutions in. */
+  openUpdatePreview: () => Promise<UpdatePreview | null>
+  /** Record one decision and refresh the merged body to show its effect. */
+  setResolution: (id: string, item: ResolutionItem) => void
+  /** Drop every decision made so far (closing the review). */
+  clearResolutions: () => void
+  /** Apply the reviewed merge. 'stale' means the document moved since the
+   *  preview — the flow must re-open it rather than trusting the old one. */
+  applyUpdate: () => Promise<'applied' | 'stale' | 'failed'>
+
   /** The body being edited. Null when not in edit mode. */
   draft: string | null
   dirty: boolean
@@ -131,6 +164,12 @@ export interface DocsState {
   open: (id: string) => Promise<void>
   /** Open the document describing a device, writing one first if it has none. */
   openForDevice: (deviceId: string, fallbackTitle?: string) => Promise<boolean>
+  /**
+   * Open the homepage, whatever was open before — unless that document has
+   * unsaved edits, or another one is already opening. False when it opened
+   * nothing.
+   */
+  openHome: () => Promise<boolean>
   close: () => void
 
   startEdit: () => void
@@ -153,6 +192,10 @@ export interface DocsState {
   /** Rewrite the `tags:` list in the open document's frontmatter. */
   setTags: (tags: string[]) => Promise<boolean>
   toggleStar: (id: string) => Promise<void>
+  /** The emoji the tree shows for a document; `null` restores the kind icon. */
+  setIcon: (id: string, icon: string | null) => Promise<boolean>
+  /** Make this page the homepage; the server takes the flag off the old one. */
+  setHomepage: (id: string) => Promise<boolean>
   markReviewed: (id: string) => Promise<void>
   resyncFacts: (id: string) => Promise<void>
   remove: (id: string) => Promise<void>
@@ -181,6 +224,20 @@ function message(error: unknown, fallback: string): string {
   return typeof detail === 'string' ? detail : fallback
 }
 
+// The resolutions an installed preview was computed with. The preview id does
+// not bind them — only the document and the live device — so apply must check
+// that the decisions it would send are exactly the ones the merged body on
+// screen was shown with. A decision made after the preview does not count;
+// its own re-preview is what makes it part of the merge.
+function sameResolutions(a: ResolutionItem[], b: ResolutionItem[]): boolean {
+  if (a.length !== b.length) return false
+  const byId = new Map(b.map((r) => [r.id, r]))
+  return a.every((r) => {
+    const other = byId.get(r.id)
+    return other?.choice === r.choice && other?.custom === r.custom
+  })
+}
+
 const initialUi = readUi()
 
 export const useDocsStore = create<DocsState>()((set, get) => ({
@@ -191,6 +248,10 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
 
   openDoc: null,
   openLoading: false,
+
+  preview: null,
+  previewLoading: false,
+  resolutions: {},
 
   draft: null,
   dirty: false,
@@ -230,8 +291,13 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
   },
 
   open: async (id) => {
+    previewRequest++
+    previewBinding = []
     set({
       openLoading: true,
+      preview: null,
+      previewLoading: false,
+      resolutions: {},
       draft: null,
       dirty: false,
       pendingDraft: null,
@@ -283,9 +349,29 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
     return true
   },
 
-  close: () =>
+  openHome: async () => {
+    if (STANDALONE) return false
+    // Unsaved edits are never swapped out from under the user.
+    const busy = () => get().openLoading || get().dirty
+    if (busy()) return false
+    if (!get().loaded) await get().loadDocs()
+    // Something else may have opened a document while the list loaded.
+    if (busy()) return false
+    const home = get().docs.find((doc) => doc.is_homepage)
+    if (!home) return false
+    if (get().openDoc?.id === home.id) return true
+    await get().open(home.id)
+    return true
+  },
+
+  close: () => {
+    previewRequest++
+    previewBinding = []
     set({
       openDoc: null,
+      preview: null,
+      previewLoading: false,
+      resolutions: {},
       draft: null,
       dirty: false,
       pendingDraft: null,
@@ -293,7 +379,117 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       revisionsLoading: false,
       revisionPreview: null,
       backlinks: [],
-    }),
+    })
+  },
+
+  // Update-from-device keeps its merge on the server: the preview endpoint
+  // answers the same three bodies every time, with whatever the user has
+  // decided so far folded in, so the merged body they see is never a local
+  // guess — and the apply recomputes from scratch with the same resolutions,
+  // so what the modal showed last is exactly what lands.
+  openUpdatePreview: async () => {
+    const openDoc = get().openDoc
+    if (!openDoc) return null
+    const request = ++previewRequest
+    const docId = openDoc.id
+    const bindings = Object.values(get().resolutions)
+    set({ previewLoading: true })
+    try {
+      const { data } = await documentsApi.updatePreview(docId, bindings)
+      // A response only wins if nothing newer was issued and its document is
+      // still the one on screen. Out-of-order answers for older resolutions
+      // would silently roll the review back; answers for a document the user
+      // has left belong to a review nobody is looking at.
+      if (request !== previewRequest || get().openDoc?.id !== docId) return null
+      // The installed preview is bound to exactly the resolutions it was
+      // issued with — a decision made after this request means a newer one.
+      previewBinding = bindings
+      set({ preview: data, previewLoading: false })
+      return data
+    } catch (error) {
+      // The latest failure owns the screen: the merge it was trying to show is
+      // gone, so the previous preview has no business being applied either.
+      // A failure of a superseded request, by contrast, must not knock out the
+      // newer preview (or the error of one it replaced).
+      if (request !== previewRequest || get().openDoc?.id !== docId) return null
+      previewBinding = []
+      set({ preview: null, previewLoading: false, loadError: message(error, 'Could not compare this document with the device') })
+      return null
+    }
+  },
+
+  setResolution: (id, item) => {
+    set((state) => ({ resolutions: { ...state.resolutions, [id]: item } }))
+    void get().openUpdatePreview()
+  },
+
+  clearResolutions: () => {
+    previewRequest++
+    previewBinding = []
+    // Any request still in flight for the old review is now ignored, so it
+    // will never clear the loading flag itself — this has to.
+    set({ resolutions: {}, preview: null, previewLoading: false })
+  },
+
+  applyUpdate: async () => {
+    const { openDoc, preview, resolutions } = get()
+    if (!openDoc || !preview) return 'failed'
+    // Applying must never land a merge the user is not looking at: a preview
+    // still loading (the decision it reflects has no perspective yet), one
+    // with conflicts left open, or one computed over earlier decisions than
+    // the ones stored now would all destroy exactly that guarantee.
+    if (get().previewLoading) return 'failed'
+    if (preview.unresolved.length > 0) return 'failed'
+    if (!sameResolutions(Object.values(resolutions), previewBinding)) return 'failed'
+    // The review is over: any preview still in flight is about a comparison
+    // the user has stopped looking at. Bumping the counter keeps it quiet.
+    const request = ++previewRequest
+    set({ previewLoading: true })
+    try {
+      const { data } = await documentsApi.updateFromDevice(
+        openDoc.id,
+        preview.preview_id,
+        Object.values(resolutions),
+      )
+      // The body a sync replaces is what the user was reading; any draft the
+      // editor held belonged to that older body, so it goes with it.
+      const stillCurrent = request === previewRequest && get().openDoc?.id === openDoc.id
+      if (stillCurrent) previewBinding = []
+      set((state) => {
+        const docs = state.docs.map((d) => (d.id === data.id ? { ...d, ...data } : d))
+        if (!stillCurrent) return { docs }
+        return {
+          openDoc: data,
+          preview: null,
+          previewLoading: false,
+          resolutions: {},
+          draft: null,
+          dirty: false,
+          docs,
+        }
+      })
+      if (get().openDoc?.id === openDoc.id && get().revisions.length > 0) await get().loadRevisions(openDoc.id)
+      return 'applied'
+    } catch (error) {
+      const stale = (error as { response?: { status?: number } })?.response?.status === 409
+      // Navigation, cancellation, or a newer preview now owns the review.
+      // The old apply still reports its outcome to its caller, but must not
+      // overwrite that newer state when its response eventually arrives.
+      if (request !== previewRequest || get().openDoc?.id !== openDoc.id) {
+        return stale ? 'stale' : 'failed'
+      }
+      // A 409 voids the preview and the decisions that went with it: the flow
+      // re-opens the document and compares fresh, and stale choices must not
+      // ride along into a review built on a changed baseline.
+      if (stale) {
+        previewBinding = []
+        set({ preview: null, resolutions: {}, previewLoading: false, loadError: message(error, 'Could not apply the update') })
+      } else {
+        set({ previewLoading: false, loadError: message(error, 'Could not apply the update') })
+      }
+      return stale ? 'stale' : 'failed'
+    }
+  },
 
   startEdit: () => {
     const doc = get().openDoc
@@ -355,7 +551,13 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
         node_id: input.nodeId ?? null,
         template_id: input.templateId ?? null,
       })
-      set((state) => ({ docs: [...state.docs, data], openDoc: data }))
+      // A folder has nothing to read or write, so it never takes the viewer:
+      // swapping `openDoc` under a live `draft` would bind the editor — and its
+      // next save — to the folder.
+      set((state) => ({
+        docs: [...state.docs, data],
+        openDoc: data.kind === 'folder' ? state.openDoc : data,
+      }))
       return data
     } catch (error) {
       set({ loadError: message(error, 'Could not create that document') })
@@ -433,6 +635,36 @@ export const useDocsStore = create<DocsState>()((set, get) => ({
       docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : d)),
       openDoc: state.openDoc?.id === id ? data : state.openDoc,
     }))
+  },
+
+  // A column, not frontmatter: unlike tags it is presentation for the tree and
+  // never part of the exported markdown, so it patches straight through.
+  setIcon: async (id, icon) => {
+    try {
+      const { data } = await documentsApi.update(id, { icon })
+      set((state) => ({
+        docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : d)),
+        openDoc: state.openDoc?.id === id ? data : state.openDoc,
+      }))
+      return true
+    } catch (error) {
+      set({ loadError: message(error, 'Could not set the icon') })
+      return false
+    }
+  },
+
+  setHomepage: async (id) => {
+    try {
+      const { data } = await documentsApi.update(id, { is_homepage: true })
+      set((state) => ({
+        docs: state.docs.map((d) => (d.id === id ? { ...d, ...data } : { ...d, is_homepage: false })),
+        openDoc: state.openDoc?.id === id ? data : state.openDoc && { ...state.openDoc, is_homepage: false },
+      }))
+      return true
+    } catch (error) {
+      set({ loadError: message(error, 'Could not set the homepage') })
+      return false
+    }
   },
 
   markReviewed: async (id) => {

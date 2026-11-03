@@ -3,13 +3,13 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.config import proxmox_sync_endpoints, settings
 from app.db.database import AsyncSessionLocal
 from app.db.models import InventoryDevice, Node
 from app.services.status_checker import check_node, check_services
@@ -32,44 +32,79 @@ async def _nodes_by_device(db: AsyncSession) -> dict[str, list[str]]:
     return out
 
 
+class _CheckOutcome(NamedTuple):
+    device_id: str
+    status: str
+    response_time_ms: int | None
+    checked_at: datetime
+
+
 async def _check_single_device(
     device_id: str,
     node_ids: list[str],
     check_method: str,
     check_target: str | None,
     ip: str | None,
-) -> tuple[str, dict[str, object] | None]:
-    """Run a single device check; returns (device_id, result_or_None).
+) -> _CheckOutcome | None:
+    """Probe one device and broadcast the result; returns None if the probe failed.
 
     Accepts plain scalars — not an ORM object — so there is no risk of
     DetachedInstanceError when the originating session has already closed.
+
+    It does not write: `_save_check_outcomes` persists the whole cycle at once.
+    The broadcast goes out here, as soon as the probe answers, so a canvas is
+    not kept waiting on the slowest device or on the database.
     """
     from app.api.routes.status import broadcast_status  # avoid circular import
 
     try:
         check_result = await check_node(check_method, check_target, ip)
-        raw_ms = check_result["response_time_ms"]
-        response_ms = raw_ms if isinstance(raw_ms, int) else None
-        now = datetime.now(timezone.utc)
-        async with AsyncSessionLocal() as db:
-            device = await db.get(InventoryDevice, device_id)
-            if device:
-                device.status_live = str(check_result["status"])
-                device.response_time_ms = response_ms
-                if check_result["status"] == "online":
-                    device.last_seen = now
-                await db.commit()
+    except Exception as exc:
+        logger.error("Status check failed for device %s: %s", device_id, exc)
+        return None
+    raw_ms = check_result["response_time_ms"]
+    outcome = _CheckOutcome(
+        device_id=device_id,
+        status=str(check_result["status"]),
+        response_time_ms=raw_ms if isinstance(raw_ms, int) else None,
+        checked_at=datetime.now(timezone.utc),
+    )
+    try:
         await broadcast_status(
             device_id=device_id,
             node_ids=node_ids,
-            status=str(check_result["status"]),
-            checked_at=now.isoformat(),
-            response_time_ms=response_ms,
+            status=outcome.status,
+            checked_at=outcome.checked_at.isoformat(),
+            response_time_ms=outcome.response_time_ms,
         )
-        return device_id, check_result
     except Exception as exc:
-        logger.error("Status check failed for device %s: %s", device_id, exc)
-        return device_id, None
+        logger.error("Status broadcast failed for device %s: %s", device_id, exc)
+    return outcome
+
+
+async def _save_check_outcomes(outcomes: list[_CheckOutcome]) -> None:
+    """Persist a whole status cycle in one write transaction.
+
+    One commit per device meant as many writers queueing on SQLite's single
+    write lock as there are devices, and the ones at the back of the queue gave
+    up with "database is locked" (#539). A failure here costs the stored state
+    of one cycle, never the live one: the broadcasts have already gone out.
+    """
+    by_id = {o.device_id: o for o in outcomes}
+    try:
+        async with AsyncSessionLocal() as db:
+            devices = (
+                await db.execute(select(InventoryDevice).where(InventoryDevice.id.in_(by_id)))
+            ).scalars().all()
+            for device in devices:
+                outcome = by_id[device.id]
+                device.status_live = outcome.status
+                device.response_time_ms = outcome.response_time_ms
+                if outcome.status == "online":
+                    device.last_seen = outcome.checked_at
+            await db.commit()
+    except Exception as exc:
+        logger.error("Could not save the status of %d device(s): %s", len(outcomes), exc)
 
 
 async def _run_status_checks() -> None:
@@ -86,6 +121,8 @@ async def _run_status_checks() -> None:
     monitoring the host. `hide` (or clearing the check method) is what ends the
     checks; the broadcast simply carries an empty `node_ids`.
     """
+    if not settings.status_checker_enabled:
+        return
     async with AsyncSessionLocal() as db:
         devices = (
             await db.execute(
@@ -106,10 +143,13 @@ async def _run_status_checks() -> None:
     if not checkable:
         return
 
-    await asyncio.gather(*[
+    results = await asyncio.gather(*[
         _check_single_device(device_id, node_ids, method, target, ip)
         for device_id, node_ids, method, target, ip in checkable
     ])
+    outcomes = [r for r in results if r is not None]
+    if outcomes:
+        await _save_check_outcomes(outcomes)
 
 
 def _node_host(ip: str | None, hostname: str | None) -> str | None:
@@ -127,7 +167,7 @@ async def _run_service_checks() -> None:
     Device-scoped for the same reason as the status check: the services belong
     to the device, so one pass serves every canvas showing it.
     """
-    if not settings.service_check_enabled:
+    if not (settings.status_checker_enabled and settings.service_check_enabled):
         return
     from app.api.routes.status import broadcast_service_status  # avoid circular import
 
@@ -154,40 +194,67 @@ async def _run_service_checks() -> None:
 
 
 async def _run_proxmox_sync() -> None:
-    """Fetch the Proxmox inventory and upsert it into pending (auto-sync).
+    """Fetch every configured Proxmox inventory and upsert it into pending
+    (auto-sync).
 
-    Records a ScanRun (kind=proxmox) so the scheduled sync shows in Scan
-    history, exactly like the manual /sync-now and /import-pending paths.
+    Records one ScanRun (kind=proxmox) per endpoint so the scheduled sync shows
+    in Scan history, exactly like the manual /sync-now and /import-pending
+    paths. Endpoints run one after another; a failing one marks its own run
+    as errored and the next still syncs.
     """
     if not settings.proxmox_sync_enabled:
         return
-    if not (settings.proxmox_host and settings.proxmox_token_id and settings.proxmox_token_secret):
+    endpoints = proxmox_sync_endpoints(settings)
+    if not endpoints:
         logger.warning("Proxmox auto-sync enabled but host/token not configured — skipping")
         return
     # Lazy import to avoid a circular import at module load.
-    from app.api.routes.proxmox import _background_proxmox_import
+    from app.api.routes.proxmox import (
+        _background_proxmox_import,
+        create_proxmox_run,
+        proxmox_import_args,
+    )
+
+    for endpoint in endpoints:
+        async with AsyncSessionLocal() as db:
+            run = await create_proxmox_run(db, endpoint)
+            run_id = run.id
+
+        # Shares the manual-sync flow: fetch + persist + mark the run done/error +
+        # broadcast the inventory-reload signal.
+        args, kwargs = proxmox_import_args(run_id, endpoint)
+        await _background_proxmox_import(*args, **kwargs)
+
+
+async def _run_unraid_sync() -> None:
+    """Fetch the Unraid containers and upsert them into pending (auto-sync)."""
+    if not settings.unraid_sync_enabled:
+        return
+    if not (settings.unraid_host and settings.unraid_api_key):
+        logger.warning("Unraid auto-sync enabled but host/API key not configured - skipping")
+        return
+    from app.api.routes.unraid import _background_unraid_import
     from app.db.models import ScanRun
 
     async with AsyncSessionLocal() as db:
         run = ScanRun(
             status="running",
-            kind="proxmox",
-            ranges=[f"{settings.proxmox_host}:{settings.proxmox_port}"],
+            kind="unraid",
+            ranges=[f"{settings.unraid_host}:{settings.unraid_effective_port}"],
         )
         db.add(run)
         await db.commit()
         await db.refresh(run)
         run_id = run.id
 
-    # Shares the manual-sync flow: fetch + persist + mark the run done/error +
-    # broadcast the inventory-reload signal.
-    await _background_proxmox_import(
+    await _background_unraid_import(
         run_id,
-        settings.proxmox_host,
-        settings.proxmox_port,
-        settings.proxmox_token_id,
-        settings.proxmox_token_secret,
-        settings.proxmox_verify_tls,
+        settings.unraid_host,
+        settings.unraid_effective_port,
+        settings.unraid_api_key,
+        settings.unraid_verify_tls,
+        settings.unraid_use_https,
+        settings.unraid_sync_include_offline,
     )
 
 
@@ -290,6 +357,22 @@ def _add_proxmox_sync_job() -> None:
     )
 
 
+def _unraid_sync_interval() -> int:
+    # .env and the settings file bypass the >= 300 check on write, so clamp here
+    return max(300, settings.unraid_sync_interval)
+
+
+def _add_unraid_sync_job() -> None:
+    scheduler.add_job(
+        _run_unraid_sync,
+        "interval",
+        seconds=_unraid_sync_interval(),
+        id="unraid_sync",
+        max_instances=1,
+        coalesce=True,
+    )
+
+
 def _add_zigbee_sync_job() -> None:
     scheduler.add_job(
         _run_zigbee_sync,
@@ -331,18 +414,21 @@ def start_scheduler() -> None:
         except Exception as exc:
             logger.warning("Failed to shut down previous scheduler instance: %s", exc)
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        _run_status_checks,
-        "interval",
-        seconds=settings.status_checker_interval,
-        id="status_checks",
-        max_instances=1,
-        coalesce=True,
-    )
-    if settings.service_check_enabled:
-        _add_service_check_job()
+    if settings.status_checker_enabled:
+        scheduler.add_job(
+            _run_status_checks,
+            "interval",
+            seconds=settings.status_checker_interval,
+            id="status_checks",
+            max_instances=1,
+            coalesce=True,
+        )
+        if settings.service_check_enabled:
+            _add_service_check_job()
     if settings.proxmox_sync_enabled:
         _add_proxmox_sync_job()
+    if settings.unraid_sync_enabled:
+        _add_unraid_sync_job()
     if settings.zigbee_sync_enabled:
         _add_zigbee_sync_job()
     if settings.zwave_sync_enabled:
@@ -350,7 +436,10 @@ def start_scheduler() -> None:
     if settings.unifi_sync_enabled:
         _add_unifi_sync_job()
     scheduler.start()
-    logger.info("Scheduler started — status checks every %ds", settings.status_checker_interval)
+    if settings.status_checker_enabled:
+        logger.info("Scheduler started — status checks every %ds", settings.status_checker_interval)
+    else:
+        logger.info("Scheduler started — status checks disabled (STATUS_CHECKER_ENABLED=false)")
 
 
 def reschedule_status_checks(interval_seconds: int) -> None:
@@ -359,6 +448,9 @@ def reschedule_status_checks(interval_seconds: int) -> None:
         raise ValueError(f"interval_seconds must be >= 10, got {interval_seconds}")
     if not scheduler.running:
         logger.warning("Scheduler not running, skipping reschedule")
+        return
+    if not scheduler.get_job("status_checks"):
+        logger.info("Status checks disabled — nothing to reschedule")
         return
     scheduler.reschedule_job("status_checks", trigger="interval", seconds=interval_seconds)
     logger.info("Status checks rescheduled to every %ds", interval_seconds)
@@ -379,6 +471,9 @@ def reschedule_service_checks(interval_seconds: int) -> None:
 def set_service_checks_enabled(enabled: bool) -> None:
     """Add or remove the service-check job on the running scheduler."""
     if not scheduler.running:
+        return
+    if enabled and not settings.status_checker_enabled:
+        logger.info("Service checks stay off: STATUS_CHECKER_ENABLED=false")
         return
     job = scheduler.get_job("service_checks")
     if enabled and not job:
@@ -412,6 +507,31 @@ def set_proxmox_sync_enabled(enabled: bool) -> None:
     elif not enabled and job:
         scheduler.remove_job("proxmox_sync")
         logger.info("Proxmox auto-sync disabled")
+
+
+def reschedule_unraid_sync(interval_seconds: int) -> None:
+    """Update the Unraid auto-sync interval on the running scheduler (if enabled)."""
+    if interval_seconds < 300:
+        raise ValueError(f"interval_seconds must be >= 300, got {interval_seconds}")
+    if not scheduler.running:
+        logger.warning("Scheduler not running, skipping reschedule")
+        return
+    if scheduler.get_job("unraid_sync"):
+        scheduler.reschedule_job("unraid_sync", trigger="interval", seconds=interval_seconds)
+        logger.info("Unraid auto-sync rescheduled to every %ds", interval_seconds)
+
+
+def set_unraid_sync_enabled(enabled: bool) -> None:
+    """Add or remove the Unraid auto-sync job on the running scheduler."""
+    if not scheduler.running:
+        return
+    job = scheduler.get_job("unraid_sync")
+    if enabled and not job:
+        _add_unraid_sync_job()
+        logger.info("Unraid auto-sync enabled - every %ds", _unraid_sync_interval())
+    elif not enabled and job:
+        scheduler.remove_job("unraid_sync")
+        logger.info("Unraid auto-sync disabled")
 
 
 def reschedule_zigbee_sync(interval_seconds: int) -> None:

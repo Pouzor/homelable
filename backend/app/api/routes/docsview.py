@@ -1,6 +1,6 @@
 """Documentation view — the read-only public documentation space.
 
-Disabled by default. Setting `DOCS_VIEW_KEY` in `.env` opens `/docs?key=<value>`,
+Disabled by default. Setting `DOCS_VIEW_KEY` in `.env` opens `/documentation?key=<value>`,
 which serves the documentation space to anyone holding the URL: the tree, a
 page, and that page's earlier versions. The same bargain as live view, one knob,
 off until someone turns it on.
@@ -63,7 +63,7 @@ async def docsview_config(
     _: str = Depends(get_current_user),
 ) -> DocsViewConfigResponse:
     """Authenticated: expose the configured key so the UI can build a
-    ready-to-use link (`/docs?key=...`).
+    ready-to-use link (`/documentation?key=...`).
 
     Only reachable by a logged-in user — the key is never exposed publicly.
     """

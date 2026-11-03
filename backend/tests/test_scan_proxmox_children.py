@@ -101,3 +101,23 @@ async def test_requires_auth(client: AsyncClient, db_session):
     ids = await _seed(db_session)
     res = await client.get(f"/api/v1/scan/pending/{ids['host']}/proxmox-children")
     assert res.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_returns_the_containers_of_an_unraid_server(client: AsyncClient, headers, db_session):
+    server = InventoryDevice(
+        ieee_address="unraid-host-abc", hostname="tower", suggested_type="docker_host", status="pending"
+    )
+    plex = InventoryDevice(
+        ieee_address="unraid-abc-ct-plex", hostname="plex", suggested_type="docker_container", status="pending"
+    )
+    db_session.add_all([server, plex])
+    await db_session.flush()
+    db_session.add(
+        InventoryDeviceLink(
+            source_ieee="unraid-host-abc", target_ieee="unraid-abc-ct-plex", discovery_source="unraid"
+        )
+    )
+    await db_session.commit()
+    res = await client.get(f"/api/v1/scan/pending/{server.id}/proxmox-children", headers=headers)
+    assert [d["id"] for d in res.json()] == [plex.id]

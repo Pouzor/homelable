@@ -1,6 +1,6 @@
 import {
   IspNode, RouterNode, FirewallNode, SwitchNode, ServerNode, VmNode, LxcNode,
-  NasNode, KvmNode, IotNode, ApNode, CameraNode, PrinterNode, ComputerNode, LaptopNode,
+  NasNode, KvmNode, AiServerNode, IotNode, ApNode, CameraNode, PrinterNode, ComputerNode, LaptopNode,
   MobileNode, CplNode, DockerHostNode, DockerContainerNode, GenericNode,
   ZigbeeCoordinatorNode, ZigbeeRouterNode, ZigbeeEndDeviceNode,
   ZwaveCoordinatorNode, ZwaveRouterNode, ZwaveEndDeviceNode,
@@ -24,6 +24,7 @@ export const nodeTypes = {
   lxc: LxcNode,
   nas: NasNode,
   kvm: KvmNode,
+  ai_server: AiServerNode,
   iot: IotNode,
   ap: ApNode,
   camera: CameraNode,

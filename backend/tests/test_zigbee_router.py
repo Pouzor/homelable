@@ -529,6 +529,37 @@ async def test_persist_pending_import_wipes_mesh_links_too(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_importing_a_second_network_keeps_the_first_networks_links(db_session) -> None:
+    """Regression: the wipe covered every zigbee link, so a second Zigbee2MQTT
+    instance imported after the first erased the first one's map."""
+    from sqlalchemy import select
+
+    from app.api.routes.zigbee import _persist_pending_import
+    from app.db.models import InventoryDeviceLink
+
+    first_edges = [
+        {"source": "0xCOORD", "target": "0xR1", "kind": "tree"},
+        {"source": "0xR1", "target": "0xE1", "kind": "mesh"},
+    ]
+    await _persist_pending_import(db_session, _PENDING_NODES, first_edges)
+
+    other = [
+        {**_PENDING_NODES[0], "id": "0xCOORD2", "ieee_address": "0xCOORD2"},
+        {**_PENDING_NODES[1], "id": "0xR9", "ieee_address": "0xR9"},
+    ]
+    await _persist_pending_import(
+        db_session, other, [{"source": "0xCOORD2", "target": "0xR9", "kind": "tree"}]
+    )
+
+    rows = (await db_session.execute(select(InventoryDeviceLink))).scalars().all()
+    assert {(r.source_ieee, r.target_ieee, r.discovery_source) for r in rows} == {
+        ("0xCOORD", "0xR1", "zigbee"),
+        ("0xR1", "0xE1", "zigbee_mesh"),
+        ("0xCOORD2", "0xR9", "zigbee"),
+    }
+
+
+@pytest.mark.asyncio
 async def test_persist_pending_import_sets_coordinator_pending_fields(db_session) -> None:
     """Coordinator lands in pending carrying its vendor/model metadata."""
     from sqlalchemy import select

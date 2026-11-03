@@ -3,7 +3,11 @@ import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeSlug from 'rehype-slug'
 import remarkGfm from 'remark-gfm'
 
+import { cn } from '@/lib/utils'
+
 import { parseFrontmatter } from '../frontmatter'
+import { MEDIA_PATH } from '../media'
+import { textDir } from './direction'
 import { toggleTaskAtLine } from './tasks'
 import { WikiText } from './WikiText'
 import type { LinkableDevice, LinkableDoc } from '../wikilinks'
@@ -25,6 +29,9 @@ export interface MarkdownProps {
   onCreateFromLink?: (label: string) => void
   /** Called when a task checkbox is toggled, with the rewritten body. */
   onToggleTask?: (nextBody: string) => void
+  /** Source lines whose rendered block should be called out, for comparisons. */
+  highlightedLines?: readonly number[]
+  highlightClassName?: string
   className?: string
 }
 
@@ -35,53 +42,74 @@ export function Markdown({
   onOpenDoc,
   onCreateFromLink,
   onToggleTask,
+  highlightedLines,
+  highlightClassName,
   className,
 }: MarkdownProps) {
   const { content } = useMemo(() => parseFrontmatter(body), [body])
 
   const components = useMemo<Components>(() => {
+    const highlighted = (
+      node?: { position?: { start?: { line?: number }; end?: { line?: number } } },
+      base?: string,
+      highlightedBase?: string,
+    ) => {
+      const start = node?.position?.start?.line
+      const end = node?.position?.end?.line ?? start
+      const intersects = start !== undefined && end !== undefined && highlightedLines?.some((line) => line >= start && line <= end)
+      return cn(base, intersects && highlightedBase, intersects && highlightClassName)
+    }
+
     return {
       // Every text node passes through the wiki-link splitter.
-      p: ({ children }) => (
-        <p className="my-3 leading-relaxed">
+      p: ({ children, node }) => (
+        <p dir={textDir(node)} className={highlighted(node, 'my-3 leading-relaxed', 'rounded px-1')}>
           <WikiText docs={docs} devices={devices} onOpenDoc={onOpenDoc} onCreate={onCreateFromLink}>
             {children}
           </WikiText>
         </p>
       ),
-      li: ({ children }) => (
-        <li className="my-1">
+      li: ({ children, node }) => (
+        <li dir={textDir(node)} className={highlighted(node, 'my-1', 'rounded px-1')}>
           <WikiText docs={docs} devices={devices} onOpenDoc={onOpenDoc} onCreate={onCreateFromLink}>
             {children}
           </WikiText>
         </li>
       ),
-      td: ({ children }) => (
-        <td className="border border-border px-3 py-1.5 align-top">
+      td: ({ children, node }) => (
+        <td dir={textDir(node)} className={highlighted(node, 'border border-border px-3 py-1.5 align-top')}>
           <WikiText docs={docs} devices={devices} onOpenDoc={onOpenDoc} onCreate={onCreateFromLink}>
             {children}
           </WikiText>
         </td>
       ),
-      h1: ({ children, ...props }) => (
-        <h1 {...props} className="mt-8 mb-3 scroll-mt-20 text-2xl font-semibold first:mt-0">
+      tr: ({ children, node }) => (
+        <tr className={highlighted(node)}>{children}</tr>
+      ),
+      h1: ({ children, node, ...props }) => (
+        <h1 {...props} dir={textDir(node)} className={highlighted(node, 'mt-8 mb-3 scroll-mt-20 text-2xl font-semibold first:mt-0', 'rounded px-1')}>
           {children}
         </h1>
       ),
-      h2: ({ children, ...props }) => (
-        <h2 {...props} className="mt-8 mb-3 scroll-mt-20 border-b border-border pb-1.5 text-lg font-semibold">
+      h2: ({ children, node, ...props }) => (
+        <h2 {...props} dir={textDir(node)} className={highlighted(node, 'mt-8 mb-3 scroll-mt-20 border-b border-border pb-1.5 text-lg font-semibold', 'rounded px-1')}>
           {children}
         </h2>
       ),
-      h3: ({ children, ...props }) => (
-        <h3 {...props} className="mt-6 mb-2 scroll-mt-20 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+      h3: ({ children, node, ...props }) => (
+        <h3 {...props} dir={textDir(node)} className={highlighted(node, 'mt-6 mb-2 scroll-mt-20 text-sm font-semibold uppercase tracking-wide text-muted-foreground', 'rounded px-1')}>
           {children}
         </h3>
       ),
+      h4: ({ node, ...props }) => <h4 {...props} dir={textDir(node)} />,
+      h5: ({ node, ...props }) => <h5 {...props} dir={textDir(node)} />,
+      h6: ({ node, ...props }) => <h6 {...props} dir={textDir(node)} />,
       a: ({ children, href }) => (
         <a
           href={href}
-          target={href?.startsWith('http') ? '_blank' : undefined}
+          // An uploaded file opens beside the page, like an outside link —
+          // following it in place would unload the app.
+          target={href?.startsWith('http') || href?.startsWith(MEDIA_PATH) ? '_blank' : undefined}
           rel="noreferrer"
           className="text-primary underline underline-offset-2 hover:no-underline"
         >
@@ -89,16 +117,16 @@ export function Markdown({
         </a>
       ),
       // Wide tables scroll inside their own box; the page never scrolls sideways.
-      table: ({ children }) => (
+      table: ({ children, node }) => (
         <div className="my-4 overflow-x-auto">
-          <table className="w-full border-collapse text-xs">{children}</table>
+          <table dir={textDir(node)} className="w-full border-collapse text-xs">{children}</table>
         </div>
       ),
-      th: ({ children }) => (
-        <th className="border border-border bg-muted/40 px-3 py-1.5 text-left font-medium">{children}</th>
+      th: ({ children, node }) => (
+        <th dir={textDir(node)} className="border border-border bg-muted/40 px-3 py-1.5 text-start font-medium">{children}</th>
       ),
-      blockquote: ({ children }) => (
-        <blockquote className="my-4 border-l-2 border-primary/50 bg-muted/30 py-1 pl-4 text-muted-foreground">
+      blockquote: ({ children, node }) => (
+        <blockquote dir={textDir(node)} className={highlighted(node, 'my-4 border-s-2 border-primary/50 bg-muted/30 py-1 ps-4 text-muted-foreground')}>
           {children}
         </blockquote>
       ),
@@ -108,12 +136,12 @@ export function Markdown({
         ) : (
           <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
         ),
-      pre: ({ children }) => (
-        <pre className="my-4 overflow-x-auto rounded-lg border border-border bg-muted/40 p-3">{children}</pre>
+      pre: ({ children, node }) => (
+        <pre className={highlighted(node, 'my-4 overflow-x-auto rounded-lg border border-border bg-muted/40 p-3')}>{children}</pre>
       ),
       hr: () => <hr className="my-6 border-border" />,
-      ul: ({ children }) => <ul className="my-3 list-disc pl-5">{children}</ul>,
-      ol: ({ children }) => <ol className="my-3 list-decimal pl-5">{children}</ol>,
+      ul: ({ children, node }) => <ul dir={textDir(node)} className={highlighted(node, 'my-3 list-disc ps-5')}>{children}</ul>,
+      ol: ({ children, node }) => <ol dir={textDir(node)} className={highlighted(node, 'my-3 list-decimal ps-5')}>{children}</ol>,
       img: ({ src, alt }) => (
         <img src={typeof src === 'string' ? src : undefined} alt={alt ?? ''} className="my-4 max-w-full rounded-lg border border-border" />
       ),
@@ -128,12 +156,12 @@ export function Markdown({
             checked={Boolean(checked)}
             disabled={!onToggleTask || line === undefined}
             onChange={() => line !== undefined && onToggleTask?.(toggleTaskAtLine(body, line))}
-            className="mr-2 -mb-px align-middle accent-primary"
+            className="me-2 -mb-px align-middle accent-primary"
           />
         )
       },
     }
-  }, [body, devices, docs, onCreateFromLink, onOpenDoc, onToggleTask])
+  }, [body, devices, docs, highlightClassName, highlightedLines, onCreateFromLink, onOpenDoc, onToggleTask])
 
   return (
     <div className={className}>

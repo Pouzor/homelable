@@ -67,12 +67,23 @@ class ProxmoxImportPendingResponse(BaseModel):
     device_count: int
 
 
+class ProxmoxEndpointOut(BaseModel):
+    """One env-configured endpoint, for display. Never carries its token."""
+
+    name: str = ""
+    host: str
+    port: int
+    verify_tls: bool = True
+
+
 class ProxmoxConfig(BaseModel):
     """Non-secret Proxmox connection + auto-sync config (GET response).
 
     Connection fields (host/port/verify_tls) are env-only and read-only here —
-    surfaced for display. ``token_configured`` reflects whether a server-side
-    token is present. Never carries the token itself."""
+    surfaced for display. ``host``/``port``/``verify_tls`` are the legacy
+    ``PROXMOX_HOST`` endpoint; ``endpoints`` lists every endpoint auto-sync
+    covers (that one included). ``token_configured`` reflects whether a
+    server-side token is present. Never carries a token itself."""
 
     host: str = ""
     port: int = Field(8006, ge=1, le=65535)
@@ -80,6 +91,7 @@ class ProxmoxConfig(BaseModel):
     sync_enabled: bool = False
     sync_interval: int = Field(3600, ge=300)
     token_configured: bool = False
+    endpoints: list[ProxmoxEndpointOut] = []
 
 
 class ProxmoxSyncConfig(BaseModel):

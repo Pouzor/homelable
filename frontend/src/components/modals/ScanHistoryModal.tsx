@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { RefreshCw, X, Loader2, StopCircle, Clock, ScanLine, Network, RadioTower, Server, Wifi, Inbox } from 'lucide-react'
+import { RefreshCw, X, Loader2, StopCircle, Clock, ScanLine, Network, RadioTower, Server, Wifi, HardDrive, Inbox } from 'lucide-react'
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { scanApi } from '@/api/client'
@@ -11,6 +11,8 @@ export interface ScanRun {
   status: string
   kind?: string
   ranges: string[]
+  /** Source the run covers (a Proxmox server's name, else its host). */
+  label?: string | null
   devices_found: number
   started_at: string
   finished_at: string | null
@@ -24,14 +26,15 @@ interface ScanHistoryModalProps {
   demoRuns?: ScanRun[]
 }
 
-type KindFilter = 'all' | 'ip' | 'zigbee' | 'zwave' | 'proxmox' | 'unifi'
+type KindFilter = 'all' | 'ip' | 'zigbee' | 'zwave' | 'proxmox' | 'unifi' | 'unraid'
 
 /** Normalise a ScanRun.kind into one of the known display kinds. */
-function runKind(kind: string | undefined): 'ip' | 'zigbee' | 'zwave' | 'proxmox' | 'unifi' {
+function runKind(kind: string | undefined): 'ip' | 'zigbee' | 'zwave' | 'proxmox' | 'unifi' | 'unraid' {
   return kind === 'zigbee' ? 'zigbee'
     : kind === 'zwave' ? 'zwave'
     : kind === 'proxmox' ? 'proxmox'
     : kind === 'unifi' ? 'unifi'
+    : kind === 'unraid' ? 'unraid'
     : 'ip'
 }
 
@@ -41,6 +44,7 @@ const KIND_META = {
   zwave: { label: 'Z-Wave', color: '#ff6e00' },
   proxmox: { label: 'Proxmox', color: '#e57000' },
   unifi: { label: 'UniFi', color: '#0559c9' },
+  unraid: { label: 'Unraid', color: '#e22828' },
 } as const
 type StatusFilter = 'all' | 'running' | 'done' | 'error' | 'cancelled'
 
@@ -59,6 +63,7 @@ const KIND_FILTERS: { key: KindFilter; label: string }[] = [
   { key: 'zwave', label: 'Z-Wave' },
   { key: 'proxmox', label: 'Proxmox' },
   { key: 'unifi', label: 'UniFi' },
+  { key: 'unraid', label: 'Unraid' },
 ]
 
 function statusColor(s: string): string {
@@ -114,8 +119,9 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
           toast.error(`Scan failed: ${run.error ?? 'unknown error'}`)
         }
         if (prev?.status === 'running' && run.status === 'done') {
-          if (run.kind === 'zigbee' || run.kind === 'zwave' || run.kind === 'proxmox' || run.kind === 'unifi') {
-            const label = KIND_META[runKind(run.kind)].label
+          if (run.kind === 'zigbee' || run.kind === 'zwave' || run.kind === 'proxmox' || run.kind === 'unifi' || run.kind === 'unraid') {
+            const kindLabel = KIND_META[runKind(run.kind)].label
+            const label = run.label ? `${kindLabel} (${run.label})` : kindLabel
             // A done run can still carry a non-fatal advisory (e.g. Proxmox
             // imported hosts but the token couldn't see any VMs/LXC).
             if (run.error) {
@@ -250,7 +256,7 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
           {filtered.map((r) => {
             const kind = runKind(r.kind)
             const meta = KIND_META[kind]
-            const KindIcon = kind === 'zigbee' ? Network : kind === 'zwave' ? RadioTower : kind === 'proxmox' ? Server : kind === 'unifi' ? Wifi : ScanLine
+            const KindIcon = kind === 'zigbee' ? Network : kind === 'zwave' ? RadioTower : kind === 'proxmox' ? Server : kind === 'unifi' ? Wifi : kind === 'unraid' ? HardDrive : ScanLine
             return (
               <div key={r.id} className="rounded-lg border border-border bg-[#161b22] p-3">
                 <div className="flex items-center gap-2">
@@ -264,6 +270,11 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
                     <KindIcon size={10} />
                     {meta.label}
                   </span>
+                  {r.label && (
+                    <span className="text-xs font-mono text-foreground truncate" title={r.label}>
+                      {r.label}
+                    </span>
+                  )}
                   <span className="ml-auto text-xs text-muted-foreground font-mono">
                     {r.devices_found} found
                   </span>

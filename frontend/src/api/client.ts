@@ -103,7 +103,7 @@ export const liveviewApi = {
 }
 
 /**
- * The read-only documentation space at `/docs?key=…`.
+ * The read-only documentation space at `/documentation?key=…`.
  *
  * On `publicApi`, like live view: no JWT rides along, and a 401 must not bounce
  * a reader towards a login they do not have. Reads only — the public router
@@ -200,6 +200,11 @@ export const scanApi = {
   updatePending: (id: string, data: Partial<Omit<InventoryEntry, 'id' | 'status' | 'discovered_at'>>) =>
     api.patch<InventoryEntry>(`/scan/pending/${id}`, data),
   /**
+   * Copy an inventory row into a new pending one: specs, properties and front
+   * panel carried, addresses and services left behind (issue #481).
+   */
+  duplicatePending: (id: string) => api.post<InventoryEntry>(`/scan/pending/${id}/duplicate`),
+  /**
    * Deep-rescan one known device: every TCP port, then re-fingerprint. Answers
    * "this device predates the scanner knowing that service" (issue #350).
    * Returns the ScanRun, so the caller polls `run` and can `stop` it.
@@ -260,9 +265,15 @@ export interface AppSettings {
   service_check_interval: number
 }
 
+/** What the server returns: the editable settings plus the env-only
+ *  STATUS_CHECKER_ENABLED switch (absent on older backends = enabled). */
+export interface AppSettingsResponse extends AppSettings {
+  status_checker_enabled?: boolean
+}
+
 export const settingsApi = {
-  get: () => api.get<AppSettings>('/settings'),
-  save: (data: AppSettings) => api.post<AppSettings>('/settings', data),
+  get: () => api.get<AppSettingsResponse>('/settings'),
+  save: (data: AppSettings) => api.post<AppSettingsResponse>('/settings', data),
 }
 
 export interface ProxmoxConnection {
@@ -273,6 +284,14 @@ export interface ProxmoxConnection {
   verify_tls?: boolean
 }
 
+/** One env-configured Proxmox endpoint, for display. Never carries a token. */
+export interface ProxmoxEndpointInfo {
+  name: string
+  host: string
+  port: number
+  verify_tls: boolean
+}
+
 export interface ProxmoxConfigData {
   host: string
   port: number
@@ -280,6 +299,8 @@ export interface ProxmoxConfigData {
   sync_enabled: boolean
   sync_interval: number
   token_configured: boolean
+  /** Every endpoint auto-sync covers: PROXMOX_HOST, then PROXMOX_ENDPOINTS. */
+  endpoints?: ProxmoxEndpointInfo[]
 }
 
 export const proxmoxApi = {
@@ -311,6 +332,7 @@ export const proxmoxApi = {
   saveConfig: (data: { sync_enabled: boolean; sync_interval: number }) =>
     api.post<ProxmoxConfigData>('/proxmox/config', data),
 
+  /** One scan run per configured server, in sync order. */
   syncNow: () =>
     api.post<{
       id: string
@@ -321,7 +343,47 @@ export const proxmoxApi = {
       started_at: string
       finished_at: string | null
       error: string | null
-    }>('/proxmox/sync-now'),
+    }[]>('/proxmox/sync-now'),
+}
+
+export interface UnraidConnection {
+  host: string
+  /** Omitted = 443 for HTTPS, 80 for HTTP. */
+  port?: number
+  api_key?: string
+  use_https?: boolean
+  verify_tls?: boolean
+  /** Import (and list) stopped containers and VMs too. */
+  include_offline?: boolean
+}
+
+export interface UnraidConfigData {
+  host: string
+  port: number
+  use_https: boolean
+  verify_tls: boolean
+  sync_enabled: boolean
+  sync_interval: number
+  include_offline: boolean
+  api_key_configured: boolean
+}
+
+export const unraidApi = {
+  testConnection: (data: UnraidConnection) =>
+    api.post<{ connected: boolean; message: string }>('/unraid/test-connection', data),
+
+  importNetwork: (data: UnraidConnection) =>
+    api.post<import('@/components/unraid/types').UnraidImportResponse>('/unraid/import', data),
+
+  importToPending: (data: UnraidConnection) =>
+    api.post<ScanRunResult>('/unraid/import-pending', data),
+
+  getConfig: () => api.get<UnraidConfigData>('/unraid/config'),
+  // Only the auto-sync activation is persisted; connection config is env-only.
+  saveConfig: (data: { sync_enabled: boolean; sync_interval: number; include_offline: boolean }) =>
+    api.post<UnraidConfigData>('/unraid/config', data),
+
+  syncNow: () => api.post<ScanRunResult>('/unraid/sync-now'),
 }
 
 export const designsApi = {
@@ -358,6 +420,7 @@ export const documentsApi = {
       parent_id?: string | null
       sort_order?: number
       starred?: boolean
+      is_homepage?: boolean
       reviewed?: boolean
       resync_facts?: boolean
     },
@@ -375,6 +438,22 @@ export const documentsApi = {
     api.get<import('@/documentation/types').DocBacklink[]>(`/documents/${id}/backlinks`),
   regenerate: (id: string) =>
     api.post<import('@/documentation/types').Doc>(`/documents/${id}/regenerate`),
+  updatePreview: (
+    id: string,
+    resolutions: import('@/documentation/types').ResolutionItem[] = [],
+  ) =>
+    api.post<import('@/documentation/types').UpdatePreview>(`/documents/${id}/update-preview`, {
+      resolutions,
+    }),
+  updateFromDevice: (
+    id: string,
+    preview_id: string,
+    resolutions: import('@/documentation/types').ResolutionItem[] = [],
+  ) =>
+    api.post<import('@/documentation/types').Doc>(`/documents/${id}/update-from-device`, {
+      preview_id,
+      resolutions,
+    }),
   search: (q: string, limit = 25) =>
     api.get<import('@/documentation/types').DocSearchResult>('/documents/search', {
       params: { q, limit },

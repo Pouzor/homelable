@@ -445,4 +445,29 @@ describe('parseYamlToCanvas', () => {
     expect(nodes.find((n) => n.data.label === 'On')!.data.show_port_numbers).toBe(true)
     expect(nodes.find((n) => n.data.label === 'Off')!.data.show_port_numbers).toBeUndefined()
   })
+
+  it('round-trips port labels through export → import (#495)', () => {
+    const sw: Node<NodeData> = {
+      id: 'sw', type: 'switch', position: { x: 0, y: 0 },
+      data: {
+        label: 'Sw', type: 'switch', status: 'online', services: [],
+        bottom_handles: 7, show_port_numbers: true, port_labels: { top: '8', 'bottom-7': '7' },
+      },
+    }
+    const { nodes } = parseYamlToCanvas(exportCanvasToYaml([sw], []), empty, emptyEdges)
+    expect(nodes[0].data.port_labels).toEqual({ top: '8', 'bottom-7': '7' })
+  })
+
+  it('drops malformed port labels on import (#495)', () => {
+    const yamlStr = `
+- nodeType: switch
+  label: "Sw"
+  portLabels:
+    top: "8"
+    top-t: "x"
+    bottom: "   "
+`
+    const { nodes } = parseYamlToCanvas(yamlStr, empty, emptyEdges)
+    expect(nodes[0].data.port_labels).toEqual({ top: '8' })
+  })
 })

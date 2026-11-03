@@ -159,6 +159,12 @@ def test_suggest_node_type_ignores_port_agnostic_sig_without_probe():
     assert result == "server"
 
 
+@pytest.mark.parametrize("port", [5000, 5001])
+def test_suggest_node_type_dsm_port_alone_is_not_nas(port):
+    # #582: a bare 5000/5001 (AirPlay, Flask, KoboldCpp…) must not hint "nas" on its own.
+    assert suggest_node_type([{"port": port, "protocol": "tcp"}]) == "generic"
+
+
 def test_suggest_node_type_camera_from_rtsp_port():
     # RTSP port 554 → camera (via _PORT_TYPE_HINTS)
     result = suggest_node_type([{"port": 554, "protocol": "tcp"}])

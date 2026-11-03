@@ -5,6 +5,7 @@ import type { YamlNode, YamlNodeConnection } from '@/types/yaml'
 import { generateUUID } from '@/utils/uuid'
 import { applyDagreLayout } from '@/utils/layout'
 import { migrateClusterHandles } from '@/utils/canvasSerializer'
+import { normalizePortLabels } from '@/utils/handleUtils'
 
 /**
  * Hardware specs as canvas properties.
@@ -74,6 +75,8 @@ export function parseYamlToCanvas(
     labelToId.set(yn.label, id)
 
     const hardware = hardwareProperties(yn)
+    // The per-point labels, minus any entry the file mangled (#495).
+    const portLabels = normalizePortLabels(yn.portLabels)
 
     const data: NodeData = {
       label: yn.label,
@@ -103,6 +106,7 @@ export function parseYamlToCanvas(
       ...(typeof yn.rightHandles === 'number' ? { right_handles: yn.rightHandles } : {}),
       // Restore the port-number toggle (issue #272).
       ...(yn.showPortNumbers ? { show_port_numbers: true } : {}),
+      ...(portLabels ? { port_labels: portLabels } : {}),
     }
 
     newNodes.push({

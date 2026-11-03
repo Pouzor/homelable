@@ -70,6 +70,10 @@ class Node(Base):
     # node that does draw a device: its notes belong to the inventory row.
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     show_port_numbers: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Text printed in place of a connection point's 1..N number, keyed by source
+    # handle ID ('top', 'bottom-3'…), so a node can carry the device's own port
+    # numbering (#495). NULL when every point shows its number.
+    port_labels: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
     width: Mapped[float | None] = mapped_column(Float, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)
     bottom_handles: Mapped[int] = mapped_column(Integer, default=1)
@@ -329,6 +333,9 @@ class ScanRun(Base):
     status: Mapped[str] = mapped_column(String, default="running")
     kind: Mapped[str] = mapped_column(String, default="ip", server_default="ip")
     ranges: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Which source a run covers, for display: the Proxmox endpoint's name, else
+    # its host. Tells apart the runs of one sync across several servers.
+    label: Mapped[str | None] = mapped_column(String)
     devices_found: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -383,6 +390,9 @@ class Document(Base):
     frontmatter: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
     starred: Mapped[bool] = mapped_column(Boolean, default=False)
+    # The page Documentation opens on. At most one row holds it — enforced by a
+    # partial unique index in `database.init_db` — and only a page may.
+    is_homepage: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     template_id: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # The device facts as they read when this document was scaffolded or last
@@ -391,6 +401,13 @@ class Document(Base):
     facts_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     facts_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # The whole generated body as it read when this document was scaffolded or
+    # last reconciled. Together with `facts_snapshot` this is the baseline of a
+    # three-way update-from-device: `current <-> baseline <- fresh-generate`.
+    # It is *not* the merged body — only the freshly generated one, so a value
+    # the user deliberately kept is still noticed when the device moves again.
+    baseline_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Set the first time the body is edited by hand. NULL means the document is
     # still only what the template generated — which is what the coverage view
     # counts as "not really documented yet". A timestamp comparison cannot say

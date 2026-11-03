@@ -21,7 +21,8 @@ import { formatRelative, formatTimestamp } from '@/utils/timeFormat'
 import { getCenteredPosition } from '@/utils/viewportCenter'
 import { sourceBuckets, orderedSources, isRackDevice, SOURCE_META, type SourceBucket } from '@/utils/deviceSources'
 import { isRackable } from '@/utils/rackable'
-import { ProxmoxApproveModal, type ProxmoxApproveChoice } from '@/components/modals/ProxmoxApproveModal'
+import { isTypingTarget } from '@/utils/keyboard'
+import { ProxmoxApproveModal, type ProxmoxApproveChoice, type GuestHostSource } from '@/components/modals/ProxmoxApproveModal'
 import { MergeDevicesModal } from '@/components/modals/MergeDevicesModal'
 import { layoutProxmoxContainers, measureProxmoxContainers } from '@/utils/proxmoxContainerLayout'
 
@@ -94,6 +95,14 @@ const COMMON_PORTS = new Set([22, 80, 443])
  */
 function deviceType(d: InventoryEntry): NodeType | null {
   return ((d.type ?? d.suggested_type) as NodeType) ?? null
+}
+
+/** The import whose host -> guest links this device heads, if any. */
+function guestHostSource(d: InventoryEntry): GuestHostSource | null {
+  const type = deviceType(d)
+  if (type === 'proxmox') return 'proxmox'
+  if (type === 'docker_host' && sourceBuckets(d).has('unraid')) return 'unraid'
+  return null
 }
 
 function specialServiceName(d: InventoryEntry): string | undefined {
@@ -188,7 +197,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
   const [dupPrompt, setDupPrompt] = useState<{ device: InventoryEntry; conflict: DuplicateNodeConflict } | null>(null)
   // Set when a Proxmox host with guests is about to be placed — the user picks
   // whether the guests come along, and nested or linked.
-  const [proxmoxPrompt, setProxmoxPrompt] = useState<{ host: InventoryEntry; children: InventoryEntry[] } | null>(null)
+  const [proxmoxPrompt, setProxmoxPrompt] = useState<{ host: InventoryEntry; children: InventoryEntry[]; source: GuestHostSource } | null>(null)
   // Set when the user asks to merge the selected rows — they pick the survivor.
   const [mergePrompt, setMergePrompt] = useState<InventoryEntry[] | null>(null)
   const [merging, setMerging] = useState(false)
@@ -421,15 +430,16 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
     }
   }
 
-  // A Proxmox host is rarely wanted on its own: ask about its guests first.
-  // Anything else — and a host with no guests in the inventory — goes straight
-  // through the normal single-device approve.
+  // A Proxmox host or an Unraid server is rarely wanted on its own: ask about
+  // its guests first. Anything else - and a host with no guests in the
+  // inventory - goes straight through the normal single-device approve.
   const handleApprove = (device: InventoryEntry) => {
-    if (deviceType(device) === 'proxmox') { void promptProxmoxChildren(device); return }
+    const source = guestHostSource(device)
+    if (source) { void promptProxmoxChildren(device, source); return }
     return approveDevice(device, false)
   }
 
-  const promptProxmoxChildren = async (device: InventoryEntry) => {
+  const promptProxmoxChildren = async (device: InventoryEntry, source: GuestHostSource) => {
     let guests: InventoryEntry[] = []
     try {
       guests = (await scanApi.proxmoxChildren(device.id)).data
@@ -441,7 +451,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
     // Close the device-detail modal first: two Base UI dialogs open at once trap
     // focus on the underlying one and the prompt never shows.
     setSelected(null)
-    setProxmoxPrompt({ host: device, children: guests })
+    setProxmoxPrompt({ host: device, children: guests, source })
   }
 
   const handleProxmoxConfirm = async ({ childIds, mode }: ProxmoxApproveChoice) => {
@@ -516,7 +526,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
         toast.info(`${dupes.length} already on this canvas, skipped: ${names}${more}`)
       }
     } catch {
-      toast.error('Failed to add the Proxmox host to the canvas')
+      toast.error(`Failed to add the ${prompt.source === 'unraid' ? 'Unraid server' : 'Proxmox host'} to the canvas`)
     }
   }
 
@@ -640,8 +650,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null
-      const inField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')
+      const inField = isTypingTarget(e)
       if (e.key === 'Escape') {
         if (selectMode && selectedIds.size > 0) { e.preventDefault(); setSelectedIds(new Set()) }
         return
@@ -756,6 +765,13 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'proxmox' ? 'bg-[#e57000]/20 text-[#e57000]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
               >
                 Proxmox
+              </button>
+              <button
+                onClick={() => setSourceFilter('unraid')}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'unraid' ? 'bg-[#e22828]/20 text-[#e22828]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                title="Imported from an Unraid server - Docker containers"
+              >
+                Unraid
               </button>
               <button
                 onClick={() => setSourceFilter('unifi')}
@@ -1003,6 +1019,21 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
           setDevices((prev) => prev.map((d) => (d.id === saved.id ? saved : d)))
           setSelected(saved)
         }}
+        onDuplicated={
+          demoDevices
+            ? undefined
+            : (copy) => {
+                // The copy is pending, so it only belongs in the pending list —
+                // right after its source, where the user just was.
+                if (statusFilter === 'pending') {
+                  setDevices((prev) => {
+                    const at = prev.findIndex((d) => d.id === selected?.id)
+                    return at === -1 ? [...prev, copy] : [...prev.slice(0, at + 1), copy, ...prev.slice(at + 1)]
+                  })
+                }
+                setSelected(copy)
+              }
+        }
       />
 
       <MergeDevicesModal
@@ -1017,6 +1048,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
         open={proxmoxPrompt !== null}
         host={proxmoxPrompt?.host ?? null}
         guests={proxmoxPrompt?.children ?? []}
+        source={proxmoxPrompt?.source}
         onCancel={() => setProxmoxPrompt(null)}
         onConfirm={handleProxmoxConfirm}
       />

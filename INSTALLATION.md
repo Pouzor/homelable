@@ -412,6 +412,11 @@ SCANNER_RANGES=["192.168.1.0/24"]
 
 # How often to check node status (seconds)
 STATUS_CHECKER_INTERVAL=60
+
+# Set to false when another system (Prometheus, Uptime Kuma…) owns monitoring:
+# no node or service checks run, approved devices get no default `ping`, and
+# Settings shows the checks as disabled. Env-only (default true).
+# STATUS_CHECKER_ENABLED=false
 ```
 
 ### OpenID Connect (optional)
