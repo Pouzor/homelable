@@ -2006,3 +2006,51 @@ async def test_dedupe_still_folds_a_macless_row_into_one_with_a_mac(mem_db):
 
     assert deleted == 1
     assert [d.id for d in devices] == ["keep"]
+
+
+@pytest.mark.asyncio
+async def test_process_host_without_mac_does_not_merge_rows_with_different_macs(mem_db):
+    """homelable#466: after a lease reuse two rows share an IP, each with its
+    own MAC. A later scan that brings no MAC (mDNS, routed subnet) matches both
+    by IP — it must refresh one, never fold the other device into it."""
+    from app.services.scanner import DeepScanOptions, process_host
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="old", ip="192.168.1.90", mac="aa:bb:cc:dd:ee:20",
+            hostname="nas", status="approved", label="NAS",
+        ))
+        session.add(InventoryDevice(
+            id="new", ip="192.168.1.90", mac="aa:bb:cc:dd:ee:21",
+            hostname="tablet", status="pending",
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        outcome = await process_host(
+            session, _host("192.168.1.90", mac=None),
+            hidden_ips=set(), deep_scan=DeepScanOptions(),
+        )
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert outcome == "updated"
+    assert {d.id: d.mac for d in devices} == {
+        "old": "aa:bb:cc:dd:ee:20",
+        "new": "aa:bb:cc:dd:ee:21",
+    }
+
+
+def test_collapse_targets_leaves_out_a_row_with_a_conflicting_mac():
+    """A MAC-less row folds in and claims nothing; a second known MAC stays out."""
+    from app.services.scanner import _collapse_targets
+
+    keep = InventoryDevice(id="a", ip="10.0.0.5", mac="aa:bb:cc:dd:ee:30", status="approved")
+    bare = InventoryDevice(id="b", ip="10.0.0.5", mac=None, status="pending")
+    other = InventoryDevice(id="c", ip="10.0.0.5", mac="AA-BB-CC-DD-EE-31", status="pending")
+
+    kept, dups = _collapse_targets([keep, bare, other])
+
+    assert kept is keep
+    assert dups == [bare]

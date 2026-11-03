@@ -656,8 +656,33 @@ def _collapse_targets(
         )
         return keep, []
     if len(approved) > 1:
-        return keep, [row for row in group if row.status != "approved"]
-    return keep, [row for row in group if row is not keep]
+        dups = [row for row in group if row.status != "approved"]
+    else:
+        dups = [row for row in group if row is not keep]
+    return keep, _mac_compatible(keep, dups)
+
+
+def _mac_compatible(
+    keep: InventoryDevice, dups: list[InventoryDevice],
+) -> list[InventoryDevice]:
+    """The ``dups`` that may fold into ``keep`` without merging two NICs.
+
+    homelable#466: a shared IP is not an identity when DHCP is involved. Two
+    rows whose MACs are both known and different are two devices that took
+    turns on one lease, so a row whose MAC conflicts with the one the merge has
+    already claimed is left alone. That holds for every caller — including a
+    scan that brought no MAC of its own (mDNS, a routed subnet), which matches
+    both rows by IP and would otherwise fold one device into the other.
+    """
+    claimed = normalize_mac(keep.mac)
+    mergeable = []
+    for dup in dups:
+        dup_mac = normalize_mac(dup.mac)
+        if dup_mac and claimed and dup_mac != claimed:
+            continue
+        claimed = claimed or dup_mac
+        mergeable.append(dup)
+    return mergeable
 
 
 async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
@@ -678,19 +703,8 @@ async def _dedupe_pending_by_ip(db: AsyncSession) -> int:
     for group in _group_by_shared_ip(list(rows)):
         if len(group) < 2:
             continue
+        # `_collapse_targets` leaves out rows whose MAC conflicts (#466).
         keep, dups = _collapse_targets(group)
-        # homelable#466: a shared IP is not an identity when DHCP is involved.
-        # Two rows whose MACs are both known and different are two devices that
-        # took turns on one lease, so leave them both alone.
-        claimed = normalize_mac(keep.mac)
-        mergeable = []
-        for dup in dups:
-            dup_mac = normalize_mac(dup.mac)
-            if dup_mac and claimed and dup_mac != claimed:
-                continue
-            claimed = claimed or dup_mac
-            mergeable.append(dup)
-        dups = mergeable
         if dups:
             # Non-destructive, for the same reason as `process_host`: whatever
             # drew the duplicate follows it into `keep`.
