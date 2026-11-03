@@ -2054,3 +2054,32 @@ def test_collapse_targets_leaves_out_a_row_with_a_conflicting_mac():
 
     assert kept is keep
     assert dups == [bare]
+
+
+@pytest.mark.asyncio
+async def test_process_host_matches_a_legacy_unpadded_mac(mem_db):
+    """homelable#466: a row stored before MACs were zero-padded ("2:c4:…", as
+    macOS `arp -a` prints it) is the same NIC as the padded scan MAC — it must
+    be refreshed and healed, not treated as a conflict that mints a duplicate."""
+    from app.services.scanner import DeepScanOptions, process_host
+
+    async with mem_db() as session:
+        session.add(InventoryDevice(
+            id="d1", ip="192.168.1.95", mac="2:c4:b5:83:1a:71",
+            hostname="old-name", status="approved",
+        ))
+        await session.commit()
+
+    async with mem_db() as session:
+        outcome = await process_host(
+            session, _host("192.168.1.95", mac="02:C4:B5:83:1A:71", hostname="new-name"),
+            hidden_ips=set(), deep_scan=DeepScanOptions(),
+        )
+
+    async with mem_db() as session:
+        devices = (await session.execute(sa_select(InventoryDevice))).scalars().all()
+
+    assert outcome == "updated"
+    assert [(d.id, d.mac, d.hostname) for d in devices] == [
+        ("d1", "02:c4:b5:83:1a:71", "new-name"),
+    ]

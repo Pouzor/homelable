@@ -774,7 +774,9 @@ async def process_host(
     )).scalars().all()
     existing_rows = [
         row for row in candidates
-        if (norm_mac is not None and row.mac == norm_mac)
+        # Normalize the stored side too, as `_mac_compatible` does: a row saved
+        # before octets were zero-padded ("2:c4:…") is still the same NIC.
+        if (norm_mac is not None and normalize_mac(row.mac) == norm_mac)
         or (
             ip in ip_tokens(row.ip)
             # homelable#466: a bare IP match is not enough to claim a row that
