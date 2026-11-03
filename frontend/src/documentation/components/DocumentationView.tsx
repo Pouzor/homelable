@@ -9,7 +9,7 @@ import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import type { InventoryEntry } from '@/types'
 import { cn } from '@/lib/utils'
-import { withBase } from '@/utils/basePath'
+import { DOCS_VIEW_SEGMENT, withBase } from '@/utils/basePath'
 import { copyToClipboard } from '@/utils/clipboard'
 import { formatRelative } from '@/utils/timeFormat'
 import { downloadAllDocs, downloadDoc } from '../export'
@@ -446,7 +446,7 @@ export function DocumentationView() {
       .then(({ data }) =>
         setDocsLink(
           data.enabled && data.key
-            ? `${window.location.origin}${withBase('docs')}?key=${encodeURIComponent(data.key)}`
+            ? `${window.location.origin}${withBase(DOCS_VIEW_SEGMENT)}?key=${encodeURIComponent(data.key)}`
             : null,
         ),
       )

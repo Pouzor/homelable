@@ -65,6 +65,18 @@ jobs:
           STATUS=$(curl -so /dev/null -w "%{http_code}" http://localhost:3000/api/v1/health)
           [ "$STATUS" = "200" ] || { echo "Proxied health returned $STATUS"; exit 1; }
 
+      # ── Smoke: /docs and the read-only documentation reach different apps ─────
+      # #589: nginx proxies the /docs prefix to the Swagger UI, so the public
+      # documentation page must be served by the SPA from a path of its own.
+      - name: Smoke — Swagger at /docs, documentation view from the SPA
+        run: |
+          curl -sf http://localhost:3000/docs | grep -q 'swagger-ui' \
+            || { echo "/docs did not serve the Swagger UI" >&2; exit 1; }
+          INDEX=$(curl -sf http://localhost:3000/)
+          DOCS_VIEW=$(curl -sf "http://localhost:3000/documentation?key=ci")
+          [ "$DOCS_VIEW" = "$INDEX" ] \
+            || { echo "/documentation did not serve the SPA index.html" >&2; exit 1; }
+
       # ── Smoke: BACKEND_UPSTREAM reaches a backend off the compose network ─────
       # The backend-on-network_mode:host setup (#512): `backend` does not resolve,
       # so the frontend must proxy to the host. Same image, run outside compose.

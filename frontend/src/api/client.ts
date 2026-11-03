@@ -103,7 +103,7 @@ export const liveviewApi = {
 }
 
 /**
- * The read-only documentation space at `/docs?key=…`.
+ * The read-only documentation space at `/documentation?key=…`.
  *
  * On `publicApi`, like live view: no JWT rides along, and a 401 must not bounce
  * a reader towards a login they do not have. Reads only — the public router
