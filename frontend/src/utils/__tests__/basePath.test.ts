@@ -5,6 +5,7 @@ import {
   normalizeBasePath,
   withBase,
   resolveServerPath,
+  DOCS_VIEW_SEGMENT,
   isDocsViewPath,
   isLiveViewPath,
 } from '@/utils/basePath'
@@ -90,17 +91,26 @@ describe('isLiveViewPath', () => {
 
 describe('isDocsViewPath', () => {
   it('matches the documentation view under the base only', () => {
-    expect(isDocsViewPath('/homelab/docs', SUB)).toBe(true)
-    expect(isDocsViewPath('/docs', SUB)).toBe(false)
+    expect(isDocsViewPath('/homelab/documentation', SUB)).toBe(true)
+    expect(isDocsViewPath('/documentation', SUB)).toBe(false)
     expect(isDocsViewPath('/homelab/', SUB)).toBe(false)
     expect(isDocsViewPath('/homelab/documents', SUB)).toBe(false)
-    expect(isDocsViewPath('/docs')).toBe(true)
+    expect(isDocsViewPath('/documentation')).toBe(true)
   })
 
   // Two public pages, two paths: one must never answer for the other.
   it('is not the live view', () => {
     expect(isDocsViewPath('/view')).toBe(false)
-    expect(isLiveViewPath('/docs')).toBe(false)
+    expect(isLiveViewPath('/documentation')).toBe(false)
+  })
+
+  // #589: nginx prefix-matches `/docs` and proxies it to the Swagger UI, so the
+  // read-only documentation must live on a path that prefix never catches.
+  it('stays clear of the Swagger UI at /docs', () => {
+    expect(isDocsViewPath('/docs')).toBe(false)
+    expect(isDocsViewPath('/homelab/docs', SUB)).toBe(false)
+    expect(DOCS_VIEW_SEGMENT.startsWith('docs')).toBe(false)
+    expect(withBase(DOCS_VIEW_SEGMENT, SUB).startsWith('/homelab/docs')).toBe(false)
   })
 })
 
@@ -118,7 +128,7 @@ describe('module wiring', () => {
     expect(mod.API_BASE_URL).toBe('/homelab/api/v1')
     expect(mod.withBase('view')).toBe('/homelab/view')
     expect(mod.isLiveViewPath('/homelab/view')).toBe(true)
-    expect(mod.isDocsViewPath('/homelab/docs')).toBe(true)
+    expect(mod.isDocsViewPath('/homelab/documentation')).toBe(true)
     expect(mod.resolveServerPath('/api/v1/media/a.png')).toBe('/homelab/api/v1/media/a.png')
   })
 })

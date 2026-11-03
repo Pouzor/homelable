@@ -1,5 +1,5 @@
 /**
- * PublicDocs — the read-only documentation space at `/docs?key=<DOCS_VIEW_KEY>`.
+ * PublicDocs — the read-only documentation space at `/documentation?key=<DOCS_VIEW_KEY>`.
  *
  * A page of its own, booted straight from `main.tsx` before any session exists,
  * the way the live-view canvas is. It reads the same documents the app does and
@@ -142,7 +142,7 @@ export default function PublicDocs() {
     return (
       <Centered
         title="This link is missing its key"
-        detail="A documentation link looks like /docs?key=…"
+        detail="A documentation link looks like /documentation?key=…"
       />
     )
   }

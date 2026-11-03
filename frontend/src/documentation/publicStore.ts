@@ -4,7 +4,7 @@ import { docsviewApi } from '@/api/client'
 import type { Doc, DocRevision, DocumentSummary } from './types'
 
 /**
- * The read-only documentation space served at `/docs?key=…`.
+ * The read-only documentation space served at `/documentation?key=…`.
  *
  * Deliberately *not* a mode flag on `useDocsStore`. That store owns every write
  * the section has — save, create, move, delete, tags, the draft mirrored to

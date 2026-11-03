@@ -138,7 +138,7 @@ restart the backend:
 
 Use this URL to read your documentation:
 
-`http://<your-homelab-ip>/docs?key=your-secret-key`
+`http://<your-homelab-ip>/documentation?key=your-secret-key`
 
 The page shows the document tree, the filter box and any page you pick, plus its earlier
 versions. Nothing can be written: no editing, no restoring, no deleting. Your device

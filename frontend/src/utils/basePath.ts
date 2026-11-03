@@ -52,12 +52,22 @@ export function isLiveViewPath(pathname: string, base: string = BASE_PATH): bool
 }
 
 /**
- * Is this pathname the read-only documentation view (`/docs`, `/homelab/docs`)?
+ * Path segment of the read-only documentation view (`/documentation?key=…`).
+ *
+ * Never `docs`, nor anything starting with it: nginx (`docker/nginx.conf`,
+ * `scripts/install-baremetal.sh`) prefix-matches `/docs` and hands it to the
+ * backend's Swagger UI, so a page there never reaches the SPA (#589).
+ */
+export const DOCS_VIEW_SEGMENT = 'documentation'
+
+/**
+ * Is this pathname the read-only documentation view (`/documentation`,
+ * `/homelab/documentation`)?
  *
  * A path of its own, not the app's `?view=docs` query param: that one is a
  * section of the logged-in app, this one is a different page served to someone
  * holding only a key.
  */
 export function isDocsViewPath(pathname: string, base: string = BASE_PATH): boolean {
-  return pathname === withBase('docs', base)
+  return pathname === withBase(DOCS_VIEW_SEGMENT, base)
 }
