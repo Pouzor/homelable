@@ -758,7 +758,7 @@ async def process_host(
         .where(or_(*match_cond), InventoryDevice.status != "hidden")
         .order_by(InventoryDevice.discovered_at)
     )).scalars().all()
-        existing_rows = [
+    existing_rows = [
         row for row in candidates
         if (norm_mac is not None and row.mac == norm_mac)
         or (
@@ -770,7 +770,7 @@ async def process_host(
             and (not row.mac or norm_mac is None)
         )
     ]
-        
+
     if existing_rows:
         # Prefer an approved row (it owns the canvas link semantics),
         # otherwise the oldest. Collapse any leftover duplicates created
