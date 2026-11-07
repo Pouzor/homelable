@@ -5,6 +5,7 @@ import { Logo } from '@/components/ui/Logo'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import { useRackStore } from '@/rack/store'
+import { GitSyncButton } from '@/components/common/GitSyncButton'
 import { RackToolbarActions } from './RackToolbarActions'
 import type { AutoLayoutMode } from '@/utils/zoneGrouping'
 
@@ -104,6 +105,10 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
           <Eye size={14} /> View
         </Button>
       )}
+      <GitSyncButton
+        unsaved={hasUnsavedChanges}
+        className="text-muted-foreground hover:text-foreground hover:bg-[#21262d]"
+      />
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onShortcuts} title="Keyboard shortcuts (?)">
         <HelpCircle size={14} />
       </Button>

@@ -4,3 +4,7 @@
 scan_config.json
 homelab.db.*
 uploads/
+git-sync/
+git-sync-state.json
+git-sync-known_hosts
+git-sync-key*

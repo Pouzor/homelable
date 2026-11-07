@@ -276,6 +276,41 @@ export const settingsApi = {
   save: (data: AppSettings) => api.post<AppSettingsResponse>('/settings', data),
 }
 
+/** The outcome of the last git sync, kept server-side across restarts. */
+export interface GitSyncLast {
+  status: 'pushed' | 'unchanged' | 'failed'
+  at: string
+  commit: string | null
+  files_changed: number
+  error: string | null
+}
+
+/** What GIT_SYNC_* configures. Read-only: the connection is env-only, and the
+ *  token never leaves the server. */
+export interface GitSyncStatus {
+  configured: boolean
+  repo_url: string | null
+  branch: string | null
+  path: string | null
+  auth: 'token' | 'ssh' | 'none' | null
+  running: boolean
+  last: GitSyncLast | null
+}
+
+export interface GitSyncResult {
+  status: 'pushed' | 'unchanged'
+  commit: string | null
+  files_changed: number
+  documents: number
+  diagrams: number
+  synced_at: string
+}
+
+export const gitSyncApi = {
+  status: () => api.get<GitSyncStatus>('/git-sync'),
+  sync: () => api.post<GitSyncResult>('/git-sync'),
+}
+
 export interface ProxmoxConnection {
   host: string
   port: number

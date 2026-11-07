@@ -18,6 +18,7 @@ import {
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useWalkthroughStore } from '@/stores/walkthroughStore'
 import { toast } from 'sonner'
+import { GitSyncSettings } from './GitSyncSettings'
 import {
   type AlignmentSettings,
   readAlignmentSettings,
@@ -568,6 +569,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
           {/* Right column */}
           <div className="space-y-5">
+          {/* Git sync — reads GIT_SYNC_* and runs a push; nothing to save. */}
+          {!STANDALONE && <GitSyncSettings />}
+
           {/* Zigbee auto-sync */}
           {!STANDALONE && zbConfig && (
             <MeshAutoSync

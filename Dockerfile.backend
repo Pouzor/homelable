@@ -3,7 +3,8 @@ FROM python:3.13-slim
 WORKDIR /app
 
 # Install nmap for network scanning + iputils-ping for ping-based status checks + curl for the health check
-RUN apt-get update && apt-get install -y --no-install-recommends nmap iputils-ping curl && rm -rf /var/lib/apt/lists/*
+# + git and openssh-client for the git sync (GIT_SYNC_*)
+RUN apt-get update && apt-get install -y --no-install-recommends nmap iputils-ping curl git openssh-client && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
