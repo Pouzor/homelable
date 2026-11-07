@@ -63,6 +63,11 @@ describe('subnetGroupLabel', () => {
     expect(subnetGroupLabel('fe80::1')).toBeNull()
     expect(subnetGroupLabel('nas.local')).toBeNull()
   })
+
+  it('uses the configured scan range the address falls in (#581)', () => {
+    expect(subnetGroupLabel('192.168.1.42', ['192.168.0.0/23'])).toBe('192.168.0.0/23')
+    expect(subnetGroupLabel('192.168.2.1', ['192.168.0.0/23'])).toBe('192.168.2.0/24')
+  })
 })
 
 describe('groupIntoZones', () => {
@@ -95,6 +100,21 @@ describe('groupIntoZones', () => {
     expect(out.find((n) => n.id === 'a')!.parentId).toBe(lan.id)
     expect(out.find((n) => n.id === 'b')!.parentId).toBe(lan.id)
     expect(out.find((n) => n.id === 'd')!.parentId).toBeUndefined()
+  })
+
+  it('puts a /23 LAN in one zone when the scan range says so (#581)', () => {
+    const nodes = [
+      node('a', 'server', { ip: '192.168.0.10' }),
+      node('b', 'nas', { ip: '192.168.1.20' }),
+      node('c', 'vm', { ip: '10.0.0.5' }),
+    ]
+    const { nodes: out, moved } = groupIntoZones(nodes, 'subnet', ids, ['192.168.0.0/23'])
+
+    expect(moved).toBe(3)
+    expect(zonesOf(out).map((z) => z.data.label)).toEqual(['10.0.0.0/24', '192.168.0.0/23'])
+    const lan = zoneLabelled(out, '192.168.0.0/23')
+    expect(out.find((n) => n.id === 'a')!.parentId).toBe(lan.id)
+    expect(out.find((n) => n.id === 'b')!.parentId).toBe(lan.id)
   })
 
   it('never moves a nested node or canvas furniture', () => {

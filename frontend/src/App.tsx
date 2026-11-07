@@ -48,7 +48,7 @@ import { useAutosave } from '@/hooks/useAutosave'
 import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
-import { canvasApi, designsApi, liveviewApi } from '@/api/client'
+import { canvasApi, designsApi, liveviewApi, scanApi } from '@/api/client'
 import * as standaloneStorage from '@/utils/standaloneStorage'
 import { demoNodes, demoEdges } from '@/utils/demoData'
 import { decideCanvasLoad, isNewUserCanvas } from '@/utils/canvasLoadDecision'
@@ -804,7 +804,7 @@ export default function App() {
     setEditNodeId(null)
   }, [editNodeId, updateNode, setProxmoxContainerMode, nodes, edges, deleteEdge, onConnect, snapshotHistory])
 
-  const handleAutoLayout = useCallback((mode: AutoLayoutMode) => {
+  const handleAutoLayout = useCallback(async (mode: AutoLayoutMode) => {
     if (mode === 'hierarchy') {
       const laid = applyDagreLayout(nodes, edges)
       // applyLayout keeps undo history so the user can revert an accidental
@@ -813,7 +813,13 @@ export default function App() {
       toast.success('Canvas auto-arranged')
       return
     }
-    const grouped = groupIntoZones(nodes, mode)
+    // Subnet zones follow the configured scan ranges, so a /23 LAN is one zone
+    // rather than two /24s (#581). Unreachable config → plain /24 zones.
+    let ranges: string[] = []
+    if (mode === 'subnet' && !STANDALONE) {
+      ranges = await scanApi.getConfig().then((res) => res.data.ranges ?? [], () => [])
+    }
+    const grouped = groupIntoZones(nodes, mode, undefined, ranges)
     if (grouped.moved === 0) {
       toast.info(mode === 'subnet' ? 'No free device with an IPv4 address to group' : 'No free device to group')
       return

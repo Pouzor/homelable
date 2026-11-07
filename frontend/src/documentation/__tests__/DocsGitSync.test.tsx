@@ -20,7 +20,10 @@ vi.mock('@/api/client', () => ({
     }),
     export: vi.fn(),
   },
-  scanApi: { pending: vi.fn().mockResolvedValue({ data: [] }) },
+  scanApi: {
+    pending: vi.fn().mockResolvedValue({ data: [] }),
+    getConfig: vi.fn().mockResolvedValue({ data: { ranges: [] } }),
+  },
   docsviewApi: { getConfig: vi.fn().mockResolvedValue({ data: { enabled: false, key: null } }) },
   gitSyncApi: { status: vi.fn(), sync: vi.fn() },
 }))

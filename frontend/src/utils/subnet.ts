@@ -84,6 +84,37 @@ export function ipInSubnet(ip: string | null | undefined, cidr: string): boolean
   return ((value & mask) >>> 0) === parsed.base
 }
 
+/** 3232235776 → "192.168.1.0". */
+export function intToIp(value: number): string {
+  return [24, 16, 8, 0].map((s) => (value >>> s) & 0xff).join('.')
+}
+
+/**
+ * The subnet an address belongs to, as a normalized CIDR ("192.168.0.0/23").
+ *
+ * A configured scan range wins over the guess, so a /23 or /16 LAN is one
+ * subnet instead of a pile of /24s (#581). When ranges overlap the most
+ * specific one wins, whatever order they were entered in. An address outside
+ * every range falls back to its own /24. Like `ipInSubnet`, a prefix or a port
+ * on the stored value is stripped. Null for no or non-IPv4 address.
+ */
+export function subnetOf(ip: string | null | undefined, ranges: readonly string[] = []): string | null {
+  if (!ip) return null
+  const value = ipToInt(ip.trim().split('/')[0].split(':')[0])
+  if (value === null) return null
+
+  let best: ParsedCidr | null = null
+  for (const cidr of ranges) {
+    const parsed = parseCidr(cidr)
+    if (!parsed) continue
+    const mask = parsed.bits === 0 ? 0 : (0xffffffff << (32 - parsed.bits)) >>> 0
+    if (((value & mask) >>> 0) !== parsed.base) continue
+    if (!best || parsed.bits > best.bits) best = parsed
+  }
+  if (best) return `${intToIp(best.base)}/${best.bits}`
+  return `${intToIp((value & 0xffffff00) >>> 0)}/24`
+}
+
 /**
  * The rule the zone subnet import runs on, shared by the store action and the
  * modal's match-count preview so the number shown is the number that moves.

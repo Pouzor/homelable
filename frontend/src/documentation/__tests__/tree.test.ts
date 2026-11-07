@@ -170,6 +170,15 @@ describe('subnetsOf', () => {
     expect(subnetsOf(device({ ip: '10.0.5.7' }), ['192.168.1.0/24'])).toEqual(['10.0.5.0/24'])
   })
 
+  it('keeps both halves of a /23 LAN in the one configured range (#581)', () => {
+    expect(subnetsOf(device({ ip: '192.168.0.10' }), ['192.168.0.0/23'])).toEqual(['192.168.0.0/23'])
+    expect(subnetsOf(device({ ip: '192.168.1.20' }), ['192.168.0.0/23'])).toEqual(['192.168.0.0/23'])
+  })
+
+  it('picks the most specific of overlapping ranges, not the first listed', () => {
+    expect(subnetsOf(device({ ip: '10.0.5.7' }), ['10.0.0.0/16', '10.0.5.0/24'])).toEqual(['10.0.5.0/24'])
+  })
+
   it('places a multi-homed device under every subnet it reaches', () => {
     const found = subnetsOf(device({ ip: '10.0.0.5, 192.168.1.20' }), [])
     expect(found).toEqual(['10.0.0.0/24', '192.168.1.0/24'])

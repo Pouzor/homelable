@@ -1,13 +1,13 @@
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData } from '@/types'
 import { NODE_TYPE_GROUPS, FURNITURE_TYPES } from '@/utils/nodeTypeGroups'
-import { ipToInt } from '@/utils/subnet'
+import { ipToInt, subnetOf } from '@/utils/subnet'
 import { generateUUID } from '@/utils/uuid'
 
 /**
  * Auto Layout modes (#326). `hierarchy` is the plain Dagre tree; the other two
  * first sort the free devices into zones — one per device family, or one per
- * /24 — and then run the same tree over the zones and whatever stayed loose.
+ * subnet (a configured scan range, else the /24) — and then run the same tree over the zones and whatever stayed loose.
  */
 export type AutoLayoutMode = 'hierarchy' | 'type' | 'subnet'
 
@@ -32,19 +32,20 @@ export function typeGroupLabel(type: string): string {
 }
 
 /**
- * The /24 an address sits in, as "192.168.1.0/24". A prefix or a port on the
- * stored value is stripped, as `ipInSubnet` does. Null for no or non-IPv4 address.
+ * The subnet zone an address goes in: the configured scan range it falls in
+ * (#581), else its /24, as "192.168.1.0/24". A prefix or a port on the stored
+ * value is stripped, as `ipInSubnet` does. Null for no or non-IPv4 address.
  */
-export function subnetGroupLabel(ip: string | null | undefined): string | null {
-  if (!ip) return null
-  const value = ipToInt(ip.trim().split('/')[0].split(':')[0])
-  if (value === null) return null
-  const base = (value & 0xffffff00) >>> 0
-  return `${[24, 16, 8, 0].map((s) => (base >>> s) & 0xff).join('.')}/24`
+export function subnetGroupLabel(ip: string | null | undefined, ranges: readonly string[] = []): string | null {
+  return subnetOf(ip, ranges)
 }
 
-function groupLabel(node: Node<NodeData>, mode: Exclude<AutoLayoutMode, 'hierarchy'>): string | null {
-  return mode === 'type' ? typeGroupLabel(node.data.type) : subnetGroupLabel(node.data.ip)
+function groupLabel(
+  node: Node<NodeData>,
+  mode: Exclude<AutoLayoutMode, 'hierarchy'>,
+  ranges: readonly string[],
+): string | null {
+  return mode === 'type' ? typeGroupLabel(node.data.type) : subnetGroupLabel(node.data.ip, ranges)
 }
 
 function compareLabels(mode: Exclude<AutoLayoutMode, 'hierarchy'>) {
@@ -76,7 +77,8 @@ export interface ZoneGroupingResult {
 }
 
 /**
- * Sort every free device into a zone, by family or by /24.
+ * Sort every free device into a zone, by family or by subnet. `ranges` are
+ * the configured scan ranges; subnet mode falls back to /24 outside them.
  *
  * "Free" is the rule the zone subnet import runs on: top level (a node already
  * nested in a zone, a group or a container host keeps the parent the user gave
@@ -93,11 +95,12 @@ export function groupIntoZones(
   nodes: Node<NodeData>[],
   mode: Exclude<AutoLayoutMode, 'hierarchy'>,
   newId: () => string = generateUUID,
+  ranges: readonly string[] = [],
 ): ZoneGroupingResult {
   const groups = new Map<string, Node<NodeData>[]>()
   for (const n of nodes) {
     if (n.parentId || FURNITURE_TYPES.has(n.data.type)) continue
-    const label = groupLabel(n, mode)
+    const label = groupLabel(n, mode, ranges)
     if (!label) continue
     if (!groups.has(label)) groups.set(label, [])
     groups.get(label)!.push(n)

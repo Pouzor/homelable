@@ -13,9 +13,12 @@ place of the value. A blank section is the document telling the user what has no
 been written yet; omitting it would hide the gap.
 """
 
-from collections.abc import Callable
+import ipaddress
+from collections.abc import Callable, Iterable
 from datetime import date, datetime
 from typing import Any
+
+from app.core.config import settings
 
 # Sections whose data is structural rather than descriptive: they are dropped
 # entirely rather than printed empty, because an unracked device has no rack
@@ -308,15 +311,31 @@ def block_network(device: Any, *, connections: list[str] | None = None, **_: Any
     )
 
 
-def _guess_subnet(ip: str | None) -> str | None:
-    """The /24 an IPv4 address sits in. Multi-IP fields keep the first token."""
+def _guess_subnet(ip: str | None, ranges: Iterable[str] | None = None) -> str | None:
+    """The subnet an IPv4 address sits in. Multi-IP fields keep the first token.
+
+    A configured scan range wins over the guess, so a /23 LAN reads as one
+    subnet rather than two /24s (#581); the most specific range wins when they
+    overlap. Outside every range, the address falls back to its own /24.
+    """
     if not ip:
         return None
-    first = ip.split(",")[0].strip()
-    octets = first.split(".")
-    if len(octets) != 4 or not all(o.isdigit() for o in octets):
+    first = ip.split(",")[0].strip().split("/")[0]
+    try:
+        addr = ipaddress.IPv4Address(first)
+    except ValueError:
         return None
-    return f"{octets[0]}.{octets[1]}.{octets[2]}.0/24"
+    best: ipaddress.IPv4Network | None = None
+    for cidr in settings.scanner_ranges if ranges is None else ranges:
+        try:
+            net = ipaddress.ip_network(str(cidr).strip(), strict=False)
+        except ValueError:
+            continue
+        if isinstance(net, ipaddress.IPv4Network) and addr in net and (best is None or net.prefixlen > best.prefixlen):
+            best = net
+    if best is None:
+        best = ipaddress.IPv4Network(f"{addr}/24", strict=False)
+    return str(best)
 
 
 BLOCKS: dict[str, Callable[..., str]] = {

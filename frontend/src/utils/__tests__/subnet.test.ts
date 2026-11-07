@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ipToInt, parseCidr, isValidCidr, ipInSubnet, isZoneSubnetCandidate } from '@/utils/subnet'
+import { ipToInt, intToIp, parseCidr, isValidCidr, ipInSubnet, isZoneSubnetCandidate, subnetOf } from '@/utils/subnet'
 
 describe('ipToInt', () => {
   it('converts a dotted quad', () => {
@@ -106,5 +106,51 @@ describe('isZoneSubnetCandidate', () => {
   it('rejects an out-of-range or address-less node', () => {
     expect(isZoneSubnetCandidate(node({ ip: '10.0.0.1' }), '192.168.1.0/24', 'z1')).toBe(false)
     expect(isZoneSubnetCandidate(node({ ip: undefined }), '192.168.1.0/24', 'z1')).toBe(false)
+  })
+})
+
+describe('intToIp', () => {
+  it('is the inverse of ipToInt', () => {
+    expect(intToIp(0)).toBe('0.0.0.0')
+    expect(intToIp(ipToInt('192.168.1.42')!)).toBe('192.168.1.42')
+    expect(intToIp(0xffffffff)).toBe('255.255.255.255')
+  })
+})
+
+describe('subnetOf (#581)', () => {
+  it('names a /23 LAN after the configured range, on both halves', () => {
+    expect(subnetOf('192.168.0.10', ['192.168.0.0/23'])).toBe('192.168.0.0/23')
+    expect(subnetOf('192.168.1.20', ['192.168.0.0/23'])).toBe('192.168.0.0/23')
+  })
+
+  it('falls back to the /24 outside every range, or with none', () => {
+    expect(subnetOf('192.168.2.5', ['192.168.0.0/23'])).toBe('192.168.2.0/24')
+    expect(subnetOf('10.0.5.7')).toBe('10.0.5.0/24')
+  })
+
+  it('picks the most specific range whatever the order', () => {
+    expect(subnetOf('10.0.5.7', ['10.0.0.0/16', '10.0.5.0/24'])).toBe('10.0.5.0/24')
+    expect(subnetOf('10.0.5.7', ['10.0.5.0/24', '10.0.0.0/16'])).toBe('10.0.5.0/24')
+    expect(subnetOf('10.0.9.1', ['10.0.5.0/24', '10.0.0.0/16'])).toBe('10.0.0.0/16')
+  })
+
+  it('normalizes a range typed with host bits set', () => {
+    expect(subnetOf('192.168.1.20', [' 192.168.0.5/23 '])).toBe('192.168.0.0/23')
+  })
+
+  it('skips unparseable and IPv6 ranges', () => {
+    expect(subnetOf('192.168.1.20', ['nope', 'fd00::/8'])).toBe('192.168.1.0/24')
+  })
+
+  it('strips a prefix or a port off the stored address', () => {
+    expect(subnetOf('192.168.1.20/24', ['192.168.0.0/23'])).toBe('192.168.0.0/23')
+    expect(subnetOf('192.168.1.20:8006', ['192.168.0.0/23'])).toBe('192.168.0.0/23')
+  })
+
+  it('is null for no or non-IPv4 address', () => {
+    expect(subnetOf(undefined, ['192.168.0.0/23'])).toBeNull()
+    expect(subnetOf('', [])).toBeNull()
+    expect(subnetOf('fe80::1', [])).toBeNull()
+    expect(subnetOf('nas.local', [])).toBeNull()
   })
 })

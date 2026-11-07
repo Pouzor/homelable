@@ -119,6 +119,7 @@ export function DocumentationView() {
   const nodes = useCanvasStore((s) => s.nodes)
 
   const [devices, setDevices] = useState<InventoryEntry[]>([])
+  const [ranges, setRanges] = useState<string[]>([])
   const [libraryOpen, setLibraryOpen] = useState(true)
   const [regenerateOpen, setRegenerateOpen] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
@@ -144,6 +145,12 @@ export function DocumentationView() {
       .then((res) => setDevices(res.data as InventoryEntry[]))
       // The tree still renders the Library without the inventory.
       .catch(() => setDevices([]))
+    // The scan ranges name the Subnet groups (#581); without them each
+    // address falls back to its own /24.
+    scanApi
+      .getConfig()
+      .then((res) => setRanges(res.data.ranges ?? []))
+      .catch(() => setRanges([]))
   }, [loadDocs, loadCoverage])
 
   // `review_every` rides along on the summary, so the badge needs no bodies.
@@ -166,13 +173,13 @@ export function DocumentationView() {
           groupBy,
           devices,
           docs,
-          context: { nodes, designs, activeDesignId, ranges: [] },
+          context: { nodes, designs, activeDesignId, ranges },
           drifted,
           overdue,
         }),
         filter,
       ),
-    [activeDesignId, designs, devices, docs, drifted, filter, groupBy, nodes, overdue],
+    [activeDesignId, designs, devices, docs, drifted, filter, groupBy, nodes, overdue, ranges],
   )
 
   const libraryItems = useMemo(() => filterTree(buildLibraryTree(docs), filter), [docs, filter])
