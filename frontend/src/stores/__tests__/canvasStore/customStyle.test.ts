@@ -131,6 +131,28 @@ describe('canvasStore — custom style apply', () => {
     expect(n.height).toBe(50)
   })
 
+  it('setNodePosition sets x/y and marks unsaved', () => {
+    useCanvasStore.setState({ nodes: [makeNode('n1')], hasUnsavedChanges: false })
+    useCanvasStore.getState().setNodePosition('n1', { x: 312, y: 48 })
+    const n = useCanvasStore.getState().nodes.find((x) => x.id === 'n1')!
+    expect(n.position).toEqual({ x: 312, y: 48 })
+    expect(useCanvasStore.getState().hasUnsavedChanges).toBe(true)
+  })
+
+  it('setNodePosition updates only the provided axis and accepts negatives', () => {
+    useCanvasStore.setState({ nodes: [{ ...makeNode('n1'), position: { x: 10, y: 20 } }] })
+    useCanvasStore.getState().setNodePosition('n1', { y: -75 })
+    const n = useCanvasStore.getState().nodes.find((x) => x.id === 'n1')!
+    expect(n.position).toEqual({ x: 10, y: -75 })
+  })
+
+  it('setNodePosition leaves other nodes untouched', () => {
+    const other = { ...makeNode('n2'), position: { x: 1, y: 2 } }
+    useCanvasStore.setState({ nodes: [makeNode('n1'), other] })
+    useCanvasStore.getState().setNodePosition('n1', { x: 500 })
+    expect(useCanvasStore.getState().nodes.find((x) => x.id === 'n2')).toBe(other)
+  })
+
   it('setNodeSize updates only the provided axis', () => {
     useCanvasStore.setState({ nodes: [{ ...makeNode('n1'), width: 200, height: 100 }] })
     useCanvasStore.getState().setNodeSize('n1', { width: 300 })

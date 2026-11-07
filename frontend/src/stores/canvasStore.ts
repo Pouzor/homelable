@@ -318,6 +318,9 @@ interface CanvasState {
   setProxmoxContainerMode: (proxmoxId: string, enabled: boolean) => void
   setNodeZIndex: (id: string, zIndex: number) => void
   setNodeSize: (id: string, size: { width?: number; height?: number }) => void
+  /** Manual X/Y entry. Coordinates are React Flow's `position`: relative to the
+   *  parent for a nested node, absolute otherwise. */
+  setNodePosition: (id: string, position: { x?: number; y?: number }) => void
   editingGroupRectId: string | null
   setEditingGroupRectId: (id: string | null) => void
   editingTextId: string | null
@@ -870,6 +873,23 @@ export const useCanvasStore = create<CanvasState>((rawSet, get) => {
           ...n,
           ...(size.width != null ? { width: Math.max(140, size.width) } : {}),
           ...(size.height != null ? { height: Math.max(50, size.height) } : {}),
+        }
+      }),
+      hasUnsavedChanges: true,
+    })),
+
+  // Manual X/Y entry — places a node exactly, bypassing the drag snap grid.
+  // No clamp: negative coordinates are valid on an infinite canvas.
+  setNodePosition: (id, position) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        if (n.id !== id) return n
+        return {
+          ...n,
+          position: {
+            x: position.x ?? n.position.x,
+            y: position.y ?? n.position.y,
+          },
         }
       }),
       hasUnsavedChanges: true,

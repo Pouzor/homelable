@@ -28,7 +28,7 @@ interface DetailPanelProps {
 type SvcModalState = { nodeId: string; index: number | null; form?: ServiceFormData }
 
 export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: DetailPanelProps) {
-  const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup, removeFromGroup, setNodeSize } = useCanvasStore()
+  const { nodes, selectedNodeId, selectedNodeIds, setSelectedNode, deleteNode, updateNode, snapshotHistory, createGroup, ungroup, removeFromGroup, setNodeSize, setNodePosition } = useCanvasStore()
   const serviceStatuses = useCanvasStore((s) => s.serviceStatuses)
 
   const [svcModal, setSvcModal] = useState<SvcModalState | null>(null)
@@ -58,6 +58,9 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
 
   const node = nodes.find((n) => n.id === selectedNodeId)
   if (!node || node.data.type === 'groupRect') return null
+  const parentLabel = node.parentId
+    ? (nodes.find((n) => n.id === node.parentId)?.data.label || 'parent')
+    : undefined
 
   // Group detail panel
   if (node.data.type === 'group') {
@@ -249,12 +252,38 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
         )}
       </div>
 
-      {/* Size section — manual width/height entry for pixel-exact sizing */}
-      <SizeFields
-        key={node.id}
-        node={node}
-        onCommit={(size) => { snapshotHistory(); setNodeSize(node.id, size) }}
-      />
+      {/* Layout section — manual X/Y/W/H entry for exact placement and
+          sizing, on one row. A nested node's position is React Flow's, i.e.
+          relative to its parent. Size falls back to the DOM-measured footprint
+          so it reads right even before a resize. */}
+      <div className="px-4 py-3 border-t border-border">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs text-muted-foreground">Layout</span>
+          {parentLabel && (
+            <span className="truncate text-[10px] text-muted-foreground/70" title={`Position relative to ${parentLabel}`}>
+              relative to {parentLabel}
+            </span>
+          )}
+        </div>
+        <div className="mt-2 grid grid-cols-4 gap-1.5">
+          <NumberPairFields
+            key={`pos-${node.id}`}
+            axes={[
+              { short: 'X', ariaLabel: 'Position X', value: node.position.x },
+              { short: 'Y', ariaLabel: 'Position Y', value: node.position.y },
+            ]}
+            onCommit={(axis, v) => { snapshotHistory(); setNodePosition(node.id, axis === 0 ? { x: v } : { y: v }) }}
+          />
+          <NumberPairFields
+            key={`size-${node.id}`}
+            axes={[
+              { short: 'W', ariaLabel: 'Width', value: node.width ?? node.measured?.width, min: 140 },
+              { short: 'H', ariaLabel: 'Height', value: node.height ?? node.measured?.height, min: 50 },
+            ]}
+            onCommit={(axis, v) => { snapshotHistory(); setNodeSize(node.id, axis === 0 ? { width: v } : { height: v }) }}
+          />
+        </div>
+      </div>
 
       {/* Properties section */}
       <PropertyList properties={properties} onChange={handleChangeProps} />
@@ -326,76 +355,85 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
   )
 }
 
-// --- Size fields (manual width/height entry) ---
+// --- Position / size fields (manual numeric entry) ---
 
 const round = (v: number | undefined): string => (v != null ? String(Math.round(v)) : '')
 
-function SizeFields({ node, onCommit }: { node: Node<NodeData>; onCommit: (size: { width?: number; height?: number }) => void }) {
-  // Live size from the explicit dimension, falling back to the DOM-measured
-  // size so the field shows the node's current footprint even before resize.
-  const liveWidth = round(node.width ?? node.measured?.width)
-  const liveHeight = round(node.height ?? node.measured?.height)
-  const [width, setWidth] = useState(liveWidth)
-  const [height, setHeight] = useState(liveHeight)
+interface PairAxis {
+  /** One-letter caption shown before the input. */
+  short: string
+  ariaLabel: string
+  /** Live value from the store; the field resyncs when it changes. */
+  value: number | undefined
+  /** Input `min` hint. When set, the axis is a dimension: values <= 0 are
+   *  rejected (the store clamps the rest). Absent: any finite number. */
+  min?: number
+}
 
-  // Resync the fields when the node is resized by dragging its corner handle
-  // (which mutates node.width/height in the store). Adjusting state during
-  // render — the React-blessed alternative to an effect — keeps it in step
-  // without cascading renders. The field the user is actively editing is left
-  // alone so we don't clobber their keystrokes mid-type.
-  const [editing, setEditing] = useState<'width' | 'height' | null>(null)
-  const [prev, setPrev] = useState({ w: liveWidth, h: liveHeight })
-  if (prev.w !== liveWidth || prev.h !== liveHeight) {
-    setPrev({ w: liveWidth, h: liveHeight })
-    if (editing !== 'width') setWidth(liveWidth)
-    if (editing !== 'height') setHeight(liveHeight)
+/**
+ * Two compact numeric inputs, rendered as a fragment so the caller lays them
+ * out (the Layout section puts two pairs on one 4-column row). The axis letter
+ * sits inside the box and the spinners are hidden to fit the narrow panel.
+ * Committed on blur / Enter. Invalid input (empty, NaN, or
+ * <= 0 on a dimension axis) reverts to the live value without a commit.
+ */
+function NumberPairFields({ axes, onCommit }: {
+  axes: [PairAxis, PairAxis]
+  onCommit: (axis: 0 | 1, value: number) => void
+}) {
+  const live: [string, string] = [round(axes[0].value), round(axes[1].value)]
+  const [draft, setDraft] = useState<[string, string]>(live)
+
+  // Resync the fields when the node is dragged or resized on the canvas (which
+  // mutates the store). Adjusting state during render — the React-blessed
+  // alternative to an effect — keeps it in step without cascading renders. The
+  // field the user is actively editing is left alone so we don't clobber their
+  // keystrokes mid-type.
+  const [editing, setEditing] = useState<0 | 1 | null>(null)
+  const [prev, setPrev] = useState(live)
+  if (prev[0] !== live[0] || prev[1] !== live[1]) {
+    setPrev(live)
+    setDraft([editing === 0 ? draft[0] : live[0], editing === 1 ? draft[1] : live[1]])
   }
 
-  const commit = (raw: string, axis: 'width' | 'height') => {
+  const setAxis = (axis: 0 | 1, v: string) =>
+    setDraft((d) => (axis === 0 ? [v, d[1]] : [d[0], v]))
+
+  const commit = (axis: 0 | 1) => {
+    const raw = draft[axis]
     const n = Number(raw)
-    if (!raw.trim() || Number.isNaN(n) || n <= 0) {
-      // Reset the field to the live value on invalid input — no mutation.
-      if (axis === 'width') setWidth(round(node.width ?? node.measured?.width))
-      else setHeight(round(node.height ?? node.measured?.height))
+    const { min } = axes[axis]
+    if (!raw.trim() || !Number.isFinite(n) || (min != null && n <= 0)) {
+      setAxis(axis, live[axis])
       return
     }
-    onCommit({ [axis]: n })
+    onCommit(axis, n)
   }
 
   return (
-    <div className="px-4 py-3 border-t border-border">
-      <span className="text-xs text-muted-foreground">Size</span>
-      <div className="mt-2 flex items-center gap-2">
-        <label className="flex flex-1 items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground/70 w-3">W</span>
-          <Input
-            type="number"
-            min={140}
-            aria-label="Width"
-            value={width}
-            onFocus={() => setEditing('width')}
-            onChange={(e) => setWidth(e.target.value)}
-            onBlur={() => { setEditing(null); commit(width, 'width') }}
-            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-            className="h-7 text-xs font-mono"
-          />
-        </label>
-        <label className="flex flex-1 items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground/70 w-3">H</span>
-          <Input
-            type="number"
-            min={50}
-            aria-label="Height"
-            value={height}
-            onFocus={() => setEditing('height')}
-            onChange={(e) => setHeight(e.target.value)}
-            onBlur={() => { setEditing(null); commit(height, 'height') }}
-            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
-            className="h-7 text-xs font-mono"
-          />
-        </label>
-      </div>
-    </div>
+    <>
+      {axes.map((a, i) => {
+        const axis = i as 0 | 1
+        return (
+          <label key={a.short} className="relative block min-w-0" title={a.ariaLabel}>
+            <span className="pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60">
+              {a.short}
+            </span>
+            <Input
+              type="number"
+              min={a.min}
+              aria-label={a.ariaLabel}
+              value={draft[axis]}
+              onFocus={() => setEditing(axis)}
+              onChange={(e) => setAxis(axis, e.target.value)}
+              onBlur={() => { setEditing(null); commit(axis) }}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+              className="h-7 rounded-md pl-4 pr-1 text-xs md:text-xs font-mono [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </label>
+        )
+      })}
+    </>
   )
 }
 
