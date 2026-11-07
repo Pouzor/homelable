@@ -266,6 +266,17 @@ describe('BaseNode — services visibility toggle', () => {
     expect(img.src).toContain('dashboard-icons/svg/plex.svg')
   })
 
+  it('renders a custom url icon as the node icon', () => {
+    renderBaseNode({ custom_icon: 'url:https://cdn.jsdelivr.net/gh/selfhst/icons/svg/immich.svg' })
+    const img = screen.getByAltText('immich') as HTMLImageElement
+    expect(img.src).toBe('https://cdn.jsdelivr.net/gh/selfhst/icons/svg/immich.svg')
+  })
+
+  it('renders the type icon for a url key carrying an unacceptable link', () => {
+    const { container } = renderBaseNode({ custom_icon: 'url:javascript:alert(1)' })
+    expect(container.querySelector('img')).toBeNull()
+  })
+
   it('renders no service icon when the service has none', () => {
     renderBaseNode({
       ip: '192.168.1.10',

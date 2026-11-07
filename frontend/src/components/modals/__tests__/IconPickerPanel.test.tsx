@@ -54,6 +54,21 @@ describe('IconPickerPanel', () => {
     expect(onSelect).toHaveBeenCalledWith('brand:homelable')
   })
 
+  it('opens on the Custom tab when the current value is a url key', () => {
+    render(<IconPickerPanel value="url:https://example.com/a.svg" onSelect={vi.fn()} allowUpload={false} />)
+    expect(screen.getByRole('tab', { name: 'Custom' }).getAttribute('aria-selected')).toBe('true')
+    expect((screen.getByLabelText('Custom icon URL') as HTMLInputElement).value).toBe('https://example.com/a.svg')
+  })
+
+  it('emits a url key from the Custom tab', () => {
+    const onSelect = vi.fn()
+    render(<IconPickerPanel onSelect={onSelect} allowUpload={false} />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Custom' }))
+    fireEvent.change(screen.getByLabelText('Custom icon URL'), { target: { value: 'https://example.com/a.svg' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Use' }))
+    expect(onSelect).toHaveBeenCalledWith('url:https://example.com/a.svg')
+  })
+
   it('keeps the generic search box out of the Brand tab', () => {
     render(<IconPickerPanel onSelect={vi.fn()} />)
     fireEvent.click(screen.getByRole('tab', { name: 'Brand' }))

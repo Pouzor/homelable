@@ -1,5 +1,5 @@
 import type { NodeType } from '@/types'
-import { withBase } from '@/utils/basePath'
+import { withBase, resolveServerPath } from '@/utils/basePath'
 import {
   // Infrastructure (node types)
   Globe, Router, Network, Server, Layers, Box, Container, HardDrive, Cpu, Wifi, Circle,
@@ -212,7 +212,7 @@ export function resolveNodeIcon(
   typeIcon: LucideIcon,
   customIconKey?: string,
 ): LucideIcon {
-  if (customIconKey && !customIconKey.startsWith('brand:') && ICON_MAP[customIconKey]) {
+  if (customIconKey && !customIconKey.startsWith('brand:') && !customIconKey.startsWith('url:') && ICON_MAP[customIconKey]) {
     return ICON_MAP[customIconKey]
   }
   return typeIcon
@@ -243,18 +243,82 @@ export function brandIconUrl(slug: string): string {
   return `https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/${slug}.svg`
 }
 
+/** A user-supplied image: `url:<link>` — a pasted http(s) link (selfh.st,
+ *  Simple Icons, a LAN server…) or an icon uploaded to `/api/v1/media/`. */
+export const URL_ICON_PREFIX = 'url:'
+
+const URL_ICON_MAX_LENGTH = 2048
+/** Exactly what `POST /api/v1/media/upload` hands back for an image. */
+const MEDIA_ICON_PATH_RE = /^\/api\/v1\/media\/[0-9a-f]{32}\.(png|jpg|webp|svg)$/
+
+/** Whether `raw` is a link we are willing to put in an `<img src>`: an absolute
+ *  http(s) URL, or one of our own uploaded media paths. Never `data:`,
+ *  `javascript:`, protocol-relative or arbitrary relative paths. */
+export function isValidIconUrl(raw: string): boolean {
+  const value = raw.trim()
+  if (!value || value.length > URL_ICON_MAX_LENGTH) return false
+  if (MEDIA_ICON_PATH_RE.test(value)) return true
+  if (!/^https?:\/\//i.test(value)) return false
+  try {
+    const parsed = new URL(value)
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && !!parsed.hostname
+  } catch {
+    return false
+  }
+}
+
+export function isUrlIconKey(key: string | undefined | null): boolean {
+  return !!key && key.startsWith(URL_ICON_PREFIX)
+}
+
+/** Build the stored key for a link, or null when the link is not acceptable. */
+export function urlIconKey(raw: string): string | null {
+  const value = raw.trim()
+  return isValidIconUrl(value) ? `${URL_ICON_PREFIX}${value}` : null
+}
+
+/** The link a `url:` key points at, resolved against the base path for uploaded
+ *  media. Null when the key is not a `url:` key or carries an unacceptable link. */
+export function urlIconSrc(key: string): string | null {
+  if (!isUrlIconKey(key)) return null
+  const value = key.slice(URL_ICON_PREFIX.length)
+  return isValidIconUrl(value) ? resolveServerPath(value) : null
+}
+
+/** A short human name for a link — its last path segment, without extension. */
+export function urlIconLabel(key: string): string {
+  const value = key.slice(URL_ICON_PREFIX.length)
+  try {
+    const last = new URL(value, 'http://x').pathname.split('/').filter(Boolean).pop()
+    if (last) return decodeURIComponent(last).replace(/\.[a-z0-9]+$/i, '')
+  } catch { /* fall through */ }
+  return 'custom'
+}
+
+/** Whether a key renders as an `<img>` (brand or valid custom link) rather than
+ *  a lucide component. */
+export function isImageIconKey(key: string | undefined | null): boolean {
+  if (!key) return false
+  return isBrandIconKey(key) || (isUrlIconKey(key) && urlIconSrc(key) !== null)
+}
+
 export type ResolvedIcon =
   | { kind: 'lucide'; icon: LucideIcon }
   | { kind: 'brand'; slug: string; url: string }
+  | { kind: 'url'; label: string; url: string }
 
-/** Resolve a node's icon to either a lucide component or a brand CDN URL.
- *  Used by renderers that support brand icons. Backwards-compatible with legacy
- *  string keys (no prefix → lucide lookup). Returns null when key unknown. */
+/** Resolve a node's icon to a lucide component, a brand CDN URL or a custom
+ *  link. Used by renderers that support image icons. Backwards-compatible with
+ *  legacy string keys (no prefix → lucide lookup). Returns null when key unknown. */
 export function resolveCustomIcon(customIconKey?: string): ResolvedIcon | null {
   if (!customIconKey) return null
   if (isBrandIconKey(customIconKey)) {
     const slug = brandIconSlug(customIconKey)
     return { kind: 'brand', slug, url: brandIconUrl(slug) }
+  }
+  if (isUrlIconKey(customIconKey)) {
+    const url = urlIconSrc(customIconKey)
+    return url ? { kind: 'url', label: urlIconLabel(customIconKey), url } : null
   }
   const icon = ICON_MAP[customIconKey] as LucideIcon | undefined
   return icon ? { kind: 'lucide', icon } : null

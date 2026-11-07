@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod, type NodeTypeStyle } from '@/types'
 import { useThemeStore } from '@/stores/themeStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
-import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
+import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl, resolveCustomIcon } from '@/utils/nodeIcons'
+import { IconImage } from '@/components/ui/IconImage'
 import { IconPickerPanel } from './IconPickerPanel'
 import { MAX_HANDLES, MAX_PORT_LABEL_LENGTH, MIN_HANDLES, SIDES, clampHandles, handleId, normalizePortLabels, sideDefault, handleCountField, type Side } from '@/utils/handleUtils'
 import { isValidParentNode } from '@/utils/virtualEdgeParent'
@@ -310,6 +311,10 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                     if (isBrandIconKey(form.custom_icon)) {
                       const slug = brandIconSlug(form.custom_icon!)
                       return <><img src={brandIconUrl(slug)} alt={slug} width={13} height={13} className="shrink-0" style={{ width: 13, height: 13, objectFit: 'contain' }} /><span className="text-foreground truncate">{slug}</span></>
+                    }
+                    const custom = resolveCustomIcon(form.custom_icon)
+                    if (custom?.kind === 'url') {
+                      return <><IconImage src={custom.url} alt={custom.label} size={13} className="shrink-0" /><span className="text-foreground truncate">{custom.label}</span></>
                     }
                     const entry = ICON_REGISTRY.find((e) => e.key === form.custom_icon)
                     if (entry) {

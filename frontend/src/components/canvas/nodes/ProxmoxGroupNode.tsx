@@ -3,7 +3,7 @@ import { NodeResizer, useUpdateNodeInternals, type NodeProps, type Node } from '
 import { Layers } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
-import { resolveNodeIcon, isBrandIconKey } from '@/utils/nodeIcons'
+import { resolveNodeIcon, isImageIconKey } from '@/utils/nodeIcons'
 import { NodeIcon } from '@/components/ui/NodeIcon'
 import { resolvePropertyIcon } from '@/utils/propertyIcons'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -75,7 +75,7 @@ export function ProxmoxGroupNode(props: NodeProps<Node<NodeData>>) {
               background: theme.colors.nodeIconBackground,
             }}
           >
-            {isBrandIconKey(data.custom_icon)
+            {isImageIconKey(data.custom_icon)
               ? <NodeIcon typeIcon={Layers} customIconKey={data.custom_icon} size={12} />
               : createElement(resolvedIcon, { size: 12 })}
           </div>
