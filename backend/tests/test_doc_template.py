@@ -270,6 +270,29 @@ def test_network_block_takes_the_first_ip_of_a_multi_ip_device():
     assert "10.0.0.0/24" in t.block_network(_device(ip="10.0.0.5, 192.168.1.20"))
 
 
+def test_subnet_follows_the_configured_scan_range_over_the_slash_24():
+    # #581: a /23 LAN printed as two /24s.
+    assert t._guess_subnet("192.168.0.10", ["192.168.0.0/23"]) == "192.168.0.0/23"
+    assert t._guess_subnet("192.168.1.20", ["192.168.0.0/23"]) == "192.168.0.0/23"
+    assert t._guess_subnet("192.168.2.5", ["192.168.0.0/23"]) == "192.168.2.0/24"
+
+
+def test_subnet_picks_the_most_specific_range_and_skips_bad_ones():
+    ranges = ["10.0.0.0/16", "bogus", "fd00::/8", "10.0.5.0/24"]
+    assert t._guess_subnet("10.0.5.7", ranges) == "10.0.5.0/24"
+    assert t._guess_subnet("10.0.9.1", ranges) == "10.0.0.0/16"
+
+
+def test_subnet_is_none_for_a_non_ipv4_address():
+    assert t._guess_subnet("fe80::1", []) is None
+    assert t._guess_subnet("nas.local", []) is None
+
+
+def test_network_block_reads_the_live_scan_ranges(monkeypatch):
+    monkeypatch.setattr(t.settings, "scanner_ranges", ["192.168.0.0/23"])
+    assert "192.168.0.0/23" in t.block_network(_device(ip="192.168.1.20"))
+
+
 def test_network_block_survives_a_device_with_no_ip():
     assert "**Subnet / VLAN** — _…_" in t.block_network(_device(ip=None))
 

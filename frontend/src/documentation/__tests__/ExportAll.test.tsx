@@ -23,7 +23,10 @@ vi.mock('@/api/client', () => ({
     }),
     export: vi.fn(),
   },
-  scanApi: { pending: vi.fn().mockResolvedValue({ data: [] }) },
+  scanApi: {
+    pending: vi.fn().mockResolvedValue({ data: [] }),
+    getConfig: vi.fn().mockResolvedValue({ data: { ranges: [] } }),
+  },
   // The footer asks whether the read-only link is configured; off, so no button.
   docsviewApi: { getConfig: vi.fn().mockResolvedValue({ data: { enabled: false, key: null } }) },
 }))

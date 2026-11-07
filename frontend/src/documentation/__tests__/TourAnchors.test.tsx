@@ -19,7 +19,10 @@ vi.mock('@/api/client', () => ({
       data: { devices: 0, documented: 0, header_only: 0, notes_unmigrated: 0 },
     }),
   },
-  scanApi: { pending: vi.fn().mockResolvedValue({ data: [] }) },
+  scanApi: {
+    pending: vi.fn().mockResolvedValue({ data: [] }),
+    getConfig: vi.fn().mockResolvedValue({ data: { ranges: [] } }),
+  },
   // The footer asks whether the read-only link is configured; off, so no button.
   docsviewApi: { getConfig: vi.fn().mockResolvedValue({ data: { enabled: false, key: null } }) },
 }))

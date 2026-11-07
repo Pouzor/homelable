@@ -18,7 +18,10 @@ vi.mock('@/api/client', () => ({
     get: vi.fn(),
     backlinks: vi.fn().mockResolvedValue({ data: [] }),
   },
-  scanApi: { pending: vi.fn().mockResolvedValue({ data: [] }) },
+  scanApi: {
+    pending: vi.fn().mockResolvedValue({ data: [] }),
+    getConfig: vi.fn().mockResolvedValue({ data: { ranges: [] } }),
+  },
   docsviewApi: { getConfig: vi.fn().mockResolvedValue({ data: { enabled: false, key: null } }) },
 }))
 

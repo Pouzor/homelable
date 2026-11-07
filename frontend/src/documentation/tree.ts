@@ -1,7 +1,7 @@
 import type { Node } from '@xyflow/react'
 
 import type { Design, InventoryEntry, NodeData } from '@/types'
-import { ipToInt, parseCidr } from '@/utils/subnet'
+import { subnetOf } from '@/utils/subnet'
 import type { DocState, DocumentSummary, GroupBy, TreeGroup, TreeLeaf } from './types'
 
 /**
@@ -56,27 +56,18 @@ export function splitIps(ip: string | null | undefined): string[] {
 
 /** The /24 an address sits in, for grouping when no CIDR is configured. */
 export function slash24(ip: string): string | null {
-  if (ipToInt(ip) === null) return null
-  const octets = ip.split('.')
-  return `${octets[0]}.${octets[1]}.${octets[2]}.0/24`
+  return subnetOf(ip, [])
 }
 
 /**
- * Which of the configured ranges an address falls in, else its own /24.
- * A device declaring several addresses lands under each of their subnets.
+ * Which of the configured ranges an address falls in (the most specific one),
+ * else its own /24. A device declaring several addresses lands under each of
+ * their subnets.
  */
-export function subnetsOf(device: InventoryEntry, ranges: string[]): string[] {
+export function subnetsOf(device: InventoryEntry, ranges: readonly string[]): string[] {
   const found = new Set<string>()
   for (const ip of splitIps(device.ip)) {
-    const value = ipToInt(ip)
-    if (value === null) continue
-    const match = ranges.find((cidr) => {
-      const parsed = parseCidr(cidr)
-      if (!parsed) return false
-      const mask = parsed.bits === 0 ? 0 : (-1 << (32 - parsed.bits)) >>> 0
-      return ((value & mask) >>> 0) === parsed.base
-    })
-    const subnet = match ?? slash24(ip)
+    const subnet = subnetOf(ip, ranges)
     if (subnet) found.add(subnet)
   }
   return found.size ? [...found] : [UNGROUPED]

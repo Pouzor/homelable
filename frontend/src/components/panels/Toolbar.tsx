@@ -132,7 +132,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
 
 const LAYOUT_MODES: { mode: Exclude<AutoLayoutMode, 'hierarchy'>; label: string; hint: string }[] = [
   { mode: 'type', label: 'Group by device type', hint: 'One zone per family: hardware, virtualization, IoT…' },
-  { mode: 'subnet', label: 'Group by subnet', hint: 'One zone per /24; devices without an IP stay loose' },
+  { mode: 'subnet', label: 'Group by subnet', hint: 'One zone per scan range (else per /24); devices without an IP stay loose' },
 ]
 
 /**
