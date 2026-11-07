@@ -1,8 +1,9 @@
 import { createElement } from 'react'
 import { resolveCustomIcon } from '@/utils/nodeIcons'
+import { IconImage } from './IconImage'
 
 interface ServiceIconProps {
-  /** Icon key on the service — a lucide registry key or `brand:<slug>`. */
+  /** Icon key on the service — a lucide registry key, `brand:<slug>` or `url:<link>`. */
   iconKey?: string
   size?: number
   className?: string
@@ -16,16 +17,14 @@ interface ServiceIconProps {
 export function ServiceIcon({ iconKey, size = 12, className, color }: ServiceIconProps) {
   const resolved = resolveCustomIcon(iconKey)
   if (!resolved) return null
-  if (resolved.kind === 'brand') {
+  if (resolved.kind === 'brand' || resolved.kind === 'url') {
     return (
-      <img
+      <IconImage
         src={resolved.url}
-        alt={resolved.slug}
-        width={size}
-        height={size}
-        loading="lazy"
+        alt={resolved.kind === 'brand' ? resolved.slug : resolved.label}
+        size={size}
         className={className}
-        style={{ width: size, height: size, objectFit: 'contain', flexShrink: 0 }}
+        style={{ flexShrink: 0 }}
       />
     )
   }

@@ -5,7 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ICON_REGISTRY, isBrandIconKey, brandIconSlug, brandIconUrl } from '@/utils/nodeIcons'
+import { ICON_REGISTRY, isBrandIconKey, brandIconSlug, brandIconUrl, resolveCustomIcon } from '@/utils/nodeIcons'
+import { IconImage } from '@/components/ui/IconImage'
 import { IconPickerPanel } from './IconPickerPanel'
 import { EMPTY_SERVICE_FORM, type ServiceFormData, type ServiceSubmitData } from '@/utils/serviceForm'
 
@@ -64,6 +65,15 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
         <>
           <img src={brandIconUrl(slug)} alt={slug} width={13} height={13} className="shrink-0" style={{ width: 13, height: 13, objectFit: 'contain' }} />
           <span className="text-foreground truncate">{slug}</span>
+        </>
+      )
+    }
+    const custom = resolveCustomIcon(form.icon)
+    if (custom?.kind === 'url') {
+      return (
+        <>
+          <IconImage src={custom.url} alt={custom.label} size={13} className="shrink-0" />
+          <span className="text-foreground truncate">{custom.label}</span>
         </>
       )
     }
