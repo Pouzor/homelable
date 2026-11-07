@@ -42,6 +42,7 @@ export interface ApiNode extends Record<string, unknown> {
   right_handles?: number
   show_port_numbers?: boolean
   port_labels?: Record<string, string> | null
+  linked_design_id?: string | null
 }
 
 export interface ApiEdge {
@@ -169,6 +170,7 @@ export function serializeNode(
     right_handles: clampHandles('right', n.data.right_handles ?? 0),
     show_port_numbers: n.data.show_port_numbers ?? false,
     port_labels: prunePortLabels(n.data) ?? null,
+    linked_design_id: n.data.linked_design_id ?? null,
     pos_x: n.position.x,
     pos_y: n.position.y,
   }
@@ -249,6 +251,8 @@ export function deserializeApiNode(
       right_handles: clampHandles('right', n.right_handles ?? 0),
       // The API reports NULL for "no labels"; the canvas leaves the field unset.
       port_labels: normalizePortLabels(n.port_labels),
+      // Same for "opens no design".
+      linked_design_id: n.linked_design_id ?? undefined,
       collapsed: Boolean(n.custom_colors?.collapsed),
     } as unknown as NodeData,
     ...(n.parent_id && parentIsZone

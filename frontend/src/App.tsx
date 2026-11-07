@@ -21,6 +21,7 @@ import { isZoneSubnetCandidate } from '@/utils/subnet'
 import { CanvasContainer } from '@/components/canvas/CanvasContainer'
 import { Sidebar } from '@/components/panels/Sidebar'
 import { Toolbar } from '@/components/panels/Toolbar'
+import { DesignTrail } from '@/components/panels/DesignTrail'
 import { DetailPanel } from '@/components/panels/DetailPanel'
 import { LoginPage } from '@/components/LoginPage'
 import { NodeModal } from '@/components/modals/NodeModal'
@@ -1291,7 +1292,7 @@ export default function App() {
               onViewOnly={handleViewOnly}
             />
             <div className="flex flex-1 min-h-0">
-              <div ref={canvasRef} className="flex-1 min-w-0 h-full">
+              <div ref={canvasRef} className="relative flex-1 min-w-0 h-full">
                 {isRackDesign ? (
                   <RackCanvas />
                 ) : (
@@ -1306,6 +1307,9 @@ export default function App() {
                     onOpenInventory={(deviceId) => openInventoryModal(deviceId)}
                   />
                 )}
+                {/* Over the canvas rather than in the toolbar, which has no room left
+                    on a narrow screen; outside `.react-flow`, so a PNG export leaves it out. */}
+                <DesignTrail />
               </div>
               {/* Rack designs keep the full width for mounted gear — a mount is
                   edited in its own modal — but a selected cable has no plate to

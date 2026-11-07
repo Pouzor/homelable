@@ -271,6 +271,11 @@ export interface NodeData extends Record<string, unknown> {
    * ID ('top', 'bottom-3'…). A point without one keeps its 1..N number (#495).
    */
   port_labels?: Record<string, string>
+  /**
+   * Another design this node opens when clicked through: a host drawn as one
+   * card leads to the canvas of what runs inside it. Unset when it opens nothing.
+   */
+  linked_design_id?: string
   /** Text node content (type === 'text') */
   text_content?: string
 }

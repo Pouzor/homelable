@@ -145,3 +145,66 @@ describe('designStore', () => {
     expect(useDesignStore.getState().designs.map((d) => d.id)).toEqual(['c', 'a', 'b'])
   })
 })
+
+describe('designStore drill-down trail', () => {
+  beforeEach(() => {
+    useDesignStore.setState({ designs: [], activeDesignId: null, activeDesignType: null, loaded: false, trail: [] })
+    useDesignStore.getState().setDesigns([design('net'), design('host'), design('vm'), design('rack', 'rack')])
+  })
+
+  it('opening a linked design remembers the one it came from', () => {
+    useDesignStore.getState().openLinkedDesign('host')
+    useDesignStore.getState().openLinkedDesign('vm')
+    const s = useDesignStore.getState()
+    expect(s.activeDesignId).toBe('vm')
+    expect(s.trail).toEqual(['net', 'host'])
+  })
+
+  it('takes the design type of the opened design', () => {
+    useDesignStore.getState().openLinkedDesign('rack')
+    expect(useDesignStore.getState().activeDesignType).toBe('rack')
+  })
+
+  it('ignores an unknown design and the one already open', () => {
+    useDesignStore.getState().openLinkedDesign('gone')
+    useDesignStore.getState().openLinkedDesign('net')
+    const s = useDesignStore.getState()
+    expect(s.activeDesignId).toBe('net')
+    expect(s.trail).toEqual([])
+  })
+
+  it('clicking through to a design already on the trail goes back up to it', () => {
+    useDesignStore.getState().openLinkedDesign('host')
+    useDesignStore.getState().openLinkedDesign('vm')
+    useDesignStore.getState().openLinkedDesign('net')
+    const s = useDesignStore.getState()
+    expect(s.activeDesignId).toBe('net')
+    expect(s.trail).toEqual([])
+  })
+
+  it('backToTrail opens that crumb and drops it and everything after', () => {
+    useDesignStore.getState().openLinkedDesign('host')
+    useDesignStore.getState().openLinkedDesign('vm')
+    useDesignStore.getState().backToTrail(1)
+    let s = useDesignStore.getState()
+    expect(s.activeDesignId).toBe('host')
+    expect(s.trail).toEqual(['net'])
+    useDesignStore.getState().backToTrail(0)
+    s = useDesignStore.getState()
+    expect(s.activeDesignId).toBe('net')
+    expect(s.trail).toEqual([])
+  })
+
+  it('switching design any other way starts a fresh trail', () => {
+    useDesignStore.getState().openLinkedDesign('host')
+    useDesignStore.getState().setActiveDesign('vm')
+    expect(useDesignStore.getState().trail).toEqual([])
+  })
+
+  it('a deleted design leaves the trail', () => {
+    useDesignStore.getState().openLinkedDesign('host')
+    useDesignStore.getState().openLinkedDesign('vm')
+    useDesignStore.getState().removeDesign('host')
+    expect(useDesignStore.getState().trail).toEqual(['net'])
+  })
+})

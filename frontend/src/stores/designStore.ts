@@ -6,8 +6,18 @@ interface DesignState {
   activeDesignId: string | null
   activeDesignType: DesignType | null
   loaded: boolean
+  /**
+   * Designs the user drilled down from, outermost first. Opening a node's
+   * linked design pushes the one it was on, so the toolbar can lead back up;
+   * any other switch (the design picker, a reload) starts a fresh trail.
+   */
+  trail: string[]
   setDesigns: (designs: Design[]) => void
   setActiveDesign: (id: string) => void
+  /** Open a node's linked design, remembering the current one for the way back. */
+  openLinkedDesign: (id: string) => void
+  /** Go back up to `trail[index]`, dropping it and every design after it. */
+  backToTrail: (index: number) => void
   getActiveDesign: () => Design | null
   /** Append a new design and make it active. */
   addDesign: (design: Design) => void
@@ -28,6 +38,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
   activeDesignId: null,
   activeDesignType: null,
   loaded: false,
+  trail: [],
 
   setDesigns: (designs) =>
     set((state) => {
@@ -44,7 +55,29 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       return {
         activeDesignId: id,
         activeDesignType: design?.design_type ?? null,
+        trail: [],
       }
+    }),
+
+  openLinkedDesign: (id) =>
+    set((state) => {
+      const design = state.designs.find((d) => d.id === id)
+      if (!design || id === state.activeDesignId) return {}
+      // Clicking through to a design already on the trail goes back up to it
+      // rather than growing a loop (A › B › A).
+      const seen = state.trail.indexOf(id)
+      const trail = seen >= 0
+        ? state.trail.slice(0, seen)
+        : state.activeDesignId ? [...state.trail, state.activeDesignId] : state.trail
+      return { trail, activeDesignId: id, activeDesignType: design.design_type }
+    }),
+
+  backToTrail: (index) =>
+    set((state) => {
+      const id = state.trail[index]
+      const design = state.designs.find((d) => d.id === id)
+      if (!design) return {}
+      return { trail: state.trail.slice(0, index), activeDesignId: id, activeDesignType: design.design_type }
     }),
 
   getActiveDesign: () => {
@@ -67,10 +100,12 @@ export const useDesignStore = create<DesignState>((set, get) => ({
   removeDesign: (id) =>
     set((state) => {
       const designs = state.designs.filter((d) => d.id !== id)
-      if (state.activeDesignId !== id) return { designs }
+      const trail = state.trail.filter((t) => t !== id)
+      if (state.activeDesignId !== id) return { designs, trail }
       const next = designs[0] ?? null
       return {
         designs,
+        trail: [],
         activeDesignId: next?.id ?? null,
         activeDesignType: next?.design_type ?? null,
       }
