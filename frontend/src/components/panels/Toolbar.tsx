@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Save, LayoutDashboard, ChevronDown, Download, Palette, Undo2, Redo2, HelpCircle, FileDown, Upload, Eye, GitBranch, Loader2 } from 'lucide-react'
+import { Save, LayoutDashboard, ChevronDown, Download, Palette, Undo2, Redo2, HelpCircle, FileDown, Upload, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/ui/Logo'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import { useRackStore } from '@/rack/store'
-import { useGitSyncStore } from '@/stores/gitSyncStore'
+import { GitSyncButton } from '@/components/common/GitSyncButton'
 import { RackToolbarActions } from './RackToolbarActions'
 import type { AutoLayoutMode } from '@/utils/zoneGrouping'
 
@@ -29,10 +29,6 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
   const isRack = useDesignStore((s) => s.activeDesignType) === 'rack'
   const rackDirty = useRackStore((s) => s.hasUnsavedChanges)
   const hasUnsavedChanges = isRack ? rackDirty : canvasDirty
-  // Shown only once the server says GIT_SYNC_REPO_URL is set.
-  const gitConfigured = useGitSyncStore((s) => s.status?.configured === true)
-  const gitSyncing = useGitSyncStore((s) => s.syncing)
-  const gitSync = useGitSyncStore((s) => s.sync)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -109,18 +105,10 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
           <Eye size={14} /> View
         </Button>
       )}
-      {!STANDALONE && gitConfigured && (
-        <Button
-          size="sm" variant="ghost"
-          className="gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-50 cursor-pointer hover:bg-[#21262d]"
-          onClick={() => { void gitSync({ unsaved: hasUnsavedChanges }) }}
-          disabled={gitSyncing}
-          title="Push the documentation and every diagram to git"
-        >
-          {gitSyncing ? <Loader2 size={14} className="animate-spin" /> : <GitBranch size={14} />}
-          {gitSyncing ? 'Syncing…' : 'Sync'}
-        </Button>
-      )}
+      <GitSyncButton
+        unsaved={hasUnsavedChanges}
+        className="text-muted-foreground hover:text-foreground hover:bg-[#21262d]"
+      />
       <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onShortcuts} title="Keyboard shortcuts (?)">
         <HelpCircle size={14} />
       </Button>

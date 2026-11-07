@@ -10,16 +10,20 @@ import { gitSyncApi, type GitSyncResult, type GitSyncStatus } from '@/api/client
  * same configuration and the same "syncing" state, and a sync started from one
  * disables the other. The connection is env-only: nothing here edits it.
  */
+/** What holds the unsaved edits a sync leaves out. */
+export type SyncSubject = 'canvas' | 'document'
+
 interface GitSyncState {
   /** null until loaded — or when the backend could not say (older backend, error). */
   status: GitSyncStatus | null
   syncing: boolean
   load: () => Promise<void>
   /**
-   * Run one sync and toast the outcome. `unsaved` notes that the open canvas
-   * has unsaved edits: the sync pushes what the server holds, so they are not in it.
+   * Run one sync and toast the outcome. `unsaved` notes that the open canvas —
+   * or document, per `subject` — has unsaved edits: the sync pushes what the
+   * server holds, so they are not in it.
    */
-  sync: (opts?: { unsaved?: boolean }) => Promise<GitSyncResult | null>
+  sync: (opts?: { unsaved?: boolean; subject?: SyncSubject }) => Promise<GitSyncResult | null>
 }
 
 function errorDetail(error: unknown): string {
@@ -50,7 +54,9 @@ export const useGitSyncStore = create<GitSyncState>()((set, get) => ({
     set({ syncing: true })
     try {
       const { data } = await gitSyncApi.sync()
-      const note = opts.unsaved ? ' Unsaved changes on this canvas were not included — save, then sync again.' : ''
+      const note = opts.unsaved
+        ? ` Unsaved changes on this ${opts.subject ?? 'canvas'} were not included — save, then sync again.`
+        : ''
       if (data.status === 'unchanged') {
         toast.info(`Git is already up to date.${note}`)
       } else {

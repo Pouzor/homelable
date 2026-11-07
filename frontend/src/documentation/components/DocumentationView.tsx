@@ -3,6 +3,7 @@ import { Archive, BookOpen, ChevronDown, ChevronRight, FilePlus, FolderPlus, Hou
 import { toast } from 'sonner'
 
 import { docsviewApi, scanApi } from '@/api/client'
+import { GitSyncButton } from '@/components/common/GitSyncButton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -640,6 +641,7 @@ export function DocumentationView() {
             <Archive size={12} />
             {exporting ? 'Exporting…' : 'Export all'}
           </Button>
+          <GitSyncButton unsaved={dirty} subject="document" size="xs" className="gap-1 px-1.5" />
           {docsLink && (
             <Button
               size="xs"
