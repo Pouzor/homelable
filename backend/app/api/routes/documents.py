@@ -49,6 +49,7 @@ from app.schemas.documents import (
     UpdatePreviewResponse,
 )
 from app.services import doc_backlinks, doc_search
+from app.services.design_order import LIST_ORDER
 from app.services.doc_export import ExportDoc, build_zip
 from app.services.doc_reconcile import (
     Resolution,
@@ -263,7 +264,7 @@ async def _scaffold_body(db: AsyncSession, doc: Document, template_id: str | Non
             doc.template_id = TEMPLATE_DEVICE
             return
     if template_id == TEMPLATE_HOMEPAGE:
-        designs = (await db.execute(select(Design).order_by(Design.created_at))).scalars().all()
+        designs = (await db.execute(select(Design).order_by(*LIST_ORDER))).scalars().all()
         # Filtered here, not in SQL: a document being created has no id until it
         # is flushed, and `id != NULL` matches nothing.
         docs = [d for d in (await db.execute(select(Document))).scalars().all() if d is not doc]

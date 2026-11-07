@@ -15,6 +15,12 @@ interface DesignState {
   updateDesign: (id: string, patch: Partial<Pick<Design, 'name' | 'icon'>>) => void
   /** Remove a design; if it was active, fall back to the first remaining one. */
   removeDesign: (id: string) => void
+  /**
+   * Put the list in `ids` order. Ids not in the list are ignored, and designs
+   * the order does not name keep their relative place at the end, so a stale
+   * order can never drop a canvas.
+   */
+  reorderDesigns: (ids: string[]) => void
 }
 
 export const useDesignStore = create<DesignState>((set, get) => ({
@@ -68,5 +74,17 @@ export const useDesignStore = create<DesignState>((set, get) => ({
         activeDesignId: next?.id ?? null,
         activeDesignType: next?.design_type ?? null,
       }
+    }),
+
+  reorderDesigns: (ids) =>
+    set((state) => {
+      const byId = new Map(state.designs.map((d) => [d.id, d]))
+      const ordered = ids.flatMap((id) => {
+        const d = byId.get(id)
+        if (!d) return []
+        byId.delete(id)
+        return [d]
+      })
+      return { designs: [...ordered, ...byId.values()] }
     }),
 }))

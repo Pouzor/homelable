@@ -430,6 +430,8 @@ export const designsApi = {
   update: (id: string, data: { name?: string; icon?: string }) =>
     api.put<import('@/types').Design>(`/designs/${id}`, data),
   delete: (id: string) => api.delete(`/designs/${id}`),
+  /** Set the canvas list order; `ids` must name every design once. */
+  reorder: (ids: string[]) => api.put('/designs/order', { ids }),
 }
 
 export const documentsApi = {

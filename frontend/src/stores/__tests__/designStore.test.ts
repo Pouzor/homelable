@@ -128,4 +128,20 @@ describe('designStore', () => {
     expect(s.activeDesignId).toBeNull()
     expect(s.activeDesignType).toBeNull()
   })
+
+  it('reorderDesigns puts the list in the given order and keeps the active design', () => {
+    useDesignStore.getState().setDesigns([design('a'), design('b', 'electrical'), design('c')])
+    useDesignStore.getState().setActiveDesign('b')
+    useDesignStore.getState().reorderDesigns(['c', 'a', 'b'])
+    const s = useDesignStore.getState()
+    expect(s.designs.map((d) => d.id)).toEqual(['c', 'a', 'b'])
+    expect(s.activeDesignId).toBe('b')
+    expect(s.activeDesignType).toBe('electrical')
+  })
+
+  it('reorderDesigns never drops a design the order omits, and ignores unknown ids', () => {
+    useDesignStore.getState().setDesigns([design('a'), design('b'), design('c')])
+    useDesignStore.getState().reorderDesigns(['ghost', 'c'])
+    expect(useDesignStore.getState().designs.map((d) => d.id)).toEqual(['c', 'a', 'b'])
+  })
 })

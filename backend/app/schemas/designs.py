@@ -28,6 +28,12 @@ class DesignUpdate(BaseModel):
     icon: str | None = None
 
 
+class DesignOrder(BaseModel):
+    """The whole canvas list, in its new order."""
+
+    ids: list[str]
+
+
 class DesignCopy(BaseModel):
     """Create a new design by deep-copying an existing one's canvas."""
 

@@ -100,3 +100,23 @@ describe('standaloneStorage designs', () => {
     expect(ss.listDesigns()).toEqual([])
   })
 })
+
+describe('standaloneStorage reorderDesigns (#461)', () => {
+  it('persists the list in the given order', () => {
+    const a = ss.createDesign('A')
+    const b = ss.createDesign('B')
+    const c = ss.createDesign('C')
+    ss.reorderDesigns([c.id, a.id, b.id])
+    expect(ss.listDesigns().map((d) => d.name)).toEqual(['C', 'A', 'B'])
+  })
+
+  it('keeps designs the order omits, at the end in their old order, and ignores unknown ids', () => {
+    const a = ss.createDesign('A')
+    ss.createDesign('B')
+    ss.createDesign('C')
+    ss.reorderDesigns(['ghost', a.id])
+    expect(ss.listDesigns().map((d) => d.name)).toEqual(['A', 'B', 'C'])
+    ss.reorderDesigns([ss.listDesigns()[2].id])
+    expect(ss.listDesigns().map((d) => d.name)).toEqual(['C', 'A', 'B'])
+  })
+})
