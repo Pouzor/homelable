@@ -14,6 +14,7 @@ Layout, under `GIT_SYNC_PATH` (the repository root when empty):
     Diagrams/<name>/canvas.json     nodes, edges, viewport  (network, electrical)
     Diagrams/<name>/rack.json       racks, mounts, cables   (rack)
     Diagrams/<name>/floor-plan.*    the canvas' uploaded floor plan, if it has one
+    Diagrams/<name>/icons/…         the uploaded icons its nodes and services use
     .homelable/manifest.json        path -> id, for the import to come
 
 `Documentation/`, `Diagrams/` and `.homelable/` are owned by the sync and
@@ -24,8 +25,9 @@ touched — the repository can be a monorepo the sync shares with other content.
 Documents embed uploads as `/api/v1/media/<name>`, a URL only the Homelable
 server answers. The pushed copy points at the file under `_media/` instead, by
 a path relative to the document, so the repository renders on its own. A floor
-plan is copied next to its canvas instead; `canvas.json` keeps its URL as is,
-the raw state an import saves back.
+plan, and every uploaded icon a node or a service shows (`url:/api/v1/media/…`),
+is copied next to its canvas instead; `canvas.json` keeps their URLs as is, the
+raw state an import saves back.
 
 The working copy lives on the data volume and is only a cache: it is reset to
 the remote branch before every sync, so a failed push never leaks into the next
@@ -67,6 +69,10 @@ _MEDIA_REF = re.compile(rf"(?<![\w./:-])/api/v1/media/({_MEDIA_NAME})")
 # than uploads, a base64 `data:` URL already inside `canvas.json`.
 _MEDIA_URL = re.compile(rf"/api/v1/media/({_MEDIA_NAME})")
 FLOOR_PLAN = "floor-plan"
+ICONS_DIR = "icons"
+# A node's or a service's custom icon when it is an upload: `url:` + the media
+# route's own path. A pasted link to another host is someone else's file.
+_ICON_REF = re.compile(rf"url:/api/v1/media/({_MEDIA_NAME})")
 
 # Live reachability, refreshed by the status checker every minute. Committing it
 # would turn every sync into a diff of who answered a ping, so it never leaves.
@@ -86,8 +92,8 @@ on the first sync only — edit it freely, it is never overwritten.
   `devices/`, `nodes/` and `designs/`. Images and files a document embeds are in
   `Documentation/_media/`.
 - `Diagrams/` — one folder per canvas: `design.json`, plus `canvas.json` for a
-  network or electrical canvas, or `rack.json` for a rack, and the floor plan
-  image when the canvas has one.
+  network or electrical canvas, or `rack.json` for a rack, the floor plan image
+  when the canvas has one, and under `icons/` the uploaded icons its nodes use.
 
 `Documentation/`, `Diagrams/` and `.homelable/` are rewritten on every sync:
 anything changed there by hand is overwritten by the next one.
@@ -203,13 +209,31 @@ def floor_plan_ref(diagram: DiagramExport) -> str | None:
     return match.group(1) if match else None
 
 
+def _icon_ref(key: Any) -> str | None:
+    match = _ICON_REF.fullmatch(key) if isinstance(key, str) else None
+    return match.group(1) if match else None
+
+
+def icon_refs(diagram: DiagramExport) -> set[str]:
+    """The upload names the diagram's nodes and their services use as icons."""
+    names: set[str] = set()
+    for node in diagram.state.get("nodes") or []:
+        if not isinstance(node, dict):
+            continue
+        keys = [node.get("custom_icon")]
+        keys += [svc.get("icon") for svc in node.get("services") or [] if isinstance(svc, dict)]
+        names.update(name for name in map(_icon_ref, keys) if name)
+    return names
+
+
 def media_refs(docs: list[ExportDoc], diagrams: list[DiagramExport] | None = None) -> set[str]:
-    """The upload names the documents embed and the diagrams use as floor plans."""
+    """The upload names the documents embed and the diagrams use as floor plans or icons."""
     names = {match.group(1) for doc in docs for match in _MEDIA_REF.finditer(doc.body or "")}
     for diagram in diagrams or []:
         name = floor_plan_ref(diagram)
         if name:
             names.add(name)
+        names |= icon_refs(diagram)
     return names
 
 
@@ -252,7 +276,7 @@ def build_tree(
         doc_entries[f"{DOCS_DIR}/{path}"] = entry
 
     diagram_entries: dict[str, dict[str, str]] = {}
-    floor_plans: dict[str, str] = {}
+    diagram_media: dict[str, str] = {}
     for diagram, folder in _diagram_folders(diagrams):
         base = f"{DIAGRAMS_DIR}/{folder}"
         for name, content in diagram_files(diagram).items():
@@ -262,14 +286,18 @@ def build_tree(
         if plan and plan in media:
             path = f"{base}/{FLOOR_PLAN}{Path(plan).suffix}"
             files[path] = media[plan]
-            floor_plans[path] = f"/api/v1/media/{plan}"
+            diagram_media[path] = f"/api/v1/media/{plan}"
+        for icon in sorted(icon_refs(diagram) & media.keys()):
+            path = f"{base}/{ICONS_DIR}/{icon}"
+            files[path] = media[icon]
+            diagram_media[path] = f"/api/v1/media/{icon}"
 
     media_entries: dict[str, str] = {}
     for name in sorted(media_refs(docs) & media.keys()):
         files[f"{MEDIA_DIR}/{name}"] = media[name]
         # What the import turns the relative link back into.
         media_entries[f"{MEDIA_DIR}/{name}"] = f"/api/v1/media/{name}"
-    media_entries.update(floor_plans)
+    media_entries.update(diagram_media)
 
     files[MANIFEST] = _json_bytes(
         {

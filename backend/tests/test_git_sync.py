@@ -253,6 +253,84 @@ class TestFloorPlans:
         assert not any("floor-plan" in path for path in files)
 
 
+SVG = "fedcba9876543210fedcba9876543210.svg"
+
+
+def _iconed(id_: str, name: str, nodes: list) -> DiagramExport:
+    return _diagram(id_, name, state={"nodes": nodes, "edges": [], "viewport": {}})
+
+
+class TestNodeIcons:
+    def test_an_uploaded_node_icon_is_pushed_under_the_canvas_icons_folder(self):
+        diagram = _iconed("lan", "Home LAN", [{"id": "n1", "custom_icon": f"url:/api/v1/media/{IMG}"}])
+        files = build_tree([], [diagram], {IMG: b"icon"})
+        assert files[f"Diagrams/home-lan/icons/{IMG}"] == b"icon"
+        assert not any(path.startswith("Documentation/_media/") for path in files)
+
+    def test_an_uploaded_service_icon_is_pushed_too(self):
+        node = {"id": "n1", "services": [{"service_name": "nas", "icon": f"url:/api/v1/media/{SVG}"}]}
+        files = build_tree([], [_iconed("lan", "Home LAN", [node])], {SVG: b"<svg/>"})
+        assert files[f"Diagrams/home-lan/icons/{SVG}"] == b"<svg/>"
+
+    def test_an_icon_shared_by_two_nodes_is_pushed_once(self):
+        key = f"url:/api/v1/media/{IMG}"
+        diagram = _iconed("lan", "Home LAN", [{"id": "a", "custom_icon": key}, {"id": "b", "custom_icon": key}])
+        files = build_tree([], [diagram], {IMG: b"icon"})
+        assert [p for p in files if "/icons/" in p] == [f"Diagrams/home-lan/icons/{IMG}"]
+
+    def test_each_canvas_carries_its_own_copy(self):
+        key = f"url:/api/v1/media/{IMG}"
+        diagrams = [_iconed("a", "Alpha", [{"id": "n", "custom_icon": key}]),
+                    _iconed("b", "Beta", [{"id": "n", "custom_icon": key}])]
+        files = build_tree([], diagrams, {IMG: b"icon"})
+        assert f"Diagrams/alpha/icons/{IMG}" in files
+        assert f"Diagrams/beta/icons/{IMG}" in files
+
+    def test_canvas_json_keeps_the_raw_icon_key(self):
+        key = f"url:/api/v1/media/{IMG}"
+        files = build_tree([], [_iconed("lan", "Home LAN", [{"id": "n1", "custom_icon": key}])], {IMG: b"icon"})
+        canvas = json.loads(files["Diagrams/home-lan/canvas.json"])
+        assert canvas["nodes"][0]["custom_icon"] == key
+
+    def test_the_manifest_maps_each_icon_back_to_its_url(self):
+        diagram = _iconed("lan", "Home LAN", [{"id": "n1", "custom_icon": f"url:/api/v1/media/{IMG}"}])
+        manifest = json.loads(build_tree([], [diagram], {IMG: b"icon"})[".homelable/manifest.json"])
+        assert manifest["media"] == {f"Diagrams/home-lan/icons/{IMG}": f"/api/v1/media/{IMG}"}
+
+    def test_media_refs_include_node_and_service_icons(self):
+        node = {"id": "n1", "custom_icon": f"url:/api/v1/media/{IMG}",
+                "services": [{"icon": f"url:/api/v1/media/{SVG}"}]}
+        assert media_refs([], [_iconed("lan", "Home LAN", [node])]) == {IMG, SVG}
+
+    @pytest.mark.parametrize("key", [
+        "database",
+        "brand:plex",
+        "url:https://cdn.jsdelivr.net/gh/selfhst/icons/svg/immich.svg",
+        f"url:https://other.host/api/v1/media/{IMG}",
+        f"/api/v1/media/{IMG}",
+        "url:/api/v1/media/nope.png",
+        None,
+        42,
+    ])
+    def test_no_file_for_an_icon_that_is_not_an_upload(self, key):
+        diagram = _iconed("lan", "Home LAN", [{"id": "n1", "custom_icon": key, "services": [{"icon": key}]}])
+        assert media_refs([], [diagram]) == set()
+        assert not any("/icons/" in path for path in build_tree([], [diagram], {IMG: b"icon"}))
+
+    def test_an_icon_gone_from_the_server_is_skipped(self):
+        diagram = _iconed("lan", "Home LAN", [{"id": "n1", "custom_icon": f"url:/api/v1/media/{IMG}"}])
+        assert not any("/icons/" in path for path in build_tree([], [diagram], {}))
+
+    def test_malformed_node_rows_are_ignored(self):
+        diagram = _iconed("lan", "Home LAN", ["not-a-node", {"id": "n1", "services": ["nope", None]}])
+        assert media_refs([], [diagram]) == set()
+
+    def test_a_rack_has_no_icons_folder(self):
+        rack = _diagram("r", "Rack Room", "rack", {"racks": [], "devices": [], "cables": []})
+        assert media_refs([], [rack]) == set()
+        assert not any("/icons/" in path for path in build_tree([], [rack], {IMG: b"icon"}))
+
+
 class TestSyncSubdir:
     @pytest.mark.parametrize(("raw", "expected"), [("", ""), ("docs", "docs"), ("/docs/homelable/", "docs/homelable"),
                                                    ("./docs", "docs"), ("a\\b", "a/b")])
@@ -600,6 +678,26 @@ class TestRoutes:
         assert "Diagrams/home-lan/floor-plan.png" in _tree(configured)
         canvas = json.loads(_show(configured, "Diagrams/home-lan/canvas.json"))
         assert canvas["viewport"]["floor_map"]["imageData"] == f"/api/v1/media/{IMG}"
+
+    async def test_sync_pushes_uploaded_node_icons(self, client: AsyncClient, headers, configured,
+                                                   monkeypatch, tmp_path):
+        media = tmp_path / "uploads"
+        media.mkdir()
+        (media / IMG).write_bytes(b"\x89PNG\r\n\x1a\nicon")
+        monkeypatch.setattr(settings, "upload_dir", str(media))
+        lan = (await client.post("/api/v1/designs", json={"name": "Home LAN", "design_type": "network"},
+                                 headers=headers)).json()["id"]
+        node = {"id": str(uuid.uuid4()), "type": "server", "label": "nas", "status": "online",
+                "services": [], "custom_icon": f"url:/api/v1/media/{IMG}", "pos_x": 0, "pos_y": 0}
+        res = await client.post("/api/v1/canvas/save",
+                                json={"design_id": lan, "nodes": [node], "edges": [], "viewport": {}},
+                                headers=headers)
+        assert res.status_code == 200, res.text
+
+        assert (await client.post("/api/v1/git-sync", headers=headers)).status_code == 200
+        assert f"Diagrams/home-lan/icons/{IMG}" in _tree(configured)
+        canvas = json.loads(_show(configured, "Diagrams/home-lan/canvas.json"))
+        assert canvas["nodes"][0]["custom_icon"] == f"url:/api/v1/media/{IMG}"
 
     async def test_second_sync_reports_unchanged(self, client: AsyncClient, headers, configured):
         await _seed(client, headers)
