@@ -15,6 +15,7 @@ from app.api.routes import (
     docsview,
     documents,
     edges,
+    git_sync,
     liveview,
     media,
     nodes,
@@ -105,6 +106,7 @@ app.include_router(stats.router, prefix="/api/v1/stats", tags=["stats"])
 app.include_router(media.router, prefix="/api/v1/media", tags=["media"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(docsview.router, prefix="/api/v1/docsview", tags=["docsview"])
+app.include_router(git_sync.router, prefix="/api/v1/git-sync", tags=["git-sync"])
 
 
 @app.get("/api/v1/health")

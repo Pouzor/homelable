@@ -236,6 +236,22 @@ class Settings(BaseSettings):
     # Leave empty to keep the feature disabled (default).
     homepage_api_key: str = ""
 
+    # Git sync — push the documentation and every diagram to a git repository,
+    # on an explicit Sync. Env-only, like every connection config: the token is a
+    # credential, never persisted by the app nor returned by the API.
+    # GIT_SYNC_REPO_URL empty = the feature is off.
+    git_sync_repo_url: str = ""
+    git_sync_branch: str = "main"
+    # Folder inside the repository the sync writes to; empty = repository root.
+    git_sync_path: str = ""
+    # HTTPS auth: a personal access token, sent as basic auth with this username.
+    git_sync_token: str = ""
+    git_sync_username: str = "git"
+    # SSH auth: path to a private key readable by the backend (a deploy key).
+    git_sync_ssh_key: str = ""
+    git_sync_author_name: str = "Homelable"
+    git_sync_author_email: str = "homelable@localhost"
+
     # Proxmox VE import.
     # Token = a real credential → env/.env ONLY, never persisted by the app to
     # scan_config.json and never returned by the API. token_id is
@@ -355,6 +371,10 @@ class Settings(BaseSettings):
         if self.upload_dir:
             return Path(self.upload_dir)
         return Path(self.sqlite_path).parent / "uploads"
+
+    def git_sync_dir(self) -> Path:
+        """Working copy of the git sync, on the same volume as the SQLite DB."""
+        return Path(self.sqlite_path).parent / "git-sync"
 
     def load_overrides(self) -> None:
         """Load runtime scan config overrides written by the API."""

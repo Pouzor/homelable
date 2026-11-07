@@ -64,6 +64,7 @@ const DocumentationView = lazy(async () => ({
   default: (await import('@/documentation/components/DocumentationView')).DocumentationView,
 }))
 import { useDocsStore } from '@/documentation/store'
+import { useGitSyncStore } from '@/stores/gitSyncStore'
 import { useUiStore } from '@/stores/uiStore'
 import { RackCanvas } from '@/rack/components/RackCanvas'
 import { RackCablePanel } from '@/rack/components/RackCablePanel'
@@ -445,6 +446,12 @@ export default function App() {
     if (!isAuthenticated) return
     loadDesignsAndCanvasRef.current()
   }, [isAuthenticated]) // only on auth change, not design change
+
+  // Whether GIT_SYNC_* is configured decides if the header offers Sync.
+  useEffect(() => {
+    if (STANDALONE || !isAuthenticated) return
+    void useGitSyncStore.getState().load()
+  }, [isAuthenticated])
 
   // Reload canvas when active design changes (after initial load)
   const initialLoadDone = useRef(false)

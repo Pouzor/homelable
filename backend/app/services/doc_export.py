@@ -39,6 +39,11 @@ class ExportDoc:
     slug: str
     parent_id: str | None
     body: str
+    # The link a linked document is filed by. Not used by the layout — only the
+    # git sync records them, so an import can re-link a file to what it describes.
+    device_id: str | None = None
+    node_id: str | None = None
+    design_id: str | None = None
 
 
 def safe_segment(raw: str) -> str:
@@ -82,8 +87,8 @@ def _path_for(doc: ExportDoc, by_id: dict[str, ExportDoc]) -> str:
     return "/".join([*parts, f"{name}.md"])
 
 
-def export_paths(docs: list[ExportDoc]) -> list[tuple[str, str]]:
-    """`(path, body)` for every document, in a stable order and never colliding.
+def export_layout(docs: list[ExportDoc]) -> list[tuple[ExportDoc, str]]:
+    """`(document, path)` for every document, in a stable order and never colliding.
 
     Slugs are only unique among siblings, and a linked document is a sibling of
     the Library root while exporting into `devices/`, so two documents really can
@@ -92,7 +97,7 @@ def export_paths(docs: list[ExportDoc]) -> list[tuple[str, str]]:
     """
     by_id = {doc.id: doc for doc in docs}
     taken: set[str] = set()
-    out: list[tuple[str, str]] = []
+    out: list[tuple[ExportDoc, str]] = []
     for doc in sorted(docs, key=lambda d: (d.kind, d.title.lower(), d.id)):
         path = _path_for(doc, by_id)
         if path.lower() in taken:
@@ -102,8 +107,13 @@ def export_paths(docs: list[ExportDoc]) -> list[tuple[str, str]]:
                 suffix += 1
             path = f"{stem}-{suffix}.{extension}"
         taken.add(path.lower())
-        out.append((path, doc.body or ""))
+        out.append((doc, path))
     return out
+
+
+def export_paths(docs: list[ExportDoc]) -> list[tuple[str, str]]:
+    """`(path, body)` for every document — `export_layout` without the rows."""
+    return [(path, doc.body or "") for doc, path in export_layout(docs)]
 
 
 def build_zip(docs: list[ExportDoc]) -> bytes:
