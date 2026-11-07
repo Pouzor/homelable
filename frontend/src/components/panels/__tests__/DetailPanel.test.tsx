@@ -897,6 +897,92 @@ describe('DetailPanel', () => {
     })
   })
 
+  describe('Position section', () => {
+    function setupPositioned(nodes: Partial<Node<NodeData>>[], setNodePosition = vi.fn(), snapshotHistory = vi.fn()) {
+      const state = {
+        nodes: nodes.map((n, i) => ({ ...makeNode({}), id: `n${i + 1}`, ...n })),
+        selectedNodeId: 'n1',
+        selectedNodeIds: [],
+        setSelectedNode: vi.fn(),
+        deleteNode: vi.fn(),
+        updateNode: vi.fn(),
+        snapshotHistory,
+        createGroup: vi.fn(),
+        ungroup: vi.fn(),
+        setNodeSize: vi.fn(),
+        setNodePosition,
+        serviceStatuses: {},
+      }
+      vi.mocked(canvasStore.useCanvasStore).mockImplementation(
+        ((sel?: (s: typeof state) => unknown) => (sel ? sel(state) : state)) as unknown as typeof canvasStore.useCanvasStore,
+      )
+      return { setNodePosition, snapshotHistory }
+    }
+
+    it('shows the current position, rounded', () => {
+      setupPositioned([{ position: { x: 120.6, y: -40.2 } }])
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect((screen.getByLabelText('Position X') as HTMLInputElement).value).toBe('121')
+      expect((screen.getByLabelText('Position Y') as HTMLInputElement).value).toBe('-40')
+    })
+
+    it('commits a manual X on blur, with an undo snapshot', () => {
+      const { setNodePosition, snapshotHistory } = setupPositioned([{ position: { x: 0, y: 0 } }])
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const x = screen.getByLabelText('Position X')
+      fireEvent.change(x, { target: { value: '320' } })
+      fireEvent.blur(x)
+      expect(snapshotHistory).toHaveBeenCalled()
+      expect(setNodePosition).toHaveBeenCalledWith('n1', { x: 320 })
+    })
+
+    it('accepts zero and negative Y', () => {
+      const { setNodePosition } = setupPositioned([{ position: { x: 5, y: 5 } }])
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const y = screen.getByLabelText('Position Y')
+      fireEvent.change(y, { target: { value: '-64' } })
+      fireEvent.keyDown(y, { key: 'Enter' })
+      fireEvent.blur(y)
+      expect(setNodePosition).toHaveBeenCalledWith('n1', { y: -64 })
+      fireEvent.change(y, { target: { value: '0' } })
+      fireEvent.blur(y)
+      expect(setNodePosition).toHaveBeenLastCalledWith('n1', { y: 0 })
+    })
+
+    it('reverts invalid input without committing', () => {
+      const { setNodePosition } = setupPositioned([{ position: { x: 80, y: 0 } }])
+      render(<DetailPanel onEdit={vi.fn()} />)
+      const x = screen.getByLabelText('Position X') as HTMLInputElement
+      fireEvent.change(x, { target: { value: '' } })
+      fireEvent.blur(x)
+      expect(setNodePosition).not.toHaveBeenCalled()
+      expect(x.value).toBe('80')
+    })
+
+    it('resyncs the field when the node is dragged', () => {
+      setupPositioned([{ position: { x: 10, y: 10 } }])
+      const { rerender } = render(<DetailPanel onEdit={vi.fn()} />)
+      setupPositioned([{ position: { x: 96, y: 10 } }])
+      rerender(<DetailPanel onEdit={vi.fn()} />)
+      expect((screen.getByLabelText('Position X') as HTMLInputElement).value).toBe('96')
+    })
+
+    it('labels a nested node position as relative to its parent', () => {
+      setupPositioned([
+        { parentId: 'n2', position: { x: 16, y: 40 } },
+        { data: makeNode({ label: 'pve-01', type: 'proxmox' }).data },
+      ])
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.getByText('relative to pve-01')).toBeInTheDocument()
+    })
+
+    it('shows no relative hint for a top-level node', () => {
+      setupPositioned([{ position: { x: 0, y: 0 } }])
+      render(<DetailPanel onEdit={vi.fn()} />)
+      expect(screen.queryByText(/relative to/)).not.toBeInTheDocument()
+    })
+  })
+
   describe('Size section', () => {
     function setupSized(node: Partial<Node<NodeData>>, setNodeSize = vi.fn()) {
       const state = {

@@ -390,8 +390,10 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
               </div>
             )}
 
-            {/* Check target — hidden for zigbee nodes */}
-            {!ZIGBEE_TYPES.includes((form.type ?? '') as NodeType) && (
+            {/* Check target — hidden for zigbee nodes, and when nothing is
+                checked (method none). The value is kept, so switching the
+                method back restores it. */}
+            {!ZIGBEE_TYPES.includes((form.type ?? '') as NodeType) && form.check_method !== 'none' && (
               <div className="flex flex-col gap-1.5">
                 <Label className="text-xs text-muted-foreground">Check Target</Label>
                 <Input

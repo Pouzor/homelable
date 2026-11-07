@@ -189,6 +189,22 @@ describe('NodeModal', () => {
     expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).check_target).toBe('http://192.168.1.10:8080')
   })
 
+  it('hides Check Target when the check method is none', () => {
+    renderModal({ initial: { ...BASE, check_method: 'none' } })
+    expect(screen.getByText('Check Method')).toBeTruthy()
+    expect(screen.queryByText('Check Target')).toBeNull()
+  })
+
+  it('hides Check Target on switching to none, restores it and its value on switching back', () => {
+    const { onSubmit } = renderModal({ initial: { ...BASE, check_target: 'http://192.168.1.10:8080' } })
+    fireEvent.change(selects()[1], { target: { value: 'none' } })
+    expect(screen.queryByText('Check Target')).toBeNull()
+    fireEvent.change(selects()[1], { target: { value: 'http' } })
+    expect((screen.getByPlaceholderText('http://...') as HTMLInputElement).value).toBe('http://192.168.1.10:8080')
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+    expect((onSubmit.mock.calls[0][0] as Partial<NodeData>).check_target).toBe('http://192.168.1.10:8080')
+  })
+
   // ── Type selector ─────────────────────────────────────────────────────
 
   it('pre-fills type from initial', () => {
