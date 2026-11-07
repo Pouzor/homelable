@@ -5,6 +5,38 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.7.0] - 2026-11-07
+
+### Features
+
+- Push documentation and diagrams to a git repository. (#592, refs #579)
+- A documentation homepage. (#583)
+- Emoji icons for documents in the documentation tree. (#584)
+- Right-to-left documents render in their own direction. (#586, closes #572)
+- Sync several Proxmox servers, each with an optional name. (#588, closes #502)
+- Import VMs and containers from an Unraid server. Thanks @Teknicallity! (#556)
+- Custom node and service icons, from a link or an upload. (#595, closes #383)
+- Position nodes by X/Y coordinates. (#594, closes #593)
+- Custom labels for connection points. (#568, closes #495)
+- Hover highlight: unconnected nodes and edges dim while hovering a node. Thanks @slmingol! (#537)
+- Reorder the canvas list with up/down arrows. (#597, fixes #461)
+- New AI / LLM server node type. (#585)
+
+### Fixes
+
+- Subnets are named after the configured scan ranges, not a /24. (#596, fixes #581)
+- The read-only documentation is served at `/documentation`. (#591, closes #589)
+- Ports 5000/5001 are no longer flagged as Synology. (#585, fixes #582)
+- Pages and folders can be created inside a Library folder. (#577, fixes #574)
+- Removed handles are remapped to a surviving side, so edges stay attached. Thanks @monsterlag! (#570, closes #445)
+- A bare IP match no longer overwrites a row's MAC when a DHCP lease is reused. Thanks @coddipm! (#545, fixes #466)
+- Dependency-audit and Dependabot findings cleared (follow-redirects, authlib, frontend deps). (#576, #587)
+
+### Docs
+
+- RepoCloud one-click deploy button. Thanks @cosark! (#567)
+- `ACCESS_TOKEN_EXPIRE_MINUTES` documented. (#566)
+
 ## [3.6.0] - 2026-10-07
 
 ### Features
