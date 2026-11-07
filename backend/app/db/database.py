@@ -86,6 +86,30 @@ DOCUMENT_DDL: tuple[tuple[str, str], ...] = (
 )
 
 
+async def _backfill_design_positions(conn: AsyncConnection) -> None:
+    """Give every design without a `position` one after the last positioned design.
+
+    Unpositioned rows are numbered in creation order, so an upgrade lists the
+    canvases exactly as before. Only NULLs are touched: re-running is a no-op
+    and a user's ordering is never rewritten. Numbered in Python rather than in
+    one UPDATE, whose subqueries would see the rows it is changing.
+    """
+    try:
+        top = (await conn.exec_driver_sql("SELECT MAX(position) FROM designs")).scalar()
+        rows = (
+            await conn.exec_driver_sql(
+                "SELECT id FROM designs WHERE position IS NULL ORDER BY created_at, id"
+            )
+        ).fetchall()
+        start = (top if top is not None else -1) + 1
+        for offset, (design_id,) in enumerate(rows):
+            await conn.exec_driver_sql(
+                "UPDATE designs SET position = ? WHERE id = ?", (start + offset, design_id)
+            )
+    except OperationalError as exc:
+        logger.warning("Migration designs.position.backfill failed: %s", exc)
+
+
 async def _try_migrate(conn: AsyncConnection, sql: str, *, label: str) -> None:
     """Run an idempotent migration statement, logging any error.
 
@@ -382,6 +406,12 @@ async def init_db() -> None:
             row2 = await conn.exec_driver_sql("SELECT id FROM designs WHERE design_type = 'network' LIMIT 1")
             default = row2.fetchone()
             _default_design_id = default[0] if default else _default_design_id
+        # User-chosen order of the canvas list (#461). Existing rows keep the
+        # creation order they have always been listed in.
+        await _try_migrate(
+            conn, "ALTER TABLE designs ADD COLUMN position INTEGER", label="designs.position",
+        )
+        await _backfill_design_positions(conn)
 
         # Add design_id to nodes
         await _try_migrate(

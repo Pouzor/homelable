@@ -23,6 +23,9 @@ class Design(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     design_type: Mapped[str] = mapped_column(String, nullable=False, default="network")
     icon: Mapped[str | None] = mapped_column(String, nullable=True, default="dashboard")
+    # Place in the canvas list, 0 first. Nullable so a row written without one
+    # (an older client, raw SQL) still lists — last, by creation date.
+    position: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
