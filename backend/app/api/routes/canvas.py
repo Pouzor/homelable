@@ -12,6 +12,7 @@ from app.db.models import CanvasState, Design, Edge, InventoryDevice, Node
 from app.schemas.canvas import CanvasSaveRequest, CanvasStateResponse
 from app.schemas.edges import EdgeResponse
 from app.schemas.nodes import NodeResponse
+from app.services.design_order import next_design_position
 from app.services.inventory_sync import (
     facts_from_payload,
     hydrated_node,
@@ -62,7 +63,12 @@ async def save_canvas(
         first = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
         design_id = first.id if first else None
     if design_id is None:
-        new_design = Design(id=str(uuid.uuid4()), name="Network Topology", design_type="network")
+        new_design = Design(
+            id=str(uuid.uuid4()),
+            name="Network Topology",
+            design_type="network",
+            position=await next_design_position(db),
+        )
         db.add(new_design)
         await db.flush()
         design_id = new_design.id

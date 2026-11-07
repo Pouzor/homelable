@@ -205,6 +205,58 @@ async def test_copy_leaves_source_untouched(client: AsyncClient, headers: dict):
     assert src_canvas["nodes"][0]["id"] == n1["id"]
 
 
+# ── reorder (#461) ────────────────────────────────────────────────────────────
+
+async def _names(client: AsyncClient, headers: dict) -> list[str]:
+    res = await client.get("/api/v1/designs", headers=headers)
+    return [d["name"] for d in res.json()]
+
+
+async def test_reorder_requires_auth(client: AsyncClient):
+    res = await client.put("/api/v1/designs/order", json={"ids": []})
+    assert res.status_code == 401
+
+
+async def test_reorder_sets_list_order(client: AsyncClient, headers: dict):
+    a = await _create(client, headers, name="A")
+    b = await _create(client, headers, name="B")
+    c = await _create(client, headers, name="C")
+    res = await client.put("/api/v1/designs/order", json={"ids": [c["id"], a["id"], b["id"]]}, headers=headers)
+    assert res.status_code == 204, res.text
+    assert await _names(client, headers) == ["C", "A", "B"]
+
+
+async def test_new_and_copied_designs_append_after_a_reorder(client: AsyncClient, headers: dict):
+    a = await _create(client, headers, name="A")
+    b = await _create(client, headers, name="B")
+    await client.put("/api/v1/designs/order", json={"ids": [b["id"], a["id"]]}, headers=headers)
+    await _create(client, headers, name="New")
+    res = await client.post(f"/api/v1/designs/{b['id']}/copy", json={"name": "Copy"}, headers=headers)
+    assert res.status_code == 201
+    assert await _names(client, headers) == ["B", "A", "New", "Copy"]
+
+
+async def test_reorder_rejects_missing_design(client: AsyncClient, headers: dict):
+    a = await _create(client, headers, name="A")
+    await _create(client, headers, name="B")
+    res = await client.put("/api/v1/designs/order", json={"ids": [a["id"]]}, headers=headers)
+    assert res.status_code == 422
+    assert await _names(client, headers) == ["A", "B"]
+
+
+async def test_reorder_rejects_unknown_id(client: AsyncClient, headers: dict):
+    a = await _create(client, headers, name="A")
+    res = await client.put("/api/v1/designs/order", json={"ids": [a["id"], "nope"]}, headers=headers)
+    assert res.status_code == 422
+
+
+async def test_reorder_rejects_duplicate_id(client: AsyncClient, headers: dict):
+    a = await _create(client, headers, name="A")
+    await _create(client, headers, name="B")
+    res = await client.put("/api/v1/designs/order", json={"ids": [a["id"], a["id"]]}, headers=headers)
+    assert res.status_code == 422
+
+
 # ── update ────────────────────────────────────────────────────────────────────
 
 async def test_update_design_renames(client: AsyncClient, headers: dict):

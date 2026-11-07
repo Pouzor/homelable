@@ -289,6 +289,15 @@ export function updateDesign(id: string, patch: Partial<Pick<Design, 'name' | 'i
   return updated
 }
 
+/** Persist the canvas list in `ids` order; unnamed designs keep their place at the end. */
+export function reorderDesigns(ids: string[]): void {
+  const designs = listDesigns()
+  const rank = new Map(ids.map((id, i) => [id, i]))
+  const at = (d: Design) => rank.get(d.id) ?? ids.length
+  // Array.prototype.sort is stable, so unnamed designs stay in their old order.
+  writeDesigns([...designs].sort((a, b) => at(a) - at(b)))
+}
+
 export function deleteDesign(id: string): void {
   writeDesigns(listDesigns().filter((d) => d.id !== id))
   localStorage.removeItem(canvasKey(id))

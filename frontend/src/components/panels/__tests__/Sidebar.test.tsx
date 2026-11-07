@@ -24,6 +24,9 @@ vi.mock('@/api/client', () => ({
     runs: vi.fn().mockResolvedValue({ data: [] }),
     stop: vi.fn().mockResolvedValue({}),
   },
+  designsApi: {
+    reorder: vi.fn().mockResolvedValue({}),
+  },
   settingsApi: {
     get: vi.fn().mockResolvedValue({ data: { interval_seconds: 60 } }),
     save: vi.fn().mockResolvedValue({ data: { interval_seconds: 60 } }),
@@ -344,6 +347,64 @@ describe('Sidebar', () => {
   })
 })
 
+// ── Canvas order (#461) ──────────────────────────────────────────────────────
+
+describe('Sidebar — canvas order', () => {
+  const d = (id: string, name: string): Design => ({
+    id, name, design_type: 'network', icon: null,
+    created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  })
+
+  beforeEach(async () => {
+    mockStore()
+    mockAuth()
+    vi.clearAllMocks()
+    const { useDesignStore } = await import('@/stores/designStore')
+    useDesignStore.setState({
+      designs: [d('a', 'Alpha'), d('b', 'Bravo'), d('c', 'Charlie')],
+      activeDesignId: 'a',
+      loaded: true,
+    })
+  })
+
+  const order = async () => {
+    const { useDesignStore } = await import('@/stores/designStore')
+    return useDesignStore.getState().designs.map((x) => x.id)
+  }
+
+  it('disables Move up on the first canvas and Move down on the last', () => {
+    render(<Sidebar {...defaultProps} />)
+    fireEvent.click(screen.getByText('Alpha'))
+    expect(screen.getByLabelText('Move Alpha up')).toBeDisabled()
+    expect(screen.getByLabelText('Move Alpha down')).toBeEnabled()
+    expect(screen.getByLabelText('Move Charlie up')).toBeEnabled()
+    expect(screen.getByLabelText('Move Charlie down')).toBeDisabled()
+  })
+
+  it('moves a canvas and saves the whole order, keeping the switcher open', async () => {
+    const { designsApi } = await import('@/api/client')
+    render(<Sidebar {...defaultProps} />)
+    fireEvent.click(screen.getByText('Alpha'))
+    fireEvent.click(screen.getByLabelText('Move Alpha down'))
+    expect(await order()).toEqual(['b', 'a', 'c'])
+    expect(designsApi.reorder).toHaveBeenCalledWith(['b', 'a', 'c'])
+    fireEvent.click(screen.getByLabelText('Move Charlie up'))
+    expect(await order()).toEqual(['b', 'c', 'a'])
+    expect(designsApi.reorder).toHaveBeenLastCalledWith(['b', 'c', 'a'])
+  })
+
+  it('rolls the order back and warns when the save fails', async () => {
+    const { designsApi } = await import('@/api/client')
+    const { toast } = await import('sonner')
+    vi.mocked(designsApi.reorder).mockRejectedValueOnce(new Error('boom'))
+    render(<Sidebar {...defaultProps} />)
+    fireEvent.click(screen.getByText('Alpha'))
+    fireEvent.click(screen.getByLabelText('Move Bravo up'))
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Failed to reorder canvases'))
+    expect(await order()).toEqual(['a', 'b', 'c'])
+  })
+})
+
 // ── Rack canvas ────────────────────────────────────────────────────────────────
 // Same component, a different half of it: the rack branch swaps the view label,
 // the actions, the body and the footer. A mocked canvas store would happily hide
@@ -523,6 +584,18 @@ describe('Sidebar (standalone)', () => {
     expect(standaloneStorage.listDesigns().map((d) => d.name)).toEqual(['Keep'])
     expect(ds.getState().designs.map((d) => d.name)).toEqual(['Keep'])
     confirmSpy.mockRestore()
+  })
+
+  it('reorders canvases via localStorage (no API)', async () => {
+    standaloneStorage.createDesign('First')
+    standaloneStorage.createDesign('Second')
+    const ds = await renderStandalone([], standaloneStorage.listDesigns())
+
+    fireEvent.click(screen.getByText('First'))         // open switcher
+    fireEvent.click(screen.getByLabelText('Move Second up'))
+
+    expect(standaloneStorage.listDesigns().map((d) => d.name)).toEqual(['Second', 'First'])
+    expect(ds.getState().designs.map((d) => d.name)).toEqual(['Second', 'First'])
   })
 })
 

@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.db.database import get_db
 from app.db.models import CanvasState, Design, Edge, Node, Rack, RackCable, RackDevice
-from app.schemas.designs import DesignCopy, DesignCreate, DesignResponse, DesignUpdate
+from app.schemas.designs import DesignCopy, DesignCreate, DesignOrder, DesignResponse, DesignUpdate
+from app.services.design_order import LIST_ORDER, next_design_position
 from app.services.doc_links import unlink_documents
 
 router = APIRouter()
@@ -23,7 +24,7 @@ async def list_designs(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ) -> list[DesignResponse]:
-    designs = (await db.execute(select(Design).order_by(Design.created_at))).scalars().all()
+    designs = (await db.execute(select(Design).order_by(*LIST_ORDER))).scalars().all()
     # One grouped query for all designs → node/group/text counts per design.
     rows = (
         await db.execute(select(Node.design_id, Node.type, func.count()).group_by(Node.design_id, Node.type))
@@ -57,7 +58,12 @@ async def create_design(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ) -> DesignResponse:
-    design = Design(name=body.name, design_type=body.design_type, icon=body.icon)
+    design = Design(
+        name=body.name,
+        design_type=body.design_type,
+        icon=body.icon,
+        position=await next_design_position(db),
+    )
     db.add(design)
     await db.flush()
     # Create empty canvas state for the new design
@@ -79,7 +85,12 @@ async def copy_design(
     if not source:
         raise HTTPException(404, "Source design not found")
 
-    new_design = Design(name=body.name, icon=body.icon, design_type=source.design_type)
+    new_design = Design(
+        name=body.name,
+        icon=body.icon,
+        design_type=source.design_type,
+        position=await next_design_position(db),
+    )
     db.add(new_design)
     await db.flush()
 
@@ -182,6 +193,24 @@ async def copy_design(
     await db.commit()
     await db.refresh(new_design)
     return DesignResponse.model_validate(new_design)
+
+
+# Declared before `PUT /{design_id}`, which would otherwise take "order" for an id.
+@router.put("/order", status_code=204)
+async def reorder_designs(
+    body: DesignOrder,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user),
+) -> None:
+    """Set the canvas list order. `ids` must name every design exactly once."""
+    designs = {d.id: d for d in (await db.execute(select(Design))).scalars().all()}
+    if len(set(body.ids)) != len(body.ids):
+        raise HTTPException(422, "Duplicate design id in order")
+    if set(body.ids) != set(designs):
+        raise HTTPException(422, "Order must list every design exactly once")
+    for position, design_id in enumerate(body.ids):
+        designs[design_id].position = position
+    await db.commit()
 
 
 @router.put("/{design_id}", response_model=DesignResponse)
