@@ -378,6 +378,8 @@ Restart the backend (`docker compose restart backend`).
 }
 ```
 
+Counts are per device: a device drawn on several canvases is counted once. Canvas furniture with no device behind it (groups, text) counts as `unknown`.
+
 ### gethomepage `services.yaml` snippet
 
 ```yaml

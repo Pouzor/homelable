@@ -106,3 +106,31 @@ async def test_summary_aggregates_counts(
     # SQLite returns naive datetimes; compare prefix only.
     assert body["last_scan_at"] is not None
     assert body["last_scan_at"].startswith("2026-05-14T10:00:00")
+
+
+@pytest.mark.asyncio
+async def test_summary_counts_a_device_once_across_canvases(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The same device drawn on several canvases is one device, not several."""
+    settings.homepage_api_key = "topsecret"
+    down = InventoryDevice(status="approved", status_live="offline")
+    up = InventoryDevice(status="approved", status_live="online", ieee_address="0x1")
+    db_session.add_all([down, up])
+    await db_session.flush()
+    for canvas in range(3):
+        db_session.add(Node(type="server", label=f"down-{canvas}", device_id=down.id))
+        db_session.add(Node(type="iot", label=f"up-{canvas}", device_id=up.id))
+    # Furniture has no device behind it, so each one still counts as unknown.
+    db_session.add_all([Node(type="group", label="g1"), Node(type="group", label="g2")])
+    await db_session.commit()
+
+    res = await client.get(
+        "/api/v1/stats/summary", headers={"X-API-Key": "topsecret"}
+    )
+    body = res.json()
+    assert body["offline"] == 1
+    assert body["online"] == 1
+    assert body["unknown"] == 2
+    assert body["nodes"] == 4
+    assert body["zigbee_devices"] == 1
