@@ -75,6 +75,8 @@ Docker (from the **[pre-built GHCR images](./INSTALLATION.md#pre-built-docker-im
 
 [![Deploy on RepoCloud](https://d16t0pc4846x52.cloudfront.net/deploylobe.svg)](https://repocloud.io/details/Homelable/)
 
+[![Deploy to ZopDay](https://zop.dev/deploytozopday-inkhard.svg)](https://zop.dev/zopday/app/deploy?image=ghcr.io/pouzor/homelable-frontend-standalone&port=80&name=homelable&utm_source=github&utm_medium=one_click&utm_content=homelable)
+
 ---
 
 ## Rack Canvas
