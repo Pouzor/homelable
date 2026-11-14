@@ -6,7 +6,7 @@
  * much of the cabling is on screen.
  */
 import { useState } from 'react'
-import { Cable, Eye, EyeOff, Link2, MousePointer2, Plus, Trash2, X } from 'lucide-react'
+import { Cable, Eye, EyeOff, Link2, MousePointer2, Plus, Tag, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -37,6 +37,8 @@ export function RackToolbarActions() {
   const toggleCableMode = useRackStore((s) => s.toggleCableMode)
   const cableVisibility = useRackStore((s) => s.cableVisibility)
   const setCableVisibility = useRackStore((s) => s.setCableVisibility)
+  const labelsVisible = useRackStore((s) => s.cableLabelsVisible)
+  const setLabelsVisible = useRackStore((s) => s.setCableLabelsVisible)
   const cableDraft = useRackStore((s) => s.cableDraft)
   const cancelCableDraft = useRackStore((s) => s.cancelCableDraft)
   const selectedCableId = useRackStore((s) => s.selectedCableId)
@@ -116,6 +118,21 @@ export function RackToolbarActions() {
           ))}
         </SelectContent>
       </Select>
+
+      <Button
+        size="sm"
+        variant="ghost"
+        className={`${ghost} ${labelsVisible ? 'text-[#00d4ff]' : ''}`}
+        onClick={() => setLabelsVisible(!labelsVisible)}
+        aria-pressed={labelsVisible}
+        title={
+          labelsVisible
+            ? 'Hide the cable labels — the selected cable keeps its own'
+            : 'Show the cable labels on the canvas'
+        }
+      >
+        <Tag size={14} /> Labels
+      </Button>
 
       {!STANDALONE && (
         <Button

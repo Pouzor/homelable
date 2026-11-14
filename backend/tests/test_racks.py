@@ -590,6 +590,50 @@ class TestSaveAndLoad:
         assert cable["properties"] == []
         assert cable["label_visible"] is True
 
+    async def test_round_trips_the_cable_label_offset(self, client: AsyncClient, headers):
+        design_id = await _design(client, headers)
+        payload = _state(design_id)
+        payload["cables"][0].update({"label_offset_x": 42.5, "label_offset_y": -17})
+        assert (
+            await client.post("/api/v1/racks/save", json=payload, headers=headers)
+        ).status_code == 200
+
+        cable = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["cables"][0]
+        assert cable["label_offset_x"] == 42.5
+        assert cable["label_offset_y"] == -17
+
+        # Dragged back onto the run: a second save writes the zero, not skips it.
+        payload["cables"][0].update({"label_offset_x": 0, "label_offset_y": 0})
+        await client.post("/api/v1/racks/save", json=payload, headers=headers)
+        cable = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["cables"][0]
+        assert (cable["label_offset_x"], cable["label_offset_y"]) == (0, 0)
+
+    async def test_defaults_the_cable_label_offset_to_the_midpoint(
+        self, client: AsyncClient, headers
+    ):
+        # The MCP server and older clients send no offset at all.
+        design_id = await _design(client, headers)
+        await client.post("/api/v1/racks/save", json=_state(design_id), headers=headers)
+
+        cable = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["cables"][0]
+        assert (cable["label_offset_x"], cable["label_offset_y"]) == (0, 0)
+
+    @pytest.mark.parametrize("value", [1e9, -1e9, "far"])
+    async def test_rejects_an_unusable_cable_label_offset(
+        self, client: AsyncClient, headers, value
+    ):
+        design_id = await _design(client, headers)
+        payload = _state(design_id)
+        payload["cables"][0]["label_offset_x"] = value
+        res = await client.post("/api/v1/racks/save", json=payload, headers=headers)
+        assert res.status_code == 422
+
     async def test_requires_auth(self, client: AsyncClient):
         assert (await client.get("/api/v1/racks?design_id=any")).status_code == 401
 

@@ -8,6 +8,7 @@
  * relative to the artwork they sit on.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { ZoomIn, ZoomOut } from 'lucide-react'
 import { Faceplate } from './Faceplate'
 import { INNER_WIDTH_PX, U_PX } from '../layout'
 import { clampPort, snapThreshold, snapToPeers } from '../portLayout'
@@ -25,6 +26,13 @@ const EDITOR_FULL_WIDTH = 660
  * plate already gets.
  */
 const MIN_PLATE_PX = 90
+
+/**
+ * Magnification steps for placement. A 48-port 1U switch leaves each socket a
+ * few pixels wide at 1×; the plate grows past the panel and scrolls instead.
+ * Port positions are fractions of the plate, so zooming never moves one.
+ */
+export const EDITOR_ZOOM_STEPS = [1, 1.5, 2, 3, 4] as const
 
 /** Nudge per arrow-key press, in unit coordinates. */
 const NUDGE_STEP = 0.01
@@ -82,10 +90,14 @@ export function PortPositionEditor({
   const [measured, setMeasured] = useState<number | null>(null)
   const [dragging, setDragging] = useState<string | null>(null)
   const [guides, setGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null })
+  const [zoomStep, setZoomStep] = useState(0)
+  // The controls only exist in placement mode; a preview always draws at 1×.
+  const magnify = interactive ? EDITOR_ZOOM_STEPS[zoomStep] : 1
 
   // The width a full-width plate gets: whatever the caller pinned, else the
-  // room this editor was actually given, else the pre-measurement default.
-  const stageWidth = fullWidth ?? measured ?? EDITOR_FULL_WIDTH
+  // room this editor was actually given, else the pre-measurement default —
+  // times the placement zoom, which lets it outgrow the panel and scroll.
+  const stageWidth = (fullWidth ?? measured ?? EDITOR_FULL_WIDTH) * magnify
   // Editor pixels per canvas pixel, before the small-plate blow-up below.
   const scale = stageWidth / INNER_WIDTH_PX['19']
   const width = (stageWidth * colSpan) / RACK_COLUMNS
@@ -172,75 +184,104 @@ export function PortPositionEditor({
 
   return (
     <div ref={stageRef} className="flex w-full flex-col items-center gap-2">
-      <div
-        ref={plateRef}
-        data-testid="faceplate-stage"
-        className="relative touch-none select-none"
-        style={{ width: plateW, height: plateH }}
-        onPointerMove={(e) => {
-          if (interactive && dragging) moveTo(dragging, e.clientX, e.clientY)
-        }}
-        onPointerUp={endDrag}
-        onPointerLeave={endDrag}
-      >
-        <Faceplate
-          faceplateId={faceplateId}
-          label={label}
-          status={status}
-          ports={ports}
-          width={plateW}
-          height={plateH}
-          colorOverride={color}
-          portScale={zoom * scale}
-          revealed
-        />
-
-        {/* Alignment guides — drawn only while a drag is actually snapped. */}
-        {guides.x !== null && (
-          <div
-            className="pointer-events-none absolute top-0 h-full w-px"
-            style={{ left: `${guides.x * 100}%`, background: palette.accent, opacity: 0.7 }}
+      {interactive && (
+        <div className="flex items-center gap-1 self-end text-[11px] text-muted-foreground">
+          <button
+            type="button"
+            aria-label="Zoom out"
+            disabled={zoomStep === 0}
+            onClick={() => setZoomStep((z) => Math.max(0, z - 1))}
+            className="rounded p-1 hover:bg-[#21262d] hover:text-foreground disabled:opacity-40 cursor-pointer disabled:cursor-default"
+          >
+            <ZoomOut size={14} />
+          </button>
+          <span data-testid="faceplate-zoom" className="w-9 text-center font-mono">
+            {Math.round(magnify * 100)}%
+          </span>
+          <button
+            type="button"
+            aria-label="Zoom in"
+            disabled={zoomStep === EDITOR_ZOOM_STEPS.length - 1}
+            onClick={() => setZoomStep((z) => Math.min(EDITOR_ZOOM_STEPS.length - 1, z + 1))}
+            className="rounded p-1 hover:bg-[#21262d] hover:text-foreground disabled:opacity-40 cursor-pointer disabled:cursor-default"
+          >
+            <ZoomIn size={14} />
+          </button>
+        </div>
+      )}
+      {/* Scrolls once zoom makes the plate wider than the panel; `mx-auto`
+          keeps a plate that still fits centred. */}
+      <div className="w-full overflow-x-auto">
+        <div
+          ref={plateRef}
+          data-testid="faceplate-stage"
+          className="relative mx-auto touch-none select-none"
+          style={{ width: plateW, height: plateH }}
+          onPointerMove={(e) => {
+            if (interactive && dragging) moveTo(dragging, e.clientX, e.clientY)
+          }}
+          onPointerUp={endDrag}
+          onPointerLeave={endDrag}
+        >
+          <Faceplate
+            faceplateId={faceplateId}
+            label={label}
+            status={status}
+            ports={ports}
+            width={plateW}
+            height={plateH}
+            colorOverride={color}
+            portScale={zoom * scale}
+            revealed
           />
-        )}
-        {guides.y !== null && (
-          <div
-            className="pointer-events-none absolute left-0 h-px w-full"
-            style={{ top: `${guides.y * 100}%`, background: palette.accent, opacity: 0.7 }}
-          />
-        )}
 
-        {/* Grab handles ride above the drawn sockets: the artwork is too small to
-            aim at, and a handle can take focus and wear a name, which an SVG
-            socket cannot. */}
-        {interactive &&
-          ports.map((port) => {
-            const selected = selectedPortId === port.id
-            return (
-              <button
-                key={port.id}
-                type="button"
-                aria-label={`Move port ${port.label}`}
-                data-port-handle={port.id}
-                className="absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border text-[8px] active:cursor-grabbing"
-                style={{
-                  left: `${port.x * 100}%`,
-                  top: `${port.y * 100}%`,
-                  borderColor: selected ? palette.accent : 'rgba(255,255,255,0.35)',
-                  background: selected ? 'rgba(0,212,255,0.18)' : 'rgba(13,17,23,0.35)',
-                }}
-                onPointerDown={(e) => {
-                  // Keep the press off the plate: it would start an HTML5 drag.
-                  e.preventDefault()
-                  onSelect(port.id)
-                  setDragging(port.id)
-                }}
-              >
-                <span className="pointer-events-none max-w-[22px] truncate text-white/80">
-                  {port.label}
-                </span>
-              </button>
-            )
-          })}
+          {/* Alignment guides — drawn only while a drag is actually snapped. */}
+          {guides.x !== null && (
+            <div
+              className="pointer-events-none absolute top-0 h-full w-px"
+              style={{ left: `${guides.x * 100}%`, background: palette.accent, opacity: 0.7 }}
+            />
+          )}
+          {guides.y !== null && (
+            <div
+              className="pointer-events-none absolute left-0 h-px w-full"
+              style={{ top: `${guides.y * 100}%`, background: palette.accent, opacity: 0.7 }}
+            />
+          )}
+
+          {/* Grab handles ride above the drawn sockets: the artwork is too small to
+              aim at, and a handle can take focus and wear a name, which an SVG
+              socket cannot. */}
+          {interactive &&
+            ports.map((port) => {
+              const selected = selectedPortId === port.id
+              return (
+                <button
+                  key={port.id}
+                  type="button"
+                  aria-label={`Move port ${port.label}`}
+                  data-port-handle={port.id}
+                  className="absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border text-[8px] active:cursor-grabbing"
+                  style={{
+                    left: `${port.x * 100}%`,
+                    top: `${port.y * 100}%`,
+                    borderColor: selected ? palette.accent : 'rgba(255,255,255,0.35)',
+                    background: selected ? 'rgba(0,212,255,0.18)' : 'rgba(13,17,23,0.35)',
+                  }}
+                  onPointerDown={(e) => {
+                    // Keep the press off the plate: it would start an HTML5 drag.
+                    e.preventDefault()
+                    onSelect(port.id)
+                    setDragging(port.id)
+                  }}
+                >
+                  <span className="pointer-events-none max-w-[22px] truncate text-white/80">
+                    {port.label}
+                  </span>
+                </button>
+              )
+            })}
+        </div>
       </div>
 
       {interactive && (

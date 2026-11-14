@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useRackStore } from '../store'
 import { getFaceplate } from '../faceplates'
 import { RACK_COLUMNS, type InventoryDevice } from '@/types'
-import { MAX_RACK_U, MIN_RACK_U } from '../rackDefaults'
+import { MAX_LABEL_OFFSET, MAX_RACK_U, MIN_RACK_U } from '../rackDefaults'
 import { demoNetworkLinks } from '../demoData'
 
 const store = () => useRackStore.getState()
@@ -989,5 +989,64 @@ describe('dirty tracking', () => {
     expect(store().devices).toEqual([])
     expect(store().inventory).toEqual([])
     expect(store().hasUnsavedChanges).toBe(false)
+  })
+})
+
+describe('cable labels', () => {
+  it('shows the labels by default, and toggling them is not an edit', () => {
+    expect(store().cableLabelsVisible).toBe(true)
+    const seq = store().editSeq
+    store().setCableLabelsVisible(false)
+    expect(store().cableLabelsVisible).toBe(false)
+    // A view setting: no Save badge, no autosave.
+    expect(store().editSeq).toBe(seq)
+  })
+
+  it('parks a label off its run, as an edit', () => {
+    const cable = store().cables[0]
+    const seq = store().editSeq
+    store().moveCableLabel(cable.id, { x: 40, y: -12 })
+    expect(store().cables[0].labelOffset).toEqual({ x: 40, y: -12 })
+    expect(store().editSeq).toBe(seq + 1)
+    expect(store().hasUnsavedChanges).toBe(true)
+  })
+
+  it('puts the label back on the run for null and for 0/0', () => {
+    const id = store().cables[0].id
+    store().moveCableLabel(id, { x: 40, y: 0 })
+    store().moveCableLabel(id, null)
+    expect(store().cables[0].labelOffset).toBeUndefined()
+
+    store().moveCableLabel(id, { x: 40, y: 0 })
+    store().moveCableLabel(id, { x: 0, y: 0 })
+    expect(store().cables[0].labelOffset).toBeUndefined()
+  })
+
+  it('clamps each axis to what the backend accepts', () => {
+    // Past the bound the save is a 422, and the whole rack state is lost with it.
+    const id = store().cables[0].id
+    store().moveCableLabel(id, { x: 1e9, y: -1e9 })
+    expect(store().cables[0].labelOffset).toEqual({ x: MAX_LABEL_OFFSET, y: -MAX_LABEL_OFFSET })
+  })
+
+  it('treats a non-finite axis as the midpoint', () => {
+    const id = store().cables[0].id
+    store().moveCableLabel(id, { x: Number.NaN, y: 8 })
+    expect(store().cables[0].labelOffset).toEqual({ x: 0, y: 8 })
+  })
+
+  it('records no edit when the label lands where it already was', () => {
+    const id = store().cables[0].id
+    store().moveCableLabel(id, { x: 5, y: 5 })
+    const seq = store().editSeq
+    store().moveCableLabel(id, { x: 5, y: 5 })
+    store().moveCableLabel('no-such-cable', { x: 1, y: 1 })
+    expect(store().editSeq).toBe(seq)
+  })
+
+  it('leaves the other cables where they were', () => {
+    const [first, second] = store().cables
+    store().moveCableLabel(first.id, { x: 10, y: 10 })
+    expect(store().cables.find((c) => c.id === second.id)!.labelOffset).toBeUndefined()
   })
 })

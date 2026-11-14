@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Kept in sync with the frontend rack model (frontend/src/types).
 WIDTH_STANDARDS = {"19", "10"}
@@ -11,6 +11,9 @@ CABLE_TYPES = {"ethernet", "fiber"}
 PORT_VISIBILITIES = {"auto", "always", "hover"}
 # 12-column horizontal grid: full = 12, half = 6, third = 4, quarter = 3.
 RACK_COLUMNS = 12
+# A cable label dragged further than this from its run is lost off-canvas; the
+# bound also keeps a NaN/inf or garbage value out of the table.
+MAX_LABEL_OFFSET = 10_000.0
 
 
 class RackSave(BaseModel):
@@ -114,6 +117,13 @@ class RackCableSave(BaseModel):
     color: str = "#39d353"
     label: str | None = None
     label_visible: bool = False
+    # Annotation plate position, in canvas units from the run's midpoint.
+    label_offset_x: float = Field(
+        default=0.0, ge=-MAX_LABEL_OFFSET, le=MAX_LABEL_OFFSET, allow_inf_nan=False
+    )
+    label_offset_y: float = Field(
+        default=0.0, ge=-MAX_LABEL_OFFSET, le=MAX_LABEL_OFFSET, allow_inf_nan=False
+    )
     # [{key, value, icon, visible}] — free-form, same shape as node properties.
     properties: list[dict[str, Any]] = []
 
@@ -260,7 +270,15 @@ class RackCableResponse(BaseModel):
     color: str
     label: str | None = None
     label_visible: bool = False
+    label_offset_x: float = 0.0
+    label_offset_y: float = 0.0
     properties: list[dict[str, Any]] = []
+
+    @field_validator("label_offset_x", "label_offset_y", mode="before")
+    @classmethod
+    def _offset_or_zero(cls, v: Any) -> float:
+        """Rows written before the columns existed read back as NULL."""
+        return float(v) if isinstance(v, int | float) else 0.0
 
     @field_validator("properties", mode="before")
     @classmethod

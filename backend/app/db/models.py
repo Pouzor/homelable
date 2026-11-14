@@ -221,6 +221,10 @@ class RackCable(Base):
     label: Mapped[str | None] = mapped_column(String, nullable=True)
     # Print the label next to the run on the canvas.
     label_visible: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Where the user dragged the annotation plate, in canvas units from the run's
+    # midpoint — so the plate follows the cable when either end moves.
+    label_offset_x: Mapped[float] = mapped_column(Float, default=0.0)
+    label_offset_y: Mapped[float] = mapped_column(Float, default=0.0)
     # [{key, value, icon, visible}] — same records nodes carry; the visible ones
     # are drawn beside the cable.
     properties: Mapped[list[Any]] = mapped_column(JSON, default=list)

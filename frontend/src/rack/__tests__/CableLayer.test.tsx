@@ -208,3 +208,150 @@ describe('CableLayer selection', () => {
     expect(strokeWidths()).toContain('7')
   })
 })
+
+/** Gives the first cable a printed label, and every cable on screen. */
+function labelFirstCable() {
+  const store = useRackStore.getState()
+  store.setCableVisibility('always')
+  store.updateCable(store.cables[0].id, { label: 'Uplink', labelVisible: true })
+  return useRackStore.getState().cables[0]
+}
+
+/** Centre of a plate, from the text it prints — the plate is centred on it. */
+const plateAt = (plate: Element) => {
+  const text = plate.querySelector('text')!
+  return { x: Number(text.getAttribute('x')) }
+}
+
+describe('CableLayer label toggle', () => {
+  it('hides every plate when labels are off', () => {
+    labelFirstCable()
+    useRackStore.getState().setCableLabelsVisible(false)
+    const { queryAllByTestId, container } = render(<CableLayer />)
+    expect(queryAllByTestId('cable-annotation')).toHaveLength(0)
+    // The runs themselves stay drawn — only the plates go.
+    expect(hitPaths(container).length).toBeGreaterThan(0)
+  })
+
+  it('keeps the plate of the selected cable when labels are off', () => {
+    const cable = labelFirstCable()
+    useRackStore.getState().setCableLabelsVisible(false)
+    useRackStore.getState().selectCable(cable.id)
+    const { getAllByTestId } = render(<CableLayer />)
+    expect(getAllByTestId('cable-annotation')).toHaveLength(1)
+  })
+
+  it('drops the plate of a run dimmed by the hovered device', () => {
+    const store = useRackStore.getState()
+    store.setCableVisibility('always')
+    const [first] = store.cables
+    // Every demo run starts on the core switch, so hover the far end: any run
+    // that does not touch the hovered device is dimmed.
+    const hovered = first.to.deviceId
+    const other = store.cables.find(
+      (c) => c.from.deviceId !== hovered && c.to.deviceId !== hovered,
+    )!
+    store.updateCable(first.id, { label: 'Focused', labelVisible: true })
+    store.updateCable(other.id, { label: 'Elsewhere', labelVisible: true })
+    store.hoverDevice(hovered)
+
+    const { getAllByTestId } = render(<CableLayer />)
+    const printed = getAllByTestId('cable-annotation').map((g) => g.querySelector('text')!.textContent)
+    expect(printed).toEqual(['Focused'])
+  })
+})
+
+describe('CableLayer label drag', () => {
+  it('draws a plate at its saved offset, tied back to the run', () => {
+    labelFirstCable()
+    const { getByTestId, queryByTestId, rerender } = render(<CableLayer />)
+    const midX = plateAt(getByTestId('cable-annotation')).x
+    expect(queryByTestId('cable-annotation-leader')).toBeNull()
+
+    act(() => useRackStore.getState().moveCableLabel(useRackStore.getState().cables[0].id, { x: 50, y: 20 }))
+    rerender(<CableLayer />)
+    expect(plateAt(getByTestId('cable-annotation')).x).toBeCloseTo(midX + 50)
+    const leader = getByTestId('cable-annotation-leader')
+    expect(Number(leader.getAttribute('x2')) - Number(leader.getAttribute('x1'))).toBeCloseTo(50)
+  })
+
+  it('moves the plate with the pointer and saves the offset once, on release', () => {
+    const cable = labelFirstCable()
+    const { getByTestId } = render(<CableLayer />)
+    const midX = plateAt(getByTestId('cable-annotation')).x
+    const seq = useRackStore.getState().editSeq
+
+    // The flow mock maps screen to flow 1:1, so client deltas are offsets.
+    fireEvent.pointerDown(getByTestId('cable-annotation'), { button: 0, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(window, { clientX: 130, clientY: 90 })
+    // Live while dragging, but nothing written yet.
+    expect(plateAt(getByTestId('cable-annotation')).x).toBeCloseTo(midX + 30)
+    expect(useRackStore.getState().editSeq).toBe(seq)
+
+    fireEvent.pointerMove(window, { clientX: 160, clientY: 80 })
+    act(() => {
+      fireEvent.pointerUp(window, { clientX: 160, clientY: 80 })
+    })
+    const saved = useRackStore.getState().cables.find((c) => c.id === cable.id)!
+    expect(saved.labelOffset).toEqual({ x: 60, y: -20 })
+    expect(useRackStore.getState().editSeq).toBe(seq + 1)
+  })
+
+  it('starts a second drag from where the first one left the plate', () => {
+    const cable = labelFirstCable()
+    act(() => useRackStore.getState().moveCableLabel(cable.id, { x: 10, y: 10 }))
+    const { getByTestId } = render(<CableLayer />)
+
+    fireEvent.pointerDown(getByTestId('cable-annotation'), { button: 0, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(window, { clientX: 5, clientY: 5 })
+    act(() => {
+      fireEvent.pointerUp(window, { clientX: 5, clientY: 5 })
+    })
+    expect(useRackStore.getState().cables.find((c) => c.id === cable.id)!.labelOffset).toEqual({ x: 15, y: 15 })
+  })
+
+  it('reads a press that barely moves as a click: it selects, and moves nothing', () => {
+    const cable = labelFirstCable()
+    const { getByTestId } = render(<CableLayer />)
+    const plate = getByTestId('cable-annotation')
+
+    fireEvent.pointerDown(plate, { button: 0, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(window, { clientX: 101, clientY: 101 })
+    act(() => {
+      fireEvent.pointerUp(window, { clientX: 101, clientY: 101 })
+    })
+    fireEvent.click(plate)
+
+    const state = useRackStore.getState()
+    expect(state.cables.find((c) => c.id === cable.id)!.labelOffset).toBeUndefined()
+    expect(state.selectedCableId).toBe(cable.id)
+  })
+
+  it('does not select the cable on the click that ends a drag', () => {
+    labelFirstCable()
+    const { getByTestId } = render(<CableLayer />)
+    const plate = getByTestId('cable-annotation')
+
+    fireEvent.pointerDown(plate, { button: 0, clientX: 100, clientY: 100 })
+    fireEvent.pointerMove(window, { clientX: 140, clientY: 100 })
+    act(() => {
+      fireEvent.pointerUp(window, { clientX: 140, clientY: 100 })
+    })
+    fireEvent.click(plate)
+    expect(useRackStore.getState().selectedCableId).toBeNull()
+  })
+
+  it('opts the plate out of React Flow panning, and out of the pointer mid-patch', () => {
+    const cable = labelFirstCable()
+    const { getByTestId, rerender } = render(<CableLayer />)
+    const plate = () => getByTestId('cable-annotation')
+    expect(plate().getAttribute('class')).toContain('nopan')
+    expect(plate().style.pointerEvents).toBe('all')
+
+    // A release over the plate must still reach the port underneath it.
+    act(() => useRackStore.getState().startCableDrag(cable.from.deviceId, cable.from.portId))
+    rerender(<CableLayer />)
+    expect(plate().style.pointerEvents).toBe('none')
+  })
+})
+

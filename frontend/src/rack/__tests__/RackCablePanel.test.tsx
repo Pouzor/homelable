@@ -163,3 +163,25 @@ describe('RackCablePanel', () => {
     expect(store().cables).toHaveLength(before)
   })
 })
+
+describe('RackCablePanel label position', () => {
+  const resetButton = () => screen.queryByRole('button', { name: /put the label back/i })
+
+  it('offers no reset while the label sits on its run', () => {
+    store().selectCable(store().cables[0].id)
+    render(<RackCablePanel />)
+    expect(resetButton()).toBeNull()
+  })
+
+  it('puts a dragged label back on the run', () => {
+    const cable = store().cables[0]
+    store().moveCableLabel(cable.id, { x: 40, y: 10 })
+    store().selectCable(cable.id)
+    render(<RackCablePanel />)
+
+    fireEvent.click(resetButton()!)
+    expect(selected().labelOffset).toBeUndefined()
+    expect(resetButton()).toBeNull()
+  })
+})
+

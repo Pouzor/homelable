@@ -26,6 +26,13 @@ export const MAX_RACK_U = 48
  */
 export const PATCH_PANEL_PORT_CABLES = 2
 
+/**
+ * How far a cable's annotation plate may be dragged from its run, in canvas
+ * units per axis. The backend refuses anything past it (`MAX_LABEL_OFFSET` in
+ * `schemas/racks.py`), and a refused cable fails the whole save.
+ */
+export const MAX_LABEL_OFFSET = 10_000
+
 export const CABLE_COLORS: Record<CableType, string> = {
   ethernet: '#39d353',
   fiber: '#f0a500',

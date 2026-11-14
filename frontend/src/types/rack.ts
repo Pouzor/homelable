@@ -226,6 +226,12 @@ export interface Cable {
   label?: string
   /** Print the label alongside the run on the canvas. Off by default. */
   labelVisible?: boolean
+  /**
+   * Where the user dragged the annotation plate, in canvas units from the run's
+   * midpoint, so the plate follows the cable when either end moves. Absent means
+   * the midpoint itself.
+   */
+  labelOffset?: { x: number; y: number }
   /** Free-form key/value facts; the `visible` ones are drawn on the canvas. */
   properties?: CableProperty[]
   from: { deviceId: string; portId: string }

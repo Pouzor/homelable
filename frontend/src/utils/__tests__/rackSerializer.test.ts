@@ -160,6 +160,23 @@ describe('API → domain', () => {
     expect(cable.properties).toEqual([])
   })
 
+  it('reads a dragged label offset', () => {
+    const cable = toCable({ ...apiCable, label_offset_x: 30, label_offset_y: -4.5 })
+    expect(cable.labelOffset).toEqual({ x: 30, y: -4.5 })
+  })
+
+  it('reads a label on its run as no offset at all', () => {
+    // 0/0, a legacy row without the keys, and nulls all mean the midpoint.
+    expect(toCable({ ...apiCable, label_offset_x: 0, label_offset_y: 0 }).labelOffset).toBeUndefined()
+    expect(toCable(apiCable).labelOffset).toBeUndefined()
+    expect(toCable({ ...apiCable, label_offset_x: null, label_offset_y: null }).labelOffset).toBeUndefined()
+  })
+
+  it('keeps one usable axis of a half-broken offset', () => {
+    const cable = toCable({ ...apiCable, label_offset_x: Number.NaN, label_offset_y: 12 })
+    expect(cable.labelOffset).toEqual({ x: 0, y: 12 })
+  })
+
   it('drops cable properties that carry no key', () => {
     const cable = toCable({
       ...apiCable,
@@ -338,6 +355,15 @@ describe('domain → API', () => {
       label_visible: true,
       properties: [{ key: 'Length', value: '3 m', icon: null, visible: true }],
     })
+  })
+
+  it('sends the label offset, and zeros for a label on its run', () => {
+    const cable = toCable(apiCable)
+    expect(fromCable({ ...cable, labelOffset: { x: 30, y: -4 } })).toMatchObject({
+      label_offset_x: 30,
+      label_offset_y: -4,
+    })
+    expect(fromCable(cable)).toMatchObject({ label_offset_x: 0, label_offset_y: 0 })
   })
 
   it('sends explicit defaults for a cable that was never annotated', () => {

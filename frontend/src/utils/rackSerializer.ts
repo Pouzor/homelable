@@ -72,6 +72,9 @@ export interface ApiRackCable {
   color: string
   label: string | null
   label_visible: boolean
+  /** Annotation plate offset from the run's midpoint. Absent from old payloads. */
+  label_offset_x?: number | null
+  label_offset_y?: number | null
   /** [{key, value, icon, visible}] — same records the logical canvas uses. */
   properties: CableProperty[]
 }
@@ -256,10 +259,21 @@ export function toCable(api: ApiRackCable): Cable {
     color: api.color || CABLE_COLORS[type],
     label: api.label ?? undefined,
     labelVisible: api.label_visible === true,
+    labelOffset: asLabelOffset(api.label_offset_x, api.label_offset_y),
     properties: asCableProperties(api.properties),
     from: { deviceId: api.from_device_id, portId: api.from_port_id },
     to: { deviceId: api.to_device_id, portId: api.to_port_id },
   }
+}
+
+/**
+ * The plate offset, or `undefined` for the midpoint. A missing, non-finite or
+ * zero pair all mean "on the run", so the domain carries no 0/0 placeholder.
+ */
+function asLabelOffset(x: unknown, y: unknown): Cable['labelOffset'] {
+  const fx = typeof x === 'number' && Number.isFinite(x) ? x : 0
+  const fy = typeof y === 'number' && Number.isFinite(y) ? y : 0
+  return fx === 0 && fy === 0 ? undefined : { x: fx, y: fy }
 }
 
 /** Drops the records with neither a port nor a name — they print as an empty chip. */
@@ -381,6 +395,8 @@ export function fromCable(cable: Cable): Omit<ApiRackCable, 'design_id'> {
     color: cable.color || CABLE_COLORS[cable.type],
     label: cable.label ?? null,
     label_visible: cable.labelVisible === true,
+    label_offset_x: cable.labelOffset?.x ?? 0,
+    label_offset_y: cable.labelOffset?.y ?? 0,
     properties: cable.properties ?? [],
   }
 }
