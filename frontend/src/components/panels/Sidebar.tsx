@@ -212,7 +212,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
                   return (
                     <div
                       key={d.id}
-                      className={`group flex items-center transition-colors ${
+                      className={`group relative flex items-center transition-colors ${
                         isActive ? 'bg-[#00d4ff]/10 text-[#00d4ff]' : 'text-muted-foreground hover:bg-[#30363d]'
                       }`}
                     >
@@ -223,41 +223,47 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
                         <Icon size={14} className="shrink-0" />
                         <span className="truncate">{d.name}</span>
                       </button>
-                      <button
-                        aria-label={`Move ${d.name} up`}
-                        title="Move up"
-                        disabled={index === 0}
-                        onClick={() => handleDesignMove(index, -1)}
-                        className="shrink-0 p-1 text-muted-foreground hover:text-foreground cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 disabled:cursor-default"
+                      {/* Overlaid, not in the flow: hidden actions must not eat the name's width. */}
+                      <div
+                        data-testid="design-row-actions"
+                        className="absolute inset-y-0 right-0 flex items-center bg-[#30363d] pl-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity"
                       >
-                        <ChevronUp size={12} />
-                      </button>
-                      <button
-                        aria-label={`Move ${d.name} down`}
-                        title="Move down"
-                        disabled={index === designs.length - 1}
-                        onClick={() => handleDesignMove(index, 1)}
-                        className="shrink-0 p-1 text-muted-foreground hover:text-foreground cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 disabled:cursor-default"
-                      >
-                        <ChevronDown size={12} />
-                      </button>
-                      <button
-                        aria-label={`Edit ${d.name}`}
-                        title="Edit canvas"
-                        onClick={() => { openDesignModal({ mode: 'edit', design: d }); setDesignSwitcherOpen(false) }}
-                        className="shrink-0 p-1.5 text-muted-foreground hover:text-foreground cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Pencil size={12} />
-                      </button>
-                      <button
-                        aria-label={`Delete ${d.name}`}
-                        title="Delete canvas"
-                        disabled={designs.length <= 1}
-                        onClick={() => handleDesignDelete(d)}
-                        className="shrink-0 p-1.5 pr-2 text-muted-foreground hover:text-[#f85149] cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0"
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                        <button
+                          aria-label={`Move ${d.name} up`}
+                          title="Move up"
+                          disabled={index === 0}
+                          onClick={() => handleDesignMove(index, -1)}
+                          className="shrink-0 p-1 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-0 disabled:cursor-default"
+                        >
+                          <ChevronUp size={12} />
+                        </button>
+                        <button
+                          aria-label={`Move ${d.name} down`}
+                          title="Move down"
+                          disabled={index === designs.length - 1}
+                          onClick={() => handleDesignMove(index, 1)}
+                          className="shrink-0 p-1 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-0 disabled:cursor-default"
+                        >
+                          <ChevronDown size={12} />
+                        </button>
+                        <button
+                          aria-label={`Edit ${d.name}`}
+                          title="Edit canvas"
+                          onClick={() => { openDesignModal({ mode: 'edit', design: d }); setDesignSwitcherOpen(false) }}
+                          className="shrink-0 p-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          aria-label={`Delete ${d.name}`}
+                          title="Delete canvas"
+                          disabled={designs.length <= 1}
+                          onClick={() => handleDesignDelete(d)}
+                          className="shrink-0 p-1.5 pr-2 text-muted-foreground hover:text-[#f85149] cursor-pointer disabled:opacity-0"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     </div>
                   )
                 })}

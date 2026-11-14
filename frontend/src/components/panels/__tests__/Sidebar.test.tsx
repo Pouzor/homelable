@@ -381,6 +381,20 @@ describe('Sidebar — canvas order', () => {
     expect(screen.getByLabelText('Move Charlie down')).toBeDisabled()
   })
 
+  // Regression: in-flow (opacity-0) row actions reserved their width and truncated names.
+  it('overlays the row actions so they never take width from the canvas name', () => {
+    render(<Sidebar {...defaultProps} />)
+    fireEvent.click(screen.getByText('Alpha'))
+    const actions = screen.getAllByTestId('design-row-actions')
+    expect(actions).toHaveLength(3)
+    for (const el of actions) {
+      expect(el).toHaveClass('absolute', 'opacity-0', 'pointer-events-none', 'group-hover:opacity-100')
+      expect(el.parentElement).toHaveClass('relative')
+    }
+    expect(screen.getByLabelText('Move Alpha down').closest('[data-testid="design-row-actions"]')).not.toBeNull()
+    expect(screen.getByLabelText('Delete Alpha').closest('[data-testid="design-row-actions"]')).not.toBeNull()
+  })
+
   it('moves a canvas and saves the whole order, keeping the switcher open', async () => {
     const { designsApi } = await import('@/api/client')
     render(<Sidebar {...defaultProps} />)
