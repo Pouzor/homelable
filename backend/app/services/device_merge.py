@@ -71,6 +71,8 @@ _FILL_SCALARS = (
     "rack_u_height",
     "rack_col_span",
     "rack_color",
+    "rack_text_color",
+    "rack_bay_color",
     "rack_ports",
 )
 

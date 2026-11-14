@@ -8,7 +8,7 @@
  * with its own "show it on the canvas" toggle.
  */
 import { useState } from 'react'
-import { Cable as CableIcon, Trash2, X } from 'lucide-react'
+import { Cable as CableIcon, LocateFixed, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PropertyList } from '@/components/common/PropertyList'
@@ -26,6 +26,7 @@ export function RackCablePanel() {
   const devices = useRackStore((s) => s.devices)
   const selectedCableId = useRackStore((s) => s.selectedCableId)
   const updateCable = useRackStore((s) => s.updateCable)
+  const moveCableLabel = useRackStore((s) => s.moveCableLabel)
   const removeCable = useRackStore((s) => s.removeCable)
   const selectCable = useRackStore((s) => s.selectCable)
 
@@ -139,6 +140,18 @@ export function RackCablePanel() {
           />
           <span className="text-[10px] text-muted-foreground">Show on canvas</span>
         </label>
+        {/* Only once the plate was dragged off its run — there is nothing to
+            reset otherwise. */}
+        {cable.labelOffset && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => moveCableLabel(cable.id, null)}
+            className="mt-2 h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+          >
+            <LocateFixed size={12} /> Put the label back on the cable
+          </Button>
+        )}
       </div>
 
       <PropertyList

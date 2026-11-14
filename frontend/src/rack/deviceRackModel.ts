@@ -13,6 +13,9 @@ export interface DeviceRackModel {
   uHeight: number
   colSpan: number
   color: string | null
+  /** Label and port-bay colour overrides. Absent or null: no override. */
+  textColor?: string | null
+  bayColor?: string | null
   ports: Port[]
 }
 

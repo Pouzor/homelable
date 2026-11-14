@@ -140,6 +140,8 @@ def _rack_model(device: InventoryDevice) -> dict[str, Any] | None:
         "u_height": device.rack_u_height,
         "col_span": device.rack_col_span,
         "color": device.rack_color,
+        "text_color": device.rack_text_color,
+        "bay_color": device.rack_bay_color,
         "ports": [p for p in (device.rack_ports or []) if isinstance(p, dict) and p.get("id")],
     }
 
@@ -198,6 +200,8 @@ def _with_model(
         "faceplate_id": model["faceplate_id"],
         "ports": model["ports"],
         "color": model["color"],
+        "text_color": model["text_color"],
+        "bay_color": model["bay_color"],
     }
     u_height = row.u_height
     if _height_fits(row.u_start, model["u_height"], rack_u_height) and not _overlaps(
@@ -366,6 +370,8 @@ async def save_racks(
             if entry is not None:
                 entry.rack_faceplate_id = device_data.faceplate_id
                 entry.rack_color = device_data.color
+                entry.rack_text_color = device_data.text_color
+                entry.rack_bay_color = device_data.bay_color
                 entry.rack_ports = [p for p in device_data.ports if isinstance(p, dict)]
                 # Size, unlike the plate, is not written back blind. The load
                 # overlays it only where it still fits this rack, so a mount can
@@ -496,6 +502,8 @@ async def rack_inventory(
                 rack_u_height=device.rack_u_height,
                 rack_col_span=device.rack_col_span,
                 rack_color=device.rack_color,
+                rack_text_color=device.rack_text_color,
+                rack_bay_color=device.rack_bay_color,
                 rack_ports=device.rack_ports or [],
             )
         )

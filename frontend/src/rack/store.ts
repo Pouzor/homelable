@@ -34,9 +34,11 @@ import {
   type RackStyle,
 } from '@/types'
 import { demoCables, demoDevices, demoInventory, demoRacks } from './demoData'
+import { readCableViewSettings, writeCableViewSettings } from './cableViewSettings'
 import {
   CABLE_COLORS,
   DEFAULT_RACK_STYLE,
+  MAX_LABEL_OFFSET,
   MAX_RACK_U,
   MIN_RACK_U,
   PATCH_PANEL_PORT_CABLES,
@@ -117,6 +119,12 @@ interface RackState {
    * as the user picks a visibility by hand — their choice outlives the mode.
    */
   cableVisibilityBeforePatch: CableVisibility | null
+  /**
+   * Print cable annotation plates at all. A view setting, not an edit: off, a
+   * dense rack shows its runs without the plates over the ports. The selected
+   * cable keeps its plate — its panel is open and edits it.
+   */
+  cableLabelsVisible: boolean
   /** Port-picking mode: drag port to port, or click one then another. */
   cableMode: boolean
   cableDraft: CableDraft | null
@@ -221,6 +229,11 @@ interface RackState {
     options?: { type?: CableType; color?: string; label?: string },
   ) => string | null
   updateCable: (id: string, patch: Partial<Omit<Cable, 'id'>>) => void
+  /**
+   * Park a cable's annotation plate at `offset` from its run's midpoint, each
+   * axis clamped to `MAX_LABEL_OFFSET`. `null` — or 0/0 — puts it back on the run.
+   */
+  moveCableLabel: (id: string, offset: { x: number; y: number } | null) => void
   removeCable: (id: string) => void
   /**
    * Seed patches from the logical canvas. Idempotent: a device pair already
@@ -238,6 +251,7 @@ interface RackState {
   removeSelectedCable: () => void
   hoverDevice: (id: string | null) => void
   setCableVisibility: (v: CableVisibility) => void
+  setCableLabelsVisible: (visible: boolean) => void
   toggleCableMode: () => void
   pickPort: (deviceId: string, portId: string) => void
   /**
@@ -268,6 +282,9 @@ function withIds(ports: Omit<Port, 'id'>[]): Port[] {
 }
 
 function emptyState() {
+  // The viewer's last cable view, not the default: a reload or a design switch
+  // must not throw away what they picked in the header.
+  const view = readCableViewSettings()
   return {
     designId: null,
     racks: [] as Rack[],
@@ -283,8 +300,9 @@ function emptyState() {
     selectedRackId: null,
     selectedCableId: null,
     hoveredDeviceId: null,
-    cableVisibility: 'hover' as CableVisibility,
+    cableVisibility: view.visibility,
     cableVisibilityBeforePatch: null,
+    cableLabelsVisible: view.labelsVisible,
     cableMode: false,
     cableDraft: null,
     cableDrag: null,
@@ -336,6 +354,8 @@ function withDeviceModel(
         uHeight: resized ? device.uHeight : item.rackModel?.uHeight ?? device.uHeight,
         colSpan: rewidened ? device.colSpan : item.rackModel?.colSpan ?? device.colSpan,
         color: device.color ?? null,
+        textColor: device.textColor,
+        bayColor: device.bayColor,
         ports: device.ports,
       },
     }
@@ -585,6 +605,8 @@ export const useRackStore = create<RackState>((set, get) => {
         status: item.status,
         faceplateId: plate.id,
         color: modelled?.color ?? undefined,
+        textColor: modelled?.textColor ?? undefined,
+        bayColor: modelled?.bayColor ?? undefined,
         // Port ids are reused as-is: they are the device's, not the mount's, and
         // nothing outside this design's cables refers to them.
         ports: modelled ? modelled.ports.map((port) => ({ ...port })) : withIds(plate.ports),
@@ -870,6 +892,17 @@ export const useRackStore = create<RackState>((set, get) => {
     updateCable: (id, patch) =>
       edit((s) => ({ cables: s.cables.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
 
+    moveCableLabel: (id, offset) => {
+      const bound = (v: number) =>
+        Number.isFinite(v) ? clamp(v, -MAX_LABEL_OFFSET, MAX_LABEL_OFFSET) : 0
+      const next = offset && { x: bound(offset.x), y: bound(offset.y) }
+      const labelOffset = next && (next.x !== 0 || next.y !== 0) ? next : undefined
+      const current = get().cables.find((c) => c.id === id)
+      // Nothing moved — a plate released where it was picked up is no edit.
+      if (!current || (current.labelOffset?.x === labelOffset?.x && current.labelOffset?.y === labelOffset?.y)) return
+      get().updateCable(id, { labelOffset })
+    },
+
     removeCable: (id) =>
       edit((s) => ({
         cables: s.cables.filter((c) => c.id !== id),
@@ -937,7 +970,16 @@ export const useRackStore = create<RackState>((set, get) => {
       get().removeCable(id)
     },
     hoverDevice: (id) => set({ hoveredDeviceId: id }),
-    setCableVisibility: (v) => set({ cableVisibility: v, cableVisibilityBeforePatch: null }),
+    // Only a pick made by hand is remembered; patch mode forcing every cable on
+    // (`toggleCableMode`) goes through `set` directly and is never written.
+    setCableVisibility: (v) => {
+      writeCableViewSettings({ visibility: v })
+      set({ cableVisibility: v, cableVisibilityBeforePatch: null })
+    },
+    setCableLabelsVisible: (visible) => {
+      writeCableViewSettings({ labelsVisible: visible })
+      set({ cableLabelsVisible: visible })
+    },
 
     toggleCableMode: () =>
       set((s) => {

@@ -66,3 +66,23 @@ describe('RackToolbarActions cable selection', () => {
     expect(unplug()).toBeNull()
   })
 })
+
+describe('RackToolbarActions cable labels', () => {
+  const labels = () => screen.getByRole('button', { name: /labels/i })
+
+  it('shows the labels as on by default', () => {
+    render(<RackToolbarActions />)
+    expect(labels()).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('toggles the labels in the store, and the button follows', () => {
+    render(<RackToolbarActions />)
+    fireEvent.click(labels())
+    expect(useRackStore.getState().cableLabelsVisible).toBe(false)
+    expect(labels()).toHaveAttribute('aria-pressed', 'false')
+
+    fireEvent.click(labels())
+    expect(useRackStore.getState().cableLabelsVisible).toBe(true)
+  })
+})
+

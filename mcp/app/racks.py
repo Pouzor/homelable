@@ -720,6 +720,10 @@ async def _mount_device(design_id: str, args: dict[str, Any]) -> dict[str, Any]:
         "label": args.get("label") or item["label"],
         "faceplate_id": plate["id"],
         "color": item.get("rack_color") if modelled else None,
+        # The save writes the front panel back to the inventory row, so leaving
+        # these out would wipe the row's own label / port-bay colours.
+        "text_color": item.get("rack_text_color") if modelled else None,
+        "bay_color": item.get("rack_bay_color") if modelled else None,
         "status": item.get("status", "unknown"),
         "port_visibility": "auto",
         "ports": ports,

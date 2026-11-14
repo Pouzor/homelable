@@ -284,6 +284,8 @@ function toRackModel(d: InventoryEntry): DeviceRackModel | null {
     uHeight: d.rack_u_height ?? base.uHeight,
     colSpan: d.rack_col_span ?? base.colSpan,
     color: d.rack_color ?? null,
+    textColor: d.rack_text_color ?? null,
+    bayColor: d.rack_bay_color ?? null,
     ports: d.rack_ports ?? [],
   }
 }
@@ -514,6 +516,8 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
               rack_u_height: rackModel.uHeight,
               rack_col_span: rackModel.colSpan,
               rack_color: rackModel.color,
+              rack_text_color: rackModel.textColor ?? null,
+              rack_bay_color: rackModel.bayColor ?? null,
               rack_ports: rackModel.ports,
             }
           : {}),

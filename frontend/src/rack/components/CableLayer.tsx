@@ -5,7 +5,8 @@
  * being React Flow edges — rack cables are a physical relation, not a logical
  * one, and they attach to ports rather than to node handles.
  */
-import { ViewportPortal } from '@xyflow/react'
+import { useEffect, useRef, useState } from 'react'
+import { ViewportPortal, useReactFlow } from '@xyflow/react'
 import { visibleCables } from '../cableVisibility'
 import { portPosition } from '../layout'
 import { useRackPalette, type RackPalette } from '../rackTheme'
@@ -54,6 +55,96 @@ function annotationLines(cable: Cable): string[] {
   return lines
 }
 
+/** Screen pixels a press must travel before it is a drag rather than a click. */
+const DRAG_THRESHOLD_PX = 3
+
+interface LabelDrag {
+  cableId: string
+  /** Where the press landed, on screen and in flow space. */
+  startClient: { x: number; y: number }
+  startFlow: { x: number; y: number }
+  /** The offset the plate had when it was picked up. */
+  base: { x: number; y: number }
+  moved: boolean
+}
+
+/**
+ * Drag an annotation plate off its run.
+ *
+ * The offset lives in component state while the pointer is down and reaches
+ * the store once, on release — a store write per pointer move would bump the
+ * edit counter (and re-arm autosave) dozens of times for one gesture.
+ */
+function useLabelDrag() {
+  const { screenToFlowPosition } = useReactFlow()
+  const moveCableLabel = useRackStore((s) => s.moveCableLabel)
+  const [drag, setDrag] = useState<{ cableId: string; offset: { x: number; y: number } } | null>(null)
+  const active = useRef<LabelDrag | null>(null)
+  /** A drag ends in a click on the plate; that click must not toggle selection. */
+  const swallowClick = useRef(false)
+
+  const dragging = drag !== null
+  useEffect(() => {
+    if (!dragging) return
+    const offsetAt = (d: LabelDrag, e: PointerEvent) => {
+      const p = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+      return { x: d.base.x + p.x - d.startFlow.x, y: d.base.y + p.y - d.startFlow.y }
+    }
+    const move = (e: PointerEvent) => {
+      const d = active.current
+      if (!d) return
+      if (!d.moved) {
+        const travel = Math.hypot(e.clientX - d.startClient.x, e.clientY - d.startClient.y)
+        if (travel < DRAG_THRESHOLD_PX) return
+        d.moved = true
+      }
+      setDrag({ cableId: d.cableId, offset: offsetAt(d, e) })
+    }
+    const up = (e: PointerEvent) => {
+      const d = active.current
+      active.current = null
+      setDrag(null)
+      if (!d?.moved) return
+      swallowClick.current = true
+      moveCableLabel(d.cableId, offsetAt(d, e))
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+  }, [dragging, screenToFlowPosition, moveCableLabel])
+
+  const start = (cable: Cable, e: React.PointerEvent) => {
+    // Keep the press off the pane: it would pan the canvas, or start a rack drag.
+    e.stopPropagation()
+    if (e.button !== 0) return
+    const base = cable.labelOffset ?? { x: 0, y: 0 }
+    active.current = {
+      cableId: cable.id,
+      startClient: { x: e.clientX, y: e.clientY },
+      startFlow: screenToFlowPosition({ x: e.clientX, y: e.clientY }),
+      base,
+      moved: false,
+    }
+    setDrag({ cableId: cable.id, offset: base })
+  }
+
+  /** The offset to draw for `cable`: the live one while it is being dragged. */
+  const offsetOf = (cable: Cable) =>
+    drag?.cableId === cable.id ? drag.offset : (cable.labelOffset ?? { x: 0, y: 0 })
+
+  /** True once, for the click that ends a drag. */
+  const consumeDragClick = () => {
+    const swallow = swallowClick.current
+    swallowClick.current = false
+    return swallow
+  }
+
+  return { start, offsetOf, consumeDragClick, draggingId: drag?.cableId ?? null }
+}
+
 export function CableLayer() {
   const racks = useRackStore((s) => s.racks)
   const devices = useRackStore((s) => s.devices)
@@ -66,7 +157,9 @@ export function CableLayer() {
   const selectCable = useRackStore((s) => s.selectCable)
   const cableDraft = useRackStore((s) => s.cableDraft)
   const cableDrag = useRackStore((s) => s.cableDrag)
+  const labelsVisible = useRackStore((s) => s.cableLabelsVisible)
   const palette = useRackPalette()
+  const labelDrag = useLabelDrag()
 
   // `hidden` still draws the selected cable: its panel is open on the right and
   // editing a run nothing shows reads as a bug. The per-cable filter below is
@@ -132,6 +225,14 @@ export function CableLayer() {
             !selected && focus != null && cable.from.deviceId !== focus && cable.to.deviceId !== focus
           const d = cablePath(from, to)
           const lines = annotationLines(cable)
+          // The selected cable keeps its plate whatever the toggle says — its
+          // panel is open. A dimmed run drops its plate: it is not the one being
+          // looked at, and its plate is what hides the ports of the one that is.
+          const showPlate =
+            lines.length > 0 &&
+            (selected || labelDrag.draggingId === cable.id || (labelsVisible && !dimmed))
+          const mid = cableMidpoint(from, to)
+          const offset = labelDrag.offsetOf(cable)
           return (
             <g key={cable.id} opacity={dimmed ? 0.28 : 1}>
               {selected && (
@@ -191,12 +292,37 @@ export function CableLayer() {
               </path>
               <circle cx={from.x} cy={from.y} r={selected ? 3.2 : 2.2} fill={selected ? palette.accent : cable.color} />
               <circle cx={to.x} cy={to.y} r={selected ? 3.2 : 2.2} fill={selected ? palette.accent : cable.color} />
-              {lines.length > 0 && (
+              {showPlate && (offset.x !== 0 || offset.y !== 0) && (
+                // A plate parked off its run is tied back to it, or a busy rack
+                // leaves no way to tell which cable it describes.
+                <line
+                  data-testid="cable-annotation-leader"
+                  x1={mid.x}
+                  y1={mid.y}
+                  x2={mid.x + offset.x}
+                  y2={mid.y + offset.y}
+                  stroke={selected ? palette.accent : cable.color}
+                  strokeWidth={0.8}
+                  strokeDasharray="2 2"
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
+              {showPlate && (
                 <CableAnnotation
                   lines={lines}
-                  at={cableMidpoint(from, to)}
+                  at={{ x: mid.x + offset.x, y: mid.y + offset.y }}
                   color={selected ? palette.accent : cable.color}
                   palette={palette}
+                  // Like the hit stroke, the plate steps aside while a patch is
+                  // in flight, so a release over it still reaches the port.
+                  interactive={!patching}
+                  onPointerDown={(e) => labelDrag.start(cable, e)}
+                  onClick={(e) => {
+                    // The pane click behind would clear the selection again.
+                    e.stopPropagation()
+                    if (labelDrag.consumeDragClick()) return
+                    selectCable(selected ? null : cable.id)
+                  }}
                 />
               )}
             </g>
@@ -240,11 +366,15 @@ const ANNOTATION_LINE = 9
  * with the racks. The plate is sized from the character count — SVG has no text
  * metrics before layout, and measuring in the DOM would cost a reflow per cable.
  */
-function CableAnnotation({ lines, at, color, palette }: {
+function CableAnnotation({ lines, at, color, palette, interactive, onPointerDown, onClick }: {
   lines: string[]
   at: { x: number; y: number }
   color: string
   palette: RackPalette
+  /** Grab to move it off the run; click to select its cable. */
+  interactive: boolean
+  onPointerDown: (e: React.PointerEvent) => void
+  onClick: (e: React.MouseEvent) => void
 }) {
   const longest = lines.reduce((max, line) => Math.max(max, line.length), 0)
   const width = Math.max(24, longest * ANNOTATION_FONT * 0.56 + 8)
@@ -253,7 +383,16 @@ function CableAnnotation({ lines, at, color, palette }: {
   const y = at.y - height / 2
 
   return (
-    <g style={{ pointerEvents: 'none' }} data-testid="cable-annotation">
+    <g
+      data-testid="cable-annotation"
+      // `nodrag nopan`: React Flow's own opt-out, so the press moves the plate
+      // instead of panning the canvas underneath.
+      className="nodrag nopan"
+      style={{ pointerEvents: interactive ? 'all' : 'none', cursor: interactive ? 'grab' : undefined }}
+      onPointerDown={interactive ? onPointerDown : undefined}
+      onClick={interactive ? onClick : undefined}
+    >
+      {interactive && <title>Drag to move this label, click to select its cable</title>}
       <rect
         x={x}
         y={y}

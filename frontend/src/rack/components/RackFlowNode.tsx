@@ -317,6 +317,8 @@ export function RackFlowNode({ id }: NodeProps) {
               width={box.width}
               height={box.height}
               colorOverride={device.color}
+              textColor={device.textColor}
+              bayColor={device.bayColor}
               selected={selectedDeviceId === device.id}
               revealed={revealAll || focused}
               portVisibility={device.portVisibility}

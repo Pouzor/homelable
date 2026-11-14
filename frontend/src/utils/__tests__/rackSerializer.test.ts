@@ -109,6 +109,38 @@ describe('API → domain', () => {
     expect(device.ports[0]).toMatchObject({ id: 'p9', label: 'p9', type: 'rj45' })
   })
 
+  it('carries the label and port-bay colours of a mount, absent when unset', () => {
+    const device = toRackDevice({ ...apiDevice, text_color: '#111111', bay_color: '#cccccc' })
+    expect([device.textColor, device.bayColor]).toEqual(['#111111', '#cccccc'])
+    expect(fromRackDevice(device)).toMatchObject({ text_color: '#111111', bay_color: '#cccccc' })
+
+    // An older backend sends neither key; nothing is overridden, and null goes back.
+    const bare = toRackDevice(apiDevice)
+    expect([bare.textColor, bare.bayColor]).toEqual([undefined, undefined])
+    expect(fromRackDevice(bare)).toMatchObject({ text_color: null, bay_color: null })
+  })
+
+  it('reads the plate colours the inventory row owns', () => {
+    const item = toInventoryDevice({
+      id: 'inv9',
+      label: 'patch-a',
+      suggested_type: 'patch_panel',
+      ip: null,
+      status: 'approved',
+      discovery_source: 'rack',
+      node_id: null,
+      node_status: null,
+      racked: true,
+      rack_faceplate_id: 'patch-24',
+      rack_color: '#ffffff',
+      rack_text_color: '#111111',
+      rack_bay_color: null,
+    })
+    expect(item.rackModel).toMatchObject({ color: '#ffffff', textColor: '#111111' })
+    // Unset reads as absent, the way a mount carries it.
+    expect(item.rackModel!.bayColor).toBeUndefined()
+  })
+
   it('treats an unknown device status as unknown', () => {
     expect(toRackDevice({ ...apiDevice, status: 'exploded' }).status).toBe('unknown')
   })
@@ -158,6 +190,23 @@ describe('API → domain', () => {
     const cable = toCable(legacy as ApiRackCable)
     expect(cable.labelVisible).toBe(false)
     expect(cable.properties).toEqual([])
+  })
+
+  it('reads a dragged label offset', () => {
+    const cable = toCable({ ...apiCable, label_offset_x: 30, label_offset_y: -4.5 })
+    expect(cable.labelOffset).toEqual({ x: 30, y: -4.5 })
+  })
+
+  it('reads a label on its run as no offset at all', () => {
+    // 0/0, a legacy row without the keys, and nulls all mean the midpoint.
+    expect(toCable({ ...apiCable, label_offset_x: 0, label_offset_y: 0 }).labelOffset).toBeUndefined()
+    expect(toCable(apiCable).labelOffset).toBeUndefined()
+    expect(toCable({ ...apiCable, label_offset_x: null, label_offset_y: null }).labelOffset).toBeUndefined()
+  })
+
+  it('keeps one usable axis of a half-broken offset', () => {
+    const cable = toCable({ ...apiCable, label_offset_x: Number.NaN, label_offset_y: 12 })
+    expect(cable.labelOffset).toEqual({ x: 0, y: 12 })
   })
 
   it('drops cable properties that carry no key', () => {
@@ -338,6 +387,15 @@ describe('domain → API', () => {
       label_visible: true,
       properties: [{ key: 'Length', value: '3 m', icon: null, visible: true }],
     })
+  })
+
+  it('sends the label offset, and zeros for a label on its run', () => {
+    const cable = toCable(apiCable)
+    expect(fromCable({ ...cable, labelOffset: { x: 30, y: -4 } })).toMatchObject({
+      label_offset_x: 30,
+      label_offset_y: -4,
+    })
+    expect(fromCable(cable)).toMatchObject({ label_offset_x: 0, label_offset_y: 0 })
   })
 
   it('sends explicit defaults for a cable that was never annotated', () => {

@@ -1,7 +1,8 @@
+import re
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Kept in sync with the frontend rack model (frontend/src/types).
 WIDTH_STANDARDS = {"19", "10"}
@@ -11,6 +12,24 @@ CABLE_TYPES = {"ethernet", "fiber"}
 PORT_VISIBILITIES = {"auto", "always", "hover"}
 # 12-column horizontal grid: full = 12, half = 6, third = 4, quarter = 3.
 RACK_COLUMNS = 12
+# A cable label dragged further than this from its run is lost off-canvas; the
+# bound also keeps a NaN/inf or garbage value out of the table.
+MAX_LABEL_OFFSET = 10_000.0
+
+_HEX_COLOR = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+
+def hex_color_or_none(v: Any) -> str | None:
+    """A `#rgb` / `#rrggbb` colour, or None for "no override".
+
+    These end up as SVG fills; anything that is not a plain hex colour is
+    refused rather than painted.
+    """
+    if v is None or v == "":
+        return None
+    if isinstance(v, str) and _HEX_COLOR.match(v):
+        return v.lower()
+    raise ValueError("must be a hex colour like #1a2b3c")
 
 
 class RackSave(BaseModel):
@@ -58,9 +77,17 @@ class RackDeviceSave(BaseModel):
     col_span: int = RACK_COLUMNS
     faceplate_id: str = "blank-1u"
     color: str | None = None
+    # Label and port-bay colour overrides; None lets the renderer decide.
+    text_color: str | None = None
+    bay_color: str | None = None
     status: str = "unknown"
     port_visibility: str = "auto"
     ports: list[Any] = []
+
+    @field_validator("text_color", "bay_color", mode="before")
+    @classmethod
+    def _hex_or_none(cls, v: Any) -> str | None:
+        return hex_color_or_none(v)
 
     @field_validator("port_visibility", mode="before")
     @classmethod
@@ -114,6 +141,13 @@ class RackCableSave(BaseModel):
     color: str = "#39d353"
     label: str | None = None
     label_visible: bool = False
+    # Annotation plate position, in canvas units from the run's midpoint.
+    label_offset_x: float = Field(
+        default=0.0, ge=-MAX_LABEL_OFFSET, le=MAX_LABEL_OFFSET, allow_inf_nan=False
+    )
+    label_offset_y: float = Field(
+        default=0.0, ge=-MAX_LABEL_OFFSET, le=MAX_LABEL_OFFSET, allow_inf_nan=False
+    )
     # [{key, value, icon, visible}] — free-form, same shape as node properties.
     properties: list[dict[str, Any]] = []
 
@@ -231,6 +265,8 @@ class RackDeviceResponse(BaseModel):
     col_span: int
     faceplate_id: str
     color: str | None = None
+    text_color: str | None = None
+    bay_color: str | None = None
     status: str
     port_visibility: str = "auto"
     ports: list[Any] = []
@@ -260,7 +296,15 @@ class RackCableResponse(BaseModel):
     color: str
     label: str | None = None
     label_visible: bool = False
+    label_offset_x: float = 0.0
+    label_offset_y: float = 0.0
     properties: list[dict[str, Any]] = []
+
+    @field_validator("label_offset_x", "label_offset_y", mode="before")
+    @classmethod
+    def _offset_or_zero(cls, v: Any) -> float:
+        """Rows written before the columns existed read back as NULL."""
+        return float(v) if isinstance(v, int | float) else 0.0
 
     @field_validator("properties", mode="before")
     @classmethod
@@ -332,6 +376,8 @@ class RackInventoryItem(BaseModel):
     rack_u_height: int | None = None
     rack_col_span: int | None = None
     rack_color: str | None = None
+    rack_text_color: str | None = None
+    rack_bay_color: str | None = None
     rack_ports: list[dict[str, Any]] = []
 
     @field_validator("rack_ports", mode="before")

@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { FaceplatePicker } from './FaceplatePicker'
 import { PortListEditor } from './PortListEditor'
 import { PortPositionEditor } from './PortPositionEditor'
+import { PlateColorFields } from './PlateColorFields'
 import { getFaceplate } from '../faceplates'
 import { MAX_RACK_U } from '../rackDefaults'
 import type { DeviceRackModel } from '../deviceRackModel'
@@ -21,8 +22,6 @@ import { RACK_COLUMNS, type DeviceStatus } from '@/types'
 const inputClass =
   'w-full rounded border border-[#30363d] bg-[#21262d] px-2 py-1 text-sm text-foreground outline-none focus:border-[#00d4ff]'
 const fieldLabel = 'text-xs text-muted-foreground'
-
-const DEFAULT_COLOR = '#2b323c'
 
 interface Props {
   value: DeviceRackModel
@@ -60,6 +59,8 @@ export function DeviceFaceplateEditor({ value, label, status, editable, onChange
           uHeight={value.uHeight}
           colSpan={value.colSpan}
           color={value.color ?? undefined}
+          textColor={value.textColor ?? undefined}
+          bayColor={value.bayColor ?? undefined}
           interactive={editable && positioning}
           selectedPortId={selectedPortId}
           onSelect={setSelectedPortId}
@@ -94,7 +95,7 @@ export function DeviceFaceplateEditor({ value, label, status, editable, onChange
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label className={fieldLabel}>Height (U)</Label>
               <input
@@ -129,25 +130,19 @@ export function DeviceFaceplateEditor({ value, label, status, editable, onChange
                 <option value={RACK_COLUMNS / 6}>Sixth width</option>
               </select>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label className={fieldLabel}>Colour override</Label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  aria-label="Colour override"
-                  className="h-8 flex-1 cursor-pointer rounded border border-[#30363d] bg-[#21262d]"
-                  value={value.color ?? DEFAULT_COLOR}
-                  onChange={(e) => onChange({ ...value, color: e.target.value })}
-                />
-                <button
-                  type="button"
-                  className="cursor-pointer rounded border border-[#30363d] px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground"
-                  onClick={() => onChange({ ...value, color: null })}
-                >
-                  Reset
-                </button>
-              </div>
-            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label className={fieldLabel}>Colours</Label>
+            <PlateColorFields
+              faceplateId={value.faceplateId}
+              value={{
+                color: value.color,
+                textColor: value.textColor ?? null,
+                bayColor: value.bayColor ?? null,
+              }}
+              onChange={(patch) => onChange({ ...value, ...patch })}
+            />
           </div>
 
           <PortListEditor

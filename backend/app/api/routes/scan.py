@@ -554,7 +554,7 @@ _DUPLICATED_FIELDS = (
     "os", "suggested_type", "type", "model", "vendor", "friendly_name",
     "device_subtype", "notes", "cpu_count", "cpu_model", "ram_gb", "disk_gb",
     "show_hardware", "check_method", "rack_faceplate_id", "rack_u_height",
-    "rack_col_span", "rack_color",
+    "rack_col_span", "rack_color", "rack_text_color", "rack_bay_color",
 )
 
 

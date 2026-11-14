@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { PortPositionEditor } from '../components/PortPositionEditor'
+import { EDITOR_ZOOM_STEPS, PortPositionEditor } from '../components/PortPositionEditor'
 import type { Port } from '@/types'
 
 const PLATE = { left: 100, top: 50, width: 400, height: 100 }
@@ -165,3 +165,48 @@ describe('PortPositionEditor stage width', () => {
     expect(stageWidth()).toBeGreaterThan(0)
   })
 })
+
+describe('PortPositionEditor zoom', () => {
+  const stageWidth = () =>
+    Number.parseFloat(screen.getByTestId('faceplate-stage').style.width)
+  const zoomIn = () => screen.getByRole('button', { name: 'Zoom in' })
+  const zoomOut = () => screen.getByRole('button', { name: 'Zoom out' })
+
+  it('grows the plate past its panel on zoom in, and back on zoom out', () => {
+    draw({ fullWidth: 600 })
+    expect(screen.getByTestId('faceplate-zoom')).toHaveTextContent('100%')
+    expect(zoomOut()).toBeDisabled()
+
+    fireEvent.click(zoomIn())
+    fireEvent.click(zoomIn())
+    expect(screen.getByTestId('faceplate-zoom')).toHaveTextContent('200%')
+    expect(stageWidth()).toBeCloseTo(1200, 0)
+
+    fireEvent.click(zoomOut())
+    expect(stageWidth()).toBeCloseTo(900, 0)
+  })
+
+  it('stops at the last step', () => {
+    draw({ fullWidth: 600 })
+    for (let i = 0; i < EDITOR_ZOOM_STEPS.length + 2; i++) fireEvent.click(zoomIn())
+    expect(zoomIn()).toBeDisabled()
+    expect(stageWidth()).toBeCloseTo(600 * EDITOR_ZOOM_STEPS[EDITOR_ZOOM_STEPS.length - 1], 0)
+  })
+
+  it('still lands a dragged port on the plate fraction under the pointer', () => {
+    // Positions are fractions of the drawn plate, so magnifying it moves none.
+    const { onChange } = draw({ fullWidth: 600 })
+    fireEvent.click(zoomIn())
+    dragTo('a', 0.4, 0.25)
+    const moved = onChange.mock.calls.at(-1)![0].find((p: Port) => p.id === 'a')
+    expect(moved.x).toBeCloseTo(0.4, 2)
+    expect(moved.y).toBeCloseTo(0.25, 2)
+  })
+
+  it('offers no zoom on a plain preview, and draws it at 1×', () => {
+    draw({ fullWidth: 600, interactive: false })
+    expect(screen.queryByRole('button', { name: 'Zoom in' })).toBeNull()
+    expect(stageWidth()).toBeCloseTo(600, 0)
+  })
+})
+

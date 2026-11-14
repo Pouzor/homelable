@@ -24,6 +24,7 @@ import { PortPositionEditor } from './PortPositionEditor'
 import { LinkedDevicePanel } from './LinkedDevicePanel'
 import { SectionHeader } from './SectionHeader'
 import { DevicePickerModal } from './DevicePickerModal'
+import { PlateColorFields, type PlateColors } from './PlateColorFields'
 import { deviceTypeForFaceplate, getFaceplate } from '../faceplates'
 import { findSlot } from '../layout'
 import { canFollowNode, resolveDeviceStatus } from '../deviceStatus'
@@ -36,13 +37,12 @@ import {
   type PortVisibility,
 } from '@/types'
 
-const DEFAULT_COLOR = '#2b323c'
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
 type Source = 'inventory' | 'new' | 'accessory'
 
 const inputBase =
-  'rounded border border-[#30363d] bg-[#21262d] px-2 py-1 text-sm text-foreground outline-none focus:border-[#00d4ff]'
+  'h-8 rounded-md border border-[#30363d] bg-[#21262d] px-2.5 text-sm text-foreground outline-none transition-colors hover:border-[#484f58] focus:border-[#00d4ff]'
 const inputClass = `w-full ${inputBase}`
 const fieldLabel = 'text-xs text-muted-foreground'
 
@@ -107,7 +107,17 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
   const [colStart, setColStart] = useState(device?.colStart ?? 0)
   const [colSpan, setColSpan] = useState(device?.colSpan ?? getFaceplate(faceplateId).colSpan)
   const [status, setStatus] = useState<MountStatus>(device?.status ?? 'unknown')
-  const [color, setColor] = useState<string | undefined>(device?.color)
+  const [colors, setColors] = useState<PlateColors>({
+    color: device?.color ?? null,
+    textColor: device?.textColor ?? null,
+    bayColor: device?.bayColor ?? null,
+  })
+  /** The store's optional fields: an unset colour is absent, never `null`. */
+  const plateColors = {
+    color: colors.color ?? undefined,
+    textColor: colors.textColor ?? undefined,
+    bayColor: colors.bayColor ?? undefined,
+  }
   const [portVisibility, setPortVisibility] = useState<PortVisibility>(
     device?.portVisibility ?? 'auto',
   )
@@ -271,7 +281,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
       }
     }
     const name = label.trim() || device.label
-    if (!updateDevice(device.id, { ...geometry, label: name, status, color, portVisibility })) {
+    if (!updateDevice(device.id, { ...geometry, label: name, status, ...plateColors, portVisibility })) {
       toast.error('No room in the rack for that size')
       return null
     }
@@ -290,7 +300,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
       // fits, and patching it afterwards would drag the plate back off it.
       const id = mountAccessory(faceplateId, rackId, geometry)
       if (!id) return noRoom()
-      updateDevice(id, { label: name || getFaceplate(faceplateId).label, color, portVisibility })
+      updateDevice(id, { label: name || getFaceplate(faceplateId).label, ...plateColors, portVisibility })
       return id
     }
 
@@ -326,7 +336,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     if (!id) return noRoom()
     // The mount takes its label and status from the inventory entry, and its
     // slot from `findSlot` — only patch what the form actually overrides.
-    updateDevice(id, { status, color, portVisibility, ...(name ? { label: name } : {}) })
+    updateDevice(id, { status, ...plateColors, portVisibility, ...(name ? { label: name } : {}) })
     return id
   }
 
@@ -353,22 +363,29 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     inventory,
   )
 
+  const plate = getFaceplate(faceplateId)
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      {/* Wider than NodeModal: the form is two columns, and under them sits the
-          faceplate at rack proportions — the plate is where ports are placed, so
-          it has to be big enough to aim at. */}
+      {/* Wide on purpose: the plate is drawn at rack proportions across the top,
+          and it is where ports are placed, so it has to be big enough to aim at. */}
       <DialogContent className="border-[#30363d] bg-[#161b22] text-foreground max-w-[calc(100%-2rem)] sm:max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-sm font-semibold">
+        <DialogHeader className="gap-0.5">
+          <DialogTitle className="text-base font-semibold">
             {isEdit ? 'Edit Device' : 'Add Device'}
           </DialogTitle>
+          {/* What is being edited, at a glance: the plate and where it sits. */}
+          <p className="text-xs text-muted-foreground">
+            {plate.label} · {uHeight}U
+            {isEdit && <span className="font-mono"> · U{uStart}</span>}
+          </p>
         </DialogHeader>
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="mt-2 flex flex-col gap-3">
+        <form onSubmit={(e) => void handleSubmit(e)} className="mt-1 flex flex-col gap-5">
           {!isEdit && (
             <Field label="Source">
-              <div className="flex gap-1">
+              {/* A segmented control: three mutually exclusive starting points. */}
+              <div className="flex gap-1 rounded-md border border-[#30363d] bg-[#0d1117] p-1">
                 {(
                   [
                     ['inventory', 'From inventory'],
@@ -380,10 +397,11 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                     key={value}
                     type="button"
                     onClick={() => pickSource(value)}
-                    className={`flex-1 cursor-pointer rounded border px-2 py-1 text-xs ${
+                    aria-pressed={source === value}
+                    className={`flex-1 cursor-pointer rounded px-2 py-1.5 text-xs font-medium transition-colors ${
                       source === value
-                        ? 'border-[#00d4ff] text-[#00d4ff]'
-                        : 'border-[#30363d] text-muted-foreground hover:text-foreground'
+                        ? 'bg-[#00d4ff]/15 text-[#00d4ff]'
+                        : 'text-muted-foreground hover:bg-[#21262d] hover:text-foreground'
                     }`}
                   >
                     {text}
@@ -393,320 +411,315 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
             </Field>
           )}
 
-          {/* The strip leads with the two things the user checks first: what
-              this mount actually stands for, and the plate it wears. The plate
-              is drawn at rack proportions — coordinates are unit fractions, so
-              the blow-up never reaches the saved data. The two halves are
-              spelled out rather than `sm:grid-cols-2` so the strip stays
-              distinguishable from the form grid below it. */}
-          <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
-            <LinkedDevicePanel
-              entry={mountEntry}
-              status={previewStatus}
-              onLink={canRelink ? () => setDevicePickerOpen(true) : undefined}
+          {/* The plate leads, full width: it is the preview of every field below
+              (colours, size, label) and the surface ports are placed on.
+              Coordinates are unit fractions, so the blow-up never reaches the
+              saved data. */}
+          <section className="flex flex-col gap-2">
+            <SectionHeader
+              aside={
+                <button
+                  type="button"
+                  aria-label="Faceplate"
+                  data-faceplate={faceplateId}
+                  onClick={() => setPickerOpen(true)}
+                  className="flex max-w-[65%] cursor-pointer items-center gap-1.5 rounded-md border border-[#30363d] px-2 py-0.5 text-[11px] transition-colors hover:border-[#00d4ff]"
+                >
+                  {/* The current plate names itself; `Change` is what says the
+                      name is a button and not a read-out. */}
+                  <span className="truncate text-muted-foreground">{plate.label}</span>
+                  <span className="shrink-0 text-[#00d4ff]">Change</span>
+                </button>
+              }
+            >
+              Faceplate
+            </SectionHeader>
+            <FaceplatePicker
+              open={pickerOpen}
+              value={faceplateId}
+              kind={!isEdit && source === 'accessory' ? 'accessory' : undefined}
+              onPick={pickFaceplate}
+              onClose={() => setPickerOpen(false)}
             />
-            <div className="flex flex-col gap-2">
-              {/* The catalog is visual, so the plate name doubles as the button
-                  that opens it — the drawing below is the real preview. */}
-              <SectionHeader
-                aside={
-                  <button
-                    type="button"
-                    aria-label="Faceplate"
-                    data-faceplate={faceplateId}
-                    onClick={() => setPickerOpen(true)}
-                    className="flex max-w-[65%] cursor-pointer items-center gap-1.5 rounded border border-[#30363d] px-2 py-0.5 text-[11px] hover:border-[#00d4ff]"
-                  >
-                    {/* The current plate names itself; `Change` is what says the
-                        name is a button and not a read-out. */}
-                    <span className="truncate text-muted-foreground">
-                      {getFaceplate(faceplateId).label}
-                    </span>
-                    <span className="shrink-0 text-[#00d4ff]">Change</span>
-                  </button>
-                }
-              >
-                Faceplate
-              </SectionHeader>
-              <FaceplatePicker
-                open={pickerOpen}
-                value={faceplateId}
-                kind={!isEdit && source === 'accessory' ? 'accessory' : undefined}
-                onPick={pickFaceplate}
-                onClose={() => setPickerOpen(false)}
-              />
-              {plateChanged && isEdit && (
-                <p className="text-[11px] text-[#e3b341]">
-                  Changing the plate replaces its ports and drops their patches.
-                </p>
-              )}
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded border border-[#30363d] bg-[#0d1117] p-3">
-                <PortPositionEditor
-                  faceplateId={faceplateId}
-                  label={label || getFaceplate(faceplateId).label}
-                  status={previewStatus}
-                  ports={ports}
-                  uHeight={uHeight}
-                  colSpan={colSpan}
-                  color={color}
-                  interactive={positioning && !isAccessory}
-                  selectedPortId={selectedPortId}
-                  onSelect={setSelectedPortId}
-                  onChange={setLocalPorts}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Left column: what the device is and where it sits. Right column:
-              its ports, which is the list that used to push everything else
-              below the fold. */}
-          <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-3">
-            <SectionHeader>Information</SectionHeader>
-            {showInventoryPicker && STANDALONE && (
-              /* No backend, so no Device Inventory modal to open (it reads
-                 `pending_devices` over REST) — standalone keeps the flat list. */
-              <Field label="Device Inventory entry">
-                <select
-                  className={inputClass}
-                  aria-label="Device Inventory entry"
-                  value={inventoryId}
-                  onChange={(e) => {
-                    const item = inventory.find((i) => i.id === e.target.value)
-                    if (item) applyInventoryItem(item)
-                    else setInventoryId('')
-                  }}
-                >
-                  <option value="">Select a device…</option>
-                  {unracked.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {inventoryOption(item)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+            {plateChanged && isEdit && (
+              <p className="text-[11px] text-[#e3b341]">
+                Changing the plate replaces its ports and drops their patches.
+              </p>
             )}
+            {/* A dot grid behind the plate, like the canvas it will hang on. */}
+            <div
+              className="flex flex-col items-center justify-center rounded-lg border border-[#30363d] bg-[#0d1117] px-4 py-5"
+              style={{
+                backgroundImage: 'radial-gradient(rgba(139,148,158,0.18) 1px, transparent 1px)',
+                backgroundSize: '14px 14px',
+              }}
+            >
+              <PortPositionEditor
+                faceplateId={faceplateId}
+                label={label || plate.label}
+                status={previewStatus}
+                ports={ports}
+                uHeight={uHeight}
+                colSpan={colSpan}
+                color={plateColors.color}
+                textColor={plateColors.textColor}
+                bayColor={plateColors.bayColor}
+                interactive={positioning && !isAccessory}
+                selectedPortId={selectedPortId}
+                onSelect={setSelectedPortId}
+                onChange={setLocalPorts}
+              />
+            </div>
+          </section>
 
-            {showInventoryPicker && !STANDALONE && (
-              <Field label="Device Inventory entry">
-                {/* Opens the real Device Inventory rather than a flat <select>:
-                    the user gets its search, source/type filters and the tech
-                    detail on each card to tell look-alike hosts apart. */}
-                <button
-                  type="button"
-                  aria-label="Device Inventory entry"
-                  data-device-id={inventoryId}
-                  onClick={() => setInventoryPickerOpen(true)}
-                  className="flex cursor-pointer flex-col items-start gap-0.5 rounded border border-[#30363d] bg-[#21262d] px-2 py-1.5 text-left hover:border-[#00d4ff]"
-                >
-                  <span className="text-sm">
-                    {selectedEntry ? inventoryOption(selectedEntry) : 'No device picked yet'}
-                  </span>
-                  <span className="text-[11px] text-[#00d4ff]">
-                    {selectedEntry ? 'Change device…' : 'Browse the Device Inventory…'}
-                  </span>
-                </button>
-                {unracked.length === 0 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Everything in the inventory is already racked — create a new device instead.
-                  </p>
+          {/* Left: what the device is and where it sits. Right: how it looks and
+              its ports — the long list, kept beside the form rather than under it. */}
+          <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+            <div className="flex flex-col gap-5">
+              <LinkedDevicePanel
+                entry={mountEntry}
+                status={previewStatus}
+                onLink={canRelink ? () => setDevicePickerOpen(true) : undefined}
+              />
+
+              <section className="flex flex-col gap-3">
+                <SectionHeader>Information</SectionHeader>
+                {showInventoryPicker && STANDALONE && (
+                  /* No backend, so no Device Inventory modal to open (it reads
+                     `pending_devices` over REST) — standalone keeps the flat list. */
+                  <Field label="Device Inventory entry">
+                    <select
+                      className={inputClass}
+                      aria-label="Device Inventory entry"
+                      value={inventoryId}
+                      onChange={(e) => {
+                        const item = inventory.find((i) => i.id === e.target.value)
+                        if (item) applyInventoryItem(item)
+                        else setInventoryId('')
+                      }}
+                    >
+                      <option value="">Select a device…</option>
+                      {unracked.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {inventoryOption(item)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                 )}
-                {/* Rendered inside this DialogContent on purpose: an open Base UI
-                    dialog marks outside content inert, so a sibling overlay would
-                    be unclickable. */}
-                <DeviceInventoryModal
-                  open={inventoryPickerOpen}
-                  onClose={() => setInventoryPickerOpen(false)}
-                  onPick={(d) => void handlePickFromInventory(d)}
-                  initialRackableOnly
-                />
-              </Field>
-            )}
 
-            {!isEdit && source === 'new' && (
-              <Field label="IP (optional)">
-                <input
-                  className={`${inputClass} font-mono`}
-                  aria-label="IP"
-                  value={newIp}
-                  onChange={(e) => setNewIp(e.target.value)}
-                  placeholder="192.168.1.10"
-                />
-              </Field>
-            )}
+                {showInventoryPicker && !STANDALONE && (
+                  <Field label="Device Inventory entry">
+                    {/* Opens the real Device Inventory rather than a flat <select>:
+                        the user gets its search, source/type filters and the tech
+                        detail on each card to tell look-alike hosts apart. */}
+                    <button
+                      type="button"
+                      aria-label="Device Inventory entry"
+                      data-device-id={inventoryId}
+                      onClick={() => setInventoryPickerOpen(true)}
+                      className="flex cursor-pointer flex-col items-start gap-0.5 rounded-md border border-[#30363d] bg-[#21262d] px-2.5 py-1.5 text-left transition-colors hover:border-[#00d4ff]"
+                    >
+                      <span className="text-sm">
+                        {selectedEntry ? inventoryOption(selectedEntry) : 'No device picked yet'}
+                      </span>
+                      <span className="text-[11px] text-[#00d4ff]">
+                        {selectedEntry ? 'Change device…' : 'Browse the Device Inventory…'}
+                      </span>
+                    </button>
+                    {unracked.length === 0 && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Everything in the inventory is already racked — create a new device instead.
+                      </p>
+                    )}
+                    {/* Rendered inside this DialogContent on purpose: an open Base UI
+                        dialog marks outside content inert, so a sibling overlay would
+                        be unclickable. */}
+                    <DeviceInventoryModal
+                      open={inventoryPickerOpen}
+                      onClose={() => setInventoryPickerOpen(false)}
+                      onPick={(d) => void handlePickFromInventory(d)}
+                      initialRackableOnly
+                    />
+                  </Field>
+                )}
 
-            {!isEdit && racks.length > 1 && (
-              <Field label="Rack">
-                <select
-                  className={inputClass}
-                  aria-label="Rack"
-                  value={rackId}
-                  onChange={(e) => setRackId(e.target.value)}
-                >
-                  {racks.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            )}
+                {!isEdit && source === 'new' && (
+                  <Field label="IP (optional)">
+                    <input
+                      className={`${inputClass} font-mono`}
+                      aria-label="IP"
+                      value={newIp}
+                      onChange={(e) => setNewIp(e.target.value)}
+                      placeholder="192.168.1.10"
+                    />
+                  </Field>
+                )}
 
-            <Field label="Label">
-              <input
-                className={inputClass}
-                aria-label="Label"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder={source === 'accessory' ? getFaceplate(faceplateId).label : 'Device name'}
-              />
-            </Field>
+                {!isEdit && racks.length > 1 && (
+                  <Field label="Rack">
+                    <select
+                      className={inputClass}
+                      aria-label="Rack"
+                      value={rackId}
+                      onChange={(e) => setRackId(e.target.value)}
+                    >
+                      {racks.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
 
-            <SectionHeader>Placement</SectionHeader>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="U position">
-                <input
-                  type="number"
-                  min={1}
-                  className={inputClass}
-                  aria-label="U position"
-                  value={uStart}
-                  onChange={(e) => setUStart(Number(e.target.value) || 1)}
-                />
-              </Field>
-              <Field label="Height (U)">
-                <input
-                  type="number"
-                  min={1}
-                  max={12}
-                  className={inputClass}
-                  aria-label="Height (U)"
-                  value={uHeight}
-                  onChange={(e) => setUHeight(Number(e.target.value) || 1)}
-                />
-              </Field>
-              <Field label="Column">
-                <input
-                  type="number"
-                  min={0}
-                  max={RACK_COLUMNS - 1}
-                  className={inputClass}
-                  aria-label="Column"
-                  value={colStart}
-                  onChange={(e) => setColStart(Number(e.target.value) || 0)}
-                />
-              </Field>
-              <Field label={`Width (/${RACK_COLUMNS})`}>
-                <select
-                  className={inputClass}
-                  aria-label="Width"
-                  value={colSpan}
-                  onChange={(e) => setColSpan(Number(e.target.value))}
-                >
-                  <option value={RACK_COLUMNS}>Full width</option>
-                  <option value={RACK_COLUMNS / 2}>Half width</option>
-                  <option value={RACK_COLUMNS / 3}>Third width</option>
-                  <option value={RACK_COLUMNS / 4}>Quarter width</option>
-                  <option value={RACK_COLUMNS / 6}>Sixth width</option>
-                </select>
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-            <Field label="Status">
-              <select
-                className={inputClass}
-                aria-label="Status"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as MountStatus)}
-              >
-                {/* Only offered when there is a node to read: the rack runs no
-                    check of its own. */}
-                {canCheck && <option value="auto">Check device (live)</option>}
-                <option value="online">Online</option>
-                <option value="offline">Offline</option>
-                <option value="unknown">Unknown</option>
-              </select>
-              {status === 'auto' && (
-                <p className="text-[11px] text-muted-foreground">
-                  Follows the status check configured on the matching canvas node.
-                </p>
-              )}
-            </Field>
-
-            <Field label="Colour override">
-              <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  aria-label="Colour override"
-                  className="h-8 flex-1 cursor-pointer rounded border border-[#30363d] bg-[#21262d]"
-                  value={color ?? DEFAULT_COLOR}
-                  onChange={(e) => setColor(e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setColor(undefined)}
-                  className="rounded border border-[#30363d] px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer"
-                >
-                  Reset
-                </button>
-              </div>
-            </Field>
-            </div>
-            </div>
-
-            <div className="flex flex-col gap-3">
-            {/* An accessory has no ports, so it gets no heading either — a
-                rule over an empty column reads as a missing section. */}
-            {!isAccessory && (
-              <>
-                <SectionHeader>Ports</SectionHeader>
-                <PortListEditor
-                  ports={ports}
-                  onChange={setLocalPorts}
-                  positioning={positioning}
-                  onPositioningChange={setPositioning}
-                  selectedPortId={selectedPortId}
-                  onSelect={setSelectedPortId}
-                />
-
-                {/* How the canvas draws these sockets — a display choice about
-                    this mount, not a fact about the hardware, so it stays on
-                    the mount and never reaches the inventory entry. */}
-                <Field label="Show ports on the canvas">
-                  <select
-                    className="h-8 w-full rounded border border-[#30363d] bg-[#21262d] px-2 text-xs cursor-pointer"
-                    aria-label="Show ports on the canvas"
-                    value={portVisibility}
-                    onChange={(e) => setPortVisibility(e.target.value as PortVisibility)}
-                  >
-                    <option value="auto">Automatic (switches and patch panels)</option>
-                    <option value="always">Always</option>
-                    <option value="hover">On hover or selection</option>
-                  </select>
+                <Field label="Label">
+                  <input
+                    className={inputClass}
+                    aria-label="Label"
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    placeholder={source === 'accessory' ? plate.label : 'Device name'}
+                  />
                 </Field>
-              </>
-            )}
 
-            {canRelink && devicePickerOpen && (
-              /* Inside this DialogContent for the same reason as the inventory
-                 picker: an open Base UI dialog makes outside content inert.
-                 Mounted per opening, so the inventory is fetched fresh. */
-              <DevicePickerModal
-                open={devicePickerOpen}
-                value={device?.deviceId}
-                onPick={handleRelink}
-                onClose={() => setDevicePickerOpen(false)}
-              />
-            )}
+                <Field label="Status">
+                  <select
+                    className={inputClass}
+                    aria-label="Status"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as MountStatus)}
+                  >
+                    {/* Only offered when there is a node to read: the rack runs no
+                        check of its own. */}
+                    {canCheck && <option value="auto">Check device (live)</option>}
+                    <option value="online">Online</option>
+                    <option value="offline">Offline</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                  {status === 'auto' && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Follows the status check configured on the matching canvas node.
+                    </p>
+                  )}
+                </Field>
+              </section>
+
+              <section className="flex flex-col gap-3">
+                <SectionHeader>Placement</SectionHeader>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="U position">
+                    <input
+                      type="number"
+                      min={1}
+                      className={`${inputClass} font-mono`}
+                      aria-label="U position"
+                      value={uStart}
+                      onChange={(e) => setUStart(Number(e.target.value) || 1)}
+                    />
+                  </Field>
+                  <Field label="Height (U)">
+                    <input
+                      type="number"
+                      min={1}
+                      max={12}
+                      className={`${inputClass} font-mono`}
+                      aria-label="Height (U)"
+                      value={uHeight}
+                      onChange={(e) => setUHeight(Number(e.target.value) || 1)}
+                    />
+                  </Field>
+                  <Field label="Column">
+                    <input
+                      type="number"
+                      min={0}
+                      max={RACK_COLUMNS - 1}
+                      className={`${inputClass} font-mono`}
+                      aria-label="Column"
+                      value={colStart}
+                      onChange={(e) => setColStart(Number(e.target.value) || 0)}
+                    />
+                  </Field>
+                  <Field label={`Width (/${RACK_COLUMNS})`}>
+                    <select
+                      className={inputClass}
+                      aria-label="Width"
+                      value={colSpan}
+                      onChange={(e) => setColSpan(Number(e.target.value))}
+                    >
+                      <option value={RACK_COLUMNS}>Full width</option>
+                      <option value={RACK_COLUMNS / 2}>Half width</option>
+                      <option value={RACK_COLUMNS / 3}>Third width</option>
+                      <option value={RACK_COLUMNS / 4}>Quarter width</option>
+                      <option value={RACK_COLUMNS / 6}>Sixth width</option>
+                    </select>
+                  </Field>
+                </div>
+              </section>
+            </div>
+
+            <div className="flex flex-col gap-5">
+              {/* Every colour the plate is drawn with, previewed live on the plate
+                  above. Unset reads "Auto": the label keeps itself readable on
+                  whatever panel colour is picked. */}
+              <section className="flex flex-col gap-3">
+                <SectionHeader>Appearance</SectionHeader>
+                <PlateColorFields
+                  faceplateId={faceplateId}
+                  value={colors}
+                  onChange={(patch) => setColors((c) => ({ ...c, ...patch }))}
+                />
+              </section>
+
+              {/* An accessory has no ports, so it gets no heading either — a
+                  rule over an empty column reads as a missing section. */}
+              {!isAccessory && (
+                <section className="flex flex-col gap-3">
+                  <SectionHeader>Ports</SectionHeader>
+                  <PortListEditor
+                    ports={ports}
+                    onChange={setLocalPorts}
+                    positioning={positioning}
+                    onPositioningChange={setPositioning}
+                    selectedPortId={selectedPortId}
+                    onSelect={setSelectedPortId}
+                  />
+
+                  {/* How the canvas draws these sockets — a display choice about
+                      this mount, not a fact about the hardware, so it stays on
+                      the mount and never reaches the inventory entry. */}
+                  <Field label="Show ports on the canvas">
+                    <select
+                      className={`${inputClass} text-xs`}
+                      aria-label="Show ports on the canvas"
+                      value={portVisibility}
+                      onChange={(e) => setPortVisibility(e.target.value as PortVisibility)}
+                    >
+                      <option value="auto">Automatic (switches and patch panels)</option>
+                      <option value="always">Always</option>
+                      <option value="hover">On hover or selection</option>
+                    </select>
+                  </Field>
+                </section>
+              )}
+
+              {canRelink && devicePickerOpen && (
+                /* Inside this DialogContent for the same reason as the inventory
+                   picker: an open Base UI dialog makes outside content inert.
+                   Mounted per opening, so the inventory is fetched fresh. */
+                <DevicePickerModal
+                  open={devicePickerOpen}
+                  value={device?.deviceId}
+                  onPick={handleRelink}
+                  onClose={() => setDevicePickerOpen(false)}
+                />
+              )}
             </div>
           </div>
 
           {/* Rule between the form and its actions, so Save never reads as part
               of the last section. */}
-          <div className="mt-1 flex items-center gap-2 border-t border-[#30363d] pt-3">
+          <div className="flex items-center gap-2 border-t border-[#30363d] pt-4">
             {isEdit && (
               <Button
                 type="button"
@@ -724,7 +737,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               <Button
                 type="submit"
                 disabled={busy}
-                className="cursor-pointer bg-[#00d4ff] text-[#0d1117] hover:bg-[#00b8e0]"
+                className="cursor-pointer bg-[#00d4ff] px-5 text-[#0d1117] hover:bg-[#00b8e0]"
               >
                 {isEdit ? 'Save' : 'Add'}
               </Button>

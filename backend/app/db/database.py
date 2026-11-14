@@ -23,6 +23,35 @@ from app.core.config import APP_VERSION, settings
 logger = logging.getLogger(__name__)
 
 
+# Column additions to `rack_cables`, oldest first. `create_all` never adds a
+# column to an existing table, so each is an idempotent ALTER run at boot.
+RACK_CABLE_MIGRATIONS: tuple[tuple[str, str], ...] = (
+    # Editable annotations: a label the user can print on the canvas, plus the
+    # same free-form property records nodes carry.
+    (
+        "rack_cables.label_visible",
+        "ALTER TABLE rack_cables ADD COLUMN label_visible BOOLEAN NOT NULL DEFAULT 0",
+    ),
+    ("rack_cables.properties", "ALTER TABLE rack_cables ADD COLUMN properties JSON"),
+    # Where the user dragged the annotation plate, as an offset from the run's
+    # midpoint. 0/0 is the midpoint itself — what every existing cable showed.
+    (
+        "rack_cables.label_offset_x",
+        "ALTER TABLE rack_cables ADD COLUMN label_offset_x REAL NOT NULL DEFAULT 0",
+    ),
+    (
+        "rack_cables.label_offset_y",
+        "ALTER TABLE rack_cables ADD COLUMN label_offset_y REAL NOT NULL DEFAULT 0",
+    ),
+)
+
+# Plate colour overrides on `rack_devices` beyond the panel fill: the label and
+# the port bays. Both nullable — NULL is "let the renderer decide".
+RACK_DEVICE_COLOR_MIGRATIONS: tuple[tuple[str, str], ...] = (
+    ("rack_devices.text_color", "ALTER TABLE rack_devices ADD COLUMN text_color TEXT"),
+    ("rack_devices.bay_color", "ALTER TABLE rack_devices ADD COLUMN bay_color TEXT"),
+)
+
 # DDL for the documents feature that `Base.metadata.create_all` does not apply:
 # the column additions it never makes to an existing table, plus a virtual table
 # and partial indexes it cannot express at all. Shared with the test fixtures so
@@ -473,21 +502,17 @@ async def init_db() -> None:
             logger.warning("canvas_state migration failed: %s", exc)
         # --- end Electrical designs schema migrations --------------------------
 
-        # Rack cables gained editable annotations: a label the user can print on
-        # the canvas, plus the same free-form property records nodes carry.
-        rack_cable_migrations: list[tuple[str, str]] = [
-            (
-                "rack_cables.label_visible",
-                "ALTER TABLE rack_cables ADD COLUMN label_visible BOOLEAN NOT NULL DEFAULT 0",
-            ),
-            ("rack_cables.properties", "ALTER TABLE rack_cables ADD COLUMN properties JSON"),
-        ]
-        for label, sql in rack_cable_migrations:
+        for label, sql in RACK_CABLE_MIGRATIONS:
             await _try_migrate(conn, sql, label=label)
         with suppress(OperationalError):
             await conn.exec_driver_sql(
                 "UPDATE rack_cables SET properties = '[]' WHERE properties IS NULL"
             )
+
+        # Label and port-bay colour overrides on a mount. NULL — every existing
+        # row — keeps the renderer's defaults.
+        for label, sql in RACK_DEVICE_COLOR_MIGRATIONS:
+            await _try_migrate(conn, sql, label=label)
 
         # A mount can override when its plate draws its sockets. Existing rows
         # keep the old behaviour, which is exactly what "auto" means.
@@ -638,6 +663,14 @@ async def init_db() -> None:
                 "ALTER TABLE device_inventory ADD COLUMN rack_col_span INTEGER",
             ),
             ("device_inventory.rack_color", "ALTER TABLE device_inventory ADD COLUMN rack_color TEXT"),
+            (
+                "device_inventory.rack_text_color",
+                "ALTER TABLE device_inventory ADD COLUMN rack_text_color TEXT",
+            ),
+            (
+                "device_inventory.rack_bay_color",
+                "ALTER TABLE device_inventory ADD COLUMN rack_bay_color TEXT",
+            ),
             ("device_inventory.rack_ports", "ALTER TABLE device_inventory ADD COLUMN rack_ports JSON"),
         ):
             await _try_migrate(conn, sql, label=label)

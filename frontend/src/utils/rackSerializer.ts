@@ -55,6 +55,9 @@ export interface ApiRackDevice {
   col_span: number
   faceplate_id: string
   color: string | null
+  /** Absent from an older backend. */
+  text_color?: string | null
+  bay_color?: string | null
   status: string
   /** 'auto' | 'always' | 'hover'. Rows written before the column read NULL. */
   port_visibility?: string | null
@@ -72,6 +75,9 @@ export interface ApiRackCable {
   color: string
   label: string | null
   label_visible: boolean
+  /** Annotation plate offset from the run's midpoint. Absent from old payloads. */
+  label_offset_x?: number | null
+  label_offset_y?: number | null
   /** [{key, value, icon, visible}] — same records the logical canvas uses. */
   properties: CableProperty[]
 }
@@ -115,6 +121,8 @@ export interface ApiInventoryItem {
   rack_u_height?: number | null
   rack_col_span?: number | null
   rack_color?: string | null
+  rack_text_color?: string | null
+  rack_bay_color?: string | null
   rack_ports?: unknown[] | null
 }
 
@@ -242,6 +250,8 @@ export function toRackDevice(api: ApiRackDevice): RackDevice {
     colSpan: api.col_span,
     faceplateId: api.faceplate_id,
     color: api.color ?? undefined,
+    textColor: api.text_color ?? undefined,
+    bayColor: api.bay_color ?? undefined,
     status: asMountStatus(api.status),
     portVisibility: asPortVisibility(api.port_visibility),
     ports: asPorts(api.ports ?? []),
@@ -256,10 +266,21 @@ export function toCable(api: ApiRackCable): Cable {
     color: api.color || CABLE_COLORS[type],
     label: api.label ?? undefined,
     labelVisible: api.label_visible === true,
+    labelOffset: asLabelOffset(api.label_offset_x, api.label_offset_y),
     properties: asCableProperties(api.properties),
     from: { deviceId: api.from_device_id, portId: api.from_port_id },
     to: { deviceId: api.to_device_id, portId: api.to_port_id },
   }
+}
+
+/**
+ * The plate offset, or `undefined` for the midpoint. A missing, non-finite or
+ * zero pair all mean "on the run", so the domain carries no 0/0 placeholder.
+ */
+function asLabelOffset(x: unknown, y: unknown): Cable['labelOffset'] {
+  const fx = typeof x === 'number' && Number.isFinite(x) ? x : 0
+  const fy = typeof y === 'number' && Number.isFinite(y) ? y : 0
+  return fx === 0 && fy === 0 ? undefined : { x: fx, y: fy }
 }
 
 /** Drops the records with neither a port nor a name — they print as an empty chip. */
@@ -305,6 +326,8 @@ function asRackModel(api: ApiInventoryItem): RackModel | null {
     uHeight: typeof api.rack_u_height === 'number' ? api.rack_u_height : null,
     colSpan: typeof api.rack_col_span === 'number' ? api.rack_col_span : null,
     color: api.rack_color ?? null,
+    textColor: api.rack_text_color ?? undefined,
+    bayColor: api.rack_bay_color ?? undefined,
     ports: asPorts(Array.isArray(api.rack_ports) ? api.rack_ports : []),
   }
 }
@@ -364,6 +387,8 @@ export function fromRackDevice(device: RackDevice): Omit<ApiRackDevice, 'design_
     col_span: Math.min(Math.max(device.colSpan, 1), RACK_COLUMNS - colStart),
     faceplate_id: device.faceplateId,
     color: device.color ?? null,
+    text_color: device.textColor ?? null,
+    bay_color: device.bayColor ?? null,
     status: device.status,
     port_visibility: device.portVisibility ?? 'auto',
     ports: device.ports,
@@ -381,6 +406,8 @@ export function fromCable(cable: Cable): Omit<ApiRackCable, 'design_id'> {
     color: cable.color || CABLE_COLORS[cable.type],
     label: cable.label ?? null,
     label_visible: cable.labelVisible === true,
+    label_offset_x: cable.labelOffset?.x ?? 0,
+    label_offset_y: cable.labelOffset?.y ?? 0,
     properties: cable.properties ?? [],
   }
 }
