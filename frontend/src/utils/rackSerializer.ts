@@ -55,6 +55,9 @@ export interface ApiRackDevice {
   col_span: number
   faceplate_id: string
   color: string | null
+  /** Absent from an older backend. */
+  text_color?: string | null
+  bay_color?: string | null
   status: string
   /** 'auto' | 'always' | 'hover'. Rows written before the column read NULL. */
   port_visibility?: string | null
@@ -118,6 +121,8 @@ export interface ApiInventoryItem {
   rack_u_height?: number | null
   rack_col_span?: number | null
   rack_color?: string | null
+  rack_text_color?: string | null
+  rack_bay_color?: string | null
   rack_ports?: unknown[] | null
 }
 
@@ -245,6 +250,8 @@ export function toRackDevice(api: ApiRackDevice): RackDevice {
     colSpan: api.col_span,
     faceplateId: api.faceplate_id,
     color: api.color ?? undefined,
+    textColor: api.text_color ?? undefined,
+    bayColor: api.bay_color ?? undefined,
     status: asMountStatus(api.status),
     portVisibility: asPortVisibility(api.port_visibility),
     ports: asPorts(api.ports ?? []),
@@ -319,6 +326,8 @@ function asRackModel(api: ApiInventoryItem): RackModel | null {
     uHeight: typeof api.rack_u_height === 'number' ? api.rack_u_height : null,
     colSpan: typeof api.rack_col_span === 'number' ? api.rack_col_span : null,
     color: api.rack_color ?? null,
+    textColor: api.rack_text_color ?? undefined,
+    bayColor: api.rack_bay_color ?? undefined,
     ports: asPorts(Array.isArray(api.rack_ports) ? api.rack_ports : []),
   }
 }
@@ -378,6 +387,8 @@ export function fromRackDevice(device: RackDevice): Omit<ApiRackDevice, 'design_
     col_span: Math.min(Math.max(device.colSpan, 1), RACK_COLUMNS - colStart),
     faceplate_id: device.faceplateId,
     color: device.color ?? null,
+    text_color: device.textColor ?? null,
+    bay_color: device.bayColor ?? null,
     status: device.status,
     port_visibility: device.portVisibility ?? 'auto',
     ports: device.ports,

@@ -52,6 +52,8 @@ interface Props {
   uHeight: number
   colSpan: number
   color?: string
+  textColor?: string
+  bayColor?: string
   /**
    * Width a full-width (12-column) plate is drawn at; a narrower plate takes
    * its fraction of it. Left out, the editor measures the space it was given
@@ -78,6 +80,8 @@ export function PortPositionEditor({
   uHeight,
   colSpan,
   color,
+  textColor,
+  bayColor,
   fullWidth,
   interactive,
   selectedPortId,
@@ -231,6 +235,8 @@ export function PortPositionEditor({
             width={plateW}
             height={plateH}
             colorOverride={color}
+          textColor={textColor}
+          bayColor={bayColor}
             portScale={zoom * scale}
             revealed
           />

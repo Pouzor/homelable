@@ -268,12 +268,17 @@ describe('RackDeviceModal — adding', () => {
     expect(columns).toContainElement(screen.getByRole('button', { name: 'Add port' }))
   })
 
-  it('pairs Status with the colour override on one row, and rules off the actions', () => {
+  it('keeps Status with the device facts and the colours in Appearance, and rules off the actions', () => {
     store().openDeviceEditor()
     render(<RackDeviceModal />)
 
-    const row = screen.getByLabelText('Status').closest('.grid')!
-    expect(row).toContainElement(screen.getByLabelText('Colour override'))
+    // Status describes the device; the colours describe its plate. Each sits in
+    // its own section, on its own side of the two-column grid.
+    const sectionOf = (el: HTMLElement) =>
+      el.closest('section')!.querySelector('[data-testid="section-header"]')!.textContent
+    expect(sectionOf(screen.getByLabelText('Status'))).toBe('Information')
+    expect(sectionOf(screen.getByLabelText('Colour override'))).toBe('Appearance')
+    expect(sectionOf(screen.getByLabelText('Label colour'))).toBe('Appearance')
 
     // The footer is not part of the last section — Save must read as an action
     // on the whole form.
@@ -291,11 +296,13 @@ describe('RackDeviceModal — adding', () => {
     store().openDeviceEditor('dev-pve1')
     render(<RackDeviceModal />)
 
+    // The plate leads full width; then the device column and the plate column.
     expect(sectionTitles()).toEqual([
-      'Linked device',
       'Faceplate',
+      'Linked device',
       'Information',
       'Placement',
+      'Appearance',
       'Ports',
     ])
   })
@@ -305,7 +312,7 @@ describe('RackDeviceModal — adding', () => {
     store().openDeviceEditor('dev-shelf')
     render(<RackDeviceModal />)
 
-    expect(sectionTitles()).toEqual(['Faceplate', 'Information', 'Placement'])
+    expect(sectionTitles()).toEqual(['Faceplate', 'Information', 'Placement', 'Appearance'])
   })
 
   it('offers a Width option for every plate width in the catalog', async () => {
@@ -810,3 +817,50 @@ describe('RackDeviceModal — editing', () => {
     expect(screen.queryByRole('button', { name: /Link to/ })).not.toBeInTheDocument()
   })
 })
+
+describe('RackDeviceModal — appearance', () => {
+  it('saves the label and port-bay colours on the mount', () => {
+    store().openDeviceEditor('dev-patch')
+    render(<RackDeviceModal />)
+
+    fireEvent.change(screen.getByLabelText('Label colour'), { target: { value: '#111111' } })
+    fireEvent.change(screen.getByLabelText('Port bay colour'), { target: { value: '#cccccc' } })
+    fireEvent.click(screen.getByRole('button', { name: /^(Save|Add)$/ }))
+
+    const device = store().devices.find((d) => d.id === 'dev-patch')!
+    expect([device.textColor, device.bayColor]).toEqual(['#111111', '#cccccc'])
+  })
+
+  it('previews a picked colour on the plate before saving', () => {
+    store().openDeviceEditor('dev-patch')
+    render(<RackDeviceModal />)
+
+    fireEvent.change(screen.getByLabelText('Label colour'), { target: { value: '#ff6e00' } })
+    const stage = screen.getByTestId('faceplate-stage')
+    expect(stage.querySelector('text')!.getAttribute('fill')).toBe('#ff6e00')
+    // Nothing reaches the store until Save.
+    expect(store().devices.find((d) => d.id === 'dev-patch')!.textColor).toBeUndefined()
+  })
+
+  it('clears an override back to automatic on save', () => {
+    store().updateDevice('dev-patch', { textColor: '#111111' })
+    store().openDeviceEditor('dev-patch')
+    render(<RackDeviceModal />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset label colour' }))
+    fireEvent.click(screen.getByRole('button', { name: /^(Save|Add)$/ }))
+    expect(store().devices.find((d) => d.id === 'dev-patch')!.textColor).toBeUndefined()
+  })
+
+  it('offers no port-bay colour on a plate without a bay', () => {
+    store().openDeviceEditor('dev-shelf')
+    render(<RackDeviceModal />)
+    // The shelf has a strip; a blank plate does not.
+    expect(screen.getByLabelText('Port bay colour')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Faceplate'))
+    fireEvent.click(screen.getByRole('button', { name: /Blank panel 1U/ }))
+    expect(screen.queryByLabelText('Port bay colour')).toBeNull()
+  })
+})
+

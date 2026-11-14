@@ -196,6 +196,39 @@ describe('mounting', () => {
     ])
   })
 
+  it('mounts with the label and port-bay colours the inventory row owns', () => {
+    useRackStore.setState({
+      inventory: store().inventory.map((item) =>
+        item.id === 'inv-sw8'
+          ? {
+              ...item,
+              rackModel: {
+                faceplateId: 'switch-24',
+                uHeight: 1,
+                colSpan: RACK_COLUMNS,
+                color: '#ffffff',
+                textColor: '#111111',
+                bayColor: '#cccccc',
+                ports: [],
+              },
+            }
+          : item,
+      ),
+    })
+    const id = store().mountFromInventory('inv-sw8', 'rack-main', { uStart: 5 })!
+    const device = store().devices.find((d) => d.id === id)!
+    expect([device.textColor, device.bayColor]).toEqual(['#111111', '#cccccc'])
+  })
+
+  it('keeps the local inventory copy in step when a mount is recoloured', () => {
+    // The tray and a second drop read `rackModel`; a stale one would remount the
+    // device in its old colours until the next fetch.
+    const device = store().devices.find((d) => d.deviceId)!
+    store().updateDevice(device.id, { textColor: '#111111', bayColor: '#cccccc' })
+    const model = store().inventory.find((i) => i.id === device.deviceId)!.rackModel!
+    expect([model.textColor, model.bayColor]).toEqual(['#111111', '#cccccc'])
+  })
+
   it('seeds the plate from the template when the drop asks for another one', () => {
     useRackStore.setState({
       inventory: store().inventory.map((item) =>

@@ -88,3 +88,14 @@ describe('DeviceFaceplateEditor', () => {
     expect(onChange.mock.calls.at(-1)![0].color).toBeNull()
   })
 })
+
+describe('DeviceFaceplateEditor colours', () => {
+  it('edits the label and port-bay colours of the inventory plate', () => {
+    const { onChange } = draw()
+    fireEvent.change(screen.getByLabelText('Label colour'), { target: { value: '#111111' } })
+    expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ textColor: '#111111', color: null })
+    fireEvent.change(screen.getByLabelText('Port bay colour'), { target: { value: '#cccccc' } })
+    expect(onChange.mock.calls.at(-1)![0]).toMatchObject({ bayColor: '#cccccc' })
+  })
+})
+

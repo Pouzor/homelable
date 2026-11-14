@@ -467,6 +467,14 @@ export function getFaceplate(id: string): FaceplateTemplate {
 }
 
 /**
+ * Whether the plate draws a port bay — the recessed `strip` sockets sit in on a
+ * switch, router, patch panel or shelf. Only those get a bay colour to pick.
+ */
+export function hasPortBay(faceplateId: string): boolean {
+  return getFaceplate(faceplateId).elements.some((el) => el.kind === 'strip')
+}
+
+/**
  * Faceplate proposed when an inventory device is dropped into a rack.
  *
  * Keyed on the device's discovery `suggested_type`, which is free-form — an

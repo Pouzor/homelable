@@ -9,6 +9,7 @@ import { memo, useId } from 'react'
 import { getFaceplate } from '../faceplates'
 import { U_PX } from '../layout'
 import { useRackPalette } from '../rackTheme'
+import { plateTextColor } from '../plateColors'
 import type { DeviceStatus, FaceplateElement, Port, PortType, PortVisibility } from '@/types'
 
 const LED_X = 9
@@ -51,7 +52,8 @@ function rj45Path(w: number, h: number): string {
   ].join(' ')
 }
 
-function drawElement(el: FaceplateElement, i: number, w: number, h: number) {
+/** `bayFill` overrides every `strip` — the port bays a user may recolour. */
+function drawElement(el: FaceplateElement, i: number, w: number, h: number, bayFill?: string) {
   switch (el.kind) {
     case 'panel':
       return null // drawn by the caller as the plate background
@@ -111,7 +113,7 @@ function drawElement(el: FaceplateElement, i: number, w: number, h: number) {
           width={el.w * w}
           height={el.h * h}
           rx={2}
-          fill={el.fill}
+          fill={bayFill ?? el.fill}
         />
       )
     case 'outlets': {
@@ -159,6 +161,10 @@ interface Props {
   width: number
   height: number
   colorOverride?: string
+  /** Label colour. Absent, the theme's — or dark/light ink where it would not read. */
+  textColor?: string
+  /** Port-bay (`strip`) fill. Absent, the template's own. */
+  bayColor?: string
   selected?: boolean
   /** Hover or selection: reveals the ports of non-patch gear. */
   revealed?: boolean
@@ -198,6 +204,8 @@ export const Faceplate = memo(function Faceplate({
   width,
   height,
   colorOverride,
+  textColor,
+  bayColor,
   selected,
   revealed,
   portVisibility,
@@ -214,6 +222,7 @@ export const Faceplate = memo(function Faceplate({
   const clipId = useId()
   const panel = template.elements.find((e) => e.kind === 'panel')
   const fill = colorOverride ?? (panel?.kind === 'panel' ? panel.fill : palette.plate)
+  const labelFill = plateTextColor(fill, palette.text, textColor)
 
   // `always` and `hover` override the plate; `auto` (the default) keeps the
   // template's own rule — patch-facing gear on, everything else on focus.
@@ -259,7 +268,7 @@ export const Faceplate = memo(function Faceplate({
       <rect x={1.5} y={height * 0.3} width={2.5} height={height * 0.4} rx={1} fill="#0d1117" opacity={0.55} />
       <rect x={width - 4} y={height * 0.3} width={2.5} height={height * 0.4} rx={1} fill="#0d1117" opacity={0.55} />
 
-      {template.elements.map((el, i) => drawElement(el, i, width, height))}
+      {template.elements.map((el, i) => drawElement(el, i, width, height, bayColor))}
 
       {template.statusLed && (
         <circle cx={LED_X} cy={bandY} r={LED_R} fill={palette.status[status]} />
@@ -271,7 +280,7 @@ export const Faceplate = memo(function Faceplate({
           y={bandY}
           clipPath={`url(#${clipId})`}
           fontSize={fontSize}
-          fill={palette.text}
+          fill={labelFill}
           dominantBaseline="central"
           textAnchor="start"
           fontFamily="Inter, system-ui, sans-serif"

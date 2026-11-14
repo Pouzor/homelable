@@ -296,6 +296,116 @@ class TestDeviceRackModel:
         assert device["u_height"] == 4
 
 
+class TestPlateColours:
+    """Label and port-bay colour overrides: owned by the inventory row like the
+    panel fill, kept on the mount for accessories, and refused unless hex."""
+
+    async def _mounted(self, client: AsyncClient, headers: dict, db_session, **device) -> str:
+        return await TestDeviceRackModel()._mounted(client, headers, db_session, **device)
+
+    async def test_round_trips_and_writes_through_to_the_inventory(
+        self, client: AsyncClient, headers, db_session
+    ):
+        design_id = await self._mounted(
+            client, headers, db_session, color="#F0F0F0", text_color="#111", bay_color="#cccccc"
+        )
+        entry = await db_session.get(InventoryDevice, "inv-sw")
+        await db_session.refresh(entry)
+        assert (entry.rack_text_color, entry.rack_bay_color) == ("#111", "#cccccc")
+
+        device = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["devices"][0]
+        assert (device["text_color"], device["bay_color"]) == ("#111", "#cccccc")
+
+    async def test_load_serves_the_inventory_colours_over_the_mount_copy(
+        self, client: AsyncClient, headers, db_session
+    ):
+        design_id = await self._mounted(client, headers, db_session, text_color="#111111")
+        entry = await db_session.get(InventoryDevice, "inv-sw")
+        entry.rack_text_color = "#fefefe"
+        entry.rack_bay_color = "#333333"
+        await db_session.commit()
+
+        device = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["devices"][0]
+        assert (device["text_color"], device["bay_color"]) == ("#fefefe", "#333333")
+
+    async def test_the_tray_offers_the_saved_colours(
+        self, client: AsyncClient, headers, db_session
+    ):
+        design_id = await self._mounted(client, headers, db_session, bay_color="#cccccc")
+        items = (
+            await client.get(f"/api/v1/racks/inventory?design_id={design_id}", headers=headers)
+        ).json()["items"]
+        item = next(i for i in items if i["id"] == "inv-sw")
+        assert item["rack_bay_color"] == "#cccccc"
+        assert item["rack_text_color"] is None
+
+    async def test_an_accessory_keeps_its_colours_on_the_mount(
+        self, client: AsyncClient, headers
+    ):
+        design_id = await _design(client, headers)
+        state = _state(design_id, cables=[])
+        state["devices"] = [
+            {**state["devices"][0], "faceplate_id": "patch-24", "ports": [],
+             "text_color": "#000000", "bay_color": "#ffffff"}
+        ]
+        assert (
+            await client.post("/api/v1/racks/save", json=state, headers=headers)
+        ).status_code == 200
+        device = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["devices"][0]
+        assert (device["text_color"], device["bay_color"]) == ("#000000", "#ffffff")
+
+    async def test_defaults_to_no_override(self, client: AsyncClient, headers):
+        design_id = await _design(client, headers)
+        await client.post("/api/v1/racks/save", json=_state(design_id), headers=headers)
+        device = (
+            await client.get(f"/api/v1/racks?design_id={design_id}", headers=headers)
+        ).json()["devices"][0]
+        assert (device["text_color"], device["bay_color"]) == (None, None)
+
+    @pytest.mark.parametrize("value", ["red", "#12345", "url(#x)", "#gggggg", 42])
+    async def test_rejects_a_colour_that_is_not_hex(self, client: AsyncClient, headers, value):
+        design_id = await _design(client, headers)
+        state = _state(design_id)
+        state["devices"][0]["text_color"] = value
+        res = await client.post("/api/v1/racks/save", json=state, headers=headers)
+        assert res.status_code == 422
+
+    async def test_the_inventory_edits_and_validates_the_colours(
+        self, client: AsyncClient, headers, db_session
+    ):
+        db_session.add(InventoryDevice(id="inv-edit", ip="192.168.1.20"))
+        await db_session.commit()
+        res = await client.patch(
+            "/api/v1/scan/pending/inv-edit",
+            json={"rack_text_color": "#ABCDEF", "rack_bay_color": ""},
+            headers=headers,
+        )
+        assert res.status_code == 200, res.text
+        assert (res.json()["rack_text_color"], res.json()["rack_bay_color"]) == ("#abcdef", None)
+
+        bad = await client.patch(
+            "/api/v1/scan/pending/inv-edit", json={"rack_bay_color": "blue"}, headers=headers
+        )
+        assert bad.status_code == 422
+
+    async def test_a_duplicated_device_keeps_its_plate_colours(
+        self, client: AsyncClient, headers, db_session
+    ):
+        db_session.add(InventoryDevice(
+            id="inv-src", ip="192.168.1.30", rack_faceplate_id="patch-24",
+            rack_text_color="#111111", rack_bay_color="#eeeeee",
+        ))
+        await db_session.commit()
+        res = await client.post("/api/v1/scan/pending/inv-src/duplicate", headers=headers)
+        assert res.status_code == 201, res.text
+        assert (res.json()["rack_text_color"], res.json()["rack_bay_color"]) == ("#111111", "#eeeeee")
+
 
 class TestSaveAndLoad:
     async def test_round_trips_the_full_state(self, client: AsyncClient, headers):

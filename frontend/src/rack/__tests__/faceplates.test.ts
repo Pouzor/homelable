@@ -214,3 +214,14 @@ describe('bank', () => {
     expect(ports.map((p) => p.label)).toEqual(['sfp3', 'sfp4'])
   })
 })
+
+describe('hasPortBay', () => {
+  it('is true for plates whose sockets sit in a bay, false otherwise', async () => {
+    const { hasPortBay } = await import('../faceplates')
+    expect(hasPortBay('patch-24')).toBe(true)
+    expect(hasPortBay('switch-24')).toBe(true)
+    expect(hasPortBay('server-1u')).toBe(false)
+    expect(hasPortBay('blank-1u')).toBe(false)
+  })
+})
+

@@ -187,6 +187,10 @@ class RackDevice(Base):
     col_span: Mapped[int] = mapped_column(Integer, default=12)
     faceplate_id: Mapped[str] = mapped_column(String, nullable=False, default="blank-1u")
     color: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Plate label colour and port-bay (strip) colour overrides. NULL leaves the
+    # renderer in charge: a readable label colour, the template's bay fill.
+    text_color: Mapped[str | None] = mapped_column(String, nullable=True)
+    bay_color: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="unknown")
     # When the plate draws its sockets: "auto" (the faceplate decides), "always"
     # or "hover". A canvas display choice about the mount, not about the device.
@@ -300,6 +304,8 @@ class InventoryDevice(Base):
     rack_u_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rack_col_span: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rack_color: Mapped[str | None] = mapped_column(String, nullable=True)
+    rack_text_color: Mapped[str | None] = mapped_column(String, nullable=True)
+    rack_bay_color: Mapped[str | None] = mapped_column(String, nullable=True)
     # [{id, label, type, x, y}] — x/y are unit coordinates on the plate.
     rack_ports: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
 

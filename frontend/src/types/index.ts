@@ -188,6 +188,8 @@ export interface InventoryEntry {
   rack_u_height?: number | null
   rack_col_span?: number | null
   rack_color?: string | null
+  rack_text_color?: string | null
+  rack_bay_color?: string | null
   rack_ports?: Port[]
 }
 

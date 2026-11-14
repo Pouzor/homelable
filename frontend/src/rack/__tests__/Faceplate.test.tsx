@@ -143,3 +143,43 @@ describe('Faceplate — when ports are drawn', () => {
     ])
   })
 })
+
+describe('Faceplate colours', () => {
+  function plate(over: Partial<React.ComponentProps<typeof Faceplate>> = {}) {
+    const { container } = render(
+      <Faceplate
+        faceplateId="patch-24"
+        label="patch-a"
+        status="unknown"
+        ports={[]}
+        width={400}
+        height={30}
+        {...over}
+      />,
+    )
+    return container
+  }
+  /** The port-bay strip of a patch panel, recognised by the template's fill. */
+  const strip = (container: HTMLElement, fill: string) =>
+    container.querySelector(`rect[fill="${fill}"]`)
+
+  it('keeps the label readable on a white panel without being asked', () => {
+    const container = plate({ colorOverride: '#ffffff' })
+    expect(container.querySelector('text')!.getAttribute('fill')).toBe('#0d1117')
+  })
+
+  it('draws the label in the colour the user picked', () => {
+    const container = plate({ colorOverride: '#ffffff', textColor: '#ff6e00' })
+    expect(container.querySelector('text')!.getAttribute('fill')).toBe('#ff6e00')
+  })
+
+  it('paints the port bay in the picked colour, and in the template fill otherwise', () => {
+    const bay = getFaceplate('patch-24').elements.find((e) => e.kind === 'strip')!
+    expect(bay.kind === 'strip' && strip(plate(), bay.fill)).not.toBeNull()
+
+    const container = plate({ bayColor: '#c0c0c0' })
+    expect(bay.kind === 'strip' && strip(container, bay.fill)).toBeNull()
+    expect(strip(container, '#c0c0c0')).not.toBeNull()
+  })
+})
+

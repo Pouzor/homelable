@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
-from app.schemas.racks import RACK_COLUMNS
+from app.schemas.racks import RACK_COLUMNS, hex_color_or_none
 
 # Tallest plate the rack canvas offers; `MAX_RACK_U` on the frontend.
 MAX_PLATE_U = 48
@@ -69,6 +69,8 @@ class InventoryDeviceResponse(BaseModel):
     rack_u_height: int | None = None
     rack_col_span: int | None = None
     rack_color: str | None = None
+    rack_text_color: str | None = None
+    rack_bay_color: str | None = None
     rack_ports: list[Any] = []
 
     @field_validator("rack_ports", mode="before")
@@ -185,7 +187,14 @@ class InventoryDeviceUpdate(BaseModel):
     rack_u_height: int | None = None
     rack_col_span: int | None = None
     rack_color: str | None = None
+    rack_text_color: str | None = None
+    rack_bay_color: str | None = None
     rack_ports: list[Any] | None = None
+
+    @field_validator("rack_text_color", "rack_bay_color", mode="before")
+    @classmethod
+    def _hex_or_none(cls, v: Any) -> str | None:
+        return hex_color_or_none(v)
 
     @field_validator("rack_u_height")
     @classmethod

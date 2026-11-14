@@ -81,6 +81,9 @@ export interface RackModel {
   uHeight: number | null
   colSpan: number | null
   color: string | null
+  /** Label and port-bay colour overrides; absent when the row has none. */
+  textColor?: string | null
+  bayColor?: string | null
   ports: Port[]
 }
 
@@ -182,6 +185,10 @@ export interface RackDevice {
   faceplateId: string
   /** Overrides the faceplate panel fill when set. */
   color?: string
+  /** Overrides the label colour. Unset, it stays readable on the fill by itself. */
+  textColor?: string
+  /** Overrides the port-bay (`strip`) fill on plates that have one. */
+  bayColor?: string
   /** Pinned state, or `auto` to follow the linked node's check. */
   status: MountStatus
   /**

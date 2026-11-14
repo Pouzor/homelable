@@ -130,3 +130,29 @@ describe('InventoryDeviceModal — rack faceplate', () => {
     expect(screen.getByText(/2 ports/)).toBeInTheDocument()
   })
 })
+
+describe('InventoryDeviceModal — plate colours', () => {
+  it('sends the label and port-bay colours with the plate', async () => {
+    render(<InventoryDeviceModal {...noop} device={modelled({ rack_bay_color: '#cccccc' })} />)
+    edit()
+    fireEvent.change(screen.getByLabelText('Label colour'), { target: { value: '#111111' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(mockUpdatePending).toHaveBeenCalled())
+    const body = mockUpdatePending.mock.calls[0][1]
+    expect(body.rack_text_color).toBe('#111111')
+    expect(body.rack_bay_color).toBe('#cccccc')
+  })
+
+  it('sends null for a colour left on automatic', async () => {
+    render(<InventoryDeviceModal {...noop} device={modelled()} />)
+    edit()
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(mockUpdatePending).toHaveBeenCalled())
+    const body = mockUpdatePending.mock.calls[0][1]
+    expect(body.rack_text_color).toBeNull()
+    expect(body.rack_bay_color).toBeNull()
+  })
+})
+

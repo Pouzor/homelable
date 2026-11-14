@@ -272,6 +272,31 @@ async def test_mount_device_reuses_the_front_panel_the_inventory_owns(fake):
 
 
 @pytest.mark.anyio
+async def test_mount_device_keeps_the_label_and_bay_colours_the_inventory_owns(fake):
+    """The save writes the plate back to the inventory row: a mount that dropped
+    these colours would wipe them from the row as well."""
+    _use(fake, items=[api_item(
+        rack_faceplate_id="patch-24", rack_u_height=1, rack_col_span=12,
+        rack_color="#f0f0f0", rack_text_color="#111111", rack_bay_color="#cccccc",
+    )])
+    await dispatch_rack(
+        "mount_device", {"design_id": DESIGN, "rack_id": "r1", "inventory_device_id": "i1"}
+    )
+    mount = fake.payload["devices"][0]
+    assert (mount["text_color"], mount["bay_color"]) == ("#111111", "#cccccc")
+
+
+@pytest.mark.anyio
+async def test_mount_device_leaves_the_colours_unset_for_an_unmodelled_device(fake):
+    _use(fake, items=[api_item()])
+    await dispatch_rack(
+        "mount_device", {"design_id": DESIGN, "rack_id": "r1", "inventory_device_id": "i1"}
+    )
+    mount = fake.payload["devices"][0]
+    assert (mount["text_color"], mount["bay_color"]) == (None, None)
+
+
+@pytest.mark.anyio
 async def test_mount_device_ignores_a_stored_size_from_another_plate(fake):
     """The stored size was measured on the plate it was stored with; an explicit
     faceplate override means the size and ports have to come from that plate."""

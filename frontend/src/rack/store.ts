@@ -354,6 +354,8 @@ function withDeviceModel(
         uHeight: resized ? device.uHeight : item.rackModel?.uHeight ?? device.uHeight,
         colSpan: rewidened ? device.colSpan : item.rackModel?.colSpan ?? device.colSpan,
         color: device.color ?? null,
+        textColor: device.textColor,
+        bayColor: device.bayColor,
         ports: device.ports,
       },
     }
@@ -603,6 +605,8 @@ export const useRackStore = create<RackState>((set, get) => {
         status: item.status,
         faceplateId: plate.id,
         color: modelled?.color ?? undefined,
+        textColor: modelled?.textColor ?? undefined,
+        bayColor: modelled?.bayColor ?? undefined,
         // Port ids are reused as-is: they are the device's, not the mount's, and
         // nothing outside this design's cables refers to them.
         ports: modelled ? modelled.ports.map((port) => ({ ...port })) : withIds(plate.ports),

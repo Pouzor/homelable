@@ -45,6 +45,13 @@ RACK_CABLE_MIGRATIONS: tuple[tuple[str, str], ...] = (
     ),
 )
 
+# Plate colour overrides on `rack_devices` beyond the panel fill: the label and
+# the port bays. Both nullable — NULL is "let the renderer decide".
+RACK_DEVICE_COLOR_MIGRATIONS: tuple[tuple[str, str], ...] = (
+    ("rack_devices.text_color", "ALTER TABLE rack_devices ADD COLUMN text_color TEXT"),
+    ("rack_devices.bay_color", "ALTER TABLE rack_devices ADD COLUMN bay_color TEXT"),
+)
+
 # DDL for the documents feature that `Base.metadata.create_all` does not apply:
 # the column additions it never makes to an existing table, plus a virtual table
 # and partial indexes it cannot express at all. Shared with the test fixtures so
@@ -502,6 +509,11 @@ async def init_db() -> None:
                 "UPDATE rack_cables SET properties = '[]' WHERE properties IS NULL"
             )
 
+        # Label and port-bay colour overrides on a mount. NULL — every existing
+        # row — keeps the renderer's defaults.
+        for label, sql in RACK_DEVICE_COLOR_MIGRATIONS:
+            await _try_migrate(conn, sql, label=label)
+
         # A mount can override when its plate draws its sockets. Existing rows
         # keep the old behaviour, which is exactly what "auto" means.
         await _try_migrate(
@@ -651,6 +663,14 @@ async def init_db() -> None:
                 "ALTER TABLE device_inventory ADD COLUMN rack_col_span INTEGER",
             ),
             ("device_inventory.rack_color", "ALTER TABLE device_inventory ADD COLUMN rack_color TEXT"),
+            (
+                "device_inventory.rack_text_color",
+                "ALTER TABLE device_inventory ADD COLUMN rack_text_color TEXT",
+            ),
+            (
+                "device_inventory.rack_bay_color",
+                "ALTER TABLE device_inventory ADD COLUMN rack_bay_color TEXT",
+            ),
             ("device_inventory.rack_ports", "ALTER TABLE device_inventory ADD COLUMN rack_ports JSON"),
         ):
             await _try_migrate(conn, sql, label=label)

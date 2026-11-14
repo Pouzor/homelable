@@ -109,6 +109,38 @@ describe('API → domain', () => {
     expect(device.ports[0]).toMatchObject({ id: 'p9', label: 'p9', type: 'rj45' })
   })
 
+  it('carries the label and port-bay colours of a mount, absent when unset', () => {
+    const device = toRackDevice({ ...apiDevice, text_color: '#111111', bay_color: '#cccccc' })
+    expect([device.textColor, device.bayColor]).toEqual(['#111111', '#cccccc'])
+    expect(fromRackDevice(device)).toMatchObject({ text_color: '#111111', bay_color: '#cccccc' })
+
+    // An older backend sends neither key; nothing is overridden, and null goes back.
+    const bare = toRackDevice(apiDevice)
+    expect([bare.textColor, bare.bayColor]).toEqual([undefined, undefined])
+    expect(fromRackDevice(bare)).toMatchObject({ text_color: null, bay_color: null })
+  })
+
+  it('reads the plate colours the inventory row owns', () => {
+    const item = toInventoryDevice({
+      id: 'inv9',
+      label: 'patch-a',
+      suggested_type: 'patch_panel',
+      ip: null,
+      status: 'approved',
+      discovery_source: 'rack',
+      node_id: null,
+      node_status: null,
+      racked: true,
+      rack_faceplate_id: 'patch-24',
+      rack_color: '#ffffff',
+      rack_text_color: '#111111',
+      rack_bay_color: null,
+    })
+    expect(item.rackModel).toMatchObject({ color: '#ffffff', textColor: '#111111' })
+    // Unset reads as absent, the way a mount carries it.
+    expect(item.rackModel!.bayColor).toBeUndefined()
+  })
+
   it('treats an unknown device status as unknown', () => {
     expect(toRackDevice({ ...apiDevice, status: 'exploded' }).status).toBe('unknown')
   })
