@@ -165,3 +165,14 @@ def prune_port_labels(
         if idx < (side_default(side) if count is None else count):
             kept[key] = text
     return kept or None
+
+
+def normalize_linked_design(v: object) -> object:
+    """A blank drill-down link is no link.
+
+    The node modal's "None" choice and a cleared MCP field can both arrive as an
+    empty string; stored as-is it would draw a button that opens nothing.
+    """
+    if isinstance(v, str) and not v.strip():
+        return None
+    return v
