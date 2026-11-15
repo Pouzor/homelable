@@ -5,6 +5,17 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.7.1] - 2026-11-15
+
+### Features
+
+- Rack cable labels can be dragged off the cable, a header Labels toggle hides them, and the port editor zooms. (#606)
+
+### Fixes
+
+- `/stats/summary` counts each device once. (#603, fixes #562) — thanks @officialasishkumar
+- Canvas switcher row actions no longer truncate canvas names. (#605)
+
 ## [3.7.0] - 2026-11-07
 
 ### Features
