@@ -108,6 +108,17 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
       }))
     }
 
+    // Appearance overrides. `width`/`height` are legacy zone geometry, and
+    // unset keys are dropped so an untouched node writes nothing.
+    if (d.custom_colors) {
+      const style = Object.fromEntries(
+        Object.entries(d.custom_colors).filter(
+          ([key, value]) => key !== 'width' && key !== 'height' && value !== undefined && value !== null,
+        ),
+      )
+      if (Object.keys(style).length > 0) entry.nodeStyle = style
+    }
+
     // Parent relationship: if this node has a parentId in React Flow,
     // encode it as a 'parent' connection using any virtual edge between them.
     if (node.parentId) {

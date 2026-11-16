@@ -47,6 +47,43 @@ function yamlProperties(raw: unknown): NodeProperty[] | undefined {
   return props
 }
 
+type NodeStyle = NonNullable<NodeData['custom_colors']>
+
+/** The type each `nodeStyle` key must have; anything else is dropped. */
+const STYLE_KEY_TYPES: Record<string, 'string' | 'number' | 'boolean'> = {
+  border: 'string',
+  background: 'string',
+  icon: 'string',
+  show_services: 'boolean',
+  text_color: 'string',
+  text_position: 'string',
+  font: 'string',
+  border_style: 'string',
+  border_width: 'number',
+  label_position: 'string',
+  text_size: 'number',
+  z_order: 'number',
+  show_border: 'boolean',
+}
+
+/**
+ * The file's `nodeStyle`, keeping only the known appearance keys with a value
+ * of the right type — a hand-edited file must not smuggle arbitrary data into
+ * `custom_colors`. `undefined` when nothing usable is left.
+ */
+function yamlNodeStyle(raw: unknown): NodeStyle | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const style = Object.fromEntries(
+    Object.entries(raw).filter(([key, value]) => {
+      if (!Object.hasOwn(STYLE_KEY_TYPES, key)) return false
+      const expected = STYLE_KEY_TYPES[key]
+      return typeof value === expected
+        && (expected !== 'number' || Number.isFinite(value))
+    }),
+  )
+  return Object.keys(style).length > 0 ? (style as NodeStyle) : undefined
+}
+
 /**
  * Parse a YAML string and merge the resulting nodes/edges into the existing canvas.
  * - Nodes with the same label as an existing node are skipped (no duplicates).
@@ -99,6 +136,7 @@ export function parseYamlToCanvas(
     // A file that carries `properties` already holds the hardware rows (the
     // node drew them from there), so minting them again would duplicate them.
     const properties = yamlProperties(yn.properties) ?? hardwareProperties(yn)
+    const nodeStyle = yamlNodeStyle(yn.nodeStyle)
     // The per-point labels, minus any entry the file mangled (#495).
     const portLabels = normalizePortLabels(yn.portLabels)
 
@@ -120,6 +158,7 @@ export function parseYamlToCanvas(
       // Kept as structured fields for the export round trip; drawn through the
       // properties above.
       ...(properties.length > 0 ? { properties } : {}),
+      ...(nodeStyle ? { custom_colors: nodeStyle } : {}),
       // Restore custom connection-point counts so the edges below attach to the
       // slots they were exported on instead of collapsing onto slot 0.
       // A count of 0 is meaningful (side with no connection point), so test for

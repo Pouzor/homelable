@@ -55,4 +55,11 @@ describe('resolvePropertyIcon', () => {
   it('returns null for empty string', () => {
     expect(resolvePropertyIcon('')).toBeNull()
   })
+
+  // Names come from imported files too — a prototype member must not resolve.
+  it('returns null for Object.prototype member names', () => {
+    for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect(resolvePropertyIcon(name)).toBeNull()
+    }
+  })
 })

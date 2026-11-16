@@ -58,6 +58,8 @@ export const PROPERTY_ICONS: Record<string, LucideIcon> = {
 export const PROPERTY_ICON_NAMES = Object.keys(PROPERTY_ICONS) as (keyof typeof PROPERTY_ICONS)[]
 
 export function resolvePropertyIcon(name: string | null | undefined): LucideIcon | null {
-  if (!name) return null
-  return PROPERTY_ICONS[name] ?? null
+  // Own keys only: a name from an imported file such as "constructor" would
+  // otherwise resolve to an Object.prototype member and crash the render.
+  if (!name || !Object.hasOwn(PROPERTY_ICONS, name)) return null
+  return PROPERTY_ICONS[name]
 }
