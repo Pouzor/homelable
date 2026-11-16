@@ -97,6 +97,28 @@ export function exportCanvasToYaml(nodes: Node<NodeData>[], edges: Edge<EdgeData
     const portLabels = prunePortLabels(d)
     if (portLabels) entry.portLabels = portLabels
 
+    // Key/value properties (#608) — the node draws these, so without them a
+    // round trip came back with bare nodes.
+    if (d.properties?.length) {
+      entry.properties = d.properties.map((p) => ({
+        key: p.key,
+        value: p.value,
+        ...(p.icon ? { icon: p.icon } : {}),
+        ...(p.visible === false ? { visible: false } : {}),
+      }))
+    }
+
+    // Appearance overrides. `width`/`height` are legacy zone geometry, and
+    // unset keys are dropped so an untouched node writes nothing.
+    if (d.custom_colors) {
+      const style = Object.fromEntries(
+        Object.entries(d.custom_colors).filter(
+          ([key, value]) => key !== 'width' && key !== 'height' && value !== undefined && value !== null,
+        ),
+      )
+      if (Object.keys(style).length > 0) entry.nodeStyle = style
+    }
+
     // Parent relationship: if this node has a parentId in React Flow,
     // encode it as a 'parent' connection using any virtual edge between them.
     if (node.parentId) {

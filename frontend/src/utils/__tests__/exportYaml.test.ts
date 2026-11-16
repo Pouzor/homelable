@@ -225,4 +225,39 @@ describe('exportCanvasToYaml', () => {
     const plain = (yaml.load(exportCanvasToYaml([makeNode({ label: 'Plain', type: 'switch' })], [])) as Record<string, unknown>[])[0]
     expect(plain).not.toHaveProperty('portLabels')
   })
+
+  it('exports node properties, omitting a null icon and a visible flag (#608)', () => {
+    const nodes = [makeNode({
+      label: 'NAS',
+      properties: [
+        { key: 'Location', value: 'Basement', icon: null, visible: true },
+        { key: 'RAM', value: '32 GB', icon: 'MemoryStick', visible: false },
+      ],
+    })]
+    const entry = (yaml.load(exportCanvasToYaml(nodes, [])) as Record<string, unknown>[])[0]
+    expect(entry.properties).toEqual([
+      { key: 'Location', value: 'Basement' },
+      { key: 'RAM', value: '32 GB', icon: 'MemoryStick', visible: false },
+    ])
+  })
+
+  it('omits properties when the node has none (#608)', () => {
+    const entry = (yaml.load(exportCanvasToYaml([makeNode({ properties: [] })], [])) as Record<string, unknown>[])[0]
+    expect(entry).not.toHaveProperty('properties')
+  })
+
+  it('exports the node style without legacy geometry or unset keys', () => {
+    const nodes = [makeNode({
+      custom_colors: { border: '#ff6e00', background: '#161b22', border_width: 2, show_services: false, font: undefined, width: 300, height: 200 },
+    })]
+    const entry = (yaml.load(exportCanvasToYaml(nodes, [])) as Record<string, unknown>[])[0]
+    expect(entry.nodeStyle).toEqual({ border: '#ff6e00', background: '#161b22', border_width: 2, show_services: false })
+  })
+
+  it('omits nodeStyle when the node has no style overrides', () => {
+    const bare = (yaml.load(exportCanvasToYaml([makeNode()], [])) as Record<string, unknown>[])[0]
+    const geometryOnly = (yaml.load(exportCanvasToYaml([makeNode({ custom_colors: { width: 300 } })], [])) as Record<string, unknown>[])[0]
+    expect(bare).not.toHaveProperty('nodeStyle')
+    expect(geometryOnly).not.toHaveProperty('nodeStyle')
+  })
 })

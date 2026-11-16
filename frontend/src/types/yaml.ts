@@ -1,4 +1,4 @@
-import type { NodeType, EdgeType, CheckMethod } from '@/types'
+import type { NodeType, EdgeType, CheckMethod, NodeData } from '@/types'
 
 export interface YamlNodeConnection {
   label: string
@@ -40,4 +40,17 @@ export interface YamlNode {
   // The device's own numbering per connection point, keyed by handle ID — only
   // written when at least one point carries a label (#495).
   portLabels?: Record<string, string>
+  // The node's key/value properties (#608). `icon` is omitted when unset and
+  // `visible` when true, so the common case stays a two-line entry.
+  properties?: YamlNodeProperty[]
+  // The node's appearance overrides — `custom_colors` minus the legacy zone
+  // geometry (zones are not exported). Keys keep the canvas spelling.
+  nodeStyle?: Omit<NonNullable<NodeData['custom_colors']>, 'width' | 'height'>
+}
+
+export interface YamlNodeProperty {
+  key: string
+  value: string
+  icon?: string
+  visible?: boolean
 }
