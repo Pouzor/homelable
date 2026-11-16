@@ -458,6 +458,65 @@ describe('parseYamlToCanvas', () => {
     expect(nodes[0].data.port_labels).toEqual({ top: '8', 'bottom-7': '7' })
   })
 
+  it('round-trips node properties through export → import (#608)', () => {
+    const properties = [
+      { key: 'Location', value: 'Basement', icon: null, visible: true },
+      { key: 'VLAN', value: '20', icon: 'Network', visible: false },
+    ]
+    const nas: Node<NodeData> = {
+      id: 'nas', type: 'nas', position: { x: 0, y: 0 },
+      data: { label: 'NAS', type: 'nas', status: 'online', services: [], properties },
+    }
+    const { nodes } = parseYamlToCanvas(exportCanvasToYaml([nas], []), empty, emptyEdges)
+    expect(nodes[0].data.properties).toEqual(properties)
+  })
+
+  // The hardware rows already live in `properties`; minting them again from the
+  // structured fields would draw every spec twice.
+  it('does not duplicate hardware specs a node also carries as properties (#608)', () => {
+    const pve: Node<NodeData> = {
+      id: 'pve', type: 'proxmox', position: { x: 0, y: 0 },
+      data: {
+        label: 'PVE', type: 'proxmox', status: 'online', services: [],
+        cpu_model: 'Intel Xeon', ram_gb: 64,
+        properties: [
+          { key: 'CPU Model', value: 'Intel Xeon', icon: 'Cpu', visible: true },
+          { key: 'RAM', value: '64 GB', icon: 'MemoryStick', visible: true },
+        ],
+      },
+    }
+    const { nodes } = parseYamlToCanvas(exportCanvasToYaml([pve], []), empty, emptyEdges)
+    expect(nodes[0].data.properties).toEqual(pve.data.properties)
+    expect(nodes[0].data.ram_gb).toBe(64)
+  })
+
+  it('drops property entries with no usable key and coerces values (#608)', () => {
+    const yaml = `
+- nodeType: server
+  label: "Messy"
+  properties:
+    - key: "Rack"
+      value: 3
+    - key: "  "
+      value: "blank key"
+    - value: "no key"
+    - "not an object"
+    - key: "Owner"
+`
+    const { nodes } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    expect(nodes[0].data.properties).toEqual([
+      { key: 'Rack', value: '3', icon: null, visible: true },
+      { key: 'Owner', value: '', icon: null, visible: true },
+    ])
+  })
+
+  it('leaves the node without properties when the list is empty (#608)', () => {
+    const yaml = `- nodeType: server\n  label: "Empty"\n  properties: []\n  ram: 8\n`
+    const { nodes } = parseYamlToCanvas(yaml, empty, emptyEdges)
+    // An explicit list wins over the legacy hardware fallback, even when empty.
+    expect(nodes[0].data.properties).toBeUndefined()
+  })
+
   it('drops malformed port labels on import (#495)', () => {
     const yamlStr = `
 - nodeType: switch

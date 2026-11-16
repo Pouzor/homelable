@@ -225,4 +225,24 @@ describe('exportCanvasToYaml', () => {
     const plain = (yaml.load(exportCanvasToYaml([makeNode({ label: 'Plain', type: 'switch' })], [])) as Record<string, unknown>[])[0]
     expect(plain).not.toHaveProperty('portLabels')
   })
+
+  it('exports node properties, omitting a null icon and a visible flag (#608)', () => {
+    const nodes = [makeNode({
+      label: 'NAS',
+      properties: [
+        { key: 'Location', value: 'Basement', icon: null, visible: true },
+        { key: 'RAM', value: '32 GB', icon: 'MemoryStick', visible: false },
+      ],
+    })]
+    const entry = (yaml.load(exportCanvasToYaml(nodes, [])) as Record<string, unknown>[])[0]
+    expect(entry.properties).toEqual([
+      { key: 'Location', value: 'Basement' },
+      { key: 'RAM', value: '32 GB', icon: 'MemoryStick', visible: false },
+    ])
+  })
+
+  it('omits properties when the node has none (#608)', () => {
+    const entry = (yaml.load(exportCanvasToYaml([makeNode({ properties: [] })], [])) as Record<string, unknown>[])[0]
+    expect(entry).not.toHaveProperty('properties')
+  })
 })

@@ -26,6 +26,28 @@ function hardwareProperties(yn: YamlNode): NodeProperty[] {
 }
 
 /**
+ * The file's own `properties` list (#608), minus entries with no usable key.
+ * `undefined` when the entry has no such list — a legacy export, which falls
+ * back to minting the hardware specs.
+ */
+function yamlProperties(raw: unknown): NodeProperty[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const props: NodeProperty[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const p = entry as Record<string, unknown>
+    if (typeof p.key !== 'string' || !p.key.trim()) continue
+    props.push({
+      key: p.key,
+      value: typeof p.value === 'string' ? p.value : String(p.value ?? ''),
+      icon: typeof p.icon === 'string' && p.icon ? p.icon : null,
+      visible: p.visible !== false,
+    })
+  }
+  return props
+}
+
+/**
  * Parse a YAML string and merge the resulting nodes/edges into the existing canvas.
  * - Nodes with the same label as an existing node are skipped (no duplicates).
  * - Positions are computed via dagre auto-layout over the full merged set.
@@ -74,7 +96,9 @@ export function parseYamlToCanvas(
     const id = generateUUID()
     labelToId.set(yn.label, id)
 
-    const hardware = hardwareProperties(yn)
+    // A file that carries `properties` already holds the hardware rows (the
+    // node drew them from there), so minting them again would duplicate them.
+    const properties = yamlProperties(yn.properties) ?? hardwareProperties(yn)
     // The per-point labels, minus any entry the file mangled (#495).
     const portLabels = normalizePortLabels(yn.portLabels)
 
@@ -95,7 +119,7 @@ export function parseYamlToCanvas(
       ...(yn.disk ? { disk_gb: yn.disk } : {}),
       // Kept as structured fields for the export round trip; drawn through the
       // properties above.
-      ...(hardware.length > 0 ? { properties: hardware } : {}),
+      ...(properties.length > 0 ? { properties } : {}),
       // Restore custom connection-point counts so the edges below attach to the
       // slots they were exported on instead of collapsing onto slot 0.
       // A count of 0 is meaningful (side with no connection point), so test for
