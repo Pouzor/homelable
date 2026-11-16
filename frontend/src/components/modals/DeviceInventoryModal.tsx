@@ -694,6 +694,34 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 </span>
               </DialogTitle>
               <div className="flex items-center gap-1">
+                <div className="flex rounded border border-border overflow-hidden text-xs" role="group" aria-label="View">
+                  <button
+                    onClick={() => setView('grid')}
+                    aria-pressed={view === 'grid'}
+                    title="Card view"
+                    className={`px-2 py-1.5 transition-colors ${view === 'grid' ? 'bg-primary/20 text-primary' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <LayoutGrid size={12} />
+                  </button>
+                  <button
+                    onClick={() => setView('table')}
+                    aria-pressed={view === 'table'}
+                    title="Table view (sortable)"
+                    className={`px-2 py-1.5 transition-colors border-l border-border ${view === 'table' ? 'bg-primary/20 text-primary' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <Table2 size={12} />
+                  </button>
+                </div>
+                {!onPick && (
+                <button
+                  onClick={() => selectMode ? exitSelectMode() : enterSelectMode()}
+                  className={`text-xs px-2.5 py-1.5 rounded border transition-colors ${selectMode ? 'bg-primary/20 text-primary border-primary/50' : 'bg-background text-muted-foreground border-border hover:text-foreground'}`}
+                  title="Toggle select mode (s)"
+                >
+                  {selectMode ? 'Exit select' : 'Select mode'}
+                </button>
+                )}
+                <div className="w-px h-5 bg-border mx-1" aria-hidden="true" data-testid="inventory-header-separator" />
                 <button onClick={load} className="text-muted-foreground hover:text-foreground p-1.5 rounded transition-colors" title="Refresh">
                   <RefreshCw size={14} />
                 </button>
@@ -848,33 +876,6 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
               <Server size={12} />
               Rackable
             </button>
-            <div className="flex rounded border border-border overflow-hidden text-xs ml-auto" role="group" aria-label="View">
-              <button
-                onClick={() => setView('grid')}
-                aria-pressed={view === 'grid'}
-                title="Card view"
-                className={`px-2 py-1.5 transition-colors ${view === 'grid' ? 'bg-primary/20 text-primary' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              >
-                <LayoutGrid size={12} />
-              </button>
-              <button
-                onClick={() => setView('table')}
-                aria-pressed={view === 'table'}
-                title="Table view (sortable)"
-                className={`px-2 py-1.5 transition-colors border-l border-border ${view === 'table' ? 'bg-primary/20 text-primary' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              >
-                <Table2 size={12} />
-              </button>
-            </div>
-            {!onPick && (
-            <button
-              onClick={() => selectMode ? exitSelectMode() : enterSelectMode()}
-              className={`text-xs px-2.5 py-1.5 rounded border transition-colors ${selectMode ? 'bg-primary/20 text-primary border-primary/50' : 'bg-background text-muted-foreground border-border hover:text-foreground'}`}
-              title="Toggle select mode (s)"
-            >
-              {selectMode ? 'Exit select' : 'Select mode'}
-            </button>
-            )}
           </div>
 
           {/* Body */}

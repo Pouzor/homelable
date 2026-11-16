@@ -74,6 +74,30 @@ describe('DeviceInventoryModal — table view', () => {
     expect(screen.getByTitle('Card view')).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('puts the view toggle and select mode in the header, before a separator and Refresh', async () => {
+    render(<DeviceInventoryModal {...baseProps} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-ip-10')).toBeInTheDocument())
+
+    const refresh = screen.getByTitle('Refresh')
+    const actions = refresh.parentElement!
+    const view = screen.getByRole('group', { name: 'View' })
+    const select = screen.getByTitle('Toggle select mode (s)')
+    const separator = screen.getByTestId('inventory-header-separator')
+    for (const el of [view, select, separator]) expect(el.parentElement).toBe(actions)
+
+    const order = [...actions.children]
+    expect(order.indexOf(view)).toBeLessThan(order.indexOf(select))
+    expect(order.indexOf(select)).toBeLessThan(order.indexOf(separator))
+    expect(order.indexOf(separator)).toBe(order.indexOf(refresh) - 1)
+  })
+
+  it('hides select mode from the header in picker mode, keeping the view toggle', async () => {
+    render(<DeviceInventoryModal {...baseProps} onPick={vi.fn()} />)
+    await waitFor(() => expect(screen.getByTestId('pending-card-ip-10')).toBeInTheDocument())
+    expect(screen.queryByTitle('Toggle select mode (s)')).toBeNull()
+    expect(screen.getByRole('group', { name: 'View' })).toBeInTheDocument()
+  })
+
   it('switches to a table sorted by name, and remembers the choice', async () => {
     render(<DeviceInventoryModal {...baseProps} />)
     await waitFor(() => expect(screen.getByTestId('pending-card-ip-10')).toBeInTheDocument())
