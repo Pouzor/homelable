@@ -78,7 +78,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-xs">
+      <DialogContent className="bg-popover border-border text-foreground max-w-xs">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         </DialogHeader>
@@ -87,10 +87,10 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Link Type</Label>
             <Select value={type} onValueChange={(v) => setType(v as EdgeType)}>
-              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Edge type selector">
+              <SelectTrigger className={`bg-secondary border-border text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Edge type selector">
                 <SelectValue>{EDGE_TYPE_LABELS[type]}</SelectValue>
               </SelectTrigger>
-              <SelectContent className="bg-[#21262d] border-[#30363d]">
+              <SelectContent className="bg-secondary border-border">
                 {EDGE_TYPES.map(([value, label]) => (
                   <SelectItem key={value} value={value} className="text-sm">{label}</SelectItem>
                 ))}
@@ -108,7 +108,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
                 value={vlanId}
                 onChange={(e) => setVlanId(e.target.value)}
                 placeholder="e.g. 20"
-                className={`bg-[#21262d] border-[#30363d] font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
+                className={`bg-secondary border-border font-mono text-sm h-8 ${modalStyles['modal-radius']}`}
               />
             </div>
           )}
@@ -120,13 +120,13 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
               onChange={(e) => setLabel(e.target.value)}
               placeholder={'e.g. 1G, trunk...\nsecond line'}
               rows={2}
-              className={`bg-[#21262d] border-[#30363d] text-sm min-h-16 resize-none ${modalStyles['modal-radius']}`}
+              className={`bg-secondary border-border text-sm min-h-16 resize-none ${modalStyles['modal-radius']}`}
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Path Style</Label>
-            <div className={`flex rounded-md overflow-hidden border border-[#30363d] ${modalStyles['modal-interactive']}`}> 
+            <div className={`flex rounded-md overflow-hidden border border-border ${modalStyles['modal-interactive']}`}> 
               {(['bezier', 'smooth'] as EdgePathStyle[]).map((style) => (
                 <button
                   key={style}
@@ -163,7 +163,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
                 />
               </svg>
             </div>
-            <div className={`flex rounded-md overflow-hidden border border-[#30363d] ${modalStyles['modal-interactive']}`}>
+            <div className={`flex rounded-md overflow-hidden border border-border ${modalStyles['modal-interactive']}`}>
               {EDGE_LINE_STYLES.map((ls, i) => (
                 <button
                   key={ls}
@@ -197,13 +197,13 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
               value={widthMult}
               onChange={(e) => setWidthMult(clampWidthMult(parseInt(e.target.value, 10)))}
               aria-label="Line width multiplier"
-              className="w-full h-1 accent-[#00d4ff]"
+              className="w-full h-1 accent-primary"
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Animation</Label>
-            <div className={`flex rounded-md overflow-hidden border border-[#30363d] ${modalStyles['modal-interactive']}`}> 
+            <div className={`flex rounded-md overflow-hidden border border-border ${modalStyles['modal-interactive']}`}> 
               {(['none', 'basic', 'snake', 'flow'] as AnimMode[]).map((mode, i) => (
                 <button
                   key={mode}
@@ -285,7 +285,7 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
             <button
               type="button"
               onClick={() => { onClearWaypoints(); onClose() }}
-              className="text-[10px] text-muted-foreground hover:text-[#e3b341] transition-colors text-left"
+              className="text-[10px] text-muted-foreground hover:text-warning transition-colors text-left"
             >
               Clear path ({initial.waypoints.length} point{initial.waypoints.length !== 1 ? 's' : ''})
             </button>
@@ -293,13 +293,13 @@ export function EdgeModal({ open, onClose, onSubmit, onDelete, onClearWaypoints,
 
           <div className="flex justify-between gap-2 pt-1">
             {onDelete ? (
-              <Button type="button" variant="ghost" size="sm" className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10 cursor-pointer" onClick={handleDelete}>
+              <Button type="button" variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer" onClick={handleDelete}>
                 Delete
               </Button>
             ) : <span />}
             <div className="flex gap-2">
               <Button type="button" variant="ghost" size="sm" className="cursor-pointer" onClick={onClose}>Cancel</Button>
-              <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer">
+              <Button type="submit" size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
                 {onDelete ? 'Save' : 'Connect'}
               </Button>
             </div>

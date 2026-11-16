@@ -195,7 +195,7 @@ export function PortPositionEditor({
             aria-label="Zoom out"
             disabled={zoomStep === 0}
             onClick={() => setZoomStep((z) => Math.max(0, z - 1))}
-            className="rounded p-1 hover:bg-[#21262d] hover:text-foreground disabled:opacity-40 cursor-pointer disabled:cursor-default"
+            className="rounded p-1 hover:bg-secondary hover:text-foreground disabled:opacity-40 cursor-pointer disabled:cursor-default"
           >
             <ZoomOut size={14} />
           </button>
@@ -207,7 +207,7 @@ export function PortPositionEditor({
             aria-label="Zoom in"
             disabled={zoomStep === EDITOR_ZOOM_STEPS.length - 1}
             onClick={() => setZoomStep((z) => Math.min(EDITOR_ZOOM_STEPS.length - 1, z + 1))}
-            className="rounded p-1 hover:bg-[#21262d] hover:text-foreground disabled:opacity-40 cursor-pointer disabled:cursor-default"
+            className="rounded p-1 hover:bg-secondary hover:text-foreground disabled:opacity-40 cursor-pointer disabled:cursor-default"
           >
             <ZoomIn size={14} />
           </button>

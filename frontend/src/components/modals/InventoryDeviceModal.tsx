@@ -116,7 +116,7 @@ const LIVE_META: Record<string, { color: string; label: string }> = {
   unknown: { color: '#8b949e', label: 'Unknown' },
 }
 
-const INPUT = 'bg-[#21262d] border-[#30363d] text-sm h-8'
+const INPUT = 'bg-secondary border-border text-sm h-8'
 
 function categoryColor(category: string | null | undefined) {
   if (!category) return '#8b949e'
@@ -136,8 +136,8 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section className="rounded-lg border border-[#30363d] bg-[#161b22] overflow-hidden">
-      <header className="flex items-center justify-between gap-2 px-3 py-2 border-b border-[#30363d] bg-[#0d1117]/50">
+    <section className="rounded-lg border border-border bg-popover overflow-hidden">
+      <header className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-background/50">
         <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           <Icon size={12} className="text-muted-foreground/70" aria-hidden />
           {title}
@@ -180,16 +180,16 @@ function CopyButton({ label, value }: { label: string; value: string }) {
     <button
       onClick={copy}
       aria-label={`Copy ${label}`}
-      className="ml-auto shrink-0 text-muted-foreground/50 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-[#00d4ff] transition-opacity cursor-pointer"
+      className="ml-auto shrink-0 text-muted-foreground/50 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-primary transition-opacity cursor-pointer"
     >
-      {copied ? <Check size={11} className="text-[#39d353]" /> : <Copy size={11} />}
+      {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
     </button>
   )
 }
 
 function InfoRow({ label, value, copyable }: { label: string; value: string; copyable?: boolean }) {
   return (
-    <div className="group flex items-baseline gap-3 py-1 border-b border-[#30363d]/40 last:border-b-0 text-xs">
+    <div className="group flex items-baseline gap-3 py-1 border-b border-border/40 last:border-b-0 text-xs">
       <span className="w-20 shrink-0 text-[11px] text-muted-foreground">{label}</span>
       <span className="min-w-0 font-mono text-foreground break-all">{value}</span>
       {copyable && <CopyButton label={label} value={value} />}
@@ -200,7 +200,7 @@ function InfoRow({ label, value, copyable }: { label: string; value: string; cop
 /** A timestamp reads relative, with the exact value on hover. */
 function TimeRow({ label, iso }: { label: string; iso: string }) {
   return (
-    <div className="flex items-baseline gap-3 py-1 border-b border-[#30363d]/40 last:border-b-0 text-xs" title={formatTimestamp(iso)}>
+    <div className="flex items-baseline gap-3 py-1 border-b border-border/40 last:border-b-0 text-xs" title={formatTimestamp(iso)}>
       <span className="w-20 shrink-0 text-[11px] text-muted-foreground">{label}</span>
       <span className="font-mono text-foreground/80">{formatRelative(iso)}</span>
     </div>
@@ -546,9 +546,9 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
 
   return (
     <Dialog open={!!device} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="!max-w-none w-[min(1180px,95vw)] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden bg-[#0d1117] border-[#30363d] text-foreground">
+      <DialogContent className="!max-w-none w-[min(1180px,95vw)] max-h-[90vh] p-0 gap-0 flex flex-col overflow-hidden bg-background border-border text-foreground">
         {/* ── Header: who this device is, at a glance ── */}
-        <DialogHeader className="shrink-0 px-5 py-4 border-b border-[#30363d] bg-[#161b22]">
+        <DialogHeader className="shrink-0 px-5 py-4 border-b border-border bg-popover">
           <div className="flex items-start gap-3 pr-10">
             <div
               className="w-11 h-11 shrink-0 rounded-lg border flex items-center justify-center"
@@ -575,7 +575,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                 </span>
                 {(device.canvas_count ?? 0) > 0 && (
                   <span
-                    className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider bg-[#00d4ff]/15 text-[#00d4ff]"
+                    className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider bg-primary/15 text-primary"
                     title={`Drawn on ${device.canvas_count} canvas${device.canvas_count !== 1 ? 'es' : ''}`}
                   >
                     <Layers size={10} />
@@ -592,7 +592,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                   <Button
                     size="sm"
                     variant="ghost"
-                    className={`gap-1.5 text-[#00d4ff] hover:text-[#00d4ff] hover:bg-[#00d4ff]/10 ${modalStyles['modal-interactive']}`}
+                    className={`gap-1.5 text-primary hover:text-primary hover:bg-primary/10 ${modalStyles['modal-interactive']}`}
                     onClick={() => onOpenDocumentation(device.id, titleLabel)}
                     title="Open this device's documentation page"
                   >
@@ -603,7 +603,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                   <Button
                     size="sm"
                     variant="ghost"
-                    className={`gap-1.5 text-[#00d4ff] hover:text-[#00d4ff] hover:bg-[#00d4ff]/10 ${modalStyles['modal-interactive']}`}
+                    className={`gap-1.5 text-primary hover:text-primary hover:bg-primary/10 ${modalStyles['modal-interactive']}`}
                     onClick={handleDuplicate}
                     disabled={duplicating}
                     title="Add a copy of this device — same specs and front panel, no addresses"
@@ -614,7 +614,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                 <Button
                   size="sm"
                   variant="ghost"
-                  className={`gap-1.5 text-[#00d4ff] hover:text-[#00d4ff] hover:bg-[#00d4ff]/10 ${modalStyles['modal-interactive']}`}
+                  className={`gap-1.5 text-primary hover:text-primary hover:bg-primary/10 ${modalStyles['modal-interactive']}`}
                   onClick={() => setEditing(true)}
                 >
                   <Pencil size={13} /> Edit
@@ -639,10 +639,10 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                         <SelectTrigger className={`${INPUT} w-full cursor-pointer ${modalStyles['modal-interactive']}`} aria-label="Device type selector">
                           <SelectValue placeholder="Pick a type" />
                         </SelectTrigger>
-                        <SelectContent className="bg-[#21262d] border-[#30363d]">
+                        <SelectContent className="bg-secondary border-border">
                           {DEVICE_TYPE_GROUPS.map((group, i) => (
                             <SelectGroup key={group.label}>
-                              {i > 0 && <SelectSeparator className="bg-[#30363d]" />}
+                              {i > 0 && <SelectSeparator className="bg-border" />}
                               <SelectLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 px-2 py-1">
                                 {group.label}
                               </SelectLabel>
@@ -697,7 +697,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                         <SelectTrigger className={`${INPUT} w-full cursor-pointer ${modalStyles['modal-interactive']}`} aria-label="Check method selector">
                           <SelectValue placeholder="None" />
                         </SelectTrigger>
-                        <SelectContent className="bg-[#21262d] border-[#30363d]">
+                        <SelectContent className="bg-secondary border-border">
                           {CHECK_METHODS.map((m) => (
                             <SelectItem key={m} value={m} className="text-sm">{CHECK_METHOD_LABELS[m]}</SelectItem>
                           ))}
@@ -716,14 +716,14 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                     onChange={(e) => set('notes', e.target.value)}
                     rows={6}
                     placeholder="Anything worth remembering about this device."
-                    className="bg-[#21262d] border-[#30363d] text-sm"
+                    className="bg-secondary border-border text-sm"
                   />
                 </Section>
               </div>
 
               <div className="flex flex-col gap-4 min-w-0">
                 {/* Same editors as the canvas — one implementation, one behaviour. */}
-                <section className="rounded-lg border border-[#30363d] bg-[#161b22] overflow-hidden">
+                <section className="rounded-lg border border-border bg-popover overflow-hidden">
                   <PropertyList
                     properties={properties}
                     onChange={setProperties}
@@ -743,7 +743,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                   action={
                     <button
                       onClick={() => setSvcModal({ index: null })}
-                      className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer"
+                      className="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80 transition-colors cursor-pointer"
                     >
                       <Plus size={10} /> Add
                     </button>
@@ -754,22 +754,22 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                   ) : (
                     <div className="flex flex-col gap-1.5">
                       {services.map((svc, i) => (
-                        <div key={`${svc.port ?? 'host'}-${svc.protocol}-${i}`} className="group flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#21262d] border border-[#30363d] text-xs">
-                          <span className="font-mono text-[#00d4ff] w-10 shrink-0">{svc.port ?? '—'}</span>
+                        <div key={`${svc.port ?? 'host'}-${svc.protocol}-${i}`} className="group flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-secondary border border-border text-xs">
+                          <span className="font-mono text-primary w-10 shrink-0">{svc.port ?? '—'}</span>
                           <span className="text-muted-foreground w-8 shrink-0">{svc.protocol}</span>
                           <span className="text-foreground truncate">{svc.service_name}</span>
                           <div className="ml-auto flex items-center gap-1.5 shrink-0">
                             <button
                               onClick={() => setSvcModal({ index: i, form: serviceToForm(svc) })}
                               title="Edit service"
-                              className="text-[#8b949e] hover:text-[#00d4ff] cursor-pointer"
+                              className="text-muted-foreground hover:text-primary cursor-pointer"
                             >
                               <Pencil size={11} />
                             </button>
                             <button
                               onClick={() => setServices((prev) => prev.filter((_, j) => j !== i))}
                               title="Remove service"
-                              className="text-[#8b949e] hover:text-[#f85149] cursor-pointer"
+                              className="text-muted-foreground hover:text-destructive cursor-pointer"
                             >
                               <X size={11} />
                             </button>
@@ -822,7 +822,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                           <button
                             onClick={handleStopRescan}
                             data-testid="device-rescan-stop"
-                            className="flex items-center gap-1 text-[10px] text-[#f85149] hover:text-[#f85149]/80 transition-colors cursor-pointer"
+                            className="flex items-center gap-1 text-[10px] text-destructive hover:text-destructive/80 transition-colors cursor-pointer"
                           >
                             <Loader2 size={10} className="animate-spin" /> Scanning — stop
                           </button>
@@ -832,7 +832,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                             disabled={rescanStarting}
                             data-testid="device-rescan"
                             title="Pick a port range and refresh the services"
-                            className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Radar size={10} /> Deep scan
                           </button>
@@ -847,13 +847,13 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                         {device.services.map((svc, i) => (
                           <div
                             key={i}
-                            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-[#21262d] border border-[#30363d] text-xs"
+                            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-secondary border border-border text-xs"
                           >
                             <span
                               className="w-1.5 h-1.5 rounded-full shrink-0"
                               style={{ backgroundColor: categoryColor(svc.category) }}
                             />
-                            <span className="font-mono text-[#00d4ff] w-10 shrink-0">{svc.port}</span>
+                            <span className="font-mono text-primary w-10 shrink-0">{svc.port}</span>
                             <span className="text-muted-foreground w-8 shrink-0">{svc.protocol}</span>
                             <span className="text-foreground truncate">{svc.service_name}</span>
                             {svc.category && (
@@ -917,7 +917,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
                   {device.properties && device.properties.length > 0 ? (
                     <div className="flex flex-col gap-1.5">
                       {device.properties.map((prop, i) => (
-                        <div key={`${prop.key}-${i}`} className="flex items-baseline gap-2 px-2.5 py-1.5 rounded-md bg-[#21262d] border border-[#30363d] text-xs">
+                        <div key={`${prop.key}-${i}`} className="flex items-baseline gap-2 px-2.5 py-1.5 rounded-md bg-secondary border border-border text-xs">
                           <span className="text-muted-foreground shrink-0">{prop.key}</span>
                           <span className="ml-auto font-mono text-foreground break-all text-right">{prop.value}</span>
                         </div>
@@ -952,7 +952,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
         </div>
 
         {/* ── Footer: lifecycle in view, form controls in edit ── */}
-        <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-3 border-t border-[#30363d] bg-[#161b22]">
+        <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-3 border-t border-border bg-popover">
           <p className="text-[11px] text-muted-foreground/70 min-w-0 truncate">
             {editing
               ? 'These facts belong to the device — every canvas drawing it follows.'
@@ -967,7 +967,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
               </Button>
               <Button
                 size="sm"
-                className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 min-w-20"
+                className="bg-primary text-primary-foreground hover:bg-primary/90 min-w-20"
                 onClick={handleSave}
                 disabled={saving}
               >
@@ -979,7 +979,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-muted-foreground hover:text-foreground hover:bg-[#30363d]"
+                className="text-muted-foreground hover:text-foreground hover:bg-border"
                 onClick={handleHide}
               >
                 Hide
@@ -987,7 +987,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
                 onClick={handleIgnore}
               >
                 Delete
@@ -997,7 +997,7 @@ export function InventoryDeviceModal({ device, onClose, onApprove, onHide, onIgn
               {!rackOnly && (
                 <Button
                   size="sm"
-                  className="bg-[#39d353]/15 text-[#39d353] hover:bg-[#39d353]/25 border border-[#39d353]/30"
+                  className="bg-success/15 text-success hover:bg-success/25 border border-success/30"
                   onClick={handleApprove}
                 >
                   Put in current Canvas

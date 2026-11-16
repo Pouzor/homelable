@@ -55,7 +55,7 @@ export function RackCablePanel() {
   }
 
   return (
-    <aside className="w-72 shrink-0 flex flex-col border-l border-border bg-[#161b22] overflow-y-auto">
+    <aside className="w-72 shrink-0 flex flex-col border-l border-border bg-popover overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="flex items-center gap-2 min-w-0 font-semibold text-sm text-foreground">
           <CableIcon size={14} className="shrink-0" style={{ color: cable.color }} />
@@ -87,8 +87,8 @@ export function RackCablePanel() {
               onClick={() => handleType(type)}
               className={`flex-1 rounded border px-2 py-1 text-[11px] transition-colors cursor-pointer ${
                 cable.type === type
-                  ? 'border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff]'
-                  : 'border-[#30363d] text-muted-foreground hover:border-[#8b949e]'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border text-muted-foreground hover:border-muted-foreground'
               }`}
             >
               {TYPE_LABELS[type]}
@@ -108,7 +108,7 @@ export function RackCablePanel() {
               title={color}
               onClick={() => updateCable(cable.id, { color })}
               className={`h-6 w-6 rounded border transition-transform cursor-pointer hover:scale-110 ${
-                cable.color.toLowerCase() === color.toLowerCase() ? 'border-[#00d4ff]' : 'border-[#30363d]'
+                cable.color.toLowerCase() === color.toLowerCase() ? 'border-primary' : 'border-border'
               }`}
               style={{ background: color }}
             />
@@ -129,14 +129,14 @@ export function RackCablePanel() {
           onChange={(e) => updateCable(cable.id, { label: e.target.value })}
           aria-label="Cable label"
           placeholder="e.g. Uplink to core"
-          className="mt-2 bg-[#21262d] border-[#30363d] text-xs h-7"
+          className="mt-2 bg-secondary border-border text-xs h-7"
         />
         <label className="mt-2 flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
             checked={cable.labelVisible === true}
             onChange={(e) => updateCable(cable.id, { labelVisible: e.target.checked })}
-            className="accent-[#00d4ff] w-3 h-3"
+            className="accent-primary w-3 h-3"
           />
           <span className="text-[10px] text-muted-foreground">Show on canvas</span>
         </label>
@@ -169,7 +169,7 @@ export function RackCablePanel() {
           size="sm"
           variant="ghost"
           onClick={() => removeCable(cable.id)}
-          className="w-full h-7 text-[11px] text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10"
+          className="w-full h-7 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10"
         >
           <Trash2 size={12} className="mr-1.5" /> Unplug cable
         </Button>
@@ -220,7 +220,7 @@ function HexField({ value, fallback, onCommit }: {
       }}
       aria-label="Cable colour hex"
       placeholder="#39d353"
-      className="mt-2 bg-[#21262d] border-[#30363d] text-xs h-7 font-mono"
+      className="mt-2 bg-secondary border-border text-xs h-7 font-mono"
     />
   )
 }
@@ -230,7 +230,7 @@ function EndpointRow({ side, device, port }: { side: string; device: string; por
     <div className="flex items-baseline gap-2 min-w-0">
       <span className="w-3 shrink-0 text-[10px] text-muted-foreground">{side}</span>
       <span className="truncate text-xs text-foreground" title={device}>{device}</span>
-      <span className="ml-auto shrink-0 font-mono text-[11px] text-[#00d4ff]" title={port}>{port}</span>
+      <span className="ml-auto shrink-0 font-mono text-[11px] text-primary" title={port}>{port}</span>
     </div>
   )
 }

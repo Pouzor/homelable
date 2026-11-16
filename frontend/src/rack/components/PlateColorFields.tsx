@@ -38,7 +38,7 @@ function pickerValue(color: string): string {
 function ColorRow({ name, inputLabel, resetLabel, value, fallback, onChange }: RowProps) {
   const shown = value ?? fallback
   return (
-    <div className="flex h-9 items-center gap-3 rounded-md border border-[#30363d] bg-[#0d1117] px-2.5">
+    <div className="flex h-9 items-center gap-3 rounded-md border border-border bg-background px-2.5">
       <span className="w-16 shrink-0 text-xs text-muted-foreground">{name}</span>
       {/* The swatch is the control: the native input sits over it, invisible,
           so the click opens the system picker without the browser's own chrome. */}
@@ -65,7 +65,7 @@ function ColorRow({ name, inputLabel, resetLabel, value, fallback, onChange }: R
           aria-label={resetLabel}
           title="Back to automatic"
           onClick={() => onChange(null)}
-          className="ml-auto flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-[#21262d] hover:text-foreground"
+          className="ml-auto flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-secondary hover:text-foreground"
         >
           <RotateCcw size={11} />
           Reset

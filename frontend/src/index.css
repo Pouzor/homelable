@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
+@import "@fontsource-variable/roboto";
 @import "@fontsource/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
@@ -35,7 +36,8 @@
   display: none;
 }
 
-/* Homelable dark theme — always dark */
+/* Classic interface — the original always-dark Homelable look. The Dark and
+   Light interfaces below override these tokens; see lib/interfaceTheme.ts. */
 :root {
     --background: #0d1117;
     --foreground: #e6edf3;
@@ -73,11 +75,97 @@
     --surface-base: #0d1117;
     --surface-elevated: #161b22;
     --surface-card: #21262d;
+
+    --success: var(--status-online);
+    --warning: var(--status-pending);
+
+    /* How far accent badge text is pulled toward --foreground (utils/badgeColor.ts). */
+    --badge-ink-mix: 0%;
+
+    --hl-font-sans: 'Inter Variable', 'Inter', sans-serif;
+    --hl-font-mono: 'JetBrains Mono', monospace;
+}
+
+/*
+ * Dark / Light interfaces — a calmer, flatter chrome modelled on Home
+ * Assistant's stock theme (the look homelable-hacs gets inside HA): neutral
+ * greys instead of GitHub navy, a softer blue primary, Roboto, rounder corners.
+ * Set on <html> so every portal (dialogs, selects, toasts) inherits it. Only
+ * the chrome follows; the canvas keeps its own per-design style.
+ */
+.hl-modern {
+    --background: #111111;
+    --foreground: #e1e1e1;
+    --card: #1c1c1c;
+    --card-foreground: #e1e1e1;
+    --popover: #1c1c1c;
+    --popover-foreground: #e1e1e1;
+    --primary: #03a9f4;
+    --primary-foreground: #ffffff;
+    --secondary: #282828;
+    --secondary-foreground: #e1e1e1;
+    --muted: #282828;
+    --muted-foreground: #9b9b9b;
+    --accent: #282828;
+    --accent-foreground: #03a9f4;
+    --destructive: #ef5350;
+    --border: rgba(225, 225, 225, 0.12);
+    --input: #282828;
+    --ring: #03a9f4;
+    --radius: 0.75rem;
+
+    --status-online: #43a047;
+    --status-offline: #ef5350;
+    --status-pending: #ffa600;
+    --status-unknown: #9b9b9b;
+
+    --accent-cyan: #03a9f4;
+
+    --surface-base: #111111;
+    --surface-elevated: #1c1c1c;
+    --surface-card: #282828;
+
+    --hl-font-sans: 'Roboto Variable', Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+    color-scheme: dark;
+}
+.hl-modern.hl-light {
+    --background: #fafafa;
+    --foreground: #212121;
+    --card: #ffffff;
+    --card-foreground: #212121;
+    --popover: #ffffff;
+    --popover-foreground: #212121;
+    --secondary: #e5e5e5;
+    --secondary-foreground: #212121;
+    --muted: #e5e5e5;
+    --muted-foreground: #727272;
+    --accent: #e5e5e5;
+    --destructive: #db4437;
+    --border: rgba(0, 0, 0, 0.12);
+    --input: #e5e5e5;
+
+    --status-offline: #db4437;
+    --status-unknown: #bdbdbd;
+
+    --surface-base: #fafafa;
+    --surface-elevated: #ffffff;
+    --surface-card: #e5e5e5;
+
+    /* The neon accents and status colours are tuned for a dark background —
+       darken them for text on white, as the badges are. */
+    --badge-ink-mix: 45%;
+    --success: color-mix(in srgb, var(--status-online), var(--foreground) var(--badge-ink-mix));
+    --warning: color-mix(in srgb, var(--status-pending), var(--foreground) var(--badge-ink-mix));
+
+    color-scheme: light;
 }
 
 @theme inline {
-    --font-sans: 'Inter Variable', 'Inter', sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --font-sans: var(--hl-font-sans);
+    --font-mono: var(--hl-font-mono);
+    --color-success: var(--success);
+    --color-warning: var(--warning);
     --color-background: var(--background);
     --color-foreground: var(--foreground);
     --color-card: var(--card);
@@ -130,6 +218,9 @@
     background-color: var(--surface-elevated) !important;
     border: 1px solid var(--border) !important;
     border-radius: var(--radius) !important;
+    /* Clip the square buttons to the rounded box, or the first / last one
+       pokes out of the corners at the Dark / Light radius. */
+    overflow: hidden;
 }
 .react-flow__controls-button {
     background-color: var(--surface-elevated) !important;
@@ -157,7 +248,7 @@
 
 /* Mono font utility */
 .font-mono {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--hl-font-mono);
 }
 
 /* Edge flow animation — dot traveling from source to target */

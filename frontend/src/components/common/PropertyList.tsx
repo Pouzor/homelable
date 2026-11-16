@@ -116,7 +116,7 @@ export function PropertyList({
         <span className="text-xs text-muted-foreground">{title}{properties.length > 0 ? ` (${properties.length})` : ''}</span>
         <button
           onClick={() => { setAdding((v) => !v); setEditingIndex(null) }}
-          className="flex items-center gap-1 text-[10px] text-[#00d4ff] hover:text-[#00d4ff]/80 transition-colors cursor-pointer"
+          className="flex items-center gap-1 text-[10px] text-primary hover:text-primary/80 transition-colors cursor-pointer"
         >
           <Plus size={10} /> Add
         </button>
@@ -128,7 +128,7 @@ export function PropertyList({
               key={key}
               onClick={() => startAddWith(key)}
               title={`Add a ${key} property`}
-              className="rounded border border-[#30363d] px-1.5 py-0.5 text-[10px] text-muted-foreground hover:border-[#00d4ff] hover:text-[#00d4ff] transition-colors cursor-pointer"
+              className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:border-primary hover:text-primary transition-colors cursor-pointer"
             >
               + {key}
             </button>
@@ -204,12 +204,12 @@ export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel
   valuePlaceholder?: string
 }) {
   return (
-    <div className="flex flex-col gap-1.5 mb-1 p-2 rounded-md bg-[#0d1117] border border-[#30363d]">
+    <div className="flex flex-col gap-1.5 mb-1 p-2 rounded-md bg-background border border-border">
       <Input
         value={form.key}
         onChange={(e) => onChange({ ...form, key: e.target.value })}
         placeholder={keyPlaceholder}
-        className="bg-[#21262d] border-[#30363d] text-xs h-7"
+        className="bg-secondary border-border text-xs h-7"
         autoFocus
         onKeyDown={(e) => e.key === 'Enter' && onConfirm()}
       />
@@ -217,7 +217,7 @@ export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel
         value={form.value}
         onChange={(e) => onChange({ ...form, value: e.target.value })}
         placeholder={valuePlaceholder}
-        className="bg-[#21262d] border-[#30363d] text-xs h-7"
+        className="bg-secondary border-border text-xs h-7"
         onKeyDown={(e) => e.key === 'Enter' && onConfirm()}
       />
       {/* Icon picker */}
@@ -226,7 +226,7 @@ export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel
           onClick={() => onChange({ ...form, icon: null })}
           title="No icon"
           className={`w-6 h-6 rounded flex items-center justify-center text-[10px] border transition-colors ${
-            form.icon === null ? 'border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff]' : 'border-[#30363d] text-muted-foreground hover:border-[#8b949e]'
+            form.icon === null ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-muted-foreground'
           }`}
         >
           –
@@ -240,7 +240,7 @@ export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel
               onClick={() => onChange({ ...form, icon: name })}
               title={name}
               className={`w-6 h-6 rounded flex items-center justify-center border transition-colors ${
-                active ? 'border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff]' : 'border-[#30363d] text-muted-foreground hover:border-[#8b949e]'
+                active ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-muted-foreground'
               }`}
             >
               {createElement(Icon, { size: 11 })}
@@ -254,12 +254,12 @@ export function PropertyForm({ form, onChange, onConfirm, onCancel, confirmLabel
           type="checkbox"
           checked={form.visible}
           onChange={(e) => onChange({ ...form, visible: e.target.checked })}
-          className="accent-[#00d4ff] w-3 h-3"
+          className="accent-primary w-3 h-3"
         />
         <span className="text-[10px] text-muted-foreground">{visibleLabel}</span>
       </label>
       <div className="flex gap-1.5">
-        <Button size="sm" className="flex-1 h-6 text-[10px] bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90" onClick={onConfirm}>
+        <Button size="sm" className="flex-1 h-6 text-[10px] bg-primary text-primary-foreground hover:bg-primary/90" onClick={onConfirm}>
           {confirmLabel}
         </Button>
         <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={onCancel}>Cancel</Button>
@@ -302,7 +302,7 @@ export function PropertyBadge({ prop, visibleLabel = 'node', draggable, isDraggi
     >
       <div className="flex items-center gap-1.5 min-w-0">
         {draggable && (
-          <span className="shrink-0 cursor-grab active:cursor-grabbing text-[#8b949e] hover:text-[#00d4ff]" title="Drag to reorder">
+          <span className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-primary" title="Drag to reorder">
             {createElement(GripVertical, { size: 11 })}
           </span>
         )}
@@ -316,14 +316,14 @@ export function PropertyBadge({ prop, visibleLabel = 'node', draggable, isDraggi
         <button
           onClick={onToggleVisible}
           title={prop.visible ? `Hide on ${where}` : `Show on ${where}`}
-          className="text-[#8b949e] hover:text-[#00d4ff] transition-colors"
+          className="text-muted-foreground hover:text-primary transition-colors"
         >
           {prop.visible ? <Eye size={10} /> : <EyeOff size={10} />}
         </button>
-        <button onClick={onEdit} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#00d4ff]" title="Edit property">
+        <button onClick={onEdit} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary" title="Edit property">
           <Pencil size={10} />
         </button>
-        <button onClick={onRemove} className="opacity-0 group-hover:opacity-100 transition-opacity text-[#8b949e] hover:text-[#f85149]" title="Remove property">
+        <button onClick={onRemove} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive" title="Remove property">
           <X size={10} />
         </button>
       </div>

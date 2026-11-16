@@ -81,7 +81,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
     if (entry) {
       return (
         <>
-          {createElement(entry.icon, { size: 13, className: 'text-[#00d4ff] shrink-0' })}
+          {createElement(entry.icon, { size: 13, className: 'text-primary shrink-0' })}
           <span className="text-foreground truncate">{entry.label}</span>
         </>
       )
@@ -98,7 +98,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-sm">
+      <DialogContent className="bg-popover border-border text-foreground max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         </DialogHeader>
@@ -112,9 +112,9 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
               onChange={(e) => { set('service_name', e.target.value); if (nameError) setNameError(false) }}
               placeholder="Service name"
               autoFocus
-              className={`bg-[#21262d] text-sm h-8 ${nameError ? 'border-[#f85149]' : 'border-[#30363d]'}`}
+              className={`bg-secondary text-sm h-8 ${nameError ? 'border-destructive' : 'border-border'}`}
             />
-            {nameError && <span className="text-[10px] text-[#f85149]">Name is required</span>}
+            {nameError && <span className="text-[10px] text-destructive">Name is required</span>}
           </div>
 
           {/* Port + protocol */}
@@ -129,7 +129,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
                 onChange={(e) => setPort(e.target.value)}
                 onBlur={clampPort}
                 placeholder="Port"
-                className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
+                className="bg-secondary border-border font-mono text-sm h-8"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -138,7 +138,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
                 value={form.protocol}
                 aria-label="Protocol"
                 onChange={(e) => set('protocol', e.target.value as 'tcp' | 'udp')}
-                className={`bg-[#21262d] border border-[#30363d] text-sm h-8 px-2 text-foreground ${modalStyles['modal-radius']}`}
+                className={`bg-secondary border border-border text-sm h-8 px-2 text-foreground ${modalStyles['modal-radius']}`}
               >
                 <option value="tcp">tcp</option>
                 <option value="udp">udp</option>
@@ -153,7 +153,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
               value={form.host}
               onChange={(e) => set('host', e.target.value)}
               placeholder="Node host (app.example.com)"
-              className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
+              className="bg-secondary border-border font-mono text-sm h-8"
             />
             <span className="text-[10px] text-muted-foreground/60">
               Overrides the node host for this service only. The port above is
@@ -168,7 +168,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
               value={form.path}
               onChange={(e) => set('path', e.target.value)}
               placeholder="Path (/admin)"
-              className="bg-[#21262d] border-[#30363d] font-mono text-sm h-8"
+              className="bg-secondary border-border font-mono text-sm h-8"
             />
           </div>
 
@@ -189,7 +189,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
             <button
               type="button"
               onClick={() => setIconPickerOpen((o) => !o)}
-              className={`flex items-center justify-between gap-2 h-8 px-3 bg-[#21262d] border border-[#30363d] text-sm transition-colors w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
+              className={`flex items-center justify-between gap-2 h-8 px-3 bg-secondary border border-border text-sm transition-colors w-full cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}
               aria-label="Icon picker trigger"
             >
               <span className="flex items-center gap-2 min-w-0">{iconPreview()}</span>
@@ -207,7 +207,7 @@ export function ServiceModal({ open, onClose, onSubmit, initial, title = 'Add Se
             <Button type="button" variant="ghost" size="sm" className={`cursor-pointer ${modalStyles['modal-cancel-hover']}`} onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer">
+            <Button type="submit" size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
               {confirmLabel}
             </Button>
           </div>

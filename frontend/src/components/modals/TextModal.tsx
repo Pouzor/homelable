@@ -91,7 +91,7 @@ export function TextModal({ open, onClose, onSubmit, onDelete, initial, title = 
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="bg-[#161b22] border-[#30363d] text-foreground max-w-sm">
+      <DialogContent className="bg-popover border-border text-foreground max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         </DialogHeader>
@@ -105,7 +105,7 @@ export function TextModal({ open, onClose, onSubmit, onDelete, initial, title = 
               onChange={(e) => set('text', e.target.value)}
               placeholder="Type text…"
               rows={3}
-              className={`bg-[#21262d] border border-[#30363d] text-sm p-2 resize-y min-h-[60px] focus:outline-none focus:border-[#00d4ff] ${modalStyles['modal-radius']}`}
+              className={`bg-secondary border border-border text-sm p-2 resize-y min-h-[60px] focus:outline-none focus:border-primary ${modalStyles['modal-radius']}`}
             />
           </div>
 
@@ -113,12 +113,12 @@ export function TextModal({ open, onClose, onSubmit, onDelete, initial, title = 
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs text-muted-foreground">Police</Label>
             <Select value={form.font} onValueChange={(v: string | null) => set('font', v ?? 'inter')}>
-              <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}>
+              <SelectTrigger className={`bg-secondary border-border text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`}>
                 <SelectValue>
                   {FONTS.find((f) => f.value === form.font)?.label ?? form.font}
                 </SelectValue>
               </SelectTrigger>
-              <SelectContent className="bg-[#21262d] border-[#30363d]">
+              <SelectContent className="bg-secondary border-border">
                 {FONTS.map((f) => (
                   <SelectItem key={f.value} value={f.value} className="text-sm">
                     {f.label}
@@ -154,7 +154,7 @@ export function TextModal({ open, onClose, onSubmit, onDelete, initial, title = 
                       max={100}
                       value={alpha}
                       onChange={(e) => set(key, rgbaToHex8(hex6, Number(e.target.value)))}
-                      className="w-full h-1 accent-[#00d4ff] cursor-pointer"
+                      className="w-full h-1 accent-primary cursor-pointer"
                       title={`Opacity: ${alpha}%`}
                     />
                     <span className="text-[9px] text-muted-foreground/60">{label} {alpha}%</span>
@@ -250,7 +250,7 @@ export function TextModal({ open, onClose, onSubmit, onDelete, initial, title = 
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="text-[#f85149] hover:text-[#f85149] hover:bg-[#f85149]/10 cursor-pointer"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 cursor-pointer"
                 onClick={() => { onDelete(); onClose() }}
               >
                 Delete
@@ -260,7 +260,7 @@ export function TextModal({ open, onClose, onSubmit, onDelete, initial, title = 
               <Button type="button" variant="ghost" size="sm" className={`cursor-pointer ${modalStyles['modal-cancel-hover']}`} onClick={onClose}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer">
+              <Button type="submit" size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer">
                 {title === 'Add Text' ? 'Add' : 'Save'}
               </Button>
             </div>

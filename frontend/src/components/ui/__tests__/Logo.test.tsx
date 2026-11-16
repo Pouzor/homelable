@@ -15,8 +15,10 @@ describe('Logo', () => {
 
   it('uses the canonical wordmark colors (Home #e6edf3 / lable #00d4ff)', () => {
     render(<Logo showText />)
-    expect(screen.getByText('Home')).toHaveStyle({ color: '#e6edf3' })
-    expect(screen.getByText('lable')).toHaveStyle({ color: '#00d4ff' })
+    // Through the interface tokens, falling back to the canonical colours —
+    // which are exactly what --foreground / --primary hold under Classic.
+    expect(screen.getByText('Home').style.color).toBe('var(--foreground, #e6edf3)')
+    expect(screen.getByText('lable').style.color).toBe('var(--primary, #00d4ff)')
   })
 
   it('hides the wordmark when showText is false', () => {

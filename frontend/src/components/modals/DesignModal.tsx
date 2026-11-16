@@ -178,8 +178,8 @@ export function DesignModal({
                       onClick={() => setDesignType(kind.value)}
                       className={`rounded-md border px-2 py-2 text-left transition-colors cursor-pointer ${
                         selected
-                          ? 'border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff]'
-                          : 'border-border text-muted-foreground hover:text-foreground hover:border-[#30363d]'
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:text-foreground hover:border-border'
                       }`}
                     >
                       <span className="block text-xs font-medium">{kind.label}</span>
@@ -207,8 +207,8 @@ export function DesignModal({
                     onClick={() => setIcon(entry.key)}
                     className={`flex items-center justify-center aspect-square rounded-md border transition-colors cursor-pointer ${
                       selected
-                        ? 'border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff]'
-                        : 'border-border text-muted-foreground hover:text-foreground hover:border-[#30363d]'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border text-muted-foreground hover:text-foreground hover:border-border'
                     }`}
                   >
                     <Icon size={16} />
@@ -227,7 +227,7 @@ export function DesignModal({
                   onClick={() => setFromExisting(false)}
                   className={`text-xs rounded-md border py-2 transition-colors cursor-pointer ${
                     !fromExisting
-                      ? 'border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff]'
+                      ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -239,7 +239,7 @@ export function DesignModal({
                   onClick={() => setFromExisting(true)}
                   className={`text-xs rounded-md border py-2 transition-colors cursor-pointer ${
                     fromExisting
-                      ? 'border-[#00d4ff] bg-[#00d4ff]/10 text-[#00d4ff]'
+                      ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border text-muted-foreground hover:text-foreground'
                   }`}
                 >
@@ -261,11 +261,11 @@ export function DesignModal({
                         onClick={() => setSourceId(d.id)}
                         className={`w-full flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left transition-colors cursor-pointer ${
                           selected
-                            ? 'border-[#00d4ff] bg-[#00d4ff]/10'
-                            : 'border-border hover:border-[#30363d]'
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border hover:border-border'
                         }`}
                       >
-                        <Icon size={16} className={selected ? 'text-[#00d4ff]' : 'text-muted-foreground'} />
+                        <Icon size={16} className={selected ? 'text-primary' : 'text-muted-foreground'} />
                         <div className="min-w-0 flex-1">
                           <div className="truncate text-sm">{d.name}</div>
                           <div className="text-xs text-muted-foreground">
@@ -285,7 +285,7 @@ export function DesignModal({
               <Label>Floor Plan</Label>
               {!hasImage ? (
                 <div
-                  className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-[#30363d] rounded-lg p-6 cursor-pointer hover:border-[#00d4ff]/50 transition-colors"
+                  className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg p-6 cursor-pointer hover:border-primary/50 transition-colors"
                   onClick={() => fileRef.current?.click()}
                 >
                   <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleFile} />
@@ -294,7 +294,7 @@ export function DesignModal({
                 </div>
               ) : (
                 <>
-                  <div className="relative rounded-lg overflow-hidden border border-[#30363d]" style={{ maxHeight: 160 }}>
+                  <div className="relative rounded-lg overflow-hidden border border-border" style={{ maxHeight: 160 }}>
                     <img src={resolveServerPath(imageData)} alt="Floor plan preview" className="w-full h-full object-contain" style={{ opacity }} />
                   </div>
 
@@ -311,11 +311,11 @@ export function DesignModal({
                   <div className="grid grid-cols-2 gap-3">
                     <div className="flex flex-col gap-1.5">
                       <Label className="text-xs text-muted-foreground">Width (px)</Label>
-                      <Input type="number" value={width} onChange={(e) => setWidth(Math.max(80, Number(e.target.value)))} className="bg-[#21262d] border-[#30363d] text-xs h-8" />
+                      <Input type="number" value={width} onChange={(e) => setWidth(Math.max(80, Number(e.target.value)))} className="bg-secondary border-border text-xs h-8" />
                     </div>
                     <div className="flex flex-col gap-1.5">
                       <Label className="text-xs text-muted-foreground">Height (px)</Label>
-                      <Input type="number" value={height} onChange={(e) => setHeight(Math.max(80, Number(e.target.value)))} className="bg-[#21262d] border-[#30363d] text-xs h-8" />
+                      <Input type="number" value={height} onChange={(e) => setHeight(Math.max(80, Number(e.target.value)))} className="bg-secondary border-border text-xs h-8" />
                     </div>
                   </div>
 
@@ -324,17 +324,17 @@ export function DesignModal({
                     <input
                       type="range" min="0.05" max="1" step="0.05" value={opacity}
                       onChange={(e) => setOpacity(Number(e.target.value))}
-                      className="w-full accent-[#00d4ff]"
+                      className="w-full accent-primary"
                     />
                   </div>
 
                   <div className="flex items-center gap-6">
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={locked} onChange={(e) => setLocked(e.target.checked)} className="accent-[#00d4ff] w-3.5 h-3.5" />
+                      <input type="checkbox" checked={locked} onChange={(e) => setLocked(e.target.checked)} className="accent-primary w-3.5 h-3.5" />
                       <span className="text-xs text-muted-foreground">Lock position & size</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="accent-[#00d4ff] w-3.5 h-3.5" />
+                      <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="accent-primary w-3.5 h-3.5" />
                       <span className="text-xs text-muted-foreground">Show on canvas</span>
                     </label>
                   </div>

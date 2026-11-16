@@ -86,12 +86,12 @@ describe('Toolbar', () => {
 
   it('renders the unsaved-changes dot only when hasUnsavedChanges is true', () => {
     const { rerender } = render(<Toolbar {...defaultProps} />)
-    // Save button is the last button; the dot is a sibling span with bg-[#e3b341].
-    expect(document.querySelector('.bg-\\[\\#e3b341\\]')).toBeNull()
+    // Save button is the last button; the dot is a sibling span with bg-warning.
+    expect(document.querySelector('.bg-warning')).toBeNull()
 
     mockStore({ hasUnsavedChanges: true })
     rerender(<Toolbar {...defaultProps} />)
-    expect(document.querySelector('.bg-\\[\\#e3b341\\]')).not.toBeNull()
+    expect(document.querySelector('.bg-warning')).not.toBeNull()
   })
 })
 

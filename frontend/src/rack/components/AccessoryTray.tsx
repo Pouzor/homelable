@@ -34,7 +34,7 @@ export function AccessoryTray() {
               })
             }
             onDragEnd={endDrag}
-            className="cursor-grab rounded border border-border bg-[#161b22] px-2 py-1.5 text-xs hover:border-[#00d4ff]"
+            className="cursor-grab rounded border border-border bg-popover px-2 py-1.5 text-xs hover:border-primary"
           >
             {plate.label}
           </li>

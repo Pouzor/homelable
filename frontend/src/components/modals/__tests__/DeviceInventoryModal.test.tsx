@@ -256,8 +256,12 @@ describe('DeviceInventoryModal', () => {
     // zwave_router accent from the default theme = #e3b341 (amber), applied to
     // both the text colour and a translucent background.
     const badge = within(card).getByText('zwave_router')
-    // #e3b341 → rgb(227, 179, 65) once jsdom normalises the inline colour.
-    expect(badge).toHaveStyle({ color: 'rgb(227, 179, 65)' })
+    // Through badgeStyle(): the accent is mixed toward the interface
+    // foreground (a no-op in the dark looks, readable text on Light).
+    // jsdom may normalise #e3b341 to rgb(227, 179, 65) inside the color-mix().
+    expect(badge.style.color).toMatch(/#e3b341|rgb\(227, 179, 65\)/)
+    expect(badge.style.color).toContain('--badge-ink-mix')
+    expect(badge.style.background).toMatch(/#e3b341|rgb\(227, 179, 65\)/)
     expect(badge.className).not.toContain('text-muted-foreground')
   })
 

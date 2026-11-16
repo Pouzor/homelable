@@ -42,7 +42,7 @@ const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 type Source = 'inventory' | 'new' | 'accessory'
 
 const inputBase =
-  'h-8 rounded-md border border-[#30363d] bg-[#21262d] px-2.5 text-sm text-foreground outline-none transition-colors hover:border-[#484f58] focus:border-[#00d4ff]'
+  'h-8 rounded-md border border-border bg-secondary px-2.5 text-sm text-foreground outline-none transition-colors hover:border-[#484f58] focus:border-primary'
 const inputClass = `w-full ${inputBase}`
 const fieldLabel = 'text-xs text-muted-foreground'
 
@@ -369,7 +369,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       {/* Wide on purpose: the plate is drawn at rack proportions across the top,
           and it is where ports are placed, so it has to be big enough to aim at. */}
-      <DialogContent className="border-[#30363d] bg-[#161b22] text-foreground max-w-[calc(100%-2rem)] sm:max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="border-border bg-popover text-foreground max-w-[calc(100%-2rem)] sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader className="gap-0.5">
           <DialogTitle className="text-base font-semibold">
             {isEdit ? 'Edit Device' : 'Add Device'}
@@ -385,7 +385,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
           {!isEdit && (
             <Field label="Source">
               {/* A segmented control: three mutually exclusive starting points. */}
-              <div className="flex gap-1 rounded-md border border-[#30363d] bg-[#0d1117] p-1">
+              <div className="flex gap-1 rounded-md border border-border bg-background p-1">
                 {(
                   [
                     ['inventory', 'From inventory'],
@@ -400,8 +400,8 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                     aria-pressed={source === value}
                     className={`flex-1 cursor-pointer rounded px-2 py-1.5 text-xs font-medium transition-colors ${
                       source === value
-                        ? 'bg-[#00d4ff]/15 text-[#00d4ff]'
-                        : 'text-muted-foreground hover:bg-[#21262d] hover:text-foreground'
+                        ? 'bg-primary/15 text-primary'
+                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
                     }`}
                   >
                     {text}
@@ -423,12 +423,12 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                   aria-label="Faceplate"
                   data-faceplate={faceplateId}
                   onClick={() => setPickerOpen(true)}
-                  className="flex max-w-[65%] cursor-pointer items-center gap-1.5 rounded-md border border-[#30363d] px-2 py-0.5 text-[11px] transition-colors hover:border-[#00d4ff]"
+                  className="flex max-w-[65%] cursor-pointer items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-[11px] transition-colors hover:border-primary"
                 >
                   {/* The current plate names itself; `Change` is what says the
                       name is a button and not a read-out. */}
                   <span className="truncate text-muted-foreground">{plate.label}</span>
-                  <span className="shrink-0 text-[#00d4ff]">Change</span>
+                  <span className="shrink-0 text-primary">Change</span>
                 </button>
               }
             >
@@ -442,13 +442,13 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               onClose={() => setPickerOpen(false)}
             />
             {plateChanged && isEdit && (
-              <p className="text-[11px] text-[#e3b341]">
+              <p className="text-[11px] text-warning">
                 Changing the plate replaces its ports and drops their patches.
               </p>
             )}
             {/* A dot grid behind the plate, like the canvas it will hang on. */}
             <div
-              className="flex flex-col items-center justify-center rounded-lg border border-[#30363d] bg-[#0d1117] px-4 py-5"
+              className="flex flex-col items-center justify-center rounded-lg border border-border bg-background px-4 py-5"
               style={{
                 backgroundImage: 'radial-gradient(rgba(139,148,158,0.18) 1px, transparent 1px)',
                 backgroundSize: '14px 14px',
@@ -518,12 +518,12 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
                       aria-label="Device Inventory entry"
                       data-device-id={inventoryId}
                       onClick={() => setInventoryPickerOpen(true)}
-                      className="flex cursor-pointer flex-col items-start gap-0.5 rounded-md border border-[#30363d] bg-[#21262d] px-2.5 py-1.5 text-left transition-colors hover:border-[#00d4ff]"
+                      className="flex cursor-pointer flex-col items-start gap-0.5 rounded-md border border-border bg-secondary px-2.5 py-1.5 text-left transition-colors hover:border-primary"
                     >
                       <span className="text-sm">
                         {selectedEntry ? inventoryOption(selectedEntry) : 'No device picked yet'}
                       </span>
-                      <span className="text-[11px] text-[#00d4ff]">
+                      <span className="text-[11px] text-primary">
                         {selectedEntry ? 'Change device…' : 'Browse the Device Inventory…'}
                       </span>
                     </button>
@@ -719,13 +719,13 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
 
           {/* Rule between the form and its actions, so Save never reads as part
               of the last section. */}
-          <div className="flex items-center gap-2 border-t border-[#30363d] pt-4">
+          <div className="flex items-center gap-2 border-t border-border pt-4">
             {isEdit && (
               <Button
                 type="button"
                 variant="ghost"
                 onClick={handleUnmount}
-                className="cursor-pointer text-[#f85149] hover:bg-[#f8514922] hover:text-[#f85149]"
+                className="cursor-pointer text-destructive hover:bg-[#f8514922] hover:text-destructive"
               >
                 Unmount{device?.deviceId ? ' (stays in inventory)' : ''}
               </Button>
@@ -737,7 +737,7 @@ function DeviceForm({ deviceId, onClose }: { deviceId: string | null; onClose: (
               <Button
                 type="submit"
                 disabled={busy}
-                className="cursor-pointer bg-[#00d4ff] px-5 text-[#0d1117] hover:bg-[#00b8e0]"
+                className="cursor-pointer bg-primary px-5 text-primary-foreground hover:bg-[#00b8e0]"
               >
                 {isEdit ? 'Save' : 'Add'}
               </Button>

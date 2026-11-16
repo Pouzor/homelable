@@ -164,7 +164,7 @@ export function WalkthroughOverlay() {
       {/* Pulsing ring on the primary target */}
       {ringRect && (
         <div
-          className="walkthrough-spotlight--pulse pointer-events-none absolute rounded-lg border-2 border-[#00d4ff]"
+          className="walkthrough-spotlight--pulse pointer-events-none absolute rounded-lg border-2 border-primary"
           style={{
             left: ringRect.left - PAD,
             top: ringRect.top - PAD,
@@ -180,7 +180,7 @@ export function WalkthroughOverlay() {
         role="dialog"
         aria-modal="false"
         aria-label="Getting started walkthrough"
-        className="walkthrough-card-enter absolute pointer-events-auto rounded-xl border border-[#30363d] bg-[#161b22] p-4 shadow-2xl"
+        className="walkthrough-card-enter absolute pointer-events-auto rounded-xl border border-border bg-popover p-4 shadow-2xl"
         style={{ left: pos.left, top: pos.top, width: CARD_W, transition: 'left 0.25s, top 0.25s' }}
       >
         <div className="flex items-start justify-between gap-2">
@@ -200,7 +200,7 @@ export function WalkthroughOverlay() {
             href={step.link.href}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[#00d4ff] hover:underline"
+            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
           >
             {step.link.label} <ArrowRight size={12} />
           </a>
@@ -215,7 +215,7 @@ export function WalkthroughOverlay() {
               <span
                 key={s.id}
                 className={`h-1.5 shrink-0 rounded-full transition-all ${
-                  i === stepIndex ? 'w-4 bg-[#00d4ff]' : 'w-1.5 bg-[#30363d]'
+                  i === stepIndex ? 'w-4 bg-primary' : 'w-1.5 bg-border'
                 }`}
               />
             ))}
@@ -236,7 +236,7 @@ export function WalkthroughOverlay() {
             </Button>
             <Button
               size="sm"
-              className="h-7 px-3 text-xs bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
+              className="h-7 px-3 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
               onClick={next}
             >
               {isLast ? 'Finish' : <>Next <ArrowRight size={13} className="ml-1" /></>}

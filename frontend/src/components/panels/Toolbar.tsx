@@ -44,7 +44,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
   }
 
   return (
-    <header className="flex items-center gap-2 px-4 py-2 border-b border-border bg-[#161b22] shrink-0">
+    <header className="flex items-center gap-2 px-4 py-2 border-b border-border bg-popover shrink-0">
       <Logo size={28} showText={true} />
       <div className="flex-1" />
       {/* Undo/redo are canvas history; the rack canvas has none yet. */}
@@ -52,7 +52,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
         <>
           <Button
             size="sm" variant="ghost"
-            className="gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer hover:bg-[#21262d]"
+            className="gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer hover:bg-secondary"
             onClick={onUndo}
             disabled={past.length === 0}
             title="Undo (Ctrl+Z)"
@@ -61,7 +61,7 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
           </Button>
           <Button
             size="sm" variant="ghost"
-            className="gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer hover:bg-[#21262d]"
+            className="gap-1.5 text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer hover:bg-secondary"
             onClick={onRedo}
             disabled={future.length === 0}
             title="Redo (Ctrl+Y)"
@@ -75,10 +75,10 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       {!isRack && (
       <>
       <AutoLayoutButton onAutoLayout={onAutoLayout} />
-      <Button data-tour="style" size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onChangeStyle}>
+      <Button data-tour="style" size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-secondary" onClick={onChangeStyle}>
         <Palette size={14} /> Style
       </Button>
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={() => fileInputRef.current?.click()} title="Import from YAML">
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-secondary" onClick={() => fileInputRef.current?.click()} title="Import from YAML">
         <Upload size={14} /> Import
       </Button>
       <input
@@ -88,41 +88,41 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
         className="hidden"
         onChange={handleFileChange}
       />
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExportYaml} title="Export canvas as YAML">
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-secondary" onClick={onExportYaml} title="Export canvas as YAML">
         <Download size={14} /> Export
       </Button>
       </>
       )}
       {/* PNG capture is DOM-based, so it works for both canvas kinds. */}
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onExport} title="Download canvas as PNG">
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-secondary" onClick={onExport} title="Download canvas as PNG">
         <FileDown size={14} /> PNG
       </Button>
       {/* Live view reads backend/localStorage canvas; pointless in standalone
           where the editor already shows the only (localStorage) copy. Rack
           canvases have no live view yet. */}
       {!STANDALONE && !isRack && (
-        <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onViewOnly} title="Open read-only live view of this canvas">
+        <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-secondary" onClick={onViewOnly} title="Open read-only live view of this canvas">
           <Eye size={14} /> View
         </Button>
       )}
       <GitSyncButton
         unsaved={hasUnsavedChanges}
-        className="text-muted-foreground hover:text-foreground hover:bg-[#21262d]"
+        className="text-muted-foreground hover:text-foreground hover:bg-secondary"
       />
-      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={onShortcuts} title="Keyboard shortcuts (?)">
+      <Button size="sm" variant="ghost" className="gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-secondary" onClick={onShortcuts} title="Keyboard shortcuts (?)">
         <HelpCircle size={14} />
       </Button>
       <Button
         size="sm"
         className="gap-1.5 relative cursor-pointer border border-transparent hover:border-white"
         style={{
-          background: hasUnsavedChanges ? '#00d4ff' : undefined,
-          color: hasUnsavedChanges ? '#0d1117' : undefined,
+          background: hasUnsavedChanges ? 'var(--primary)' : undefined,
+          color: hasUnsavedChanges ? 'var(--primary-foreground)' : undefined,
         }}
         onClick={() => onSave()}
       >
         {hasUnsavedChanges && (
-          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#e3b341] border border-[#161b22]" />
+          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-warning border border-popover" />
         )}
         <Save size={14} /> Save
       </Button>
@@ -164,12 +164,12 @@ function AutoLayoutButton({ onAutoLayout }: { onAutoLayout: (mode: AutoLayoutMod
 
   return (
     <div ref={rootRef} className="relative flex items-center">
-      <Button size="sm" variant="ghost" className="gap-1.5 pr-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]" onClick={() => pick('hierarchy')}>
+      <Button size="sm" variant="ghost" className="gap-1.5 pr-1.5 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-secondary" onClick={() => pick('hierarchy')}>
         <LayoutDashboard size={14} /> Auto Layout
       </Button>
       <Button
         size="sm" variant="ghost"
-        className="px-1 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-[#21262d]"
+        className="px-1 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-secondary"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -185,7 +185,7 @@ function AutoLayoutButton({ onAutoLayout }: { onAutoLayout: (mode: AutoLayoutMod
               key={mode}
               type="button"
               role="menuitem"
-              className="w-full rounded px-2 py-1.5 text-left cursor-pointer hover:bg-[#21262d]"
+              className="w-full rounded px-2 py-1.5 text-left cursor-pointer hover:bg-secondary"
               onClick={() => pick(mode)}
             >
               <div className="text-xs text-foreground">{label}</div>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Server, Layers,
-  Search, RefreshCw, X, CheckCircle2, EyeOff, Trash2, Loader2, ServerCog,
+  Search, RefreshCw, X, CheckCircle2, EyeOff, Trash2, Loader2, ServerCog, LayoutGrid, Table2,
 } from 'lucide-react'
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { scanApi, type DuplicateNodeConflict } from '@/api/client'
@@ -12,7 +12,10 @@ import { resolveNodeColors } from '@/utils/nodeColors'
 import { NODE_TYPE_DEFAULT_ICONS } from '@/utils/nodeIcons'
 import { toast } from 'sonner'
 import { InventoryDeviceModal, type InventoryEntry } from '@/components/modals/InventoryDeviceModal'
-import type { NodeType, ServiceInfo } from '@/types'
+import type { ServiceInfo } from '@/types'
+import { deviceLabel, deviceType, nextSort, sortDevices, type InventorySort, type InventorySortKey } from '@/utils/inventorySort'
+import { badgeStyle } from '@/utils/badgeColor'
+import { InventoryTable } from './InventoryTable'
 import { applyAutoEdges, type AutoEdge } from '@/utils/autoEdges'
 import { buildZigbeeProperties, isZigbeeType } from '@/utils/zigbeeProperties'
 import { buildZwaveProperties, isZwaveType } from '@/utils/zwaveProperties'
@@ -86,15 +89,16 @@ function serviceColor(port: number | null | undefined, category?: string | null)
 type SourceFilter = 'all' | SourceBucket
 type StatusFilter = 'pending' | 'hidden'
 
-const COMMON_PORTS = new Set([22, 80, 443])
+/** Card grid or sortable table — remembered per browser. */
+type InventoryView = 'grid' | 'table'
+export const INVENTORY_VIEW_STORAGE_KEY = 'homelable.inventoryView'
 
-/**
- * What the device is. The curated `type` wins over the discovery guess: a
- * device drawn on a canvas only ever has the former, and an edit that retypes a
- * scanned row must not keep reading the scanner's opinion.
- */
-function deviceType(d: InventoryEntry): NodeType | null {
-  return ((d.type ?? d.suggested_type) as NodeType) ?? null
+function readView(): InventoryView {
+  try {
+    return localStorage.getItem(INVENTORY_VIEW_STORAGE_KEY) === 'table' ? 'table' : 'grid'
+  } catch {
+    return 'grid'
+  }
 }
 
 /** The import whose host -> guest links this device heads, if any. */
@@ -103,20 +107,6 @@ function guestHostSource(d: InventoryEntry): GuestHostSource | null {
   if (type === 'proxmox') return 'proxmox'
   if (type === 'docker_host' && sourceBuckets(d).has('unraid')) return 'unraid'
   return null
-}
-
-function specialServiceName(d: InventoryEntry): string | undefined {
-  const candidates = (d.services ?? []).filter(
-    (s) => s.category != null && s.port != null && !COMMON_PORTS.has(s.port) && s.service_name,
-  )
-  // Deprioritize generic web category so apps like home assistant / jellyfin win
-  const nonWeb = candidates.find((s) => s.category?.toLowerCase() !== 'web')
-  return (nonWeb ?? candidates[0])?.service_name ?? undefined
-}
-
-function deviceLabel(d: InventoryEntry): string {
-  // Same precedence as the detail modal — the name the user gave it first.
-  return d.label ?? d.friendly_name ?? d.hostname ?? specialServiceName(d) ?? d.ip ?? d.ieee_address ?? 'device'
 }
 
 // Pull the duplicate-conflict payload out of a 409 approve response, if that's
@@ -192,6 +182,14 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const activeDesignId = useDesignStore((s) => s.activeDesignId)
   const highlightRef = useRef<HTMLButtonElement>(null)
+  const highlightRowRef = useRef<HTMLTableRowElement>(null)
+  const [view, setViewState] = useState<InventoryView>(readView)
+  const [sort, setSort] = useState<InventorySort>({ key: 'name', dir: 'asc' })
+  const setView = (v: InventoryView) => {
+    setViewState(v)
+    try { localStorage.setItem(INVENTORY_VIEW_STORAGE_KEY, v) } catch { /* storage blocked: session-only */ }
+  }
+  const handleSort = (key: InventorySortKey) => setSort((cur) => nextSort(cur, key))
   // Set when a single approve is refused because the same host is already on
   // this design — the user decides: link to the existing node or duplicate.
   const [dupPrompt, setDupPrompt] = useState<{ device: InventoryEntry; conflict: DuplicateNodeConflict } | null>(null)
@@ -280,8 +278,11 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       }
     }
     // Last, so a browser without it cannot cost the caller the detail modal.
-    highlightRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
-  }, [devices, highlightId, loading, onPick, open, filtered])
+    ;(highlightRef.current ?? highlightRowRef.current)?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+  }, [devices, highlightId, loading, onPick, open, filtered, view])
+
+  // The table orders by its column; the grid keeps the server order.
+  const sorted = useMemo(() => (view === 'table' ? sortDevices(filtered, sort) : filtered), [view, filtered, sort])
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -682,7 +683,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
       <Dialog open={open} onOpenChange={(v) => { if (!v) onClose() }}>
         <DialogContent
           showCloseButton={false}
-          className="!max-w-none w-[95vw] h-[90vh] p-0 flex flex-col gap-0 bg-[#0d1117] border-border"
+          className="!max-w-none w-[95vw] h-[90vh] p-0 flex flex-col gap-0 bg-background border-border"
         >
           <DialogHeader className="px-4 py-3 border-b border-border shrink-0">
             <div className="flex items-center justify-between gap-3">
@@ -700,7 +701,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 {!onPick && statusFilter === 'pending' && devices.length > 0 && (
                   <button
                     onClick={handleClearAll}
-                    className="text-muted-foreground hover:text-[#f85149] p-1.5 rounded transition-colors"
+                    className="text-muted-foreground hover:text-destructive p-1.5 rounded transition-colors"
                     title={filtered.length !== devices.length ? `Remove ${filtered.length} filtered` : 'Clear all pending'}
                   >
                     <Trash2 size={14} />
@@ -724,7 +725,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
           </DialogHeader>
 
           {/* Toolbar */}
-          <div className="px-4 py-2 border-b border-border bg-[#161b22] shrink-0 flex flex-wrap items-center gap-2">
+          <div className="px-4 py-2 border-b border-border bg-popover shrink-0 flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[200px] max-w-md">
               <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -732,64 +733,64 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search name, IP, MAC, IEEE, service…"
-                className="w-full text-xs bg-[#0d1117] border border-border rounded px-7 py-1.5 outline-none focus:border-[#00d4ff]/50"
+                className="w-full text-xs bg-background border border-border rounded px-7 py-1.5 outline-none focus:border-primary/50"
               />
             </div>
             <div className="flex rounded border border-border overflow-hidden text-xs" role="group" aria-label="Source filter">
               <button
                 onClick={() => setSourceFilter('all')}
-                className={`px-2.5 py-1.5 transition-colors ${sourceFilter === 'all' ? 'bg-[#00d4ff]/20 text-[#00d4ff]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                className={`px-2.5 py-1.5 transition-colors ${sourceFilter === 'all' ? 'bg-primary/20 text-primary' : 'bg-background text-muted-foreground hover:text-foreground'}`}
               >
                 All
               </button>
               <button
                 onClick={() => setSourceFilter('ip')}
-                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'ip' ? 'bg-[#a855f7]/20 text-[#a855f7]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'ip' ? 'bg-[#a855f7]/20 text-[#a855f7]' : 'bg-background text-muted-foreground hover:text-foreground'}`}
               >
                 IP scan
               </button>
               <button
                 onClick={() => setSourceFilter('zigbee')}
-                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'zigbee' ? 'bg-[#00d4ff]/20 text-[#00d4ff]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'zigbee' ? 'bg-primary/20 text-primary' : 'bg-background text-muted-foreground hover:text-foreground'}`}
               >
                 Zigbee
               </button>
               <button
                 onClick={() => setSourceFilter('zwave')}
-                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'zwave' ? 'bg-[#ff6e00]/20 text-[#ff6e00]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'zwave' ? 'bg-[#ff6e00]/20 text-[#ff6e00]' : 'bg-background text-muted-foreground hover:text-foreground'}`}
               >
                 Z-Wave
               </button>
               <button
                 onClick={() => setSourceFilter('proxmox')}
-                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'proxmox' ? 'bg-[#e57000]/20 text-[#e57000]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'proxmox' ? 'bg-[#e57000]/20 text-[#e57000]' : 'bg-background text-muted-foreground hover:text-foreground'}`}
               >
                 Proxmox
               </button>
               <button
                 onClick={() => setSourceFilter('unraid')}
-                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'unraid' ? 'bg-[#e22828]/20 text-[#e22828]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'unraid' ? 'bg-[#e22828]/20 text-[#e22828]' : 'bg-background text-muted-foreground hover:text-foreground'}`}
                 title="Imported from an Unraid server - Docker containers"
               >
                 Unraid
               </button>
               <button
                 onClick={() => setSourceFilter('unifi')}
-                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'unifi' ? 'bg-[#0559c9]/20 text-[#0559c9]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'unifi' ? 'bg-[#0559c9]/20 text-[#0559c9]' : 'bg-background text-muted-foreground hover:text-foreground'}`}
                 title="Imported from a UniFi controller — gear and clients"
               >
                 UniFi
               </button>
               <button
                 onClick={() => setSourceFilter('rack')}
-                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'rack' ? 'bg-[#39d353]/20 text-[#39d353]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'rack' ? 'bg-success/20 text-success' : 'bg-background text-muted-foreground hover:text-foreground'}`}
                 title="Gear created from a rack canvas"
               >
                 Rack devices
               </button>
               <button
                 onClick={() => setSourceFilter('canvas')}
-                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'canvas' ? 'bg-[#8b949e]/20 text-foreground' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'canvas' ? 'bg-muted-foreground/20 text-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
                 title="Documented directly on a canvas — no scan ever saw it"
               >
                 Canvas
@@ -798,7 +799,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="text-xs bg-[#0d1117] border border-border rounded px-2 py-1.5 outline-none focus:border-[#00d4ff]/50"
+              className="text-xs bg-background border border-border rounded px-2 py-1.5 outline-none focus:border-primary/50"
               aria-label="Type filter"
             >
               <option value="all">All types</option>
@@ -807,13 +808,13 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
             <div className="flex rounded border border-border overflow-hidden text-xs">
               <button
                 onClick={() => setStatusFilter('pending')}
-                className={`px-2.5 py-1.5 transition-colors ${statusFilter === 'pending' ? 'bg-[#00d4ff]/20 text-[#00d4ff]' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                className={`px-2.5 py-1.5 transition-colors ${statusFilter === 'pending' ? 'bg-primary/20 text-primary' : 'bg-background text-muted-foreground hover:text-foreground'}`}
               >
                 Inventory
               </button>
               <button
                 onClick={() => setStatusFilter('hidden')}
-                className={`px-2.5 py-1.5 transition-colors ${statusFilter === 'hidden' ? 'bg-[#8b949e]/20 text-foreground' : 'bg-[#0d1117] text-muted-foreground hover:text-foreground'}`}
+                className={`px-2.5 py-1.5 transition-colors ${statusFilter === 'hidden' ? 'bg-muted-foreground/20 text-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
               >
                 Hidden
               </button>
@@ -821,7 +822,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
             {statusFilter === 'pending' && (
               <button
                 onClick={() => setShowOnCanvas((v) => !v)}
-                className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${showOnCanvas ? 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground' : 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50'}`}
+                className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${showOnCanvas ? 'bg-background text-muted-foreground border-border hover:text-foreground' : 'bg-primary/20 text-primary border-primary/50'}`}
                 title="Show or hide devices already on a canvas"
                 aria-pressed={!showOnCanvas}
               >
@@ -831,7 +832,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
             )}
             <button
               onClick={() => setWithServicesOnly((v) => !v)}
-              className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${withServicesOnly ? 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${withServicesOnly ? 'bg-primary/20 text-primary border-primary/50' : 'bg-background text-muted-foreground border-border hover:text-foreground'}`}
               title="Only show devices with at least one detected service"
               aria-pressed={withServicesOnly}
             >
@@ -840,17 +841,35 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
             </button>
             <button
               onClick={() => setRackableOnly((v) => !v)}
-              className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${rackableOnly ? 'bg-[#39d353]/20 text-[#39d353] border-[#39d353]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded border transition-colors ${rackableOnly ? 'bg-success/20 text-success border-success/50' : 'bg-background text-muted-foreground border-border hover:text-foreground'}`}
               title="Only show hardware you could mount in a rack (no VMs, containers or mesh devices)"
               aria-pressed={rackableOnly}
             >
               <Server size={12} />
               Rackable
             </button>
+            <div className="flex rounded border border-border overflow-hidden text-xs ml-auto" role="group" aria-label="View">
+              <button
+                onClick={() => setView('grid')}
+                aria-pressed={view === 'grid'}
+                title="Card view"
+                className={`px-2 py-1.5 transition-colors ${view === 'grid' ? 'bg-primary/20 text-primary' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+              >
+                <LayoutGrid size={12} />
+              </button>
+              <button
+                onClick={() => setView('table')}
+                aria-pressed={view === 'table'}
+                title="Table view (sortable)"
+                className={`px-2 py-1.5 transition-colors border-l border-border ${view === 'table' ? 'bg-primary/20 text-primary' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+              >
+                <Table2 size={12} />
+              </button>
+            </div>
             {!onPick && (
             <button
               onClick={() => selectMode ? exitSelectMode() : enterSelectMode()}
-              className={`text-xs px-2.5 py-1.5 rounded border transition-colors ${selectMode ? 'bg-[#00d4ff]/20 text-[#00d4ff] border-[#00d4ff]/50' : 'bg-[#0d1117] text-muted-foreground border-border hover:text-foreground'}`}
+              className={`text-xs px-2.5 py-1.5 rounded border transition-colors ${selectMode ? 'bg-primary/20 text-primary border-primary/50' : 'bg-background text-muted-foreground border-border hover:text-foreground'}`}
               title="Toggle select mode (s)"
             >
               {selectMode ? 'Exit select' : 'Select mode'}
@@ -870,7 +889,19 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 {devices.length === 0 ? `No ${statusFilter} devices` : 'No devices match filters'}
               </p>
             )}
-            {!loading && filtered.length > 0 && (
+            {!loading && filtered.length > 0 && view === 'table' && (
+              <InventoryTable
+                devices={sorted}
+                sort={sort}
+                onSort={handleSort}
+                selectMode={selectMode}
+                selectedIds={selectedIds}
+                highlightId={highlightId}
+                highlightRef={highlightRowRef}
+                onRowClick={handleCardClick}
+              />
+            )}
+            {!loading && filtered.length > 0 && view === 'grid' && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                 {filtered.map((d) => (
                   <DeviceCard
@@ -889,7 +920,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
 
           {/* Selection action bar */}
           {selectMode && (
-            <div className="px-4 py-2.5 border-t border-border bg-[#161b22] shrink-0 flex items-center gap-2 flex-wrap">
+            <div className="px-4 py-2.5 border-t border-border bg-popover shrink-0 flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground mr-1">
                 {selectedIds.size} selected
               </span>
@@ -911,7 +942,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 onClick={() => setMergePrompt(devices.filter((d) => selectedIds.has(d.id)))}
                 disabled={selectedIds.size < 2}
                 title="Fold the selected rows into one device"
-                className="text-xs px-3 py-1.5 rounded bg-[#00d4ff]/20 text-[#00d4ff] hover:bg-[#00d4ff]/30 disabled:opacity-40 font-medium transition-colors"
+                className="text-xs px-3 py-1.5 rounded bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-40 font-medium transition-colors"
               >
                 Merge ({selectedIds.size})
               </button>
@@ -920,14 +951,14 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                   <button
                     onClick={handleBulkApprove}
                     disabled={selectedIds.size === 0}
-                    className="text-xs px-3 py-1.5 rounded bg-[#39d353]/20 text-[#39d353] hover:bg-[#39d353]/30 disabled:opacity-40 font-medium transition-colors"
+                    className="text-xs px-3 py-1.5 rounded bg-success/20 text-success hover:bg-success/30 disabled:opacity-40 font-medium transition-colors"
                   >
                     Put in current Canvas ({selectedIds.size})
                   </button>
                   <button
                     onClick={handleBulkHide}
                     disabled={selectedIds.size === 0}
-                    className="text-xs px-3 py-1.5 rounded bg-[#8b949e]/20 text-[#8b949e] hover:bg-[#8b949e]/30 disabled:opacity-40 font-medium transition-colors"
+                    className="text-xs px-3 py-1.5 rounded bg-muted-foreground/20 text-muted-foreground hover:bg-muted-foreground/30 disabled:opacity-40 font-medium transition-colors"
                   >
                     Hide ({selectedIds.size})
                   </button>
@@ -937,7 +968,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 <button
                   onClick={handleBulkRestore}
                   disabled={selectedIds.size === 0}
-                  className="text-xs px-3 py-1.5 rounded bg-[#e3b341]/20 text-[#e3b341] hover:bg-[#e3b341]/30 disabled:opacity-40 font-medium transition-colors"
+                  className="text-xs px-3 py-1.5 rounded bg-warning/20 text-warning hover:bg-warning/30 disabled:opacity-40 font-medium transition-colors"
                 >
                   Restore ({selectedIds.size})
                 </button>
@@ -960,7 +991,7 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
               onClick={() => setDupPrompt(null)}
             >
               <div
-                className="w-full max-w-md rounded-lg border border-border bg-[#161b22] p-5 shadow-xl"
+                className="w-full max-w-md rounded-lg border border-border bg-popover p-5 shadow-xl"
                 onClick={(e) => e.stopPropagation()}
               >
                 <h2 className="text-base font-semibold text-foreground mb-3">Device already on this canvas</h2>
@@ -982,13 +1013,13 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                     </button>
                     <button
                       onClick={() => goToExistingNode(dupPrompt.conflict.existing_node_id)}
-                      className="text-xs px-3 py-1.5 rounded bg-[#00d4ff]/20 text-[#00d4ff] hover:bg-[#00d4ff]/30 font-medium transition-colors"
+                      className="text-xs px-3 py-1.5 rounded bg-primary/20 text-primary hover:bg-primary/30 font-medium transition-colors"
                     >
                       Go to existing node
                     </button>
                     <button
                       onClick={() => approveDevice(dupPrompt.device, true)}
-                      className="text-xs px-3 py-1.5 rounded bg-[#e3b341]/20 text-[#e3b341] hover:bg-[#e3b341]/30 font-medium transition-colors"
+                      className="text-xs px-3 py-1.5 rounded bg-warning/20 text-warning hover:bg-warning/30 font-medium transition-colors"
                     >
                       Add duplicate anyway
                     </button>
@@ -1095,10 +1126,10 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
   }
 
   const borderClass = highlighted
-    ? 'border-[#e3b341] bg-[#2d3748]'
+    ? 'border-warning bg-secondary'
     : selected
-    ? 'border-[#00d4ff] bg-[#00d4ff]/5 shadow-[0_0_0_1px_rgba(0,212,255,0.4)] scale-[1.02]'
-    : 'border-border bg-[#161b22] hover:border-[#30363d] hover:bg-[#21262d]'
+    ? 'border-primary bg-primary/5 shadow-[0_0_0_1px_rgba(0,212,255,0.4)] scale-[1.02]'
+    : 'border-border bg-popover hover:border-border hover:bg-secondary'
 
   return (
     <button
@@ -1110,7 +1141,7 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
       {selectMode && selected && (
         <CheckCircle2
           size={18}
-          className="absolute top-2 right-2 text-[#00d4ff] fill-[#0d1117] z-10"
+          className="absolute top-2 right-2 text-primary fill-background z-10"
         />
       )}
       {!selectMode && device.status === 'hidden' && (
@@ -1120,7 +1151,7 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
           Hidden while a select-mode checkmark occupies the same corner. */}
       {device.status !== 'hidden' && (device.canvas_count ?? 0) > 0 && !(selectMode && selected) && (
         <div
-          className="absolute top-0 right-0 flex items-center gap-1 rounded-bl-lg rounded-tr-lg bg-[#00d4ff] text-[#0d1117] text-xs font-bold px-2 py-1 shadow-md"
+          className="absolute top-0 right-0 flex items-center gap-1 rounded-bl-lg rounded-tr-lg bg-primary text-primary-foreground text-xs font-bold px-2 py-1 shadow-md"
           title={`On ${device.canvas_count} canvas${device.canvas_count !== 1 ? 'es' : ''}`}
           aria-label={`On ${device.canvas_count} canvas${device.canvas_count !== 1 ? 'es' : ''}`}
         >
@@ -1131,7 +1162,7 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
 
       {/* Header */}
       <div className="flex items-start gap-2 mb-2">
-        <div className="shrink-0 w-8 h-8 rounded bg-[#21262d] flex items-center justify-center text-foreground">
+        <div className="shrink-0 w-8 h-8 rounded bg-secondary flex items-center justify-center text-foreground">
           <Icon size={16} />
         </div>
         <div className="flex-1 min-w-0">
@@ -1141,7 +1172,7 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
               <span
                 key={s}
                 className="text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider"
-                style={{ background: `${SOURCE_META[s].color}22`, color: SOURCE_META[s].color }}
+                style={badgeStyle(SOURCE_META[s].color)}
               >
                 {SOURCE_META[s].label}
               </span>
@@ -1149,13 +1180,13 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
             {roleType !== 'generic' && (
               <span
                 className="text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider"
-                style={{ background: `${roleColor}22`, color: roleColor }}
+                style={badgeStyle(roleColor)}
               >
                 {roleType}
               </span>
             )}
             {device.lqi != null && (
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider bg-[#21262d] text-muted-foreground">
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider bg-secondary text-muted-foreground">
                 LQI {device.lqi}
               </span>
             )}
@@ -1182,7 +1213,7 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
               <span
                 key={`${s.port}-${s.protocol}-${i}`}
                 className="text-[9px] font-mono px-1.5 py-0.5 rounded uppercase tracking-wider"
-                style={{ background: `${color}22`, color }}
+                style={badgeStyle(color)}
                 title={`${s.service_name} (${s.protocol}/${s.port})`}
               >
                 {s.service_name}
@@ -1190,7 +1221,7 @@ function DeviceCard({ device, selected, selectMode, highlighted, onClick, cardRe
             )
           })}
           {moreServices > 0 && (
-            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#21262d] text-muted-foreground">
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">
               +{moreServices}
             </span>
           )}

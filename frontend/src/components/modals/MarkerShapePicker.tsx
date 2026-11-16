@@ -30,7 +30,7 @@ interface MarkerShapePickerProps {
 export function MarkerShapePicker({ label, value, onChange }: MarkerShapePickerProps) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs text-[#8b949e] w-10 shrink-0">{label}</span>
+      <span className="text-xs text-muted-foreground w-10 shrink-0">{label}</span>
       <div className="flex gap-1 flex-wrap">
         {MARKER_SHAPES.map((shape) => {
           const active = value === shape

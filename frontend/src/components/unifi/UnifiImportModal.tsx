@@ -142,7 +142,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="bg-[#161b22] border-border max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="bg-popover border-border max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Wifi size={16} style={{ color: ACCENT }} />
@@ -159,7 +159,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                   value={form.host}
                   onChange={(e) => updateField('host', e.target.value)}
                   placeholder="192.168.1.x or unifi.local"
-                  className="font-mono text-sm bg-[#0d1117] border-border"
+                  className="font-mono text-sm bg-background border-border"
                 />
               </div>
               <div className="space-y-1">
@@ -169,7 +169,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                   onChange={(e) => updateField('port', e.target.value)}
                   placeholder="443"
                   type="number"
-                  className="font-mono text-sm bg-[#0d1117] border-border"
+                  className="font-mono text-sm bg-background border-border"
                 />
                 <p className="text-[11px] text-muted-foreground/60">
                   443 for UniFi OS (UDM, UCG), 8443 for a self-hosted controller
@@ -181,7 +181,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                   value={form.site}
                   onChange={(e) => updateField('site', e.target.value)}
                   placeholder="default"
-                  className="font-mono text-sm bg-[#0d1117] border-border"
+                  className="font-mono text-sm bg-background border-border"
                 />
               </div>
               <div className="space-y-1">
@@ -190,7 +190,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                   value={form.username}
                   onChange={(e) => updateField('username', e.target.value)}
                   placeholder="admin"
-                  className="text-sm bg-[#0d1117] border-border"
+                  className="text-sm bg-background border-border"
                 />
               </div>
               <div className="space-y-1">
@@ -201,7 +201,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                   placeholder="••••••••"
                   type="password"
                   autoComplete="new-password"
-                  className="text-sm bg-[#0d1117] border-border"
+                  className="text-sm bg-background border-border"
                 />
               </div>
               <p className="col-span-2 text-[11px] text-muted-foreground/60">
@@ -226,10 +226,10 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
             {connectionStatus !== 'idle' && (
               <div className={`flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md border ${
                 connectionStatus === 'ok'
-                  ? 'bg-[#39d353]/10 border-[#39d353]/30 text-[#39d353]'
+                  ? 'bg-success/10 border-success/30 text-success'
                   : connectionStatus === 'fail'
-                  ? 'bg-[#f85149]/10 border-[#f85149]/30 text-[#f85149]'
-                  : 'bg-[#e3b341]/10 border-[#e3b341]/30 text-[#e3b341]'
+                  ? 'bg-destructive/10 border-destructive/30 text-destructive'
+                  : 'bg-warning/10 border-warning/30 text-warning'
               }`}>
                 {connectionStatus === 'testing' && <Loader2 size={12} className="animate-spin" />}
                 {connectionStatus === 'ok' && <CheckCircle2 size={12} />}
@@ -238,7 +238,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
               </div>
             )}
 
-            <div className="space-y-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5">
+            <div className="space-y-2 rounded-md border border-border bg-background/60 px-3 py-2.5">
               <span className="block text-xs text-muted-foreground">Import from</span>
               <div className="space-y-2">
                 {SOURCES.map((s) => (
@@ -268,7 +268,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 ))}
               </div>
               {!anyMode && (
-                <span className="block text-xs text-[#e3b341]">Select at least one source.</span>
+                <span className="block text-xs text-warning">Select at least one source.</span>
               )}
             </div>
 
@@ -276,7 +276,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
               <Button
                 size="sm"
                 variant="ghost"
-                className="gap-1.5 text-muted-foreground hover:text-foreground border border-border hover:bg-[#21262d]"
+                className="gap-1.5 text-muted-foreground hover:text-foreground border border-border hover:bg-secondary"
                 onClick={handleTestConnection}
                 disabled={connectionStatus === 'testing' || importing}
               >

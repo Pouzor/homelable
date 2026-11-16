@@ -4,7 +4,7 @@ import { Check, Pencil } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { THEMES, THEME_ORDER, type ThemeId } from '@/utils/themes'
-import { useThemeStore } from '@/stores/themeStore'
+import { useThemeStore, type InterfaceTheme } from '@/stores/themeStore'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { CustomStyleModal } from './CustomStyleModal'
 
@@ -120,13 +120,20 @@ function ThemeCard({ themeId, selected, onClick, onKeyDown, buttonRef, onEdit }:
   )
 }
 
+const INTERFACE_OPTIONS: { id: InterfaceTheme; label: string; title: string }[] = [
+  { id: 'classic', label: 'Classic', title: 'The original always-dark Homelable look' },
+  { id: 'dark', label: 'Dark', title: 'Flat dark interface' },
+  { id: 'light', label: 'Light', title: 'Flat light interface' },
+  { id: 'system', label: 'Auto', title: 'Dark or light, following your system setting' },
+]
+
 interface ThemeModalProps {
   open: boolean
   onClose: () => void
 }
 
 export function ThemeModal({ open, onClose }: ThemeModalProps) {
-  const { activeTheme, setTheme } = useThemeStore()
+  const { activeTheme, setTheme, interfaceTheme, setInterfaceTheme } = useThemeStore()
   const { markUnsaved } = useCanvasStore()
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([])
   const [customStyleOpen, setCustomStyleOpen] = useState(false)
@@ -179,11 +186,32 @@ export function ThemeModal({ open, onClose }: ThemeModalProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={(o) => { if (!o) handleCancel() }}>
-        <DialogContent className="bg-[#161b22] border-[#30363d] w-fit max-w-[calc(100%-2rem)] sm:max-w-[50vw]">
+        <DialogContent className="bg-popover border-border w-fit max-w-[calc(100%-2rem)] sm:max-w-[50vw]">
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold">Choose Canvas Style</DialogTitle>
           </DialogHeader>
 
+          {/* The chrome's look: applies at once, per browser — not saved with the canvas. */}
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <span className="text-muted-foreground">Interface</span>
+            <div role="radiogroup" aria-label="Interface theme" className="flex rounded-md border border-border overflow-hidden">
+              {INTERFACE_OPTIONS.map(({ id, label, title }) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="radio"
+                  aria-checked={interfaceTheme === id}
+                  title={title}
+                  onClick={() => setInterfaceTheme(id)}
+                  className={`px-2.5 py-1 transition-colors cursor-pointer ${interfaceTheme === id ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="text-xs text-muted-foreground -mb-1">Canvas</div>
           <div className="flex items-stretch flex-nowrap gap-3 py-1 overflow-x-auto overflow-y-hidden pb-2 pr-1">
             {THEME_ORDER.map((id, index) => (
               <div key={id} className="shrink-0 w-30 md:w-24 h-full">
@@ -212,7 +240,7 @@ export function ThemeModal({ open, onClose }: ThemeModalProps) {
             <Button
               type="button"
               size="sm"
-              className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
               style={
                 selected !== 'default'
                   ? { background: THEMES[selected].colors.nodeAccents.isp.border }

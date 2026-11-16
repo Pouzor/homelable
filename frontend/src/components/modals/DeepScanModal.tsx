@@ -46,10 +46,10 @@ export function DeepScanModal({ open, target, onClose, onStart }: DeepScanModalP
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md bg-[#161b22] border-[#30363d]">
+      <DialogContent className="sm:max-w-md bg-popover border-border">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
-            <Radar size={15} className="text-[#00d4ff]" />
+            <Radar size={15} className="text-primary" />
             Deep scan{target ? ` — ${target}` : ''}
           </DialogTitle>
         </DialogHeader>
@@ -67,14 +67,14 @@ export function DeepScanModal({ open, target, onClose, onStart }: DeepScanModalP
               spellCheck={false}
               placeholder={FULL_PORT_RANGE}
               data-testid="deep-scan-ports"
-              className="h-8 font-mono text-sm bg-[#21262d] border-[#30363d]"
+              className="h-8 font-mono text-sm bg-secondary border-border"
             />
             <div className="flex items-center justify-between gap-2 text-[10px]">
               <span className="text-muted-foreground">
                 A port, a range, or a comma list — <span className="font-mono">80,443,8000-9000</span>
               </span>
               {trimmed !== '' && (
-                <span className={valid ? 'text-muted-foreground shrink-0' : 'text-[#f85149] shrink-0'}>
+                <span className={valid ? 'text-muted-foreground shrink-0' : 'text-destructive shrink-0'}>
                   {valid ? `${total.toLocaleString('en-US')} ports` : 'Invalid range'}
                 </span>
               )}
@@ -89,8 +89,8 @@ export function DeepScanModal({ open, target, onClose, onStart }: DeepScanModalP
                 onClick={() => setSpec(preset.spec)}
                 className={`px-2 py-1 text-[10px] border transition-colors cursor-pointer ${modalStyles['modal-radius']} ${
                   trimmed === preset.spec
-                    ? 'border-[#00d4ff] text-[#00d4ff] bg-[#00d4ff]/10'
-                    : 'border-[#30363d] text-muted-foreground hover:text-foreground'
+                    ? 'border-primary text-primary bg-primary/10'
+                    : 'border-border text-muted-foreground hover:text-foreground'
                 }`}
               >
                 {preset.label}
@@ -118,7 +118,7 @@ export function DeepScanModal({ open, target, onClose, onStart }: DeepScanModalP
               size="sm"
               disabled={!valid}
               data-testid="deep-scan-start"
-              className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Start scan
             </Button>

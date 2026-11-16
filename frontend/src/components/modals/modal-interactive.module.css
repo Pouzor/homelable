@@ -14,7 +14,7 @@
 
 /* Subtle hover background for cancel button */
 .modal-cancel-hover:hover {
-  background: #21262d !important;
+  background: var(--secondary) !important;
 }
 /* Shared hover/focus border effect for interactive modal elements */
 .modal-interactive {
@@ -22,6 +22,6 @@
 }
 .modal-interactive:hover,
 .modal-interactive:focus {
-  border-color: #8b949e !important;
+  border-color: var(--muted-foreground) !important;
   outline: none;
 }

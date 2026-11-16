@@ -15,7 +15,7 @@ import { MAX_RACK_U, MIN_RACK_U } from '../rackDefaults'
 import type { RackNumbering, RackWidthStandard } from '@/types'
 
 const inputClass =
-  'w-full rounded border border-[#30363d] bg-[#21262d] px-2 py-1 text-sm text-foreground outline-none focus:border-[#00d4ff]'
+  'w-full rounded border border-border bg-secondary px-2 py-1 text-sm text-foreground outline-none focus:border-primary'
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -40,7 +40,7 @@ export function RackSettingsModal() {
 
   return (
     <Dialog open onOpenChange={(o) => !o && close()}>
-      <DialogContent className="max-w-md border-[#30363d] bg-[#161b22] text-foreground max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-md border-border bg-popover text-foreground max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">Rack settings</DialogTitle>
         </DialogHeader>
@@ -99,7 +99,7 @@ export function RackSettingsModal() {
                 <input
                   type="color"
                   aria-label={key}
-                  className="h-8 w-full cursor-pointer rounded border border-[#30363d] bg-[#21262d]"
+                  className="h-8 w-full cursor-pointer rounded border border-border bg-secondary"
                   value={rack.style[key]}
                   onChange={(e) => updateRackStyle(rack.id, { [key]: e.target.value })}
                 />
@@ -139,7 +139,7 @@ export function RackSettingsModal() {
                 removeRack(rack.id)
                 close()
               }}
-              className="cursor-pointer text-[#f85149] hover:bg-[#f8514922] hover:text-[#f85149]"
+              className="cursor-pointer text-destructive hover:bg-[#f8514922] hover:text-destructive"
             >
               Delete rack
             </Button>

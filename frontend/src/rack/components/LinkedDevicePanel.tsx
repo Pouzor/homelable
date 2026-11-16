@@ -102,7 +102,7 @@ export function LinkedDevicePanel({
     <div aria-label="Linked device" className="flex flex-col gap-2">
       {header}
 
-      <section className="flex flex-1 flex-col rounded border border-[#30363d] bg-[#0d1117] p-2.5">
+      <section className="flex flex-1 flex-col rounded border border-border bg-background p-2.5">
       {rows.length === 0 && (
         <p className="text-[11px] text-muted-foreground">
           Nothing known about this device yet.
@@ -127,7 +127,7 @@ export function LinkedDevicePanel({
             {services.map((service) => (
               <li
                 key={serviceLabel(service)}
-                className="rounded border border-[#30363d] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
               >
                 {serviceLabel(service)}
               </li>
@@ -150,7 +150,7 @@ export function LinkedDevicePanel({
         <button
           type="button"
           onClick={onLink}
-          className="mt-2 cursor-pointer text-[11px] text-[#00d4ff] hover:underline"
+          className="mt-2 cursor-pointer text-[11px] text-primary hover:underline"
         >
           Link to another device…
         </button>

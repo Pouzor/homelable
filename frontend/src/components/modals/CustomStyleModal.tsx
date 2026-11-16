@@ -122,12 +122,12 @@ interface ColorRowProps {
 function ColorRow({ label, color, opacity, onColorChange, onOpacityChange }: ColorRowProps) {
   return (
     <div className="flex items-center gap-3">
-      <span className="text-xs text-[#8b949e] w-20 shrink-0">{label}</span>
+      <span className="text-xs text-muted-foreground w-20 shrink-0">{label}</span>
       <input
         type="color"
         value={color}
         onChange={(e) => onColorChange(e.target.value)}
-        className="w-7 h-7 rounded cursor-pointer border border-[#30363d] bg-transparent p-0.5"
+        className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent p-0.5"
       />
       <div className="flex items-center gap-2 flex-1">
         <input
@@ -137,14 +137,14 @@ function ColorRow({ label, color, opacity, onColorChange, onOpacityChange }: Col
           step={0.01}
           value={opacity}
           onChange={(e) => onOpacityChange(parseFloat(e.target.value))}
-          className="flex-1 h-1 accent-[#00d4ff]"
+          className="flex-1 h-1 accent-primary"
         />
-        <span className="text-xs text-[#8b949e] w-8 text-right">
+        <span className="text-xs text-muted-foreground w-8 text-right">
           {Math.round(opacity * 100)}%
         </span>
       </div>
       <div
-        className="w-5 h-5 rounded border border-[#30363d] shrink-0"
+        className="w-5 h-5 rounded border border-border shrink-0"
         style={{ background: applyOpacity(color, opacity) }}
       />
     </div>
@@ -167,7 +167,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="text-sm font-semibold text-[#e6edf3]">{NODE_TYPE_LABELS[nodeType]}</div>
+      <div className="text-sm font-semibold text-foreground">{NODE_TYPE_LABELS[nodeType]}</div>
       <div className="flex flex-col gap-3">
         <ColorRow
           label="Border"
@@ -192,38 +192,38 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
         />
       </div>
 
-      <div className="border-t border-[#30363d] pt-3">
-        <div className="text-xs text-[#8b949e] mb-1">Default size</div>
-        <div className="text-xs text-[#8b949e]/60 mb-2">0 = auto (min 140 × 50 px, grows with content)</div>
+      <div className="border-t border-border pt-3">
+        <div className="text-xs text-muted-foreground mb-1">Default size</div>
+        <div className="text-xs text-muted-foreground/60 mb-2">0 = auto (min 140 × 50 px, grows with content)</div>
         <div className="flex gap-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-[#8b949e]">W</span>
+            <span className="text-xs text-muted-foreground">W</span>
             <input
               type="number"
               min={0}
               step={10}
               value={style.width}
               onChange={(e) => set('width', parseInt(e.target.value, 10) || 0)}
-              className="w-20 h-7 text-xs bg-[#0d1117] border border-[#30363d] rounded px-2 text-[#e6edf3]"
+              className="w-20 h-7 text-xs bg-background border border-border rounded px-2 text-foreground"
             />
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-[#8b949e]">H</span>
+            <span className="text-xs text-muted-foreground">H</span>
             <input
               type="number"
               min={0}
               step={10}
               value={style.height}
               onChange={(e) => set('height', parseInt(e.target.value, 10) || 0)}
-              className="w-20 h-7 text-xs bg-[#0d1117] border border-[#30363d] rounded px-2 text-[#e6edf3]"
+              className="w-20 h-7 text-xs bg-background border border-border rounded px-2 text-foreground"
             />
           </div>
         </div>
       </div>
 
-      <div className="border-t border-[#30363d] pt-3">
-        <div className="text-xs text-[#8b949e] mb-1">Default connection points</div>
-        <div className="text-xs text-[#8b949e]/60 mb-2">New {NODE_TYPE_LABELS[nodeType]} nodes start with these (0–64 per side)</div>
+      <div className="border-t border-border pt-3">
+        <div className="text-xs text-muted-foreground mb-1">Default connection points</div>
+        <div className="text-xs text-muted-foreground/60 mb-2">New {NODE_TYPE_LABELS[nodeType]} nodes start with these (0–64 per side)</div>
         <div className="grid grid-cols-2 gap-2">
           {([
             ['Top', 'top', 'topHandles'],
@@ -232,7 +232,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
             ['Left', 'left', 'leftHandles'],
           ] as const).map(([label, side, key]) => (
             <div key={side} className="flex items-center gap-2">
-              <span className="text-xs text-[#8b949e] w-12">{label}</span>
+              <span className="text-xs text-muted-foreground w-12">{label}</span>
               <input
                 type="number"
                 min={MIN_HANDLES}
@@ -241,7 +241,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
                 value={style[key] ?? sideDefault(side)}
                 onChange={(e) => set(key, clampHandles(side, parseInt(e.target.value, 10)))}
                 aria-label={`${label} default connection points`}
-                className="w-16 h-7 text-xs bg-[#0d1117] border border-[#30363d] rounded px-2 text-[#e6edf3]"
+                className="w-16 h-7 text-xs bg-background border border-border rounded px-2 text-foreground"
               />
             </div>
           ))}
@@ -250,7 +250,7 @@ function NodeEditor({ nodeType, style, onChange, onApplyToExisting }: NodeEditor
 
       <Button
         size="sm"
-        className="self-start bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
+        className="self-start bg-primary text-primary-foreground hover:bg-primary/90"
         onClick={onApplyToExisting}
       >
         Apply to existing {NODE_TYPE_LABELS[nodeType]} nodes
@@ -278,7 +278,7 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="text-sm font-semibold text-[#e6edf3]">{EDGE_TYPE_LABELS[edgeType]}</div>
+      <div className="text-sm font-semibold text-foreground">{EDGE_TYPE_LABELS[edgeType]}</div>
       <div className="flex flex-col gap-3">
         <ColorRow
           label="Color"
@@ -289,10 +289,10 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
         />
       </div>
 
-      <div className="border-t border-[#30363d] pt-3 flex flex-col gap-3">
+      <div className="border-t border-border pt-3 flex flex-col gap-3">
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-[#8b949e]">Line style</span>
+            <span className="text-xs text-muted-foreground">Line style</span>
             <EdgeLineSwatch
               color={applyOpacity(style.color, style.opacity)}
               lineStyle={style.lineStyle}
@@ -321,8 +321,8 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
 
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-[#8b949e]">Line width</span>
-            <span className="text-xs text-[#8b949e]">{style.widthMult}×</span>
+            <span className="text-xs text-muted-foreground">Line width</span>
+            <span className="text-xs text-muted-foreground">{style.widthMult}×</span>
           </div>
           <input
             type="range"
@@ -332,12 +332,12 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
             value={style.widthMult}
             onChange={(e) => set('widthMult', clampWidthMult(parseInt(e.target.value, 10)))}
             aria-label="Line width multiplier"
-            className="w-full h-1 accent-[#00d4ff]"
+            className="w-full h-1 accent-primary"
           />
         </div>
 
         <div>
-          <div className="text-xs text-[#8b949e] mb-2">Path style</div>
+          <div className="text-xs text-muted-foreground mb-2">Path style</div>
           <div className="flex gap-2">
             {(['bezier', 'smooth'] as EdgePathStyle[]).map((ps) => (
               <button
@@ -358,11 +358,11 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
         </div>
 
         <div>
-          <div className="text-xs text-[#8b949e] mb-2">Animation</div>
+          <div className="text-xs text-muted-foreground mb-2">Animation</div>
           <select
             value={style.animated}
             onChange={(e) => set('animated', e.target.value as EdgeTypeStyle['animated'])}
-            className="w-full h-7 text-xs bg-[#0d1117] border border-[#30363d] rounded px-2 text-[#e6edf3]"
+            className="w-full h-7 text-xs bg-background border border-border rounded px-2 text-foreground"
           >
             <option value="none">None</option>
             <option value="basic">Basic</option>
@@ -375,8 +375,8 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
             whatever its own animation mode — no "Apply to existing" needed. */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-[#8b949e]">Animation speed</span>
-            <span className="text-xs text-[#8b949e]">{animSpeed}×</span>
+            <span className="text-xs text-muted-foreground">Animation speed</span>
+            <span className="text-xs text-muted-foreground">{animSpeed}×</span>
           </div>
           <input
             type="range"
@@ -386,29 +386,29 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
             value={animSpeed}
             onChange={(e) => set('animSpeed', clampAnimSpeed(parseFloat(e.target.value)))}
             aria-label="Animation speed multiplier"
-            className="w-full h-1 accent-[#00d4ff]"
+            className="w-full h-1 accent-primary"
           />
         </div>
 
         <div>
-          <div className="text-xs text-[#8b949e] mb-1">Animation color</div>
-          <div className="text-xs text-[#8b949e]/60 mb-2">Snake and Flow highlight. Basic keeps the line color.</div>
+          <div className="text-xs text-muted-foreground mb-1">Animation color</div>
+          <div className="text-xs text-muted-foreground/60 mb-2">Snake and Flow highlight. Basic keeps the line color.</div>
           <div className="flex items-center gap-3">
             <input
               type="color"
               value={animColor ?? style.color}
               onChange={(e) => set('animColor', e.target.value)}
               aria-label="Animation color"
-              className="w-7 h-7 rounded cursor-pointer border border-[#30363d] bg-transparent p-0.5"
+              className="w-7 h-7 rounded cursor-pointer border border-border bg-transparent p-0.5"
             />
-            <span className="text-xs text-[#8b949e] flex-1">
+            <span className="text-xs text-muted-foreground flex-1">
               {animColor ? animColor : 'Same as line'}
             </span>
             {animColor && (
               <button
                 type="button"
                 onClick={() => set('animColor', undefined)}
-                className="px-2 py-0.5 text-xs rounded border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3]"
+                className="px-2 py-0.5 text-xs rounded border border-border text-muted-foreground hover:text-foreground"
               >
                 Reset
               </button>
@@ -417,7 +417,7 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
         </div>
 
         <div>
-          <div className="text-xs text-[#8b949e] mb-2">Endpoints</div>
+          <div className="text-xs text-muted-foreground mb-2">Endpoints</div>
           <div className="flex flex-col gap-1.5">
             <MarkerShapePicker label="Start" value={style.arrowStart} onChange={(s) => set('arrowStart', s)} />
             <MarkerShapePicker label="End" value={style.arrowEnd} onChange={(s) => set('arrowEnd', s)} />
@@ -428,12 +428,12 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
             prints nothing either way, so the toggle stays where it means
             something. Applies live — no "Apply to existing" round-trip. */}
         {LQI_EDGE_TYPES.includes(edgeType) && (
-          <label className="flex items-center gap-2 text-xs text-[#8b949e] cursor-pointer">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
             <input
               type="checkbox"
               checked={style.showLqi ?? false}
               onChange={(e) => set('showLqi', e.target.checked)}
-              className="accent-[#00d4ff] cursor-pointer"
+              className="accent-primary cursor-pointer"
             />
             Show LQI on the link
           </label>
@@ -442,7 +442,7 @@ function EdgeEditor({ edgeType, style, onChange, onApplyToExisting }: EdgeEditor
 
       <Button
         size="sm"
-        className="self-start bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
+        className="self-start bg-primary text-primary-foreground hover:bg-primary/90"
         onClick={onApplyToExisting}
       >
         Apply to existing {EDGE_TYPE_LABELS[edgeType]} edges
@@ -541,16 +541,16 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
 
   return (
     <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogContent className="bg-[#161b22] border-[#30363d] max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0">
-        <DialogHeader className="px-5 pt-5 pb-3 border-b border-[#30363d]">
+      <DialogContent className="bg-popover border-border max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
           <DialogTitle className="text-sm font-semibold">Custom Style Editor</DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-1 overflow-hidden min-h-0">
           {/* Left panel — type list */}
-          <div className="w-52 shrink-0 border-r border-[#30363d] flex flex-col overflow-hidden">
+          <div className="w-52 shrink-0 border-r border-border flex flex-col overflow-hidden">
             {/* Tabs */}
-            <div className="flex border-b border-[#30363d]">
+            <div className="flex border-b border-border">
               {(['nodes', 'edges'] as Tab[]).map((t) => (
                 <button
                   key={t}
@@ -571,7 +571,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
             <div className="flex-1 overflow-y-auto py-1">
               {tab === 'nodes' && NODE_TYPE_GROUPS.map((group) => (
                 <Fragment key={group.label}>
-                  <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#8b949e]/60">
+                  <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
                     {group.label}
                   </div>
                   {group.types.map((t) => {
@@ -640,7 +640,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
           {/* Right panel — editor */}
           <div className="flex-1 overflow-y-auto p-5">
             {!selection && (
-              <div className="flex items-center justify-center h-full text-xs text-[#8b949e]">
+              <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
                 Select a {tab === 'nodes' ? 'node type' : 'edge type'} from the list to edit its style
               </div>
             )}
@@ -668,7 +668,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
         </div>
 
         {/* Footer */}
-        <div className="flex justify-between gap-2 px-5 py-3 border-t border-[#30363d]">
+        <div className="flex justify-between gap-2 px-5 py-3 border-t border-border">
           <Button
             type="button"
             size="sm"
@@ -683,7 +683,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
               type="button"
               size="sm"
               variant="outline"
-              className="border-[#30363d] text-[#e6edf3] hover:bg-[#21262d]"
+              className="border-border text-foreground hover:bg-secondary"
               onClick={handleSave}
             >
               Save Custom Style
@@ -691,7 +691,7 @@ export function CustomStyleModal({ open, onClose, initialNodeType }: CustomStyle
             <Button
               type="button"
               size="sm"
-              className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
               onClick={handleApplyAll}
             >
               Apply All to Canvas

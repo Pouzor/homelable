@@ -47,7 +47,7 @@ import { readAutosaveSettings, subscribeAutosaveSettings, type AutosaveSettings 
 import { useAutosave } from '@/hooks/useAutosave'
 import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
-import { useThemeStore } from '@/stores/themeStore'
+import { selectInterfaceIsLight, useThemeStore } from '@/stores/themeStore'
 import { canvasApi, designsApi, liveviewApi, scanApi } from '@/api/client'
 import * as standaloneStorage from '@/utils/standaloneStorage'
 import { demoNodes, demoEdges } from '@/utils/demoData'
@@ -84,6 +84,7 @@ export default function App() {
   const canvasRef = useRef<HTMLDivElement>(null)
   const { isAuthenticated, isInitialized } = useAuthStore()
   const authBootstrapStarted = useRef(false)
+  const interfaceIsLight = useThemeStore(selectInterfaceIsLight)
   const { activeTheme, setTheme, customStyle, setCustomStyle } = useThemeStore()
   const { activeDesignId, activeDesignType, setDesigns, setActiveDesign } = useDesignStore()
   const appView = useUiStore((s) => s.view)
@@ -1229,7 +1230,7 @@ export default function App() {
 
   if (!STANDALONE && !isInitialized) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#0d1117] text-sm text-muted-foreground">
+      <div className="flex h-screen w-screen items-center justify-center bg-background text-sm text-muted-foreground">
         Loading authentication…
       </div>
     )
@@ -1242,7 +1243,7 @@ export default function App() {
       <ReactFlowProvider>
         {/* data-new-user marks a first-time (demo) canvas — the hook the upcoming
             Getting Started walkthrough keys off. */}
-        <div className="flex h-screen w-screen overflow-hidden bg-[#0d1117]" data-new-user={isNewUser}>
+        <div className="flex h-screen w-screen overflow-hidden bg-background" data-new-user={isNewUser}>
           <Sidebar
             onAddNode={() => setAddNodeOpen(true)}
             onAddGroupRect={() => setAddGroupRectOpen(true)}
@@ -1258,13 +1259,13 @@ export default function App() {
             {loadError && (
               <div
                 role="alert"
-                className="flex items-center justify-between gap-3 bg-[#3d1418] border-b border-[#f85149] px-4 py-2 text-sm text-[#ffa198]"
+                className="flex items-center justify-between gap-3 bg-[#3d1418] border-b border-destructive px-4 py-2 text-sm text-[#ffa198]"
               >
                 <span>Backend not responding — the canvas could not be loaded.</span>
                 <button
                   type="button"
                   onClick={handleRetryLoad}
-                  className="rounded border border-[#f85149] px-2 py-0.5 text-[#ffa198] hover:bg-[#f85149]/20"
+                  className="rounded border border-destructive px-2 py-0.5 text-[#ffa198] hover:bg-destructive/20"
                 >
                   Retry
                 </button>
@@ -1635,7 +1636,7 @@ export default function App() {
           getElement={() => canvasRef.current?.querySelector<HTMLElement>('.react-flow') ?? null}
         />
 
-        <Toaster theme="dark" position="bottom-right" />
+        <Toaster theme={interfaceIsLight ? 'light' : 'dark'} position="bottom-right" />
         <WalkthroughInvite />
         <WalkthroughOverlay />
       </ReactFlowProvider>

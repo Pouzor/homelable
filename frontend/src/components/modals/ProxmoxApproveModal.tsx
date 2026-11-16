@@ -80,7 +80,7 @@ export function ProxmoxApproveModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
-      <DialogContent className="bg-[#161b22] border-border max-w-lg">
+      <DialogContent className="bg-popover border-border max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Server size={16} style={{ color: accent }} />
@@ -89,7 +89,7 @@ export function ProxmoxApproveModal({
         </DialogHeader>
 
         <div className="space-y-3 py-1">
-          <label className="flex items-start gap-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5 text-xs cursor-pointer">
+          <label className="flex items-start gap-2 rounded-md border border-border bg-background/60 px-3 py-2.5 text-xs cursor-pointer">
             <input
               type="checkbox"
               checked={includeChildren}
@@ -106,7 +106,7 @@ export function ProxmoxApproveModal({
           </label>
 
           {includeChildren && canNest && (
-            <div className="space-y-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5">
+            <div className="space-y-2 rounded-md border border-border bg-background/60 px-3 py-2.5">
               <span className="block text-xs text-muted-foreground">Draw the guests as</span>
               <label className="flex items-start gap-2 text-xs cursor-pointer text-foreground">
                 <input
@@ -152,7 +152,7 @@ export function ProxmoxApproveModal({
                 return (
                   <div
                     key={c.id}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-[#21262d] text-xs"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-secondary text-xs"
                   >
                     <Icon size={12} style={{ color }} className="shrink-0" />
                     <span className="text-foreground truncate">{label(c)}</span>

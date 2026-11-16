@@ -30,7 +30,7 @@ interface Props {
 export function RegenerateDocModal({ open, title, fromDevice, busy, onCancel, onConfirm }: Props) {
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onCancel()}>
-      <DialogContent className="max-w-md border-border bg-[#161b22]">
+      <DialogContent className="max-w-md border-border bg-popover">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-foreground">
             <AlertTriangle size={16} className="text-[var(--status-pending,#e3b341)]" />
@@ -41,7 +41,7 @@ export function RegenerateDocModal({ open, title, fromDevice, busy, onCancel, on
           </DialogDescription>
         </DialogHeader>
 
-        <ul className="space-y-1.5 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5 text-xs text-muted-foreground">
+        <ul className="space-y-1.5 rounded-md border border-border bg-background/60 px-3 py-2.5 text-xs text-muted-foreground">
           <li>
             The body is rebuilt {fromDevice ? "from the device's current facts in the database" : 'from the template this page was created with'}.
           </li>
