@@ -14,7 +14,7 @@ const AUTH_LABELS = { token: 'HTTPS token', ssh: 'SSH key', none: 'none' } as co
 function LastSync({ last }: { last: GitSyncLast }) {
   if (last.status === 'failed') {
     return (
-      <p className="text-[10px] text-[#f85149] leading-tight break-words" role="status">
+      <p className="text-[10px] text-destructive leading-tight break-words" role="status">
         Last sync failed {formatRelative(last.at)}: {last.error}
       </p>
     )
@@ -49,7 +49,7 @@ export function GitSyncSettings() {
     <div className="pt-3 border-t border-border space-y-2">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Git sync</span>
       {!status?.configured ? (
-        <p className="text-[10px] text-[#e3b341] leading-tight">
+        <p className="text-[10px] text-warning leading-tight">
           No repository configured. Set <span className="font-mono">GIT_SYNC_REPO_URL</span> (and{' '}
           <span className="font-mono">GIT_SYNC_TOKEN</span> or <span className="font-mono">GIT_SYNC_SSH_KEY</span>)
           in the server .env to push the documentation and every diagram to git.

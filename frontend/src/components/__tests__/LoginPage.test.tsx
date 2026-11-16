@@ -100,7 +100,7 @@ describe('LoginPage', () => {
       expect(screen.getByText('Invalid username or password')).toBeDefined()
     })
     // Must show exactly ONE error — not separate per-field messages (no enumeration)
-    const errors = document.querySelectorAll('p.text-\\[\\#f85149\\]')
+    const errors = document.querySelectorAll('p.text-destructive')
     expect(errors.length).toBe(1)
     expect(errors[0].textContent).toBe('Invalid username or password')
   })

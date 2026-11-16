@@ -28,7 +28,7 @@ interface Props {
 export function SetHomepageModal({ open, title, currentTitle, busy, onCancel, onConfirm }: Props) {
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onCancel()}>
-      <DialogContent className="max-w-md border-border bg-[#161b22]">
+      <DialogContent className="max-w-md border-border bg-popover">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-foreground">
             <House size={16} className="text-primary" />

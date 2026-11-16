@@ -75,7 +75,7 @@ function MeshAutoSync({
     <div className="pt-3 border-t border-border space-y-2">
       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</span>
       {!hostConfigured ? (
-        <p className="text-[10px] text-[#e3b341] leading-tight">
+        <p className="text-[10px] text-warning leading-tight">
           No MQTT host configured. Set <span className="font-mono">{envHostVar}</span> in the server .env to enable auto-sync.
         </p>
       ) : (
@@ -100,7 +100,7 @@ function MeshAutoSync({
                 max={86400}
                 value={interval}
                 onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) onIntervalChange(v) }}
-                className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none"
+                className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-background border border-border text-foreground focus:outline-none"
                 aria-label={`${title} interval`}
               />
               <span className="text-xs text-muted-foreground">seconds</span>
@@ -393,7 +393,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-[#161b22] border-border max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-popover border-border max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-foreground">Settings</DialogTitle>
         </DialogHeader>
@@ -406,7 +406,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">Status check interval (s)</label>
             {!checkerEnabled && (
-              <p className="text-[10px] text-[#e3b341] leading-tight">
+              <p className="text-[10px] text-warning leading-tight">
                 Status checks are disabled on the server (STATUS_CHECKER_ENABLED=false): nodes and
                 services are not probed. These settings apply once it is switched back on.
               </p>
@@ -420,7 +420,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 aria-label="Status check interval"
                 value={interval}
                 onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setIntervalValue(v) }}
-                className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
+                className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-background border border-border text-foreground focus:outline-none focus:border-primary"
               />
               <span className="text-xs text-muted-foreground">seconds</span>
             </div>
@@ -435,7 +435,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 checked={serviceCheckEnabled}
                 disabled={!checkerEnabled}
                 onChange={(e) => setServiceCheckEnabled(e.target.checked)}
-                className="cursor-pointer accent-[#00d4ff]"
+                className="cursor-pointer accent-primary"
                 aria-label="Toggle per-service status checks"
               />
             </label>
@@ -450,7 +450,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   disabled={!checkerEnabled}
                   value={serviceInterval}
                   onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setServiceInterval(v) }}
-                  className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
+                  className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-background border border-border text-foreground focus:outline-none focus:border-primary"
                   aria-label="Service check interval"
                 />
                 <span className="text-xs text-muted-foreground">seconds</span>
@@ -472,7 +472,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 type="checkbox"
                 checked={alignment.enabled}
                 onChange={(e) => updateAlignment({ enabled: e.target.checked })}
-                className="cursor-pointer accent-[#00d4ff]"
+                className="cursor-pointer accent-primary"
                 aria-label="Toggle alignment guides"
               />
             </label>
@@ -483,7 +483,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 type="checkbox"
                 checked={hideIp}
                 onChange={(e) => setHideIp(e.target.checked)}
-                className="cursor-pointer accent-[#00d4ff]"
+                className="cursor-pointer accent-primary"
                 aria-label="Toggle IP address masking"
               />
             </label>
@@ -494,7 +494,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 type="checkbox"
                 checked={hoverHighlight.enabled}
                 onChange={(e) => updateHoverHighlight({ enabled: e.target.checked })}
-                className="cursor-pointer accent-[#00d4ff]"
+                className="cursor-pointer accent-primary"
                 aria-label="Toggle hover highlight"
               />
             </label>
@@ -509,7 +509,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   step={1}
                   value={alignment.threshold}
                   onChange={(e) => updateAlignment({ threshold: Number(e.target.value) })}
-                  className="flex-1 cursor-pointer accent-[#00d4ff]"
+                  className="flex-1 cursor-pointer accent-primary"
                   aria-label="Alignment snap threshold"
                 />
                 <span className="font-mono text-[11px] text-foreground w-8 text-right">{alignment.threshold}px</span>
@@ -525,7 +525,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                 type="checkbox"
                 checked={autosave.enabled}
                 onChange={(e) => updateAutosave({ enabled: e.target.checked })}
-                className="cursor-pointer accent-[#00d4ff]"
+                className="cursor-pointer accent-primary"
                 aria-label="Toggle autosave"
               />
             </label>
@@ -537,7 +537,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   value={autosave.delay}
                   onChange={(e) => updateAutosave({ delay: Number(e.target.value) })}
                   disabled={!autosave.enabled}
-                  className="px-2 py-1 rounded-md text-xs bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#00d4ff]"
+                  className="px-2 py-1 rounded-md text-xs bg-background border border-border text-foreground focus:outline-none focus:border-primary"
                   aria-label="Autosave delay"
                 >
                   <option value={3}>3 s</option>
@@ -629,7 +629,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <div className="pt-3 border-t border-border space-y-2">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Proxmox auto-sync</span>
             {!pmConfig.token_configured ? (
-              <p className="text-[10px] text-[#e3b341] leading-tight">
+              <p className="text-[10px] text-warning leading-tight">
                 No API token configured. Set <span className="font-mono">PROXMOX_TOKEN_ID</span> and{' '}
                 <span className="font-mono">PROXMOX_TOKEN_SECRET</span> (or{' '}
                 <span className="font-mono">PROXMOX_ENDPOINTS</span>) in the server .env to enable auto-sync.
@@ -655,7 +655,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       max={86400}
                       value={pmInterval}
                       onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setPmInterval(v) }}
-                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#e57000]"
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-background border border-border text-foreground focus:outline-none focus:border-[#e57000]"
                       aria-label="Proxmox sync interval"
                     />
                     <span className="text-xs text-muted-foreground">seconds</span>
@@ -696,7 +696,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     </span>
                   </div>
                 ) : (
-                  <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
+                  <p className="text-[10px] text-warning leading-tight pt-1">
                     Set <span className="font-mono">PROXMOX_HOST</span> in the server .env to enable manual re-sync.
                   </p>
                 )}
@@ -709,7 +709,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <div className="pt-3 border-t border-border space-y-2">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Unraid auto-sync</span>
             {!(urConfig.api_key_configured && urConfig.host) ? (
-              <p className="text-[10px] text-[#e3b341] leading-tight">
+              <p className="text-[10px] text-warning leading-tight">
                 No Unraid server configured. Set <span className="font-mono">UNRAID_HOST</span> and{' '}
                 <span className="font-mono">UNRAID_API_KEY</span> in the server .env to enable auto-sync.
               </p>
@@ -734,7 +734,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       max={86400}
                       value={urInterval}
                       onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setUrInterval(v) }}
-                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#e22828]"
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-background border border-border text-foreground focus:outline-none focus:border-[#e22828]"
                       aria-label="Unraid sync interval"
                     />
                     <span className="text-xs text-muted-foreground">seconds</span>
@@ -775,7 +775,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <div className="pt-3 border-t border-border space-y-2">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">UniFi auto-sync</span>
             {!unConfig.credentials_configured ? (
-              <p className="text-[10px] text-[#e3b341] leading-tight">
+              <p className="text-[10px] text-warning leading-tight">
                 No controller credentials configured. Set <span className="font-mono">UNIFI_USER</span> and{' '}
                 <span className="font-mono">UNIFI_PASS</span> in the server .env to enable auto-sync.
               </p>
@@ -800,7 +800,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                       max={86400}
                       value={unInterval}
                       onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setUnInterval(v) }}
-                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-[#0d1117] border border-border text-foreground focus:outline-none focus:border-[#0559c9]"
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-background border border-border text-foreground focus:outline-none focus:border-[#0559c9]"
                       aria-label="UniFi sync interval"
                     />
                     <span className="text-xs text-muted-foreground">seconds</span>
@@ -827,7 +827,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     </label>
                   ))}
                   {!anyUnifiSource && (
-                    <p className="text-[10px] text-[#e3b341] leading-tight">
+                    <p className="text-[10px] text-warning leading-tight">
                       Select at least one source, or the sync has nothing to import.
                     </p>
                   )}
@@ -847,7 +847,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     </span>
                   </div>
                 ) : (
-                  <p className="text-[10px] text-[#e3b341] leading-tight pt-1">
+                  <p className="text-[10px] text-warning leading-tight pt-1">
                     Set <span className="font-mono">UNIFI_HOST</span> in the server .env to enable manual re-sync.
                   </p>
                 )}

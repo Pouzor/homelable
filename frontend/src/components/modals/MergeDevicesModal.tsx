@@ -43,7 +43,7 @@ export function MergeDevicesModal({ open, devices, onCancel, onConfirm, busy = f
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
-      <DialogContent className="bg-[#161b22] border-border max-w-2xl">
+      <DialogContent className="bg-popover border-border max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Merge size={16} style={{ color: ACCENT }} />
@@ -63,8 +63,8 @@ export function MergeDevicesModal({ open, devices, onCancel, onConfirm, busy = f
                 key={d.id}
                 className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs cursor-pointer transition-colors ${
                   d.id === winnerId
-                    ? 'border-[#00d4ff]/50 bg-[#00d4ff]/10'
-                    : 'border-border bg-[#0d1117]/60 hover:border-muted-foreground/40'
+                    ? 'border-primary/50 bg-primary/10'
+                    : 'border-border bg-background/60 hover:border-muted-foreground/40'
                 }`}
               >
                 <input
@@ -79,7 +79,7 @@ export function MergeDevicesModal({ open, devices, onCancel, onConfirm, busy = f
                   <span className="flex items-center gap-2">
                     <span className="text-foreground font-medium truncate">{deviceName(d)}</span>
                     {(d.canvas_count ?? 0) > 0 && (
-                      <span className="flex items-center gap-1 text-[10px] text-[#00d4ff] shrink-0">
+                      <span className="flex items-center gap-1 text-[10px] text-primary shrink-0">
                         <Layers size={10} />
                         {d.canvas_count}
                       </span>

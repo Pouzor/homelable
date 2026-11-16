@@ -42,7 +42,7 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-[#161b22] border-border max-w-sm">
+      <DialogContent className="bg-popover border-border max-w-sm">
         <DialogHeader>
           <DialogTitle className="text-foreground">Export Canvas</DialogTitle>
         </DialogHeader>
@@ -56,8 +56,8 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
               className={[
                 'w-full flex items-center justify-between px-3 py-2.5 rounded-md border text-sm transition-colors',
                 format === 'png' && quality === opt.value
-                  ? 'border-[#00d4ff] bg-[#00d4ff10] text-foreground'
-                  : 'border-border bg-[#0d1117] text-muted-foreground hover:border-muted-foreground',
+                  ? 'border-primary bg-primary/6 text-foreground'
+                  : 'border-border bg-background text-muted-foreground hover:border-muted-foreground',
               ].join(' ')}
             >
               <span className="font-medium">{opt.label}</span>
@@ -70,8 +70,8 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
             className={[
               'w-full flex items-center justify-between px-3 py-2.5 rounded-md border text-sm transition-colors',
               format === 'svg'
-                ? 'border-[#00d4ff] bg-[#00d4ff10] text-foreground'
-                : 'border-border bg-[#0d1117] text-muted-foreground hover:border-muted-foreground',
+                ? 'border-primary bg-primary/6 text-foreground'
+                : 'border-border bg-background text-muted-foreground hover:border-muted-foreground',
             ].join(' ')}
           >
             <span className="font-medium">SVG</span>
@@ -90,8 +90,8 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
                 className={[
                   'flex-1 flex items-center gap-2 px-3 py-2 rounded-md border text-sm transition-colors',
                   background === opt.value
-                    ? 'border-[#00d4ff] bg-[#00d4ff10] text-foreground'
-                    : 'border-border bg-[#0d1117] text-muted-foreground hover:border-muted-foreground',
+                    ? 'border-primary bg-primary/6 text-foreground'
+                    : 'border-border bg-background text-muted-foreground hover:border-muted-foreground',
                 ].join(' ')}
               >
                 <span
@@ -110,7 +110,7 @@ export function ExportModal({ open, onClose, getElement }: ExportModalProps) {
           <Button
             onClick={handleExport}
             disabled={exporting}
-            style={{ background: '#00d4ff', color: '#0d1117' }}
+            style={{ background: 'var(--primary)', color: 'var(--primary-foreground)' }}
           >
             {exporting
               ? <><Loader2 size={14} className="animate-spin mr-1.5" />Exporting…</>

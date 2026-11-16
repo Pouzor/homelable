@@ -203,7 +203,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="bg-[#161b22] border-border max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="bg-popover border-border max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <RadioTower size={16} style={{ color: ACCENT }} />
@@ -221,7 +221,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                   value={form.mqtt_host}
                   onChange={(e) => updateField('mqtt_host', e.target.value)}
                   placeholder="192.168.1.x or mqtt.local"
-                  className="font-mono text-sm bg-[#0d1117] border-border"
+                  className="font-mono text-sm bg-background border-border"
                 />
               </div>
               <div className="space-y-1">
@@ -231,7 +231,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                   onChange={(e) => updateField('mqtt_port', e.target.value)}
                   placeholder="1883"
                   type="number"
-                  className="font-mono text-sm bg-[#0d1117] border-border"
+                  className="font-mono text-sm bg-background border-border"
                 />
               </div>
               <div className="space-y-1">
@@ -240,7 +240,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                   value={form.prefix}
                   onChange={(e) => updateField('prefix', e.target.value)}
                   placeholder="zwave"
-                  className="font-mono text-sm bg-[#0d1117] border-border"
+                  className="font-mono text-sm bg-background border-border"
                 />
               </div>
               <div className="space-y-1">
@@ -249,7 +249,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                   value={form.gateway_name}
                   onChange={(e) => updateField('gateway_name', e.target.value)}
                   placeholder="zwavejs2mqtt"
-                  className="font-mono text-sm bg-[#0d1117] border-border"
+                  className="font-mono text-sm bg-background border-border"
                 />
               </div>
               <div className="space-y-1">
@@ -258,7 +258,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                   value={form.mqtt_username}
                   onChange={(e) => updateField('mqtt_username', e.target.value)}
                   placeholder="mqtt_user"
-                  className="text-sm bg-[#0d1117] border-border"
+                  className="text-sm bg-background border-border"
                 />
               </div>
               <div className="space-y-1">
@@ -269,7 +269,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                   placeholder="••••••••"
                   type="password"
                   autoComplete="new-password"
-                  className="text-sm bg-[#0d1117] border-border"
+                  className="text-sm bg-background border-border"
                 />
               </div>
               <div className="col-span-2 flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
@@ -285,7 +285,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                 </label>
                 <label
                   className={`flex items-center gap-1.5 text-xs cursor-pointer ${
-                    form.mqtt_tls ? 'text-[#f85149]' : 'text-muted-foreground/40 cursor-not-allowed'
+                    form.mqtt_tls ? 'text-destructive' : 'text-muted-foreground/40 cursor-not-allowed'
                   }`}
                 >
                   <input
@@ -295,7 +295,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                     onChange={(e) =>
                       setForm((f) => ({ ...f, mqtt_tls_insecure: e.target.checked }))
                     }
-                    className="w-3 h-3 accent-[#f85149] cursor-pointer disabled:cursor-not-allowed"
+                    className="w-3 h-3 accent-destructive cursor-pointer disabled:cursor-not-allowed"
                   />
                   Skip cert verify (self-signed only)
                 </label>
@@ -306,10 +306,10 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
             {connectionStatus !== 'idle' && (
               <div className={`flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-md border ${
                 connectionStatus === 'ok'
-                  ? 'bg-[#39d353]/10 border-[#39d353]/30 text-[#39d353]'
+                  ? 'bg-success/10 border-success/30 text-success'
                   : connectionStatus === 'fail'
-                  ? 'bg-[#f85149]/10 border-[#f85149]/30 text-[#f85149]'
-                  : 'bg-[#e3b341]/10 border-[#e3b341]/30 text-[#e3b341]'
+                  ? 'bg-destructive/10 border-destructive/30 text-destructive'
+                  : 'bg-warning/10 border-warning/30 text-warning'
               }`}>
                 {connectionStatus === 'testing' && <Loader2 size={12} className="animate-spin" />}
                 {connectionStatus === 'ok' && <CheckCircle2 size={12} />}
@@ -318,7 +318,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
               </div>
             )}
 
-            <div className="space-y-2 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5">
+            <div className="space-y-2 rounded-md border border-border bg-background/60 px-3 py-2.5">
               <span className="block text-xs text-muted-foreground">Send devices to</span>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
                 <label className="flex items-center gap-1.5 cursor-pointer text-foreground">
@@ -349,7 +349,7 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
               <Button
                 size="sm"
                 variant="ghost"
-                className="gap-1.5 text-muted-foreground hover:text-foreground border border-border hover:bg-[#21262d]"
+                className="gap-1.5 text-muted-foreground hover:text-foreground border border-border hover:bg-secondary"
                 onClick={handleTestConnection}
                 disabled={connectionStatus === 'testing' || loading}
               >
@@ -412,8 +412,8 @@ export function ZwaveImportModal({ open, onClose, onAddToCanvas, onInventoryImpo
                           key={device.id}
                           className={`flex items-start gap-2 p-2 mb-1 rounded-md text-xs cursor-pointer transition-colors border ${
                             checked.has(device.id)
-                              ? 'bg-[#21262d] border-[#ff6e00]/40'
-                              : 'bg-[#21262d] border-transparent hover:bg-[#30363d]'
+                              ? 'bg-secondary border-[#ff6e00]/40'
+                              : 'bg-secondary border-transparent hover:bg-border'
                           }`}
                           onClick={() => toggleCheck(device.id)}
                         >

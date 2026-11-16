@@ -63,8 +63,8 @@ export function PortListEditor({
             disabled={ports.length === 0}
             className={`cursor-pointer rounded border px-2 py-0.5 text-xs disabled:cursor-not-allowed disabled:opacity-40 ${
               positioning
-                ? 'border-[#00d4ff] text-[#00d4ff]'
-                : 'border-[#30363d] hover:border-[#00d4ff]'
+                ? 'border-primary text-primary'
+                : 'border-border hover:border-primary'
             }`}
             onClick={() => onPositioningChange(!positioning)}
           >
@@ -73,7 +73,7 @@ export function PortListEditor({
           <button
             type="button"
             aria-label="Add port"
-            className="cursor-pointer rounded border border-[#30363d] px-2 py-0.5 text-xs hover:border-[#00d4ff]"
+            className="cursor-pointer rounded border border-border px-2 py-0.5 text-xs hover:border-primary"
             onClick={add}
           >
             <Plus size={12} className="inline" /> Add
@@ -93,7 +93,7 @@ export function PortListEditor({
             onFocusCapture={() => onSelect(port.id)}
             onClick={() => onSelect(port.id)}
             className={`flex h-7 items-center gap-0.5 rounded border bg-[#1c2128] pr-0.5 ${
-              selectedPortId === port.id ? 'border-[#00d4ff]' : 'border-[#30363d]'
+              selectedPortId === port.id ? 'border-primary' : 'border-border'
             }`}
           >
             <input
@@ -120,7 +120,7 @@ export function PortListEditor({
             <button
               type="button"
               aria-label={`Remove port ${port.label}`}
-              className="cursor-pointer px-0.5 text-muted-foreground hover:text-[#f85149]"
+              className="cursor-pointer px-0.5 text-muted-foreground hover:text-destructive"
               onClick={() => onChange(ports.filter((p) => p.id !== port.id))}
             >
               <X size={11} />

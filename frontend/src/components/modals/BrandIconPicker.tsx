@@ -35,7 +35,7 @@ export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
         value={query}
         onChange={(e) => { setQuery(e.target.value); setLimit(PAGE) }}
         placeholder={`Search ${SLUGS.length} brand icons...`}
-        className="bg-[#0d1117] border-[#30363d] text-xs h-7"
+        className="bg-background border-border text-xs h-7"
         aria-label="Brand icon search"
       />
       <div className="text-[10px] text-muted-foreground/60">
@@ -55,8 +55,8 @@ export function BrandIconPicker({ value, onSelect }: BrandIconPickerProps) {
                 aria-pressed={selected}
                 className={`flex items-center justify-center aspect-square rounded-md border transition-colors cursor-pointer ${
                   selected
-                    ? 'border-[#00d4ff] bg-[#00d4ff]/10'
-                    : 'border-[#30363d] hover:border-[#484f58] bg-[#0d1117]'
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border hover:border-[#484f58] bg-background'
                 }`}
               >
                 <img

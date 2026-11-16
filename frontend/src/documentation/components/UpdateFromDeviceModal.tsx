@@ -95,7 +95,7 @@ export function UpdateFromDeviceModal({
     <Dialog open={open} onOpenChange={(value) => !value && !loading && cancel()}>
       {/* `!max-w-none`: the dialog primitive's `sm:max-w-sm` otherwise wins and
           squeezes the side-by-side comparison into 384px. */}
-      <DialogContent className="flex max-h-[90vh] w-[95vw] !max-w-none flex-col border-border bg-[#161b22]">
+      <DialogContent className="flex max-h-[90vh] w-[95vw] !max-w-none flex-col border-border bg-popover">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2 text-foreground">
             <RefreshCw size={16} className="text-[var(--status-online,#39d353)]" />
@@ -137,7 +137,7 @@ export function UpdateFromDeviceModal({
             )}
             {/* What the merge decided, in the order the user will read it. */}
             {displayedPreview.summary.length > 0 && (
-              <ul className="mt-1 space-y-1 rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5">
+              <ul className="mt-1 space-y-1 rounded-md border border-border bg-background/60 px-3 py-2.5">
                 {displayedPreview.summary.map((line) => (
                   <li key={line} className="flex items-start gap-1.5 text-xs text-muted-foreground">
                     <Check size={12} className="mt-px shrink-0 text-[var(--status-online,#39d353)]" />
@@ -177,7 +177,7 @@ export function UpdateFromDeviceModal({
                 {hasAnythingToApply ? 'Result' : 'Nothing to change'}
               </p>
               {hasAnythingToApply ? (
-                <div className="max-h-72 overflow-y-auto rounded-md border border-border bg-[#0d1117]/60 px-4 py-3">
+                <div className="max-h-72 overflow-y-auto rounded-md border border-border bg-background/60 px-4 py-3">
                   <Markdown
                     body={displayedPreview.proposed_body}
                     docs={docs}
@@ -186,7 +186,7 @@ export function UpdateFromDeviceModal({
                   />
                 </div>
               ) : (
-                <p className="rounded-md border border-border bg-[#0d1117]/60 px-3 py-2.5 text-xs text-muted-foreground">
+                <p className="rounded-md border border-border bg-background/60 px-3 py-2.5 text-xs text-muted-foreground">
                   The document already matches the device.
                 </p>
               )}
@@ -333,7 +333,7 @@ function VersionPanel({
   return (
     <div
       className={cn(
-        'flex min-w-0 flex-col overflow-hidden rounded-lg border bg-[#0d1117]/60',
+        'flex min-w-0 flex-col overflow-hidden rounded-lg border bg-background/60',
         accent === 'document'
           ? 'border-[var(--status-pending,#e3b341)]/40'
           : 'border-[var(--status-online,#39d353)]/40',
@@ -407,7 +407,7 @@ function ConflictRow({
   const stat = useMemo(() => diffStat(diffLines(change.documented, change.device)), [change])
 
   return (
-    <div className="rounded-md border border-border bg-[#0d1117]/60 p-2.5">
+    <div className="rounded-md border border-border bg-background/60 p-2.5">
       <div className="flex items-center gap-1.5">
         <AlertTriangle size={13} className="shrink-0 text-[var(--status-pending,#e3b341)]" />
         <p className="text-xs font-medium text-foreground">{change.name}</p>

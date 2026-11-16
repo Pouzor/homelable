@@ -68,7 +68,7 @@ export function CustomIconPicker({ value, onSelect, allowUpload = !STANDALONE }:
           onChange={(e) => { setDraft(e.target.value); setError(null) }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); apply() } }}
           placeholder="https://cdn.jsdelivr.net/gh/selfhst/icons/svg/…"
-          className="bg-[#0d1117] border-[#30363d] text-xs h-7 flex-1 min-w-0"
+          className="bg-background border-border text-xs h-7 flex-1 min-w-0"
           aria-label="Custom icon URL"
           aria-invalid={error ? true : undefined}
         />
@@ -76,7 +76,7 @@ export function CustomIconPicker({ value, onSelect, allowUpload = !STANDALONE }:
           Use
         </Button>
       </div>
-      {error && <div className="text-[10px] text-[#f85149]" role="alert">{error}</div>}
+      {error && <div className="text-[10px] text-destructive" role="alert">{error}</div>}
 
       {allowUpload && (
         <>
@@ -97,8 +97,8 @@ export function CustomIconPicker({ value, onSelect, allowUpload = !STANDALONE }:
 
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
         {previewSrc && (
-          <span className="flex items-center justify-center w-7 h-7 rounded-md border border-[#00d4ff] bg-[#00d4ff]/10 shrink-0">
-            <IconImage src={previewSrc} alt="Custom icon preview" size={20} fallback={<span className="text-[#f85149]">!</span>} />
+          <span className="flex items-center justify-center w-7 h-7 rounded-md border border-primary bg-primary/10 shrink-0">
+            <IconImage src={previewSrc} alt="Custom icon preview" size={20} fallback={<span className="text-destructive">!</span>} />
           </span>
         )}
         <span>

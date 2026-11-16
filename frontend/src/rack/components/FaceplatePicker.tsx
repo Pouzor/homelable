@@ -62,8 +62,8 @@ function FaceplateTile({ plate, selected, onPick }: TileProps) {
       onClick={() => onPick(plate.id)}
       className={`flex cursor-pointer flex-col gap-2 rounded border p-2 text-left transition-colors ${
         selected
-          ? 'border-[#00d4ff] bg-[#00d4ff11]'
-          : 'border-[#30363d] hover:border-[#00d4ff66] hover:bg-[#21262d]'
+          ? 'border-primary bg-[#00d4ff11]'
+          : 'border-border hover:border-[#00d4ff66] hover:bg-secondary'
       }`}
     >
       <div
@@ -127,7 +127,7 @@ export function FaceplatePicker({ open, value, kind, onPick, onClose }: Props) {
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       {/* `sm:max-w-sm` on the shared DialogContent is media-scoped, so it beats a
           plain `max-w-*` here — the override has to carry the same prefix. */}
-      <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-[1440px] border-[#30363d] bg-[#161b22] text-foreground max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[96vw] max-w-[96vw] sm:max-w-[1440px] border-border bg-popover text-foreground max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">Choose a faceplate</DialogTitle>
         </DialogHeader>
@@ -143,7 +143,7 @@ export function FaceplatePicker({ open, value, kind, onPick, onClose }: Props) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by name or category…"
-            className="w-full rounded border border-[#30363d] bg-[#21262d] py-1 pl-7 pr-2 text-sm text-foreground outline-none focus:border-[#00d4ff]"
+            className="w-full rounded border border-border bg-secondary py-1 pl-7 pr-2 text-sm text-foreground outline-none focus:border-primary"
           />
         </div>
 

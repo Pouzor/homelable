@@ -41,7 +41,7 @@ export function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
       <div
-        className="bg-[#161b22] border border-border rounded-lg shadow-2xl w-full max-w-sm"
+        className="bg-popover border border-border rounded-lg shadow-2xl w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -54,7 +54,7 @@ export function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
         <div className="p-4 space-y-4">
           {SHORTCUTS.map((group) => (
             <div key={group.group}>
-              <p className="text-xs text-[#00d4ff] font-semibold mb-2 uppercase tracking-wide">
+              <p className="text-xs text-primary font-semibold mb-2 uppercase tracking-wide">
                 {group.group}
               </p>
               <div className="space-y-1.5">
@@ -66,7 +66,7 @@ export function ShortcutsModal({ open, onClose }: ShortcutsModalProps) {
                         k === '+' ? (
                           <span key={i} className="text-xs text-muted-foreground">+</span>
                         ) : (
-                          <kbd key={k} className="text-[11px] text-foreground border border-border rounded px-1.5 py-0.5 font-mono bg-[#0d1117]">
+                          <kbd key={k} className="text-[11px] text-foreground border border-border rounded px-1.5 py-0.5 font-mono bg-background">
                             {k}
                           </kbd>
                         )

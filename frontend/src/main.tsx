@@ -5,6 +5,10 @@ import App from './App.tsx'
 import LiveView from './components/LiveView.tsx'
 import PublicDocs from './documentation/components/PublicDocs.tsx'
 import { isDocsViewPath, isLiveViewPath } from './utils/basePath.ts'
+import { installInterfaceTheme } from './lib/interfaceTheme.ts'
+
+// Before the first render, so the chrome never flashes the wrong theme.
+installInterfaceTheme()
 
 // Three pages share one bundle: the app, the read-only canvas, and the
 // read-only documentation. Which one boots is decided by the path alone, before

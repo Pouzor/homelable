@@ -492,12 +492,12 @@ describe('Sidebar (rack canvas)', () => {
     useRackStore.setState({ hasUnsavedChanges: true })
     // The canvas store — mocked clean — must not be what answers here.
     const { container } = render(<Sidebar {...defaultProps} />)
-    expect(container.querySelector('.bg-\\[\\#e3b341\\]')).toBeInTheDocument()
+    expect(container.querySelector('.bg-warning')).toBeInTheDocument()
 
     cleanup()
     useRackStore.setState({ hasUnsavedChanges: false })
     const { container: clean } = render(<Sidebar {...defaultProps} />)
-    expect(clean.querySelector('.bg-\\[\\#e3b341\\]')).toBeNull()
+    expect(clean.querySelector('.bg-warning')).toBeNull()
   })
 })
 

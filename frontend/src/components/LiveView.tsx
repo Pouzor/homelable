@@ -122,7 +122,7 @@ function LiveViewCanvas() {
 
   if (viewState === 'loading') {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#0d1117] text-[#8b949e]">
+      <div className="flex h-screen w-screen items-center justify-center bg-background text-muted-foreground">
         Loading…
       </div>
     )
@@ -136,10 +136,10 @@ function LiveViewCanvas() {
       'network-error': 'Could not reach the server. Check your connection.',
     }
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-[#0d1117]">
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
         <div className="text-center space-y-2">
-          <p className="text-[#f85149] text-lg font-medium">Access Denied</p>
-          <p className="text-[#8b949e] text-sm">{messages[viewState]}</p>
+          <p className="text-destructive text-lg font-medium">Access Denied</p>
+          <p className="text-muted-foreground text-sm">{messages[viewState]}</p>
         </div>
       </div>
     )

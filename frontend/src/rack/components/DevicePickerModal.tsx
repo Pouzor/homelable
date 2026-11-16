@@ -77,7 +77,7 @@ export function DevicePickerModal({ open, value, onPick, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="border-[#30363d] bg-[#161b22] text-foreground max-w-[calc(100%-2rem)] sm:max-w-xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="border-border bg-popover text-foreground max-w-[calc(100%-2rem)] sm:max-w-xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-sm font-semibold">Link to an inventory device</DialogTitle>
         </DialogHeader>
@@ -93,7 +93,7 @@ export function DevicePickerModal({ open, value, onPick, onClose }: Props) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by name, IP, hostname or source…"
-            className="w-full rounded border border-[#30363d] bg-[#21262d] py-1 pl-7 pr-2 text-sm text-foreground outline-none focus:border-[#00d4ff]"
+            className="w-full rounded border border-border bg-secondary py-1 pl-7 pr-2 text-sm text-foreground outline-none focus:border-primary"
           />
         </div>
 
@@ -116,8 +116,8 @@ export function DevicePickerModal({ open, value, onPick, onClose }: Props) {
                 <button
                   type="button"
                   onClick={() => onPick(item)}
-                  className={`flex w-full cursor-pointer items-center gap-2 rounded border px-2 py-1.5 text-left hover:border-[#00d4ff] ${
-                    item.id === value ? 'border-[#00d4ff]' : 'border-[#30363d]'
+                  className={`flex w-full cursor-pointer items-center gap-2 rounded border px-2 py-1.5 text-left hover:border-primary ${
+                    item.id === value ? 'border-primary' : 'border-border'
                   }`}
                 >
                   <span

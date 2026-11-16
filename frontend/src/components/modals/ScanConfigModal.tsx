@@ -74,7 +74,7 @@ export function ScanConfigModal({ open, onClose, onScanNow }: ScanConfigModalPro
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-[#161b22] border-border max-w-md">
+      <DialogContent className="bg-popover border-border max-w-md">
         <DialogHeader>
           <DialogTitle className="text-foreground">Scan Configuration</DialogTitle>
         </DialogHeader>
@@ -93,12 +93,12 @@ export function ScanConfigModal({ open, onClose, onScanNow }: ScanConfigModalPro
                     setRanges(next)
                   }}
                   placeholder="192.168.1.0/24"
-                  className="font-mono text-sm bg-[#0d1117] border-border"
+                  className="font-mono text-sm bg-background border-border"
                 />
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="shrink-0 text-muted-foreground hover:text-[#f85149]"
+                  className="shrink-0 text-muted-foreground hover:text-destructive"
                   onClick={() => setRanges(ranges.filter((_, j) => j !== i))}
                   disabled={ranges.length === 1}
                 >
@@ -140,7 +140,7 @@ export function ScanConfigModal({ open, onClose, onScanNow }: ScanConfigModalPro
                     value={httpRangesText}
                     onChange={(e) => setHttpRangesText(e.target.value)}
                     placeholder="8000-8100, 9000-9100"
-                    className="font-mono text-sm bg-[#0d1117] border-border"
+                    className="font-mono text-sm bg-background border-border"
                   />
                 </div>
 
@@ -149,7 +149,7 @@ export function ScanConfigModal({ open, onClose, onScanNow }: ScanConfigModalPro
                     type="checkbox"
                     checked={httpProbe}
                     onChange={(e) => setHttpProbe(e.target.checked)}
-                    className="accent-[#00d4ff]"
+                    className="accent-primary"
                   />
                   Enable HTTP probe
                 </label>
@@ -159,7 +159,7 @@ export function ScanConfigModal({ open, onClose, onScanNow }: ScanConfigModalPro
                     type="checkbox"
                     checked={verifyTls}
                     onChange={(e) => setVerifyTls(e.target.checked)}
-                    className="accent-[#00d4ff]"
+                    className="accent-primary"
                   />
                   Verify TLS certificates
                 </label>

@@ -97,7 +97,7 @@ export function ImportSourceModal({ open, onClose, onPick }: ImportSourceModalPr
           every plain `max-w-*` class — only an inline width actually widens it,
           and five tiles need the room. */}
       <DialogContent
-        className="bg-[#161b22] border-border max-h-[85vh] flex flex-col"
+        className="bg-popover border-border max-h-[85vh] flex flex-col"
         style={{ maxWidth: 'min(1120px, calc(100vw - 3rem))' }}
       >
         <DialogHeader>
@@ -129,7 +129,7 @@ function ImportSourceTile({ source, onPick }: { source: ImportSource; onPick: ()
       onClick={onPick}
       data-tour={source.dataTour}
       aria-label={`Import from ${source.label}`}
-      className="group relative flex flex-col gap-3 rounded-lg border border-border bg-[#21262d] p-4 text-left transition-colors cursor-pointer hover:bg-[#2a313a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00d4ff]"
+      className="group relative flex flex-col gap-3 rounded-lg border border-border bg-secondary p-4 text-left transition-colors cursor-pointer hover:bg-[#2a313a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
     >
       {/* The accent only shows on hover/focus — four saturated brand colors side
           by side fight each other at rest. */}
@@ -162,7 +162,7 @@ function ImportSourceTile({ source, onPick }: { source: ImportSource; onPick: ()
           {source.imports.map((item) => (
             <span
               key={item}
-              className="rounded border border-border bg-[#161b22] px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+              className="rounded border border-border bg-popover px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
             >
               {item}
             </span>

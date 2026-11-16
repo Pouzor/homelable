@@ -31,7 +31,7 @@ export function WalkthroughInvite() {
   if (isActive || dismissedThisSession || !shouldOfferWalkthrough(state)) return null
 
   return (
-    <div className="fixed bottom-20 right-4 z-[90] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-[#30363d] bg-[#161b22] p-4 shadow-2xl walkthrough-invite-enter">
+    <div className="fixed bottom-20 right-4 z-[90] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-popover p-4 shadow-2xl walkthrough-invite-enter">
       <button
         onClick={() => setDismissedThisSession(true)}
         aria-label="Not now"
@@ -40,7 +40,7 @@ export function WalkthroughInvite() {
         <X size={14} />
       </button>
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#00d4ff]/10 text-[#00d4ff]">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <Compass size={18} />
         </div>
         <div className="min-w-0">
@@ -61,7 +61,7 @@ export function WalkthroughInvite() {
         </Button>
         <Button
           size="sm"
-          className="h-7 px-3 text-xs bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
+          className="h-7 px-3 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
           onClick={start}
         >
           Getting started

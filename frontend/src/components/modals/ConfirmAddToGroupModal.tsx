@@ -48,7 +48,7 @@ export function ConfirmAddToGroupModal({
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Layers size={16} className="text-[#00d4ff]" />
+            <Layers size={16} className="text-primary" />
             {action}
           </DialogTitle>
           <DialogDescription>
@@ -60,7 +60,7 @@ export function ConfirmAddToGroupModal({
           <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
           <Button
             size="sm"
-            className="bg-[#00d4ff] text-[#0d1117] hover:bg-[#00d4ff]/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
             onClick={onConfirm}
           >
             {action}
