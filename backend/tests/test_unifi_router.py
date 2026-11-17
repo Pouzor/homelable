@@ -578,3 +578,30 @@ async def test_sync_now_records_a_scan_run(
     assert runs[0].kind == "unifi"
     assert runs[0].status == "done"
     assert runs[0].devices_found == 1
+
+
+@pytest.mark.asyncio
+async def test_sync_now_uses_port_written_in_unifi_host(
+    client: AsyncClient, headers: dict, db_session: AsyncSession, monkeypatch
+) -> None:
+    """Regression #551: UNIFI_HOST=10.0.0.5:443 was joined with UNIFI_PORT into
+    10.0.0.5:443:8443 and failed with "Invalid port"."""
+    monkeypatch.setattr(settings, "unifi_url", "")
+    monkeypatch.setattr(settings, "unifi_host", "10.0.0.5:443")
+    monkeypatch.setattr(settings, "unifi_port", 8443)
+    monkeypatch.setattr(settings, "unifi_username", "admin")
+    monkeypatch.setattr(settings, "unifi_password", "pw")
+    seen: dict = {}
+
+    async def _fake_fetch(**kwargs):
+        seen.update(kwargs)
+        return _ONE_DEVICE
+
+    monkeypatch.setattr("app.api.routes.unifi.fetch_unifi_inventory", _fake_fetch)
+
+    res = await client.post("/api/v1/unifi/sync-now", headers=headers)
+    assert res.status_code == 200
+    assert seen["host"] == "10.0.0.5"
+    assert seen["port"] == 443
+    runs = (await db_session.execute(select(ScanRun))).scalars().all()
+    assert runs[0].ranges == ["10.0.0.5:443"]
