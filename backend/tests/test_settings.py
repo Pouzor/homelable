@@ -244,6 +244,50 @@ def test_save_overrides_omits_unifi_connection_config(tmp_path):
 
 
 
+def _unifi(tmp_path, **env) -> Settings:
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    for key, value in env.items():
+        setattr(s, key, value)
+    return s
+
+
+def test_unifi_port_defaults_to_unifi_os(tmp_path):
+    """Regression #551: the env path defaulted to 8443, which a UniFi OS gateway
+    answers with 404 on both login endpoints. The import form already used 443."""
+    s = _unifi(tmp_path, unifi_host="10.0.0.1")
+    assert s.unifi_effective_host == "10.0.0.1"
+    assert s.unifi_effective_port == 443
+
+
+@pytest.mark.parametrize(
+    ("host", "expected_host", "expected_port"),
+    [
+        ("10.0.0.1:443", "10.0.0.1", 443),
+        ("unifi.lan:8443", "unifi.lan", 8443),
+        ("https://10.0.0.1", "10.0.0.1", 9999),
+        ("https://10.0.0.1:8443/", "10.0.0.1", 8443),
+        (" 10.0.0.1 ", "10.0.0.1", 9999),
+        ("fe80::1", "fe80::1", 9999),  # bare IPv6 stays whole
+        ("unifi.lan:abc", "unifi.lan:abc", 9999),
+    ],
+)
+def test_unifi_host_may_carry_a_port(tmp_path, host, expected_host, expected_port):
+    """Regression #551: UNIFI_HOST=ip:443 was joined with UNIFI_PORT into
+    ip:443:8443. A port written in the host wins over UNIFI_PORT."""
+    s = _unifi(tmp_path, unifi_host=host, unifi_port=9999)
+    assert s.unifi_effective_host == expected_host
+    assert s.unifi_effective_port == expected_port
+
+
+def test_unifi_url_port_wins_else_unifi_port(tmp_path):
+    s = _unifi(tmp_path, unifi_url="https://unifi.lan:8443", unifi_host="ignored")
+    assert (s.unifi_effective_host, s.unifi_effective_port) == ("unifi.lan", 8443)
+    s = _unifi(tmp_path, unifi_url="https://unifi.lan")
+    assert (s.unifi_effective_host, s.unifi_effective_port) == ("unifi.lan", 443)
+    s = _unifi(tmp_path, unifi_url="https://unifi.lan:bad")
+    assert (s.unifi_effective_host, s.unifi_effective_port) == ("unifi.lan", 443)
+
+
 def test_zigbee_mesh_links_setting_round_trips(tmp_path):
     """The auto-sync mesh-links opt-in is a UI setting: it must survive a restart."""
     s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))

@@ -327,10 +327,12 @@ class Settings(BaseSettings):
     unifi_username: str = Field("", alias="unifi_user", validation_alias=AliasChoices("unifi_username", "unifi_user"))
     unifi_password: str = Field("", alias="unifi_pass", validation_alias=AliasChoices("unifi_password", "unifi_pass"))
     # Connection config is env-only; only the auto-sync activation and import
-    # modes are persisted. Accepts UNIFI_URL (full URL) or UNIFI_HOST (bare host/IP).
+    # modes are persisted. Accepts UNIFI_URL (full URL) or UNIFI_HOST (host/IP,
+    # optionally host:port). 443 is UniFi OS (UDM, UCG, Cloud Gateway); a
+    # self-hosted Network application needs UNIFI_PORT=8443.
     unifi_url: str = ""
     unifi_host: str = ""
-    unifi_port: int = 8443
+    unifi_port: int = 443
     unifi_site: str = "default"
     unifi_verify_tls: bool = False
     unifi_sync_enabled: bool = False
@@ -341,13 +343,30 @@ class Settings(BaseSettings):
     unifi_import_known_clients: bool = False
     unifi_import_active_clients: bool = False
 
+    def _unifi_target(self) -> tuple[str, int | None]:
+        """(host, port) from UNIFI_URL, else UNIFI_HOST; port is None when unset.
+
+        UNIFI_HOST may carry a port (`10.0.0.1:443`) or be a pasted URL — joining
+        it with UNIFI_PORT as-is built `10.0.0.1:443:8443` (#551). A bare IPv6
+        address (several colons) is left whole.
+        """
+        raw = (self.unifi_url or self.unifi_host).strip()
+        if self.unifi_url or "://" in raw:
+            parsed = urlsplit(raw)
+            try:
+                port = parsed.port
+            except ValueError:
+                port = None
+            return parsed.hostname or raw, port
+        host, sep, port_str = raw.rpartition(":")
+        if sep and ":" not in host and port_str.isdigit():
+            return host, int(port_str)
+        return raw, None
+
     @property
     def unifi_effective_host(self) -> str:
-        """Return bare host extracted from UNIFI_URL, or UNIFI_HOST."""
-        if self.unifi_url:
-            parsed = urlsplit(self.unifi_url)
-            return parsed.hostname or self.unifi_url
-        return self.unifi_host
+        """Bare host from UNIFI_URL or UNIFI_HOST, without any port."""
+        return self._unifi_target()[0]
 
     @property
     def unraid_effective_port(self) -> int:
@@ -356,11 +375,8 @@ class Settings(BaseSettings):
 
     @property
     def unifi_effective_port(self) -> int:
-        """Return port from UNIFI_URL if set, else UNIFI_PORT."""
-        if self.unifi_url:
-            parsed = urlsplit(self.unifi_url)
-            return parsed.port or self.unifi_port
-        return self.unifi_port
+        """Port written in UNIFI_URL / UNIFI_HOST if any, else UNIFI_PORT."""
+        return self._unifi_target()[1] or self.unifi_port
 
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"
