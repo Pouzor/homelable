@@ -23,7 +23,7 @@ describe('ImportSourceModal', () => {
 
   it('lists every import source', () => {
     setup()
-    for (const label of ['Zigbee2MQTT', 'Z-Wave JS', 'Proxmox VE', 'UniFi']) {
+    for (const label of ['Zigbee2MQTT', 'Z-Wave JS', 'Proxmox VE', 'UniFi', 'Omada']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
   })
@@ -32,13 +32,15 @@ describe('ImportSourceModal', () => {
     setup()
     // The tile promises a rough wall-clock and the record kinds — that is what
     // makes the picker a choice rather than four unlabelled doors.
-    expect(screen.getByText('~10 s')).toBeInTheDocument()
+    // Proxmox and Omada both take about ten seconds.
+    expect(screen.getAllByText('~10 s')).toHaveLength(2)
     // A mesh walk is not a fixed cost, so the tile says what the range tracks.
     expect(screen.getAllByText('30 s – a few min')).toHaveLength(2)
     expect(screen.getAllByText('· with the mesh size')).toHaveLength(2)
     expect(screen.getByText('Mesh links')).toBeInTheDocument()
     expect(screen.getByText('LXC')).toBeInTheDocument()
-    expect(screen.getByText('APs')).toBeInTheDocument()
+    // Both controller imports bring in the same kinds of gear.
+    expect(screen.getAllByText('APs')).toHaveLength(2)
   })
 
   it.each([
@@ -46,6 +48,7 @@ describe('ImportSourceModal', () => {
     ['Z-Wave JS', 'zwave'],
     ['Proxmox VE', 'proxmox'],
     ['UniFi', 'unifi'],
+    ['Omada', 'omada'],
   ])('reports %s as the picked source', (label, key) => {
     const { onPick } = setup()
     fireEvent.click(screen.getByLabelText(`Import from ${label}`))
