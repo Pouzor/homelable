@@ -737,3 +737,62 @@ export const unifiApi = {
 
   syncNow: () => api.post<UnifiImportResult>('/unifi/sync-now'),
 }
+
+export interface OmadaImportModes {
+  infrastructure: boolean
+  clients: boolean
+}
+
+export interface OmadaConnection {
+  url: string
+  omada_id?: string
+  client_id?: string
+  client_secret?: string
+  site?: string
+  verify_tls?: boolean
+  modes?: OmadaImportModes
+}
+
+export interface OmadaConfigData {
+  url: string
+  omada_id: string
+  site: string
+  verify_tls: boolean
+  sync_enabled: boolean
+  sync_interval: number
+  credentials_configured: boolean
+  modes: OmadaImportModes
+}
+
+export interface OmadaImportResult {
+  device_count: number
+  pending_created: number
+  pending_updated: number
+  infra_count: number
+  client_count: number
+}
+
+export const omadaApi = {
+  // `counts` holds a row count per source queried, so the import UI can show
+  // what a box would pull in before it is ticked.
+  testConnection: (data: OmadaConnection) =>
+    api.post<{
+      connected: boolean
+      message: string
+      counts: Partial<Record<keyof OmadaImportModes, number>>
+    }>('/omada/test-connection', data),
+
+  importToPending: (data: OmadaConnection) =>
+    api.post<OmadaImportResult>('/omada/import-pending', data),
+
+  getConfig: () => api.get<OmadaConfigData>('/omada/config'),
+  // Only auto-sync activation and the import modes are persisted. Connection
+  // config (URL/Omada ID/credentials/site) is env-only and never sent.
+  saveConfig: (data: {
+    sync_enabled: boolean
+    sync_interval: number
+    modes: OmadaImportModes
+  }) => api.post<OmadaConfigData>('/omada/config', data),
+
+  syncNow: () => api.post<OmadaImportResult>('/omada/sync-now'),
+}

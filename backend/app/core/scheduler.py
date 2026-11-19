@@ -335,6 +335,31 @@ async def _run_unifi_sync() -> None:
     await _background_unifi_sync(run_id)
 
 
+async def _run_omada_sync() -> None:
+    """Fetch the Omada inventory and upsert it into pending (auto-sync)."""
+    if not settings.omada_sync_enabled:
+        return
+    if not (settings.omada_effective_url and settings.omada_client_id and settings.omada_client_secret):
+        logger.warning("Omada auto-sync enabled but URL/credentials not configured — skipping")
+        return
+    from app.api.routes.omada import _background_omada_sync
+    from app.db.models import ScanRun
+    from app.services.omada_service import omada_target
+
+    async with AsyncSessionLocal() as db:
+        run = ScanRun(
+            status="running",
+            kind="omada",
+            ranges=[omada_target(settings.omada_effective_url)],
+        )
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    await _background_omada_sync(run_id)
+
+
 def _add_service_check_job() -> None:
     scheduler.add_job(
         _run_service_checks,
@@ -406,6 +431,22 @@ def _add_unifi_sync_job() -> None:
     )
 
 
+def _omada_sync_interval() -> int:
+    # .env and the settings file bypass the >= 300 check on write, so clamp here
+    return max(300, settings.omada_sync_interval)
+
+
+def _add_omada_sync_job() -> None:
+    scheduler.add_job(
+        _run_omada_sync,
+        "interval",
+        seconds=_omada_sync_interval(),
+        id="omada_sync",
+        max_instances=1,
+        coalesce=True,
+    )
+
+
 def start_scheduler() -> None:
     global scheduler
     if scheduler.running:
@@ -435,6 +476,8 @@ def start_scheduler() -> None:
         _add_zwave_sync_job()
     if settings.unifi_sync_enabled:
         _add_unifi_sync_job()
+    if settings.omada_sync_enabled:
+        _add_omada_sync_job()
     scheduler.start()
     if settings.status_checker_enabled:
         logger.info("Scheduler started — status checks every %ds", settings.status_checker_interval)
@@ -605,6 +648,31 @@ def set_unifi_sync_enabled(enabled: bool) -> None:
     elif not enabled and job:
         scheduler.remove_job("unifi_sync")
         logger.info("UniFi auto-sync disabled")
+
+
+def reschedule_omada_sync(interval_seconds: int) -> None:
+    """Update the Omada auto-sync interval on the running scheduler (if enabled)."""
+    if interval_seconds < 300:
+        raise ValueError(f"interval_seconds must be >= 300, got {interval_seconds}")
+    if not scheduler.running:
+        logger.warning("Scheduler not running, skipping reschedule")
+        return
+    if scheduler.get_job("omada_sync"):
+        scheduler.reschedule_job("omada_sync", trigger="interval", seconds=interval_seconds)
+        logger.info("Omada auto-sync rescheduled to every %ds", interval_seconds)
+
+
+def set_omada_sync_enabled(enabled: bool) -> None:
+    """Add or remove the Omada auto-sync job on the running scheduler."""
+    if not scheduler.running:
+        return
+    job = scheduler.get_job("omada_sync")
+    if enabled and not job:
+        _add_omada_sync_job()
+        logger.info("Omada auto-sync enabled — every %ds", _omada_sync_interval())
+    elif not enabled and job:
+        scheduler.remove_job("omada_sync")
+        logger.info("Omada auto-sync disabled")
 
 
 def stop_scheduler() -> None:

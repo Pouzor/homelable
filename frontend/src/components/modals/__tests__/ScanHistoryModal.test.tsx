@@ -94,6 +94,17 @@ const UNIFI_RUN = {
   error: null,
 }
 
+const OMADA_RUN = {
+  id: 'run-9',
+  status: 'done',
+  kind: 'omada',
+  ranges: ['omada.lan:8043'],
+  devices_found: 21,
+  started_at: new Date().toISOString(),
+  finished_at: new Date().toISOString(),
+  error: null,
+}
+
 function renderModal() {
   return render(
     <TooltipProvider>
@@ -237,6 +248,28 @@ describe('ScanHistoryModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'UniFi' }))
     expect(screen.getByText('12 found')).toBeDefined()
     expect(screen.queryByText('3 found')).toBeNull()
+  })
+
+  it('shows an omada run under its own kind, not IP', async () => {
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [DONE_RUN, OMADA_RUN] } as never)
+    renderModal()
+    await waitFor(() => expect(screen.getAllByText('done').length).toBe(2))
+    expect(screen.getAllByText('Omada').length).toBeGreaterThanOrEqual(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Omada' }))
+    expect(screen.getByText('21 found')).toBeDefined()
+    expect(screen.queryByText('3 found')).toBeNull()
+  })
+
+  it('toasts when an omada auto-sync run finishes', async () => {
+    const running = { ...OMADA_RUN, status: 'running', finished_at: null, devices_found: 0 }
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [running] } as never)
+    renderModal()
+    await waitFor(() => expect(screen.getByText('running')).toBeDefined())
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [OMADA_RUN] } as never)
+    fireEvent.click(screen.getByTitle('Refresh'))
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith('Omada import done — 21 devices')
+    )
   })
 
   it('keeps a unifi run out of the IP filter', async () => {
