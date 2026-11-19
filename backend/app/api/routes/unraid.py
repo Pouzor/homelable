@@ -50,8 +50,9 @@ router = APIRouter()
 _UNRAID_SOURCE = "unraid"
 _UNRAID_IEEE_PREFIX = "unraid-"
 # Synthetic ieee prefixes an Unraid import may take over on a row it matched by
-# MAC: its own (a renamed container) and UniFi's, which re-finds rows by MAC.
-_ADOPTABLE_PREFIXES = (_UNRAID_IEEE_PREFIX, "unifi-")
+# MAC: its own (a renamed container) and the controller imports' (UniFi,
+# Omada), which re-find rows by MAC.
+_ADOPTABLE_PREFIXES = (_UNRAID_IEEE_PREFIX, "unifi-", "omada-")
 
 
 def _resolve_api_key(payload: UnraidConnectionRequest) -> str:

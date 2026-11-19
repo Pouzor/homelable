@@ -343,6 +343,23 @@ class Settings(BaseSettings):
     unifi_import_known_clients: bool = False
     unifi_import_active_clients: bool = False
 
+    # TP-Link Omada SDN Controller import, over the controller's Open API.
+    # The client secret is a credential → env/.env ONLY, never persisted by the
+    # app and never returned by the API. Connection config is env-only; only
+    # the auto-sync activation and import modes are persisted. OMADA_ID may be
+    # left blank for a local controller, which publishes it; a cloud-based
+    # controller needs it set.
+    omada_url: str = ""
+    omada_id: str = ""
+    omada_client_id: str = ""
+    omada_client_secret: str = ""
+    omada_site: str = ""  # blank = every site
+    omada_verify_tls: bool = False
+    omada_sync_enabled: bool = False
+    omada_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+    omada_import_infrastructure: bool = True
+    omada_import_clients: bool = False
+
     def _unifi_target(self) -> tuple[str, int | None]:
         """(host, port) from UNIFI_URL, else UNIFI_HOST; port is None when unset.
 
@@ -367,6 +384,16 @@ class Settings(BaseSettings):
     def unifi_effective_host(self) -> str:
         """Bare host from UNIFI_URL or UNIFI_HOST, without any port."""
         return self._unifi_target()[0]
+
+    @property
+    def omada_effective_url(self) -> str:
+        """OMADA_URL normalized like a request URL, or '' when unset or invalid."""
+        from app.services.omada_service import normalize_omada_url
+
+        try:
+            return normalize_omada_url(self.omada_url) if self.omada_url.strip() else ""
+        except ValueError:
+            return ""
 
     @property
     def unraid_effective_port(self) -> int:
@@ -449,6 +476,15 @@ class Settings(BaseSettings):
                 key = f"unifi_import_{mode}"
                 if key in data:
                     setattr(self, key, bool(data[key]))
+            # Omada: auto-sync activation and import modes only, same reason.
+            if "omada_sync_enabled" in data:
+                self.omada_sync_enabled = bool(data["omada_sync_enabled"])
+            if "omada_sync_interval" in data:
+                self.omada_sync_interval = int(data["omada_sync_interval"])
+            for mode in ("infrastructure", "clients"):
+                key = f"omada_import_{mode}"
+                if key in data:
+                    setattr(self, key, bool(data[key]))
         except Exception:
             pass
 
@@ -487,6 +523,12 @@ class Settings(BaseSettings):
             "unifi_import_infrastructure": self.unifi_import_infrastructure,
             "unifi_import_known_clients": self.unifi_import_known_clients,
             "unifi_import_active_clients": self.unifi_import_active_clients,
+            # Omada: auto-sync activation and import modes only. Connection
+            # config (url/omada id/site/verify_tls) and credentials are env-only.
+            "omada_sync_enabled": self.omada_sync_enabled,
+            "omada_sync_interval": self.omada_sync_interval,
+            "omada_import_infrastructure": self.omada_import_infrastructure,
+            "omada_import_clients": self.omada_import_clients,
         }))
 
 

@@ -445,3 +445,56 @@ async def test_update_settings_cannot_change_the_env_only_switch(client: AsyncCl
         assert mock_settings.status_checker_enabled is False
     assert res.status_code == 200
     assert res.json()["status_checker_enabled"] is False
+
+
+def test_omada_overrides_carry_sync_and_modes_only(tmp_path):
+    """The Omada connection config and secret are env-only: saving writes only
+    the auto-sync activation and import modes, and loading never reads the rest
+    back over the env values."""
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    s.omada_url = "https://omada.lan:8043"
+    s.omada_id = "c1d2"
+    s.omada_client_id = "client"
+    s.omada_client_secret = "supersecret"
+    s.omada_site = "Home"
+    s.omada_sync_enabled = True
+    s.omada_sync_interval = 900
+    s.omada_import_clients = True
+    s.save_overrides()
+    raw = (tmp_path / "scan_config.json").read_text()
+    assert "supersecret" not in raw
+    written = json.loads(raw)
+    for key in ("omada_url", "omada_id", "omada_client_id", "omada_site", "omada_verify_tls"):
+        assert key not in written
+    assert written["omada_sync_interval"] == 900
+    assert written["omada_import_clients"] is True
+
+    fresh = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    fresh.omada_url = "https://other.lan"
+    (tmp_path / "scan_config.json").write_text(json.dumps({
+        **written,
+        "omada_url": "",
+        "omada_site": "Stale",
+    }))
+    fresh.load_overrides()
+    assert fresh.omada_url == "https://other.lan"
+    assert fresh.omada_site == ""
+    assert fresh.omada_sync_enabled is True
+    assert fresh.omada_sync_interval == 900
+    assert fresh.omada_import_clients is True
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("", ""),
+        ("192.168.0.2:8043", "https://192.168.0.2:8043"),
+        ("HTTPS://Omada.LAN:8043/", "https://omada.lan:8043"),
+        ("https://euw1-omada-northbound.tplinkcloud.com", "https://euw1-omada-northbound.tplinkcloud.com"),
+        ("ftp://omada.lan", ""),
+    ],
+)
+def test_omada_effective_url_is_normalized(tmp_path, raw, expected):
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    s.omada_url = raw
+    assert s.omada_effective_url == expected
