@@ -305,6 +305,17 @@ class Settings(BaseSettings):
     # if imports fail with "Timed out waiting for networkmap response".
     zigbee_networkmap_timeout: int = 300
 
+    # Alternative Zigbee source for operators running Home Assistant's native
+    # ZHA integration instead of Zigbee2MQTT (no MQTT broker in the picture).
+    # "mqtt" (default) keeps the Zigbee2MQTT networkmap path above; "ha_api"
+    # fetches the device list from Home Assistant's WebSocket API instead.
+    # Only one source backs auto-sync/sync-now at a time. The token is a
+    # long-lived access token (HA Profile → Security) — a secret, env-only,
+    # same rule as the MQTT credentials above.
+    zigbee_source: Literal["mqtt", "ha_api"] = "mqtt"
+    zigbee_ha_url: str = ""  # e.g. http://192.168.30.5:8123
+    zigbee_ha_token: str = ""
+
     # Z-Wave JS UI (zwavejs2mqtt) auto-sync import. Same secret/env rules.
     zwave_mqtt_host: str = ""
     zwave_mqtt_port: int = 1883

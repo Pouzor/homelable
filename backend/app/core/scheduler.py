@@ -270,16 +270,27 @@ async def _run_mesh_sync(kind: str) -> None:
 
     payload: ZigbeeImportRequest | ZwaveImportRequest
     background: Callable[[str, Any], Awaitable[None]]
+    host: str
+    port: int | None
 
     if kind == "zigbee":
         if not settings.zigbee_sync_enabled:
             return
-        if not settings.zigbee_mqtt_host:
+        if settings.zigbee_source == "ha_api":
+            if not settings.zigbee_ha_url or not settings.zigbee_ha_token:
+                logger.warning(
+                    "Zigbee auto-sync enabled (ha_api) but ZIGBEE_HA_URL/ZIGBEE_HA_TOKEN "
+                    "not configured — skipping"
+                )
+                return
+            host, port = settings.zigbee_ha_url, None
+        elif not settings.zigbee_mqtt_host:
             logger.warning("Zigbee auto-sync enabled but MQTT host not configured — skipping")
             return
+        else:
+            host, port = settings.zigbee_mqtt_host, settings.zigbee_mqtt_port
         from app.api.routes.zigbee import _background_zigbee_import
         from app.api.routes.zigbee import env_import_request as _zigbee_env_request
-        host, port = settings.zigbee_mqtt_host, settings.zigbee_mqtt_port
         payload = _zigbee_env_request()
         background = _background_zigbee_import
     else:
@@ -294,7 +305,8 @@ async def _run_mesh_sync(kind: str) -> None:
         payload = _zwave_env_request()
         background = _background_zwave_import
     async with AsyncSessionLocal() as db:
-        run = ScanRun(status="running", kind=kind, ranges=[f"{host}:{port}"])
+        range_label = host if port is None else f"{host}:{port}"
+        run = ScanRun(status="running", kind=kind, ranges=[range_label])
         db.add(run)
         await db.commit()
         await db.refresh(run)

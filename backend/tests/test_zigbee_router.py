@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -938,7 +939,7 @@ def _restore_zigbee_env():
     keys = (
         "zigbee_mqtt_host", "zigbee_mqtt_port", "zigbee_mqtt_username",
         "zigbee_mqtt_password", "zigbee_base_topic", "zigbee_sync_enabled",
-        "zigbee_sync_interval",
+        "zigbee_sync_interval", "zigbee_source", "zigbee_ha_url", "zigbee_ha_token",
     )
     saved = {k: getattr(settings, k) for k in keys}
     yield
@@ -1076,6 +1077,57 @@ async def test_sync_now_rejected_without_host(
 async def test_sync_now_requires_auth(client: AsyncClient) -> None:
     res = await client.post("/api/v1/zigbee/sync-now")
     assert res.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# ZIGBEE_SOURCE=ha_api — Home Assistant ZHA alternative to the MQTT source
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_config_reports_source_and_ha_host_configured(
+    client: AsyncClient, headers: dict, _restore_zigbee_env
+) -> None:
+    settings.zigbee_source = "ha_api"
+    settings.zigbee_ha_url = "http://ha.local:8123"
+    settings.zigbee_ha_token = "supersecrettoken"
+    res = await client.get("/api/v1/zigbee/config", headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["source"] == "ha_api"
+    assert data["host_configured"] is True
+    assert "supersecrettoken" not in res.text
+
+
+@pytest.mark.asyncio
+async def test_sync_now_rejected_without_ha_credentials(
+    client: AsyncClient, headers: dict, _restore_zigbee_env
+) -> None:
+    settings.zigbee_source = "ha_api"
+    settings.zigbee_ha_url = ""
+    settings.zigbee_ha_token = ""
+    res = await client.post("/api/v1/zigbee/sync-now", headers=headers)
+    assert res.status_code == 400
+    # The MQTT-only message would be misleading for an ha_api operator.
+    assert "ZIGBEE_HA_URL" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_sync_now_dispatches_to_ha_source(
+    client: AsyncClient, headers: dict, _restore_zigbee_env
+) -> None:
+    settings.zigbee_source = "ha_api"
+    settings.zigbee_ha_url = "http://ha.local:8123"
+    settings.zigbee_ha_token = "token"
+    with patch(
+        "app.api.routes.zigbee.fetch_zha_devices", new_callable=AsyncMock
+    ) as mock_fetch, patch("app.api.routes.zigbee.fetch_networkmap") as mock_mqtt_fetch:
+        mock_fetch.return_value = ([], [])
+        res = await client.post("/api/v1/zigbee/sync-now", headers=headers)
+        assert res.status_code == 200
+        await asyncio.sleep(0)  # let the BackgroundTask run
+    mock_fetch.assert_awaited_once_with("http://ha.local:8123", "token")
+    mock_mqtt_fetch.assert_not_called()
 
 
 @pytest.mark.asyncio

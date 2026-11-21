@@ -1,4 +1,4 @@
-"""FastAPI router for Zigbee2MQTT import."""
+"""FastAPI router for Zigbee import (Zigbee2MQTT or Home Assistant ZHA)."""
 
 import logging
 from datetime import datetime, timezone
@@ -33,6 +33,7 @@ from app.services.discovery_sources import add_source
 from app.services.import_jobs import create_job, fail_job, finish_job, get_job
 from app.services.inventory_sync import attach_device_ids
 from app.services.node_dedupe import dedupe_nodes_by_device
+from app.services.zigbee_ha_service import fetch_zha_devices
 from app.services.zigbee_service import (
     build_zigbee_properties,
     fetch_networkmap,
@@ -180,6 +181,31 @@ async def import_zigbee_to_pending(
     return run
 
 
+async def _fetch_zigbee_network(
+    payload: ZigbeeImportRequest,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Fetch (nodes, edges) from whichever source ``ZIGBEE_SOURCE`` selects.
+
+    ``ha_api`` reads the Home Assistant connection from the server env
+    (same secret rule as the MQTT credentials) and ignores the MQTT fields
+    on ``payload``. Auto-sync and ``/sync-now`` both route through here;
+    the manual canvas import dialog (``/import``, ``/import-pending`` with
+    a user-supplied body) stays MQTT-only.
+    """
+    if settings.zigbee_source == "ha_api":
+        return await fetch_zha_devices(settings.zigbee_ha_url, settings.zigbee_ha_token)
+    return await fetch_networkmap(
+        mqtt_host=payload.mqtt_host,
+        mqtt_port=payload.mqtt_port,
+        base_topic=payload.base_topic,
+        username=payload.mqtt_username,
+        password=payload.mqtt_password,
+        tls=payload.mqtt_tls,
+        tls_insecure=payload.mqtt_tls_insecure,
+        include_mesh_links=payload.include_mesh_links,
+    )
+
+
 def env_import_request() -> ZigbeeImportRequest:
     """Build an import request from the server env config (for auto-sync).
 
@@ -208,21 +234,29 @@ async def sync_zigbee_now(
 ) -> ScanRun:
     """Trigger an immediate Zigbee import using the server env config.
 
-    Same background flow as ``/import-pending`` but sources the MQTT connection
+    Same background flow as ``/import-pending`` but sources the connection
     from ``settings`` (env) rather than the request body — the manual
-    counterpart to the scheduled auto-sync job. Requires the env host to be set.
+    counterpart to the scheduled auto-sync job. Requires the active
+    ``ZIGBEE_SOURCE``'s connection to be configured in the env.
     """
-    if not settings.zigbee_mqtt_host:
+    if settings.zigbee_source == "ha_api":
+        if not settings.zigbee_ha_url or not settings.zigbee_ha_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot sync: ZIGBEE_HA_URL/ZIGBEE_HA_TOKEN not configured on the server.",
+            )
+    elif not settings.zigbee_mqtt_host:
         raise HTTPException(
             status_code=400,
             detail="Cannot sync: no Zigbee MQTT host configured on the server.",
         )
     payload = env_import_request()
-    run = ScanRun(
-        status="running",
-        kind="zigbee",
-        ranges=[f"{payload.mqtt_host}:{payload.mqtt_port}"],
+    range_label = (
+        settings.zigbee_ha_url
+        if settings.zigbee_source == "ha_api"
+        else f"{payload.mqtt_host}:{payload.mqtt_port}"
     )
+    run = ScanRun(status="running", kind="zigbee", ranges=[range_label])
     db.add(run)
     await db.commit()
     await db.refresh(run)
@@ -233,16 +267,7 @@ async def sync_zigbee_now(
 async def _background_zigbee_import(run_id: str, payload: ZigbeeImportRequest) -> None:
     async with AsyncSessionLocal() as db:
         try:
-            nodes_raw, edges_raw = await fetch_networkmap(
-                mqtt_host=payload.mqtt_host,
-                mqtt_port=payload.mqtt_port,
-                base_topic=payload.base_topic,
-                username=payload.mqtt_username,
-                password=payload.mqtt_password,
-                tls=payload.mqtt_tls,
-                tls_insecure=payload.mqtt_tls_insecure,
-                include_mesh_links=payload.include_mesh_links,
-            )
+            nodes_raw, edges_raw = await _fetch_zigbee_network(payload)
             result = await _persist_pending_import(db, nodes_raw, edges_raw)
             run = await db.get(ScanRun, run_id)
             if run:
@@ -421,8 +446,13 @@ async def test_zigbee_connection(
 
 @router.get("/config", response_model=ZigbeeConfig)
 async def get_zigbee_config(_: str = Depends(get_current_user)) -> ZigbeeConfig:
-    """Return non-secret Zigbee config. Never includes MQTT credentials — only
-    whether a host is configured on the server for auto-sync."""
+    """Return non-secret Zigbee config. Never includes MQTT credentials or the
+    HA token — only whether the active source's connection is configured on
+    the server for auto-sync."""
+    if settings.zigbee_source == "ha_api":
+        host_configured = bool(settings.zigbee_ha_url and settings.zigbee_ha_token)
+    else:
+        host_configured = bool(settings.zigbee_mqtt_host)
     return ZigbeeConfig(
         mqtt_host=settings.zigbee_mqtt_host,
         mqtt_port=settings.zigbee_mqtt_port,
@@ -431,7 +461,8 @@ async def get_zigbee_config(_: str = Depends(get_current_user)) -> ZigbeeConfig:
         sync_enabled=settings.zigbee_sync_enabled,
         sync_interval=settings.zigbee_sync_interval,
         include_mesh_links=settings.zigbee_sync_include_mesh_links,
-        host_configured=bool(settings.zigbee_mqtt_host),
+        host_configured=host_configured,
+        source=settings.zigbee_source,
     )
 
 
