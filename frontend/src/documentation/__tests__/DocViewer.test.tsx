@@ -210,3 +210,13 @@ describe('DocViewer — destructive replacement', () => {
     expect(onUpdateFromDevice).not.toHaveBeenCalled()
   })
 })
+
+describe('DocViewer — layout', () => {
+  it('lets the document body use the whole pane rather than a fixed reading width', () => {
+    render(<DocViewer {...noop} doc={makeDoc({ body: '# NAS\n\nSome body text.' })} />)
+    const body = screen.getByText('Some body text.').closest('[class*="px-6"]') as HTMLElement
+    expect(body).not.toBeNull()
+    expect(body.className).toContain('w-full')
+    expect(body.className).not.toMatch(/max-w-/)
+  })
+})

@@ -378,13 +378,13 @@ export function DocViewer({
           // stops accepting clicks.
           onCreateFromLink={readOnly ? undefined : onCreateFromLink}
           onToggleTask={readOnly ? undefined : onToggleTask}
-          className="max-w-[72ch] px-6 pb-6 pt-2 text-sm"
+          className="w-full px-6 pb-6 pt-2 text-sm"
         />
 
         {/* A wiki-link only says where it goes; this is the other direction,
             and the reason a device document is worth linking to at all. */}
         {!backlinksLoading && backlinks.length > 0 && (
-          <section aria-labelledby="backlinks-heading" className="max-w-[72ch] px-6 pb-16">
+          <section aria-labelledby="backlinks-heading" className="w-full px-6 pb-16">
             <h2
               id="backlinks-heading"
               className="mb-2 flex items-center gap-1.5 border-t border-border pt-4 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70"

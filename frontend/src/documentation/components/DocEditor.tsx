@@ -513,7 +513,7 @@ export function DocEditor({
           )}
         </div>
         <div className={cn('min-h-0 overflow-y-auto p-4 text-sm', 'hidden lg:block')}>
-          <Markdown body={body} docs={docs} devices={devices} className="max-w-[72ch]" />
+          <Markdown body={body} docs={docs} devices={devices} className="w-full" />
         </div>
       </div>
     </div>

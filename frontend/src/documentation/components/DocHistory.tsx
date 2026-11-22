@@ -198,7 +198,7 @@ export function RevisionPreview({
           docs={docs}
           devices={devices}
           onOpenDoc={onOpenDoc}
-          className="max-w-[72ch] px-6 pb-16 pt-2 text-sm"
+          className="w-full px-6 pb-16 pt-2 text-sm"
         />
       )}
     </div>
