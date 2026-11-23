@@ -39,7 +39,7 @@ debounces on the store's `editSeq`.
 | Where | What |
 |---|---|
 | `racks`, `rack_devices`, `rack_cables` | One row set per design. `rack_devices.device_id → device_inventory` and `node_id → nodes` are both `ON DELETE SET NULL`, and `label` is denormalized, so a rack keeps rendering after an inventory purge. |
-| `canvas_state.viewport` | Pan/zoom, shared with the logical canvas row for that design. |
+| `canvas_state.viewport` | Pan/zoom, shared with the logical canvas row for that design. Saved, but a load fits the racks into view instead of restoring it, like the logical canvas. |
 | `GET /api/v1/racks?design_id=` | Full state. |
 | `POST /api/v1/racks/save` | Full state: upsert what is sent, prune the rest. Rejects a device pointing at a rack outside the payload, or a cable pointing at a device outside it. Also cross-checks geometry: a mount against the height of the rack it names, and `col_start + col_span` against the grid — each field is legal alone and the pair is not. |
 | `GET /api/v1/racks/inventory?design_id=` | Rackable inventory entries, each flagged `racked` and resolved to a canvas node when one matches. |
