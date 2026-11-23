@@ -1,10 +1,18 @@
 """UniFi Network Controller REST API client.
 
-Cookie-based auth: POST /api/login, then /api/s/<site>/stat/device.
+Two ways in, same classic endpoints (/api/s/<site>/stat/device & co.):
+
+- a session cookie from POST /api/auth/login (UniFi OS) or /api/login (legacy);
+- an API key sent as ``X-API-KEY``, no login at all — the only way into a
+  Fabric console, which holds no local users (#612). Not documented by
+  Ubiquiti for the classic API (only for the Integration API), but answered
+  200 on stat/device, stat/sta and list/user by a real console.
+
 Supports both legacy UniFi Controller (port 8443) and UniFi OS (port 443).
 """
 import contextlib
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -44,6 +52,22 @@ _PORT_HINT = "UniFi OS gateways (UDM, UCG) listen on 443, a self-hosted controll
 _ACCOUNT_HINT = (
     "use a local admin account of the controller — a UI.com cloud account is not accepted"
 )
+_API_KEY_HINT = (
+    "check the API key (Network → Settings → Control Plane → Integrations); "
+    "a console that refuses keys on the classic API needs a local admin account instead"
+)
+
+
+@dataclass(frozen=True)
+class _Auth:
+    """What every API request carries: session cookies, or an API key header."""
+
+    cookies: dict[str, str]
+    headers: dict[str, str]
+
+    @property
+    def api_key(self) -> bool:
+        return "X-API-KEY" in self.headers
 
 
 # discovery_source values. Infrastructure and clients are told apart in the
@@ -66,11 +90,12 @@ async def test_unifi_connection(
     host: str,
     port: int,
     site: str,
-    username: str,
-    password: str,
+    username: str = "",
+    password: str = "",
     verify_tls: bool = False,
     known_clients: bool = False,
     active_clients: bool = False,
+    api_key: str = "",
 ) -> tuple[bool, str, dict[str, int]]:
     """Test the controller and count what each selected source holds.
 
@@ -82,19 +107,19 @@ async def test_unifi_connection(
     try:
         client = httpx.AsyncClient(verify=verify_tls, timeout=10.0)
         try:
-            cookies = await _login(client, host, port, username, password)
-            if not cookies:
+            auth = await _authenticate(client, host, port, username, password, api_key)
+            if auth is None:
                 return False, "Login failed: invalid credentials or unreachable host", counts
             counts["infrastructure"] = len(
-                await _fetch_devices(client, host, port, site, cookies)
+                await _fetch_devices(client, host, port, site, auth)
             )
             if known_clients:
                 counts["known_clients"] = len(
-                    await _fetch_known_clients(client, host, port, site, cookies)
+                    await _fetch_known_clients(client, host, port, site, auth)
                 )
             if active_clients:
                 counts["active_clients"] = len(
-                    await _fetch_clients(client, host, port, site, cookies)
+                    await _fetch_clients(client, host, port, site, auth)
                 )
             return (
                 True,
@@ -113,12 +138,13 @@ async def fetch_unifi_inventory(
     host: str,
     port: int,
     site: str,
-    username: str,
-    password: str,
+    username: str = "",
+    password: str = "",
     verify_tls: bool = False,
     infrastructure: bool = True,
     known_clients: bool = False,
     active_clients: bool = False,
+    api_key: str = "",
 ) -> list[dict[str, Any]]:
     """Fetch the selected UniFi sources and return normalized dicts.
 
@@ -136,21 +162,21 @@ async def fetch_unifi_inventory(
     """
     client = httpx.AsyncClient(verify=verify_tls, timeout=15.0)
     try:
-        cookies = await _login(client, host, port, username, password)
-        if not cookies:
+        auth = await _authenticate(client, host, port, username, password, api_key)
+        if auth is None:
             raise ConnectionError("UniFi login failed: invalid credentials or unreachable host")
 
         # Weakest source first: later sources overwrite the fields they know
         # better, and `list/user` knows the least.
         merged: dict[str, dict[str, Any]] = {}
         if known_clients:
-            for raw in await _fetch_known_clients(client, host, port, site, cookies):
+            for raw in await _fetch_known_clients(client, host, port, site, auth):
                 _merge(merged, _normalize_client(raw))
         if active_clients:
-            for raw in await _fetch_clients(client, host, port, site, cookies):
+            for raw in await _fetch_clients(client, host, port, site, auth):
                 _merge(merged, _normalize_client(raw))
         if infrastructure:
-            for raw in await _fetch_devices(client, host, port, site, cookies):
+            for raw in await _fetch_devices(client, host, port, site, auth):
                 _merge(merged, _normalize(raw))
         return list(merged.values())
     finally:
@@ -175,6 +201,40 @@ def _merge(acc: dict[str, dict[str, Any]], dev: dict[str, Any] | None) -> None:
             prev[field] = value
 
 
+def _refuse_cloud_portal(host: str) -> None:
+    hostname = host.lower().rstrip(".")
+    if hostname == "ui.com" or hostname.endswith(".ui.com"):
+        raise UnifiLoginError(
+            f"Login failed: {host} is Ubiquiti's cloud portal, not a controller — "
+            "enter the LAN IP of your gateway or controller"
+        )
+
+
+async def _authenticate(
+    client: httpx.AsyncClient,
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    api_key: str,
+) -> _Auth | None:
+    """An API key when given — no login request — else a session login.
+
+    None when the login yields no cookies.
+    """
+    if api_key:
+        _refuse_cloud_portal(host)
+        return _Auth(cookies={}, headers={"X-API-KEY": api_key})
+    cookies = await _login(client, host, port, username, password)
+    if not cookies:
+        return None
+    headers = {}
+    # UniFi OS requires X-CSRF-Token header
+    if "csrf_token" in cookies:
+        headers["X-CSRF-Token"] = cookies["csrf_token"]
+    return _Auth(cookies=cookies, headers=headers)
+
+
 async def _login(
     client: httpx.AsyncClient,
     host: str,
@@ -187,12 +247,7 @@ async def _login(
     Returns the session cookies, or raises UnifiLoginError naming why it
     failed: unreachable host, timeout, MFA, rate limit or rejected credentials.
     """
-    hostname = host.lower().rstrip(".")
-    if hostname == "ui.com" or hostname.endswith(".ui.com"):
-        raise UnifiLoginError(
-            f"Login failed: {host} is Ubiquiti's cloud portal, not a controller — "
-            "enter the LAN IP of your gateway or controller"
-        )
+    _refuse_cloud_portal(host)
 
     base = f"https://{host}:{port}"
     payload = {"username": username, "password": password}
@@ -253,7 +308,7 @@ async def _get_list(
     client: httpx.AsyncClient,
     host: str,
     port: int,
-    cookies: dict[str, str],
+    auth: _Auth,
     paths: list[str],
     what: str,
 ) -> list[dict[str, Any]]:
@@ -264,28 +319,31 @@ async def _get_list(
     passing for an empty result.
     """
     base = f"https://{host}:{port}"
-    headers = {}
-    # UniFi OS requires X-CSRF-Token header
-    if "csrf_token" in cookies:
-        headers["X-CSRF-Token"] = cookies["csrf_token"]
 
     # Try UniFi OS proxy path first, then legacy path
     failures: list[str] = []
+    key_refused = False
     for path in paths:
         try:
             r = await client.get(
                 f"{base}{path}",
-                cookies=cookies,
-                headers=headers,
+                cookies=auth.cookies or None,
+                headers=auth.headers,
                 follow_redirects=True,
             )
             if r.status_code == 200:
                 data: list[dict[str, Any]] = r.json().get("data", [])
                 return data
             failures.append(f"{path} → HTTP {r.status_code}")
+            # A wrong site is a 401 too; only an unexplained one blames the key.
+            if r.status_code in (401, 403) and "NoSiteContext" not in _error_detail(r):
+                key_refused = True
         except Exception as exc:
             failures.append(f"{path} → {exc}")
-    raise UnifiApiError(f"UniFi {what} endpoint unavailable ({'; '.join(failures)})")
+    message = f"UniFi {what} endpoint unavailable ({'; '.join(failures)})"
+    if auth.api_key and key_refused:
+        message += f" — {_API_KEY_HINT}"
+    raise UnifiApiError(message)
 
 
 async def _fetch_devices(
@@ -293,13 +351,13 @@ async def _fetch_devices(
     host: str,
     port: int,
     site: str,
-    cookies: dict[str, str],
+    auth: _Auth,
 ) -> list[dict[str, Any]]:
     return await _get_list(
         client,
         host,
         port,
-        cookies,
+        auth,
         [
             f"/proxy/network/api/s/{site}/stat/device",
             f"/api/s/{site}/stat/device",
@@ -312,9 +370,10 @@ async def fetch_unifi_topology(
     host: str,
     port: int,
     site: str,
-    username: str,
-    password: str,
+    username: str = "",
+    password: str = "",
     verify_tls: bool = False,
+    api_key: str = "",
 ) -> dict[str, Any]:
     """Return UniFi topology: LLDP edges between infra, client uplinks, infra MAC map."""
     empty: dict[str, Any] = {
@@ -322,12 +381,12 @@ async def fetch_unifi_topology(
     }
     client = httpx.AsyncClient(verify=verify_tls, timeout=15.0)
     try:
-        cookies = await _login(client, host, port, username, password)
-        if not cookies:
+        auth = await _authenticate(client, host, port, username, password, api_key)
+        if auth is None:
             return empty
 
-        infra_devices = await _fetch_devices(client, host, port, site, cookies)
-        clients = await _fetch_clients(client, host, port, site, cookies)
+        infra_devices = await _fetch_devices(client, host, port, site, auth)
+        clients = await _fetch_clients(client, host, port, site, auth)
 
         lldp_edges: list[tuple[str, str]] = []
         infra_macs: dict[str, dict[str, str]] = {}
@@ -410,14 +469,14 @@ async def _fetch_clients(
     host: str,
     port: int,
     site: str,
-    cookies: dict[str, str],
+    auth: _Auth,
 ) -> list[dict[str, Any]]:
     """Fetch connected client stations (``stat/sta``) from the controller."""
     return await _get_list(
         client,
         host,
         port,
-        cookies,
+        auth,
         [
             f"/proxy/network/api/s/{site}/stat/sta",
             f"/api/s/{site}/stat/sta",
@@ -431,7 +490,7 @@ async def _fetch_known_clients(
     host: str,
     port: int,
     site: str,
-    cookies: dict[str, str],
+    auth: _Auth,
 ) -> list[dict[str, Any]]:
     """Fetch every client the controller knows of (``list/user``).
 
@@ -442,7 +501,7 @@ async def _fetch_known_clients(
         client,
         host,
         port,
-        cookies,
+        auth,
         [
             f"/proxy/network/api/s/{site}/list/user",
             f"/api/s/{site}/list/user",

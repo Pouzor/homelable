@@ -776,8 +776,9 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">UniFi auto-sync</span>
             {!unConfig.credentials_configured ? (
               <p className="text-[10px] text-warning leading-tight">
-                No controller credentials configured. Set <span className="font-mono">UNIFI_USER</span> and{' '}
-                <span className="font-mono">UNIFI_PASS</span> in the server .env to enable auto-sync.
+                No controller credentials configured. Set <span className="font-mono">UNIFI_API_KEY</span>, or{' '}
+                <span className="font-mono">UNIFI_USER</span> and{' '}
+                <span className="font-mono">UNIFI_PASS</span>, in the server .env to enable auto-sync.
               </p>
             ) : (
               <>

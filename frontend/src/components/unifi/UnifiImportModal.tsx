@@ -19,6 +19,7 @@ interface ConnectionForm {
   host: string
   port: string
   site: string
+  api_key: string
   username: string
   password: string
   verify_tls: boolean
@@ -28,6 +29,7 @@ const DEFAULT_FORM: ConnectionForm = {
   host: '',
   port: '443',
   site: 'default',
+  api_key: '',
   username: '',
   password: '',
   verify_tls: false,
@@ -89,7 +91,9 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
     host: form.host.trim(),
     port: Number(form.port) || 443,
     site: form.site.trim() || 'default',
-    // Blank falls back to the server env, like every other import.
+    // Blank falls back to the server env, like every other import. The
+    // backend prefers the key when both a key and a login are sent.
+    api_key: form.api_key.trim() || undefined,
     username: form.username.trim() || undefined,
     password: form.password || undefined,
     verify_tls: form.verify_tls,
@@ -184,6 +188,20 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                   className="font-mono text-sm bg-background border-border"
                 />
               </div>
+              <div className="col-span-2 space-y-1">
+                <Label htmlFor="unifi-api-key" className="text-xs text-muted-foreground">
+                  API key (optional)
+                </Label>
+                <Input
+                  id="unifi-api-key"
+                  value={form.api_key}
+                  onChange={(e) => updateField('api_key', e.target.value)}
+                  placeholder="Network → Settings → Control Plane → Integrations"
+                  type="password"
+                  autoComplete="off"
+                  className="font-mono text-sm bg-background border-border"
+                />
+              </div>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Username (optional)</Label>
                 <Input
@@ -205,8 +223,10 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                 />
               </div>
               <p className="col-span-2 text-[11px] text-muted-foreground/60">
-                Use a local admin account of the controller. A UI.com cloud account with MFA
-                cannot log in over the API, and unifi.ui.com is not a controller address.
+                Use an API key — the only option on a UniFi Fabric console — or a local admin
+                account of the controller; the key wins when both are filled. A UI.com cloud
+                account with MFA cannot log in over the API, and unifi.ui.com is not a
+                controller address.
               </p>
               <div className="col-span-2 flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">

@@ -192,4 +192,36 @@ describe('UnifiImportModal', () => {
     await waitFor(() => expect(unifiApi.importToPending).toHaveBeenCalled())
     expect(vi.mocked(unifiApi.importToPending).mock.calls[0][0].port).toBe(443)
   })
+
+  // #612 — a Fabric console holds no local users; an API key is its only way in.
+  it('sends the API key typed in the form, trimmed', async () => {
+    vi.mocked(unifiApi.testConnection).mockResolvedValue({
+      data: { connected: true, message: 'ok', counts: {} },
+    } as never)
+    render(<UnifiImportModal {...defaultProps} />)
+    typeHost()
+    fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: '  k3y  ' } })
+    fireEvent.click(screen.getByRole('button', { name: /test connection/i }))
+
+    await waitFor(() => expect(unifiApi.testConnection).toHaveBeenCalled())
+    const payload = vi.mocked(unifiApi.testConnection).mock.calls[0][0]
+    expect(payload.api_key).toBe('k3y')
+    expect(payload.username).toBeUndefined()
+    expect(payload.password).toBeUndefined()
+  })
+
+  it('leaves the key out when blank so the server env applies', async () => {
+    render(<UnifiImportModal {...defaultProps} />)
+    typeHost()
+    fireEvent.click(screen.getByRole('button', { name: /import to inventory/i }))
+
+    await waitFor(() => expect(unifiApi.importToPending).toHaveBeenCalled())
+    expect(vi.mocked(unifiApi.importToPending).mock.calls[0][0].api_key).toBeUndefined()
+  })
+
+  it('masks the API key like a password', () => {
+    render(<UnifiImportModal {...defaultProps} />)
+    expect(screen.getByLabelText(/api key/i)).toHaveAttribute('type', 'password')
+    expect(screen.getByText(/only option on a UniFi Fabric console/i)).toBeInTheDocument()
+  })
 })

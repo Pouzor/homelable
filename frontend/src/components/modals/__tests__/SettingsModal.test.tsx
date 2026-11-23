@@ -354,6 +354,13 @@ describe('SettingsModal — UniFi', () => {
     expect(screen.queryByLabelText('Toggle UniFi auto-sync')).not.toBeInTheDocument()
   })
 
+  it('offers an API key as the other way to configure credentials', async () => {
+    vi.mocked(unifiApi.getConfig).mockResolvedValue(config({ credentials_configured: false }) as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText('UniFi auto-sync')).toBeInTheDocument())
+    expect(screen.getByText('UNIFI_API_KEY')).toBeInTheDocument()
+  })
+
   it('persists the import modes the user ticked', async () => {
     vi.mocked(unifiApi.getConfig).mockResolvedValue(config() as never)
     render(<SettingsModal open onClose={vi.fn()} />)
