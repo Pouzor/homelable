@@ -8,8 +8,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { RackCanvas } from '../components/RackCanvas'
 import { useRackStore } from '../store'
+import { demoRacks } from '../demoData'
 
-const applyViewport = vi.hoisted(() => vi.fn())
+const fitted = { x: -120, y: -340, zoom: 0.75 }
+const fitView = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
+const getViewport = vi.hoisted(() => vi.fn())
 
 vi.mock('@xyflow/react', async () => {
   const { mockReactFlow } = await import('@/test/mocks')
@@ -24,14 +27,16 @@ vi.mock('@xyflow/react', async () => {
     Controls: () => null,
     ViewportPortal: () => null,
     useReactFlow: () => ({
-      setViewport: applyViewport,
+      fitView,
+      getViewport,
       screenToFlowPosition: (p: { x: number; y: number }) => p,
     }),
   })
 })
 
 beforeEach(() => {
-  applyViewport.mockClear()
+  fitView.mockClear()
+  getViewport.mockReset().mockReturnValue(fitted)
   useRackStore.getState().reset()
 })
 
@@ -171,70 +176,98 @@ describe('RackCanvas cable dragging', () => {
 })
 
 /**
- * Switching to another canvas and back remounts `RackCanvas` before `App` calls
- * `loadDesign`, so the restore must not be spent on the pre-load state — that is
- * issue #408, where the racks came back at the wrong pan/zoom until a hard
- * reload.
+ * A rack canvas fits its racks into view on load, like the logical canvas
+ * (#619). Switching to another canvas and back remounts `RackCanvas` before
+ * `App` calls `loadDesign`, so the fit must not be spent on the pre-load state
+ * — that is issue #408, where the racks came back at the wrong pan/zoom.
  */
-describe('RackCanvas viewport restore', () => {
-  const view = { x: -120, y: -340, zoom: 0.75 }
+describe('RackCanvas fit on load', () => {
+  const nextFrame = () =>
+    act(async () => {
+      await new Promise((r) => requestAnimationFrame(r))
+    })
 
   it('carries its own React Flow provider, so the logical canvas cannot leak its pan/zoom in', () => {
     render(<RackCanvas />)
     expect(screen.getByTestId('rack-flow-provider')).toContainElement(screen.getByTestId('flow'))
   })
 
-  it('applies the stored viewport once a design is loaded', async () => {
-    useRackStore.setState({ designId: 'd1', loading: false, viewport: view })
+  it('fits the racks once a design is loaded, ignoring the stored pan/zoom', async () => {
+    useRackStore.setState({
+      designId: 'd1',
+      loading: false,
+      racks: demoRacks(),
+      viewport: { x: 40, y: 80, zoom: 1.4 },
+    })
     render(<RackCanvas />)
-    await waitFor(() => expect(applyViewport).toHaveBeenCalledWith(view))
+    await waitFor(() => expect(fitView).toHaveBeenCalledTimes(1))
+    expect(fitView).toHaveBeenCalledWith({ padding: 0.12 })
   })
 
-  it('waits for the load to finish rather than restoring the previous state', async () => {
-    useRackStore.setState({ designId: 'd1', loading: true, viewport: view })
+  it('keeps where the fit landed as the viewport a save sends', async () => {
+    useRackStore.setState({ designId: 'd1', loading: false, racks: demoRacks() })
+    render(<RackCanvas />)
+    await waitFor(() => expect(useRackStore.getState().viewport).toEqual(fitted))
+  })
+
+  it('waits for the load to finish rather than fitting the previous state', async () => {
+    useRackStore.setState({ designId: 'd1', loading: true, racks: demoRacks() })
     render(<RackCanvas />)
     // A frame passes with the fetch still in flight.
-    await act(async () => {
-      await new Promise((r) => requestAnimationFrame(r))
-    })
-    expect(applyViewport).not.toHaveBeenCalled()
+    await nextFrame()
+    expect(fitView).not.toHaveBeenCalled()
   })
 
-  it('restores the viewport the load brings back, not the one left over from the last mount', async () => {
-    // Mount as a switch-back does: same design id, stale viewport, no load yet.
-    useRackStore.setState({ designId: 'd1', loading: false, viewport: view })
+  it('fits again on the load a switch-back triggers', async () => {
+    // Mount as a switch-back does: same design id, stale racks, no load yet.
+    useRackStore.setState({ designId: 'd1', loading: false, racks: demoRacks() })
     render(<RackCanvas />)
-    await waitFor(() => expect(applyViewport).toHaveBeenCalledWith(view))
+    await waitFor(() => expect(fitView).toHaveBeenCalledTimes(1))
 
-    const loaded = { x: 40, y: 80, zoom: 1.4 }
     act(() => {
       useRackStore.setState({ loading: true })
     })
     act(() => {
-      useRackStore.setState({ loading: false, viewport: loaded })
+      useRackStore.setState({ loading: false })
     })
-    await waitFor(() => expect(applyViewport).toHaveBeenLastCalledWith(loaded))
+    await waitFor(() => expect(fitView).toHaveBeenCalledTimes(2))
   })
 
-  it('ignores a viewport with no zoom', async () => {
-    useRackStore.setState({ designId: 'd1', loading: false, viewport: { x: 0, y: 0, zoom: 0 } })
+  it('fits each design it switches to', async () => {
+    useRackStore.setState({ designId: 'd1', loading: false, racks: demoRacks() })
     render(<RackCanvas />)
-    await act(async () => {
-      await new Promise((r) => requestAnimationFrame(r))
+    await waitFor(() => expect(fitView).toHaveBeenCalledTimes(1))
+    act(() => {
+      useRackStore.setState({ designId: 'd2', loading: true })
     })
-    expect(applyViewport).not.toHaveBeenCalled()
+    act(() => {
+      useRackStore.setState({ loading: false })
+    })
+    await waitFor(() => expect(fitView).toHaveBeenCalledTimes(2))
   })
 
-  it('does not re-apply the viewport when the user pans', async () => {
-    useRackStore.setState({ designId: 'd1', loading: false, viewport: view })
+  it('does not fit an empty design, nor when its first rack is added', async () => {
+    useRackStore.setState({ designId: 'd1', loading: false })
     render(<RackCanvas />)
-    await waitFor(() => expect(applyViewport).toHaveBeenCalledTimes(1))
+    await nextFrame()
+    act(() => {
+      useRackStore.getState().addRack()
+    })
+    await nextFrame()
+    expect(fitView).not.toHaveBeenCalled()
+  })
+
+  it('does not refit when the user pans or moves a rack', async () => {
+    const racks = demoRacks()
+    useRackStore.setState({ designId: 'd1', loading: false, racks })
+    render(<RackCanvas />)
+    await waitFor(() => expect(fitView).toHaveBeenCalledTimes(1))
     act(() => {
       useRackStore.getState().setViewport({ x: 5, y: 5, zoom: 1 })
+      useRackStore.getState().moveRack(racks[0].id, { x: 900, y: 900 })
     })
-    await act(async () => {
-      await new Promise((r) => requestAnimationFrame(r))
-    })
-    expect(applyViewport).toHaveBeenCalledTimes(1)
+    await nextFrame()
+    expect(fitView).toHaveBeenCalledTimes(1)
+    expect(useRackStore.getState().viewport).toEqual({ x: 5, y: 5, zoom: 1 })
   })
 })

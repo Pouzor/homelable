@@ -39,7 +39,6 @@ function RackCanvasInner() {
   const loading = useRackStore((s) => s.loading)
   const loadError = useRackStore((s) => s.loadError)
   const designId = useRackStore((s) => s.designId)
-  const storedViewport = useRackStore((s) => s.viewport)
   const setViewport = useRackStore((s) => s.setViewport)
   const addRack = useRackStore((s) => s.addRack)
   const loadDemo = useRackStore((s) => s.loadDemo)
@@ -53,31 +52,49 @@ function RackCanvasInner() {
   const cancelCableDraft = useRackStore((s) => s.cancelCableDraft)
 
   const palette = useRackPalette()
-  const { setViewport: applyViewport, screenToFlowPosition } = useReactFlow()
+  const { fitView, getViewport, screenToFlowPosition } = useReactFlow()
 
   // Mounts set to "check device" read their LED from the inventory's
   // `node_status`, which only a refetch moves.
   useAutoStatusRefresh()
 
-  // Restore the saved pan/zoom once per load, not on every viewport nudge.
+  // Fit the racks into view once per load, like the logical canvas does
+  // (#619) — not on every edit, and never over a pan/zoom the user made since.
   //
   // Coming back from another canvas remounts this component BEFORE `App`'s
   // design effect calls `loadDesign`, so the first pass here sees the previous
-  // state. Clearing the marker whenever a load starts means the viewport the
-  // fetch brings back is the one that gets applied, not the pre-load leftover.
-  const restoredFor = useRef<string | null>(null)
+  // state (#408). Clearing the marker whenever a load starts means the fit runs
+  // against the racks the fetch brings back, not the pre-load leftover.
+  //
+  // A design that loads empty is marked too: adding its first rack must not
+  // yank the view around.
+  const fittedFor = useRef<string | null>(null)
+  const hasRacks = racks.length > 0
   useEffect(() => {
     if (loading) {
-      restoredFor.current = null
+      fittedFor.current = null
       return
     }
-    if (!designId || restoredFor.current === designId || storedViewport.zoom <= 0) return
-    restoredFor.current = designId
-    // A frame later: on a fresh mount React Flow has not measured its pane yet,
-    // and a viewport set against a stale size lands in the wrong place.
-    const frame = requestAnimationFrame(() => void applyViewport(storedViewport))
-    return () => cancelAnimationFrame(frame)
-  }, [designId, loading, storedViewport, applyViewport])
+    if (!designId || fittedFor.current === designId) return
+    fittedFor.current = designId
+    if (!hasRacks) return
+    // A frame later: on a fresh mount React Flow has not measured its pane yet.
+    // fitView itself waits for the nodes to be measured.
+    let fired = false
+    const frame = requestAnimationFrame(() => {
+      fired = true
+      void fitView({ padding: 0.12 }).then(() => {
+        // Where the fit landed is the viewport a save keeps.
+        setViewport(getViewport())
+      })
+    })
+    return () => {
+      cancelAnimationFrame(frame)
+      // A fit cancelled before it ran (StrictMode's double effect, a dep
+      // change) has not happened: let the next pass do it.
+      if (!fired) fittedFor.current = null
+    }
+  }, [designId, loading, hasRacks, fitView, getViewport, setViewport])
 
   // A patch dragged out of a port follows the pointer until it is released.
   // Both listeners are on the window: the drop target is often a port on
