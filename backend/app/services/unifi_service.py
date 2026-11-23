@@ -329,11 +329,18 @@ async def _get_list(
                 f"{base}{path}",
                 cookies=auth.cookies or None,
                 headers=auth.headers,
-                follow_redirects=True,
+                # httpx keeps a custom header across a redirect to another
+                # host, so a key request never follows one.
+                follow_redirects=not auth.api_key,
             )
             if r.status_code == 200:
                 data: list[dict[str, Any]] = r.json().get("data", [])
                 return data
+            if auth.api_key and r.is_redirect:
+                failures.append(
+                    f"{path} → HTTP {r.status_code} redirect, not followed with an API key"
+                )
+                continue
             failures.append(f"{path} → HTTP {r.status_code}")
             # A wrong site is a 401 too; only an unexplained one blames the key.
             if r.status_code in (401, 403) and "NoSiteContext" not in _error_detail(r):

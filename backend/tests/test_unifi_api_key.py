@@ -140,6 +140,25 @@ async def test_a_wrong_site_is_not_blamed_on_the_key() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_redirect_is_not_followed_with_a_key() -> None:
+    """httpx keeps X-API-KEY across a cross-host redirect, so none is followed."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "192.168.1.1":
+            return httpx.Response(302, headers={"location": "https://evil.example/steal"})
+        return _ok(_DEVICES)
+
+    ctx, factory = _patch(handler)
+    with ctx:
+        connected, message, _ = await check_connection(
+            "192.168.1.1", 443, "default", api_key=_KEY
+        )
+    assert connected is False
+    assert "redirect, not followed" in message
+    assert {r.url.host for r in factory.requests} == {"192.168.1.1"}
+
+
+@pytest.mark.asyncio
 async def test_a_key_to_the_cloud_portal_is_refused_without_a_request() -> None:
     ctx, factory = _patch(lambda request: _ok([]))
     with ctx:
@@ -188,6 +207,8 @@ def test_the_key_is_never_written_to_the_overrides(tmp_path) -> None:
 def _clear_unifi_env(monkeypatch):
     for name in ("unifi_host", "unifi_url", "unifi_username", "unifi_password", "unifi_api_key"):
         monkeypatch.setattr(settings, name, "")
+    monkeypatch.setattr(settings, "unifi_port", 443)
+    monkeypatch.setattr(settings, "unifi_verify_tls", False)
 
 
 @pytest.fixture
@@ -225,12 +246,72 @@ async def test_test_connection_accepts_a_key_alone(
 async def test_import_falls_back_to_the_env_key(
     client: AsyncClient, headers: dict, seen: dict
 ) -> None:
+    settings.unifi_host = "192.168.1.1"
     settings.unifi_api_key = _KEY
     res = await client.post(
         "/api/v1/unifi/import-pending", headers=headers, json={"host": "192.168.1.1"},
     )
     assert res.status_code == 200
     assert seen["api_key"] == _KEY
+
+
+@pytest.mark.asyncio
+async def test_the_env_key_is_never_sent_to_another_host(
+    client: AsyncClient, headers: dict, seen: dict
+) -> None:
+    settings.unifi_host = "192.168.1.1"
+    settings.unifi_api_key = _KEY
+    for target in ({"host": "attacker.example"}, {"host": "192.168.1.1", "port": 8443}):
+        res = await client.post(
+            "/api/v1/unifi/test-connection", headers=headers, json=target,
+        )
+        assert res.status_code == 400
+        assert "UNIFI_API_KEY" in res.json()["detail"]
+    assert seen == {}
+
+
+@pytest.mark.asyncio
+async def test_the_env_key_is_not_sent_when_no_env_host_is_set(
+    client: AsyncClient, headers: dict, seen: dict
+) -> None:
+    settings.unifi_api_key = _KEY
+    res = await client.post(
+        "/api/v1/unifi/test-connection", headers=headers, json={"host": "192.168.1.1"},
+    )
+    assert res.status_code == 400
+    assert seen == {}
+
+
+@pytest.mark.asyncio
+async def test_another_host_still_falls_back_to_the_env_login(
+    client: AsyncClient, headers: dict, seen: dict
+) -> None:
+    """Key-only binding: the env username/password fallback is unchanged."""
+    settings.unifi_host = "192.168.1.1"
+    settings.unifi_api_key = _KEY
+    settings.unifi_username = "admin"
+    settings.unifi_password = "pw"
+    res = await client.post(
+        "/api/v1/unifi/test-connection", headers=headers, json={"host": "10.0.0.9"},
+    )
+    assert res.status_code == 200
+    assert seen["api_key"] == ""
+    assert (seen["username"], seen["password"]) == ("admin", "pw")
+
+
+@pytest.mark.asyncio
+async def test_the_env_key_uses_the_env_tls_setting(
+    client: AsyncClient, headers: dict, seen: dict
+) -> None:
+    settings.unifi_host = "192.168.1.1"
+    settings.unifi_api_key = _KEY
+    settings.unifi_verify_tls = True
+    res = await client.post(
+        "/api/v1/unifi/test-connection", headers=headers,
+        json={"host": "192.168.1.1", "verify_tls": False},
+    )
+    assert res.status_code == 200
+    assert seen["verify_tls"] is True
 
 
 @pytest.mark.asyncio
