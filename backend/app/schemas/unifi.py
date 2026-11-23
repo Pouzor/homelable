@@ -33,6 +33,11 @@ class UnifiConnectionRequest(BaseModel):
     site: str = Field("default", description="UniFi site name")
     username: str | None = Field(None, description="Controller username (falls back to server env)")
     password: str | None = Field(None, description="Controller password (falls back to server env)")
+    api_key: str | None = Field(
+        None,
+        description="Network API key, sent as X-API-KEY instead of a login; wins over "
+        "username/password (falls back to server env)",
+    )
     verify_tls: bool = Field(False, description="Verify TLS certificate (usually false for local controllers)")
     modes: UnifiImportModes = Field(
         default_factory=_default_modes,

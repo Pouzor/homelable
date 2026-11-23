@@ -45,7 +45,47 @@ def _configured_modes() -> UnifiImportModes:
     )
 
 
-def _resolve_credentials(payload: UnifiConnectionRequest) -> tuple[str, str]:
+def _env_credentials() -> dict[str, str]:
+    """The server env's credentials, as service kwargs. The API key wins."""
+    if settings.unifi_api_key:
+        return {"username": "", "password": "", "api_key": settings.unifi_api_key}
+    return {
+        "username": settings.unifi_username,
+        "password": settings.unifi_password,
+        "api_key": "",
+    }
+
+
+def _targets_env_controller(payload: UnifiConnectionRequest) -> bool:
+    """The request names the controller configured in the env (UNIFI_HOST/PORT)."""
+    env_host = settings.unifi_effective_host.strip().lower().rstrip(".")
+    host = payload.host.strip().lower().rstrip(".")
+    return bool(env_host) and host == env_host and payload.port == settings.unifi_effective_port
+
+
+def _resolve_credentials(payload: UnifiConnectionRequest) -> tuple[dict[str, str], bool]:
+    """Credentials typed in the request first, then the server env's.
+
+    Returns the service credential kwargs and the ``verify_tls`` to use with
+    them. An API key wins over a username/password at each level, so a key in
+    the env still yields to a full login typed in the form.
+
+    The env API key is only ever sent to the env's own controller, with the
+    env's TLS setting: otherwise any host typed in the form would receive it.
+    """
+    if payload.api_key:
+        return {"username": "", "password": "", "api_key": payload.api_key}, payload.verify_tls
+    if not (payload.username and payload.password) and settings.unifi_api_key:
+        if _targets_env_controller(payload):
+            return _env_credentials(), settings.unifi_verify_tls
+        if not (settings.unifi_username and settings.unifi_password):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "The server's UNIFI_API_KEY is only sent to the controller in "
+                    "UNIFI_HOST/UNIFI_PORT — enter credentials for another controller."
+                ),
+            )
     username = payload.username or settings.unifi_username
     password = payload.password or settings.unifi_password
     if not username or not password:
@@ -53,7 +93,7 @@ def _resolve_credentials(payload: UnifiConnectionRequest) -> tuple[str, str]:
             status_code=400,
             detail="No UniFi credentials provided and none configured on the server.",
         )
-    return username, password
+    return {"username": username, "password": password, "api_key": ""}, payload.verify_tls
 
 
 @router.post("/test-connection", response_model=UnifiTestConnectionResponse)
@@ -61,14 +101,13 @@ async def test_connection_endpoint(
     payload: UnifiConnectionRequest,
     _: str = Depends(get_current_user),
 ) -> UnifiTestConnectionResponse:
-    username, password = _resolve_credentials(payload)
+    credentials, verify_tls = _resolve_credentials(payload)
     connected, message, counts = await test_unifi_connection(
         host=payload.host,
         port=payload.port,
         site=payload.site,
-        username=username,
-        password=password,
-        verify_tls=payload.verify_tls,
+        **credentials,
+        verify_tls=verify_tls,
         known_clients=payload.modes.known_clients,
         active_clients=payload.modes.active_clients,
     )
@@ -113,7 +152,7 @@ async def import_unifi_pending(
     _: str = Depends(get_current_user),
 ) -> UnifiImportResponse:
     """Fetch UniFi inventory and upsert into pending device inventory."""
-    username, password = _resolve_credentials(payload)
+    credentials, verify_tls = _resolve_credentials(payload)
     started_at = datetime.now(timezone.utc)
     target = f"{payload.host}:{payload.port}"
     try:
@@ -121,9 +160,8 @@ async def import_unifi_pending(
             host=payload.host,
             port=payload.port,
             site=payload.site,
-            username=username,
-            password=password,
-            verify_tls=payload.verify_tls,
+            **credentials,
+            verify_tls=verify_tls,
             infrastructure=payload.modes.infrastructure,
             known_clients=payload.modes.known_clients,
             active_clients=payload.modes.active_clients,
@@ -148,7 +186,7 @@ async def sync_unifi_now(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user),
 ) -> UnifiImportResponse:
-    if not (settings.unifi_effective_host and settings.unifi_username and settings.unifi_password):
+    if not (settings.unifi_effective_host and settings.unifi_credentials_configured):
         raise HTTPException(
             status_code=400,
             detail="Cannot sync: no UniFi host/credentials configured on the server.",
@@ -160,8 +198,7 @@ async def sync_unifi_now(
             host=settings.unifi_effective_host,
             port=settings.unifi_effective_port,
             site=settings.unifi_site,
-            username=settings.unifi_username,
-            password=settings.unifi_password,
+            **_env_credentials(),
             verify_tls=settings.unifi_verify_tls,
             infrastructure=settings.unifi_import_infrastructure,
             known_clients=settings.unifi_import_known_clients,
@@ -185,7 +222,7 @@ async def get_unifi_config(_: str = Depends(get_current_user)) -> UnifiConfig:
         verify_tls=settings.unifi_verify_tls,
         sync_enabled=settings.unifi_sync_enabled,
         sync_interval=settings.unifi_sync_interval,
-        credentials_configured=bool(settings.unifi_username and settings.unifi_password),
+        credentials_configured=settings.unifi_credentials_configured,
         modes=_configured_modes(),
     )
 
@@ -196,7 +233,7 @@ async def save_unifi_config(
     _: str = Depends(get_current_user),
 ) -> UnifiConfig:
     if payload.sync_enabled and not (
-        settings.unifi_effective_host and settings.unifi_username and settings.unifi_password
+        settings.unifi_effective_host and settings.unifi_credentials_configured
     ):
         raise HTTPException(
             status_code=400,
@@ -356,8 +393,7 @@ async def _background_unifi_sync(run_id: str) -> None:
                 host=settings.unifi_effective_host,
                 port=settings.unifi_effective_port,
                 site=settings.unifi_site,
-                username=settings.unifi_username,
-                password=settings.unifi_password,
+                **_env_credentials(),
                 verify_tls=settings.unifi_verify_tls,
                 infrastructure=settings.unifi_import_infrastructure,
                 known_clients=settings.unifi_import_known_clients,

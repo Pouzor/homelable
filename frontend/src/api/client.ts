@@ -688,6 +688,8 @@ export interface UnifiConnection {
   host: string
   port: number
   site: string
+  /** Sent as X-API-KEY instead of a login; wins over username/password. */
+  api_key?: string
   username?: string
   password?: string
   verify_tls?: boolean

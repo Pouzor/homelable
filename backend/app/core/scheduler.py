@@ -315,7 +315,7 @@ async def _run_unifi_sync() -> None:
     """Fetch the UniFi inventory and upsert it into pending (auto-sync)."""
     if not settings.unifi_sync_enabled:
         return
-    if not (settings.unifi_effective_host and settings.unifi_username and settings.unifi_password):
+    if not (settings.unifi_effective_host and settings.unifi_credentials_configured):
         logger.warning("UniFi auto-sync enabled but host/credentials not configured — skipping")
         return
     from app.api.routes.unifi import _background_unifi_sync

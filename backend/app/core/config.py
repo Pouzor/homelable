@@ -326,6 +326,10 @@ class Settings(BaseSettings):
     # Accepts UNIFI_USER or UNIFI_USERNAME; UNIFI_PASS or UNIFI_PASSWORD.
     unifi_username: str = Field("", alias="unifi_user", validation_alias=AliasChoices("unifi_username", "unifi_user"))
     unifi_password: str = Field("", alias="unifi_pass", validation_alias=AliasChoices("unifi_password", "unifi_pass"))
+    # API key (Network → Settings → Control Plane → Integrations). Wins over
+    # the username/password when set; the only option on a Fabric console,
+    # which holds no local users (#612).
+    unifi_api_key: str = ""
     # Connection config is env-only; only the auto-sync activation and import
     # modes are persisted. Accepts UNIFI_URL (full URL) or UNIFI_HOST (host/IP,
     # optionally host:port). 443 is UniFi OS (UDM, UCG, Cloud Gateway); a
@@ -377,6 +381,11 @@ class Settings(BaseSettings):
     def unifi_effective_port(self) -> int:
         """Port written in UNIFI_URL / UNIFI_HOST if any, else UNIFI_PORT."""
         return self._unifi_target()[1] or self.unifi_port
+
+    @property
+    def unifi_credentials_configured(self) -> bool:
+        """An API key, or a username and a password, is set in the env."""
+        return bool(self.unifi_api_key or (self.unifi_username and self.unifi_password))
 
     def _override_path(self) -> Path:
         return Path(self.sqlite_path).parent / "scan_config.json"
