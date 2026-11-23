@@ -146,7 +146,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="bg-popover border-border max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="bg-popover border-border max-w-[calc(100%-2rem)] sm:max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-foreground flex items-center gap-2">
             <Wifi size={16} style={{ color: ACCENT }} />
@@ -156,7 +156,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
 
         <div className="flex-1 overflow-y-auto space-y-4 py-2 min-h-0">
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
               <div className="col-span-2 space-y-1">
                 <Label className="text-xs text-muted-foreground">Controller Host</Label>
                 <Input
@@ -196,7 +196,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                   id="unifi-api-key"
                   value={form.api_key}
                   onChange={(e) => updateField('api_key', e.target.value)}
-                  placeholder="Network → Settings → Control Plane → Integrations"
+                  placeholder="Control Plane → Integrations"
                   type="password"
                   autoComplete="off"
                   className="font-mono text-sm bg-background border-border"
@@ -222,13 +222,13 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
                   className="text-sm bg-background border-border"
                 />
               </div>
-              <p className="col-span-2 text-[11px] text-muted-foreground/60">
+              <p className="col-span-2 sm:col-span-4 text-[11px] text-muted-foreground/60">
                 Use an API key — the only option on a UniFi Fabric console — or a local admin
                 account of the controller; the key wins when both are filled. A UI.com cloud
                 account with MFA cannot log in over the API, and unifi.ui.com is not a
                 controller address.
               </p>
-              <div className="col-span-2 flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
+              <div className="col-span-2 sm:col-span-4 flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
@@ -260,7 +260,7 @@ export function UnifiImportModal({ open, onClose, onInventoryImported }: UnifiIm
 
             <div className="space-y-2 rounded-md border border-border bg-background/60 px-3 py-2.5">
               <span className="block text-xs text-muted-foreground">Import from</span>
-              <div className="space-y-2">
+              <div className="grid gap-x-4 gap-y-2 sm:grid-cols-3">
                 {SOURCES.map((s) => (
                   <label
                     key={s.key}
