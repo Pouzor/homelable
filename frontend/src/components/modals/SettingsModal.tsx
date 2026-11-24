@@ -8,12 +8,15 @@ import {
   zigbeeApi,
   zwaveApi,
   unifiApi,
+  omadaApi,
   type ProxmoxConfigData,
   type UnraidConfigData,
   type ZigbeeConfigData,
   type ZwaveConfigData,
   type UnifiConfigData,
   type UnifiImportModes,
+  type OmadaConfigData,
+  type OmadaImportModes,
 } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useWalkthroughStore } from '@/stores/walkthroughStore'
@@ -135,11 +138,19 @@ const UNIFI_MAX_INTERVAL = 86400
 // Mirrors UnraidSyncConfig.sync_interval (ge=300, le=86400) on the backend.
 const UNRAID_MIN_INTERVAL = 300
 const UNRAID_MAX_INTERVAL = 86400
+// Mirrors OmadaSyncConfig.sync_interval (ge=300, le=86400) on the backend.
+const OMADA_MIN_INTERVAL = 300
+const OMADA_MAX_INTERVAL = 86400
 
 const UNIFI_SOURCES: { key: keyof UnifiImportModes; label: string; hint: string }[] = [
   { key: 'infrastructure', label: 'Infrastructure', hint: 'stat/device — adopted APs, switches, gateways.' },
   { key: 'known_clients', label: 'Known clients', hint: 'list/user — every client ever recorded. No IP, and long on a busy site.' },
   { key: 'active_clients', label: 'Active clients', hint: 'stat/sta — connected right now, with IP and switch port.' },
+]
+
+const OMADA_SOURCES: { key: keyof OmadaImportModes; label: string; hint: string }[] = [
+  { key: 'infrastructure', label: 'Infrastructure', hint: 'Adopted gateways, switches and APs.' },
+  { key: 'clients', label: 'Clients', hint: 'Connected right now, with IP and switch port or AP.' },
 ]
 
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
@@ -177,6 +188,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     active_clients: false,
   })
   const [unSyncing, setUnSyncing] = useState(false)
+  const [omConfig, setOmConfig] = useState<OmadaConfigData | null>(null)
+  const [omSyncEnabled, setOmSyncEnabled] = useState(false)
+  const [omInterval, setOmInterval] = useState(3600)
+  const [omModes, setOmModes] = useState<OmadaImportModes>({ infrastructure: true, clients: false })
+  const [omSyncing, setOmSyncing] = useState(false)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
   const [hoverHighlight, setHoverHighlight] = useState<HoverHighlightSettings>(readHoverHighlightSettings)
@@ -184,6 +200,8 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   // Saving with every source unticked 422s on the backend, aborting the save
   // after the other configs already persisted — refuse it up front instead.
   const unifiBlocksSave = !STANDALONE && unConfig !== null && !anyUnifiSource
+  const anyOmadaSource = omModes.infrastructure || omModes.clients
+  const omadaBlocksSave = !STANDALONE && omConfig !== null && !anyOmadaSource
   const hideIp = useCanvasStore((s) => s.hideIp)
   const setHideIp = useCanvasStore((s) => s.setHideIp)
 
@@ -235,6 +253,14 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setUnModes(res.data.modes)
       })
       .catch(() => {/* unifi not configured */})
+    omadaApi.getConfig()
+      .then((res) => {
+        setOmConfig(res.data)
+        setOmSyncEnabled(res.data.sync_enabled)
+        setOmInterval(res.data.sync_interval)
+        setOmModes(res.data.modes)
+      })
+      .catch(() => {/* omada not configured */})
   }, [open])
 
   useEffect(() => subscribeAlignmentSettings(setAlignment), [])
@@ -293,6 +319,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       toast.error('Failed to run UniFi sync')
     } finally {
       setUnSyncing(false)
+    }
+  }
+
+  const handleOmSyncNow = async () => {
+    setOmSyncing(true)
+    try {
+      const res = await omadaApi.syncNow()
+      const { infra_count, client_count } = res.data
+      toast.success(`Omada sync done — ${infra_count} device(s), ${client_count} client(s)`)
+    } catch {
+      toast.error('Failed to run Omada sync')
+    } finally {
+      setOmSyncing(false)
     }
   }
 
@@ -380,6 +419,16 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           sync_enabled: unSyncEnabled,
           sync_interval: clamped,
           modes: unModes,
+        })
+      }
+      if (omConfig) {
+        // Connection config is env-only; same clamp as UniFi above.
+        const clamped = Math.min(OMADA_MAX_INTERVAL, Math.max(OMADA_MIN_INTERVAL, Math.round(omInterval)))
+        if (clamped !== omInterval) setOmInterval(clamped)
+        await omadaApi.saveConfig({
+          sync_enabled: omSyncEnabled,
+          sync_interval: clamped,
+          modes: omModes,
         })
       }
       toast.success('Settings saved')
@@ -856,6 +905,85 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             )}
           </div>
           )}
+          {/* Omada auto-sync */}
+          {!STANDALONE && omConfig && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Omada auto-sync</span>
+            {!(omConfig.credentials_configured && omConfig.url) ? (
+              <p className="text-[10px] text-warning leading-tight">
+                No Omada controller configured. Set <span className="font-mono">OMADA_URL</span>,{' '}
+                <span className="font-mono">OMADA_CLIENT_ID</span> and{' '}
+                <span className="font-mono">OMADA_CLIENT_SECRET</span> in the server .env to enable auto-sync.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Auto-sync Omada inventory</span>
+                  <input
+                    type="checkbox"
+                    checked={omSyncEnabled}
+                    onChange={(e) => setOmSyncEnabled(e.target.checked)}
+                    className="cursor-pointer accent-[#21b6c4]"
+                    aria-label="Toggle Omada auto-sync"
+                  />
+                </label>
+                <div className={omSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={300}
+                      max={86400}
+                      value={omInterval}
+                      onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setOmInterval(v) }}
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-background border border-border text-foreground focus:outline-none focus:border-[#21b6c4]"
+                      aria-label="Omada sync interval"
+                    />
+                    <span className="text-xs text-muted-foreground">seconds</span>
+                  </div>
+                </div>
+                {/* Applies to auto-sync and to Re-sync now, not to the import
+                    modal, which asks each time. */}
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-xs text-muted-foreground">Import from</span>
+                  {OMADA_SOURCES.map((src) => (
+                    <label key={src.key} className="flex items-start justify-between gap-2 cursor-pointer">
+                      <span className="min-w-0">
+                        <span className="text-xs text-foreground">{src.label}</span>
+                        <span className="block text-[10px] text-muted-foreground leading-tight">{src.hint}</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={omModes[src.key]}
+                        onChange={(e) => setOmModes((m) => ({ ...m, [src.key]: e.target.checked }))}
+                        className="mt-0.5 cursor-pointer accent-[#21b6c4]"
+                        aria-label={`Import Omada ${src.label}`}
+                      />
+                    </label>
+                  ))}
+                  {!anyOmadaSource && (
+                    <p className="text-[10px] text-warning leading-tight">
+                      Select at least one source, or the sync has nothing to import.
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    onClick={handleOmSyncNow}
+                    disabled={omSyncing || !anyOmadaSource}
+                    className="h-7 text-xs border-[#21b6c4] text-[#21b6c4] hover:bg-[#21b6c4]/10"
+                  >
+                    {omSyncing ? 'Syncing…' : 'Re-sync now'}
+                  </Button>
+                  <span className="text-[10px] text-muted-foreground leading-tight">
+                    Runs one import immediately using the server .env config.
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+          )}
           </div>
         </div>
 
@@ -863,8 +991,12 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button
             onClick={handleSave}
-            disabled={saving || unifiBlocksSave}
-            title={unifiBlocksSave ? 'Select at least one UniFi source to import.' : undefined}
+            disabled={saving || unifiBlocksSave || omadaBlocksSave}
+            title={
+              unifiBlocksSave ? 'Select at least one UniFi source to import.'
+                : omadaBlocksSave ? 'Select at least one Omada source to import.'
+                : undefined
+            }
             style={{ background: '#00d4ff', color: '#0d1117' }}
           >
             {saving ? 'Saving…' : 'Save'}

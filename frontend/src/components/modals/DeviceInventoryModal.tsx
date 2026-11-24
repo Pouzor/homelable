@@ -810,6 +810,13 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 UniFi
               </button>
               <button
+                onClick={() => setSourceFilter('omada')}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'omada' ? 'bg-[#21b6c4]/20 text-[#21b6c4]' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                title="Imported from an Omada controller — gear and clients"
+              >
+                Omada
+              </button>
+              <button
                 onClick={() => setSourceFilter('rack')}
                 className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'rack' ? 'bg-success/20 text-success' : 'bg-background text-muted-foreground hover:text-foreground'}`}
                 title="Gear created from a rack canvas"

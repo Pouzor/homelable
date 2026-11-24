@@ -35,6 +35,12 @@ describe('sourceBuckets', () => {
     expect([...sourceBuckets(device({ discovery_sources: ['unifi-client'] }))]).toEqual(['unifi'])
   })
 
+  it('buckets Omada infrastructure and clients together', () => {
+    expect([...sourceBuckets(device({ discovery_sources: ['omada'] }))]).toEqual(['omada'])
+    expect([...sourceBuckets(device({ discovery_sources: ['omada-client'] }))]).toEqual(['omada'])
+    expect(orderedSources(device({ discovery_sources: ['omada-client', 'arp'] }))).toEqual(['ip', 'omada'])
+  })
+
   it('keeps both sources for a host seen by an IP scan and by UniFi', () => {
     const buckets = sourceBuckets(device({ discovery_sources: ['arp', 'unifi-client'] }))
     expect([...buckets].sort()).toEqual(['ip', 'unifi'])

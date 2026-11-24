@@ -33,15 +33,21 @@ vi.mock('@/api/client', () => ({
     saveConfig: vi.fn(),
     syncNow: vi.fn(),
   },
+  omadaApi: {
+    getConfig: vi.fn(),
+    saveConfig: vi.fn(),
+    syncNow: vi.fn(),
+  },
 }))
 
-import { settingsApi, proxmoxApi, zigbeeApi, zwaveApi, unifiApi, unraidApi } from '@/api/client'
+import { settingsApi, proxmoxApi, zigbeeApi, zwaveApi, unifiApi, unraidApi, omadaApi } from '@/api/client'
 import { toast } from 'sonner'
 import { useCanvasStore } from '@/stores/canvasStore'
 
 describe('SettingsModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(omadaApi.getConfig).mockRejectedValue(new Error('not configured'))
     vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: false, service_check_interval: 300 } } as never)
     vi.mocked(settingsApi.save).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: false, service_check_interval: 300 } } as never)
     vi.mocked(proxmoxApi.getConfig).mockRejectedValue(new Error('not configured'))
@@ -318,6 +324,7 @@ describe('SettingsModal', () => {
 describe('SettingsModal — UniFi', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(omadaApi.getConfig).mockRejectedValue(new Error('not configured'))
     vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: false, service_check_interval: 300 } } as never)
     vi.mocked(settingsApi.save).mockResolvedValue({ data: {} } as never)
     vi.mocked(proxmoxApi.getConfig).mockRejectedValue(new Error('not configured'))
@@ -467,6 +474,7 @@ describe('SettingsModal — UniFi', () => {
 describe('SettingsModal - Unraid', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(omadaApi.getConfig).mockRejectedValue(new Error('not configured'))
     vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: false, service_check_interval: 300 } } as never)
     vi.mocked(settingsApi.save).mockResolvedValue({ data: {} } as never)
     vi.mocked(proxmoxApi.getConfig).mockRejectedValue(new Error('not configured'))
@@ -523,5 +531,85 @@ describe('SettingsModal - Unraid', () => {
       expect(unraidApi.syncNow).toHaveBeenCalledOnce()
       expect(toast.success).toHaveBeenCalledWith('Unraid sync started')
     })
+  })
+})
+
+describe('SettingsModal — Omada', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: false, service_check_interval: 300 } } as never)
+    vi.mocked(settingsApi.save).mockResolvedValue({ data: {} } as never)
+    vi.mocked(proxmoxApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(unraidApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(zigbeeApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(zwaveApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(unifiApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(omadaApi.saveConfig).mockResolvedValue({ data: {} } as never)
+    vi.mocked(omadaApi.syncNow).mockResolvedValue({ data: { infra_count: 3, client_count: 7 } } as never)
+    vi.mocked(toast.success).mockReset()
+    vi.mocked(toast.error).mockReset()
+  })
+
+  const config = (over = {}) => ({
+    data: {
+      url: 'https://omada.lan:8043', omada_id: '', site: '', verify_tls: false,
+      sync_enabled: false, sync_interval: 3600, credentials_configured: true,
+      modes: { infrastructure: true, clients: false },
+      ...over,
+    },
+  })
+
+  it('stays hidden when the controller is not configured', async () => {
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await waitFor(() => expect(omadaApi.getConfig).toHaveBeenCalled())
+    expect(screen.queryByText('Omada auto-sync')).not.toBeInTheDocument()
+  })
+
+  it('names the env vars to set when the controller has no credentials', async () => {
+    vi.mocked(omadaApi.getConfig).mockResolvedValue(config({ credentials_configured: false }) as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await screen.findByText('OMADA_CLIENT_SECRET')
+    expect(screen.queryByLabelText('Toggle Omada auto-sync')).not.toBeInTheDocument()
+  })
+
+  it('persists the activation, a clamped interval and the modes', async () => {
+    vi.mocked(omadaApi.getConfig).mockResolvedValue(config() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const input = await screen.findByLabelText('Omada sync interval')
+    await waitFor(() => expect(input).toHaveValue(3600))
+
+    fireEvent.click(screen.getByLabelText('Toggle Omada auto-sync'))
+    fireEvent.click(screen.getByLabelText('Import Omada Clients'))
+    fireEvent.change(input, { target: { value: '100' } })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    await waitFor(() => expect(omadaApi.saveConfig).toHaveBeenCalled())
+    expect(vi.mocked(omadaApi.saveConfig).mock.calls[0][0]).toEqual({
+      sync_enabled: true,
+      sync_interval: 300,
+      modes: { infrastructure: true, clients: true },
+    })
+  })
+
+  it('blocks Save and Re-sync now when no source is selected', async () => {
+    vi.mocked(omadaApi.getConfig).mockResolvedValue(config() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByLabelText('Import Omada Infrastructure'))
+
+    expect(screen.getByRole('button', { name: /re-sync now/i })).toBeDisabled()
+    const save = screen.getByRole('button', { name: /save/i })
+    expect(save).toBeDisabled()
+    fireEvent.click(save)
+    expect(settingsApi.save).not.toHaveBeenCalled()
+    expect(omadaApi.saveConfig).not.toHaveBeenCalled()
+  })
+
+  it('reports what a manual re-sync imported', async () => {
+    vi.mocked(omadaApi.getConfig).mockResolvedValue(config() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: /re-sync now/i }))
+
+    await waitFor(() => expect(omadaApi.syncNow).toHaveBeenCalledOnce())
+    expect(toast.success).toHaveBeenCalledWith('Omada sync done — 3 device(s), 7 client(s)')
   })
 })

@@ -32,6 +32,7 @@ import { ZwaveImportModal } from '@/components/zwave/ZwaveImportModal'
 import { ProxmoxImportModal } from '@/components/proxmox/ProxmoxImportModal'
 import { UnraidImportModal } from '@/components/unraid/UnraidImportModal'
 import { UnifiImportModal } from '@/components/unifi/UnifiImportModal'
+import { OmadaImportModal } from '@/components/omada/OmadaImportModal'
 import { ImportSourceModal, type ImportSourceKey } from '@/components/modals/ImportSourceModal'
 import { GroupRectModal, type GroupRectFormData } from '@/components/modals/GroupRectModal'
 import { TextModal, type TextFormData } from '@/components/modals/TextModal'
@@ -168,6 +169,7 @@ export default function App() {
   const [proxmoxImportOpen, setProxmoxImportOpen] = useState(false)
   const [unraidImportOpen, setUnraidImportOpen] = useState(false)
   const [unifiImportOpen, setUnifiImportOpen] = useState(false)
+  const [omadaImportOpen, setOmadaImportOpen] = useState(false)
   const [importPickerOpen, setImportPickerOpen] = useState(false)
 
   // Declare handleSave before the Ctrl+S effect so it is in scope.
@@ -380,6 +382,7 @@ export default function App() {
     else if (source === 'zwave') setZwaveImportOpen(true)
     else if (source === 'proxmox') setProxmoxImportOpen(true)
     else if (source === 'unraid') setUnraidImportOpen(true)
+    else if (source === 'omada') setOmadaImportOpen(true)
     else setUnifiImportOpen(true)
   }, [])
 
@@ -1458,6 +1461,15 @@ export default function App() {
             onClose={() => setUnifiImportOpen(false)}
             // The UniFi import is synchronous and already reports its counts,
             // so land the user on what it just created.
+            onInventoryImported={() => openInventoryModal()}
+          />
+        )}
+
+        {!STANDALONE && (
+          <OmadaImportModal
+            open={omadaImportOpen}
+            onClose={() => setOmadaImportOpen(false)}
+            // Synchronous like the UniFi import: land on what it just created.
             onInventoryImported={() => openInventoryModal()}
           />
         )}
