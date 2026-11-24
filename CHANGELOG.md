@@ -5,6 +5,21 @@ All notable changes to **Homelable** are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [3.8.0] - 2026-11-24
+
+### Features
+
+- Interface themes and a sortable Device Inventory table. (#609)
+- The UniFi import authenticates with an API key. (#623, fixes #612)
+
+### Fixes
+
+- Node properties and styling survive a YAML export/import. (#610, fixes #608)
+- UniFi env config defaults to port 443 and accepts `host:port`. (#611, fixes #551)
+- Documentation pages use the full pane width. (#620)
+- A rack canvas fits its racks into view on load. (#621, fixes #619)
+- Approving mesh devices keeps their user properties. (#624, fixes #617)
+
 ## [3.7.1] - 2026-11-15
 
 ### Features
