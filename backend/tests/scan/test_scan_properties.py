@@ -472,3 +472,123 @@ async def test_single_approve_zwave_sets_wireless_fields(client, headers, db_ses
     assert device.status_live == "online"
     assert device.check_method == "none"
     assert any(p["key"] == "Z-Wave ID" for p in device.properties)
+
+
+# ── Regression #617: approving a mesh device merges, never replaces ─────────
+
+ROOM = {"key": "Room", "value": "Landing", "icon": "Home", "visible": True}
+
+
+async def _approved_row(db_session, device_id: str) -> InventoryDevice:
+    db_session.expire_all()
+    device = await db_session.get(InventoryDevice, device_id)
+    assert device is not None
+    return device
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_zigbee_keeps_user_properties(
+    client: AsyncClient, headers, zigbee_pending_device, db_session
+):
+    zigbee_pending_device.properties = [dict(ROOM)]
+    await db_session.commit()
+
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": [zigbee_pending_device.id]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+
+    device = await _approved_row(db_session, zigbee_pending_device.id)
+    by_key = {p["key"]: p for p in device.properties}
+    assert by_key["Room"] == ROOM
+    assert by_key["IEEE"]["value"] == "0xABCDEF"
+    assert by_key["LQI"]["value"] == "180"
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_zigbee_refreshes_value_and_keeps_visibility(
+    client: AsyncClient, headers, zigbee_pending_device, db_session
+):
+    zigbee_pending_device.properties = [
+        {"key": "LQI", "value": "12", "icon": None, "visible": True},
+    ]
+    await db_session.commit()
+
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": [zigbee_pending_device.id]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+
+    device = await _approved_row(db_session, zigbee_pending_device.id)
+    lqi = [p for p in device.properties if p["key"] == "LQI"]
+    assert len(lqi) == 1
+    assert lqi[0]["value"] == "180"
+    assert lqi[0]["visible"] is True
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_zwave_keeps_user_properties(client, headers, db_session):
+    dev = InventoryDevice(
+        id=str(uuid.uuid4()),
+        ieee_address="zwave-H-617",
+        friendly_name="Door Sensor",
+        suggested_type="zwave_enddevice",
+        vendor="Aeotec",
+        model="ZW120",
+        status="pending",
+        discovery_source="zwave",
+        properties=[dict(ROOM)],
+    )
+    db_session.add(dev)
+    await db_session.commit()
+
+    res = await client.post(
+        "/api/v1/scan/pending/bulk-approve",
+        json={"device_ids": [dev.id]},
+        headers=headers,
+    )
+    assert res.status_code == 200
+
+    device = await _approved_row(db_session, dev.id)
+    keys = {p["key"] for p in device.properties}
+    assert "Room" in keys
+    assert "Z-Wave ID" in keys
+
+
+@pytest.mark.asyncio
+async def test_single_approve_zigbee_keeps_row_and_dialog_properties(
+    client: AsyncClient, headers, zigbee_pending_device, db_session
+):
+    zigbee_pending_device.properties = [dict(ROOM)]
+    await db_session.commit()
+
+    payload = {
+        "label": "bulb_1",
+        "type": "zigbee_enddevice",
+        "status": "online",
+        "services": [],
+        "check_method": "none",
+        "properties": [
+            {"key": "Notes", "value": "hall ceiling", "icon": None, "visible": False},
+            # A stale radio value from the dialog loses to the mesh facts.
+            {"key": "IEEE", "value": "0xSTALE", "icon": None, "visible": False},
+        ],
+    }
+    res = await client.post(
+        f"/api/v1/scan/pending/{zigbee_pending_device.id}/approve",
+        json=payload,
+        headers=headers,
+    )
+    assert res.status_code == 200
+
+    device = await _approved_row(db_session, zigbee_pending_device.id)
+    by_key = {p["key"]: p for p in device.properties}
+    assert by_key["Room"] == ROOM
+    assert by_key["Notes"]["value"] == "hall ceiling"
+    assert by_key["IEEE"]["value"] == "0xABCDEF"
+    assert [p["key"] for p in device.properties].count("IEEE") == 1
+    assert by_key["Model"]["value"] == "TRADFRI"

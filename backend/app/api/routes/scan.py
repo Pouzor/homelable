@@ -811,8 +811,13 @@ async def bulk_approve_devices(
         # default check method describe the device itself.
         device.type = device.type or node_type
         device.label = device.label or device.hostname or device.friendly_name or device.ip or "device"
+        # Merge, never replace: the mesh facts refresh their own keys and leave
+        # whatever the user added to the row (Room, notes…) in place.
         device.properties = (
-            _wireless_properties(node_type, device.ieee_address, device.vendor, device.model, device.lqi)
+            merge_zigbee_properties(
+                list(device.properties or []),
+                _wireless_properties(node_type, device.ieee_address, device.vendor, device.model, device.lqi),
+            )
             if is_wireless
             else merge_mac_property(list(device.properties or []), device.mac)
         )
@@ -993,15 +998,19 @@ async def approve_device(
     device.mac = _mac
     device.hostname = node_data.hostname or device.hostname
     device.services = merge_services(device.services, node_data.services)
+    # The row's own properties, then the dialog's edits on top. A mesh device
+    # then gets its radio facts merged last, so they win over a stale dialog
+    # value without dropping anything the user added.
+    merged = merge_zigbee_properties(list(device.properties or []), node_data.properties or [])
     device.properties = (
-        _wireless_properties(
-            node_data.type, device.ieee_address, device.vendor, device.model, device.lqi
+        merge_zigbee_properties(
+            merged,
+            _wireless_properties(
+                node_data.type, device.ieee_address, device.vendor, device.model, device.lqi
+            ),
         )
         if wireless
-        else merge_mac_property(
-            merge_zigbee_properties(list(device.properties or []), node_data.properties or []),
-            _mac,
-        )
+        else merge_mac_property(merged, _mac)
     )
     if wireless:
         # A mesh device answers no ICMP; being in the mesh is the liveness.
