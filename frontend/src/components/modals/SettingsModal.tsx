@@ -948,10 +948,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     id="ts-sync-tags"
                     value={tsTags}
                     onChange={(e) => setTsTags(e.target.value)}
-                    placeholder="tag:server, tag:nas — blank imports every device"
+                    placeholder="tag:server, tag:nas"
                     className="w-full px-2 py-1 rounded-md text-xs font-mono bg-background border border-border text-foreground focus:outline-none focus:border-[#0d9488]"
                     aria-label="Tailscale tag filter"
                   />
+                  <span className="block text-[10px] text-muted-foreground leading-tight">Blank imports every device.</span>
                   <label className="flex items-center justify-between gap-2 cursor-pointer">
                     <span className="text-xs text-foreground">Include devices shared in from other tailnets</span>
                     <input

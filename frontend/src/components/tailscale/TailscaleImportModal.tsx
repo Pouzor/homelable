@@ -217,7 +217,7 @@ export function TailscaleImportModal({ open, onClose, onInventoryImported }: Tai
                   id="ts-tags"
                   value={form.tags}
                   onChange={(e) => update('tags', e.target.value)}
-                  placeholder="tag:server, tag:nas"
+                  placeholder="tag:server"
                   className="font-mono text-sm bg-background border-border"
                 />
                 <p className="text-[11px] text-muted-foreground/60">Blank imports every device</p>
