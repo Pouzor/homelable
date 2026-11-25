@@ -40,6 +40,17 @@ describe('sourceBuckets', () => {
     expect([...buckets].sort()).toEqual(['ip', 'unifi'])
   })
 
+  it('files a Tailscale device under its own bucket, next to the IP scan', () => {
+    // Recognised explicitly: the fallback branch would hide it behind the IP filter.
+    expect([...sourceBuckets(device({ discovery_sources: ['tailscale'] }))]).toEqual(['tailscale'])
+    // A host merged by hand with its LAN scan and its Proxmox guest shows all three.
+    expect(orderedSources(device({ discovery_sources: ['tailscale', 'arp', 'proxmox'] }))).toEqual([
+      'ip',
+      'proxmox',
+      'tailscale',
+    ])
+  })
+
   it('maps arp and mdns to the single ip bucket', () => {
     expect([...sourceBuckets(device({ discovery_sources: ['arp'] }))]).toEqual(['ip'])
     expect([...sourceBuckets(device({ discovery_sources: ['mdns'] }))]).toEqual(['ip'])

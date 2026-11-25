@@ -810,6 +810,13 @@ export function DeviceInventoryModal({ open, onClose, highlightId, initialStatus
                 UniFi
               </button>
               <button
+                onClick={() => setSourceFilter('tailscale')}
+                className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'tailscale' ? 'bg-[#0d9488]/20 text-[#0d9488]' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                title="Imported from a Tailscale tailnet"
+              >
+                Tailscale
+              </button>
+              <button
                 onClick={() => setSourceFilter('rack')}
                 className={`px-2.5 py-1.5 transition-colors border-l border-border ${sourceFilter === 'rack' ? 'bg-success/20 text-success' : 'bg-background text-muted-foreground hover:text-foreground'}`}
                 title="Gear created from a rack canvas"

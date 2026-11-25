@@ -8,12 +8,14 @@ import {
   zigbeeApi,
   zwaveApi,
   unifiApi,
+  tailscaleApi,
   type ProxmoxConfigData,
   type UnraidConfigData,
   type ZigbeeConfigData,
   type ZwaveConfigData,
   type UnifiConfigData,
   type UnifiImportModes,
+  type TailscaleConfigData,
 } from '@/api/client'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useWalkthroughStore } from '@/stores/walkthroughStore'
@@ -135,6 +137,9 @@ const UNIFI_MAX_INTERVAL = 86400
 // Mirrors UnraidSyncConfig.sync_interval (ge=300, le=86400) on the backend.
 const UNRAID_MIN_INTERVAL = 300
 const UNRAID_MAX_INTERVAL = 86400
+// Mirrors TailscaleSyncConfig.sync_interval (ge=300, le=86400) on the backend.
+const TAILSCALE_MIN_INTERVAL = 300
+const TAILSCALE_MAX_INTERVAL = 86400
 
 const UNIFI_SOURCES: { key: keyof UnifiImportModes; label: string; hint: string }[] = [
   { key: 'infrastructure', label: 'Infrastructure', hint: 'stat/device — adopted APs, switches, gateways.' },
@@ -177,6 +182,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     active_clients: false,
   })
   const [unSyncing, setUnSyncing] = useState(false)
+  const [tsConfig, setTsConfig] = useState<TailscaleConfigData | null>(null)
+  const [tsSyncEnabled, setTsSyncEnabled] = useState(false)
+  const [tsInterval, setTsInterval] = useState(3600)
+  const [tsIncludeShared, setTsIncludeShared] = useState(false)
+  // Comma-separated in the input; a list on the wire.
+  const [tsTags, setTsTags] = useState('')
+  const [tsSyncing, setTsSyncing] = useState(false)
   const [alignment, setAlignment] = useState<AlignmentSettings>(readAlignmentSettings)
   const [autosave, setAutosave] = useState<AutosaveSettings>(readAutosaveSettings)
   const [hoverHighlight, setHoverHighlight] = useState<HoverHighlightSettings>(readHoverHighlightSettings)
@@ -235,6 +247,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         setUnModes(res.data.modes)
       })
       .catch(() => {/* unifi not configured */})
+    tailscaleApi.getConfig()
+      .then((res) => {
+        setTsConfig(res.data)
+        setTsSyncEnabled(res.data.sync_enabled)
+        setTsInterval(res.data.sync_interval)
+        setTsIncludeShared(res.data.include_shared)
+        setTsTags(res.data.tags.join(', '))
+      })
+      .catch(() => {/* tailscale not configured */})
   }, [open])
 
   useEffect(() => subscribeAlignmentSettings(setAlignment), [])
@@ -293,6 +314,19 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
       toast.error('Failed to run UniFi sync')
     } finally {
       setUnSyncing(false)
+    }
+  }
+
+  const handleTsSyncNow = async () => {
+    setTsSyncing(true)
+    try {
+      const res = await tailscaleApi.syncNow()
+      const { device_count, online_count } = res.data
+      toast.success(`Tailscale sync done — ${device_count} device(s), ${online_count} online`)
+    } catch {
+      toast.error('Failed to run Tailscale sync')
+    } finally {
+      setTsSyncing(false)
     }
   }
 
@@ -380,6 +414,18 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           sync_enabled: unSyncEnabled,
           sync_interval: clamped,
           modes: unModes,
+        })
+      }
+      if (tsConfig) {
+        // The credential and the tailnet are env-only; the activation and the
+        // filters persist. Clamped for the same reason as UniFi.
+        const clamped = Math.min(TAILSCALE_MAX_INTERVAL, Math.max(TAILSCALE_MIN_INTERVAL, Math.round(tsInterval)))
+        if (clamped !== tsInterval) setTsInterval(clamped)
+        await tailscaleApi.saveConfig({
+          sync_enabled: tsSyncEnabled,
+          sync_interval: clamped,
+          include_shared: tsIncludeShared,
+          tags: tsTags.split(',').map((t) => t.trim()).filter(Boolean),
         })
       }
       toast.success('Settings saved')
@@ -852,6 +898,84 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                     Set <span className="font-mono">UNIFI_HOST</span> in the server .env to enable manual re-sync.
                   </p>
                 )}
+              </>
+            )}
+          </div>
+          )}
+          {/* Tailscale auto-sync */}
+          {!STANDALONE && tsConfig && (
+          <div className="pt-3 border-t border-border space-y-2">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Tailscale auto-sync</span>
+            {!tsConfig.credentials_configured ? (
+              <p className="text-[10px] text-warning leading-tight">
+                No Tailscale credential configured. Set{' '}
+                <span className="font-mono">TAILSCALE_OAUTH_CLIENT_ID</span> and{' '}
+                <span className="font-mono">TAILSCALE_OAUTH_CLIENT_SECRET</span> (or{' '}
+                <span className="font-mono">TAILSCALE_API_KEY</span>) in the server .env to enable auto-sync.
+              </p>
+            ) : (
+              <>
+                <label className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-xs text-foreground">Auto-sync tailnet devices</span>
+                  <input
+                    type="checkbox"
+                    checked={tsSyncEnabled}
+                    onChange={(e) => setTsSyncEnabled(e.target.checked)}
+                    className="cursor-pointer accent-[#0d9488]"
+                    aria-label="Toggle Tailscale auto-sync"
+                  />
+                </label>
+                <div className={tsSyncEnabled ? 'space-y-1.5' : 'space-y-1.5 opacity-50 pointer-events-none'}>
+                  <label className="text-xs text-muted-foreground">Sync interval (s)</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={300}
+                      max={86400}
+                      value={tsInterval}
+                      onChange={(e) => { const v = Number(e.target.value); if (!isNaN(v)) setTsInterval(v) }}
+                      className="w-24 px-2 py-1 rounded-md text-xs font-mono bg-background border border-border text-foreground focus:outline-none focus:border-[#0d9488]"
+                      aria-label="Tailscale sync interval"
+                    />
+                    <span className="text-xs text-muted-foreground">seconds</span>
+                  </div>
+                </div>
+                {/* The filters apply to auto-sync and to Re-sync now, not to the
+                    import modal, which asks each time. */}
+                <div className="space-y-1.5 pt-1">
+                  <label className="text-xs text-muted-foreground" htmlFor="ts-sync-tags">Only these tags</label>
+                  <input
+                    id="ts-sync-tags"
+                    value={tsTags}
+                    onChange={(e) => setTsTags(e.target.value)}
+                    placeholder="tag:server, tag:nas — blank imports every device"
+                    className="w-full px-2 py-1 rounded-md text-xs font-mono bg-background border border-border text-foreground focus:outline-none focus:border-[#0d9488]"
+                    aria-label="Tailscale tag filter"
+                  />
+                  <label className="flex items-center justify-between gap-2 cursor-pointer">
+                    <span className="text-xs text-foreground">Include devices shared in from other tailnets</span>
+                    <input
+                      type="checkbox"
+                      checked={tsIncludeShared}
+                      onChange={(e) => setTsIncludeShared(e.target.checked)}
+                      className="cursor-pointer accent-[#0d9488]"
+                      aria-label="Include shared-in Tailscale devices"
+                    />
+                  </label>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    onClick={handleTsSyncNow}
+                    disabled={tsSyncing}
+                    className="h-7 text-xs border-[#0d9488] text-[#0d9488] hover:bg-[#0d9488]/10"
+                  >
+                    {tsSyncing ? 'Syncing…' : 'Re-sync now'}
+                  </Button>
+                  <span className="text-[10px] text-muted-foreground leading-tight">
+                    Runs one import immediately with the server .env credential and the saved filters.
+                  </span>
+                </div>
               </>
             )}
           </div>
