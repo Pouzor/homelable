@@ -267,3 +267,18 @@ async def test_fetch_zwave_network_connection_error() -> None:
         mock_aiomqtt.MqttError = Exception
         with pytest.raises(ConnectionError):
             await fetch_zwave_network(mqtt_host="bad", mqtt_port=1883)
+
+
+@pytest.mark.asyncio
+async def test_fetch_zwave_network_timeout_mentions_broker_packet_limit() -> None:
+    with (
+        patch(
+            "app.services.zwave_service.request_response",
+            side_effect=TimeoutError("Timed out waiting for MQTT response after 30s"),
+        ),
+        pytest.raises(TimeoutError) as exc_info,
+    ):
+        await fetch_zwave_network(mqtt_host="localhost", mqtt_port=1883)
+    message = str(exc_info.value)
+    assert "Timed out waiting for MQTT response after 30s" in message
+    assert "max_packet_size" in message
