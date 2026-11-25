@@ -19,6 +19,7 @@ from app.core.scheduler import (
     reschedule_zwave_sync,
     set_proxmox_sync_enabled,
     set_service_checks_enabled,
+    set_tailscale_sync_enabled,
     set_unraid_sync_enabled,
     set_zigbee_sync_enabled,
     set_zwave_sync_enabled,
@@ -330,6 +331,7 @@ def test_scheduler_uses_settings_interval():
         mock_settings.zigbee_sync_enabled = False
         mock_settings.zwave_sync_enabled = False
         mock_settings.unifi_sync_enabled = False
+        mock_settings.tailscale_sync_enabled = False
         mock_settings.unraid_sync_enabled = False
         start_scheduler()
         _, kwargs = mock_sched.add_job.call_args
@@ -347,6 +349,7 @@ def test_start_and_stop_scheduler():
         mock_settings.zigbee_sync_enabled = False
         mock_settings.zwave_sync_enabled = False
         mock_settings.unifi_sync_enabled = False
+        mock_settings.tailscale_sync_enabled = False
         mock_settings.unraid_sync_enabled = False
         start_scheduler()
         stop_scheduler()
@@ -444,6 +447,7 @@ def test_start_scheduler_adds_service_job_when_enabled():
         mock_settings.zigbee_sync_enabled = False
         mock_settings.zwave_sync_enabled = False
         mock_settings.unifi_sync_enabled = False
+        mock_settings.tailscale_sync_enabled = False
         mock_settings.unraid_sync_enabled = False
         start_scheduler()
     job_ids = [kw.get("id") for _, kw in mock_sched.add_job.call_args_list]
@@ -673,6 +677,7 @@ def test_start_scheduler_adds_mesh_jobs_when_enabled():
         mock_settings.zwave_sync_enabled = True
         mock_settings.zwave_sync_interval = 3600
         mock_settings.unifi_sync_enabled = False
+        mock_settings.tailscale_sync_enabled = False
         mock_settings.unraid_sync_enabled = False
         start_scheduler()
     job_ids = [kw.get("id") for _, kw in mock_sched.add_job.call_args_list]
@@ -747,6 +752,7 @@ def test_start_scheduler_floors_a_short_unraid_sync_interval():
         mock_settings.zigbee_sync_enabled = False
         mock_settings.zwave_sync_enabled = False
         mock_settings.unifi_sync_enabled = False
+        mock_settings.tailscale_sync_enabled = False
         mock_settings.unraid_sync_enabled = True
         mock_settings.unraid_sync_interval = 5
         start_scheduler()
@@ -763,6 +769,7 @@ def test_start_scheduler_keeps_a_valid_unraid_sync_interval():
         mock_settings.zigbee_sync_enabled = False
         mock_settings.zwave_sync_enabled = False
         mock_settings.unifi_sync_enabled = False
+        mock_settings.tailscale_sync_enabled = False
         mock_settings.unraid_sync_enabled = True
         mock_settings.unraid_sync_interval = 1800
         start_scheduler()
@@ -778,3 +785,42 @@ def test_set_unraid_sync_enabled_floors_a_short_interval():
         mock_settings.unraid_sync_interval = 5
         set_unraid_sync_enabled(True)
     assert _unraid_sync_seconds(mock_sched) == 300
+
+
+def _tailscale_sync_seconds(mock_sched: MagicMock) -> int:
+    for _, kwargs in mock_sched.add_job.call_args_list:
+        if kwargs.get("id") == "tailscale_sync":
+            return kwargs["seconds"]
+    raise AssertionError("tailscale_sync job was not added")
+
+
+def test_start_scheduler_adds_the_tailscale_sync_job_with_a_floored_interval():
+    """A sub-300s TAILSCALE_SYNC_INTERVAL from .env must not reach the scheduler."""
+    mock_sched = MagicMock()
+    with patch("app.core.scheduler.settings") as mock_settings, \
+         patch("app.core.scheduler.AsyncIOScheduler", return_value=mock_sched):
+        mock_settings.status_checker_interval = 60
+        mock_settings.service_check_enabled = False
+        mock_settings.proxmox_sync_enabled = False
+        mock_settings.zigbee_sync_enabled = False
+        mock_settings.zwave_sync_enabled = False
+        mock_settings.unifi_sync_enabled = False
+        mock_settings.unraid_sync_enabled = False
+        mock_settings.tailscale_sync_enabled = True
+        mock_settings.tailscale_sync_interval = 5
+        start_scheduler()
+        assert _tailscale_sync_seconds(mock_sched) == 300
+
+
+def test_set_tailscale_sync_enabled_adds_and_removes_the_job():
+    mock_sched = MagicMock()
+    mock_sched.running = True
+    mock_sched.get_job.return_value = None
+    with patch("app.core.scheduler.scheduler", mock_sched), \
+         patch("app.core.scheduler.settings") as mock_settings:
+        mock_settings.tailscale_sync_interval = 1800
+        set_tailscale_sync_enabled(True)
+        assert _tailscale_sync_seconds(mock_sched) == 1800
+        mock_sched.get_job.return_value = object()
+        set_tailscale_sync_enabled(False)
+    mock_sched.remove_job.assert_called_once_with("tailscale_sync")

@@ -445,3 +445,58 @@ async def test_update_settings_cannot_change_the_env_only_switch(client: AsyncCl
         assert mock_settings.status_checker_enabled is False
     assert res.status_code == 200
     assert res.json()["status_checker_enabled"] is False
+
+
+def test_save_overrides_never_writes_tailscale_credentials(tmp_path):
+    """The credentials and the tailnet are env-only; only the sync fields persist."""
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    s.tailscale_api_key = "tskey-api-secret"
+    s.tailscale_oauth_client_id = "kCLIENTID"
+    s.tailscale_oauth_client_secret = "tskey-client-secret"
+    s.tailscale_tailnet = "example.com"
+    s.tailscale_sync_enabled = True
+    s.tailscale_sync_interval = 900
+    s.tailscale_include_shared = True
+    s.tailscale_tag_filter = ["tag:server"]
+    s.save_overrides()
+    raw = (tmp_path / "scan_config.json").read_text()
+    for secret in ("tskey-api-secret", "kCLIENTID", "tskey-client-secret", "example.com"):
+        assert secret not in raw
+    written = json.loads(raw)
+    assert written["tailscale_sync_enabled"] is True
+    assert written["tailscale_sync_interval"] == 900
+    assert written["tailscale_include_shared"] is True
+    assert written["tailscale_tag_filter"] == ["tag:server"]
+
+
+def test_tailscale_overrides_are_read_back_without_touching_the_env(tmp_path):
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    s.tailscale_tailnet = "example.com"  # as if set from env
+    (tmp_path / "scan_config.json").write_text(json.dumps({
+        "tailscale_tailnet": "-",
+        "tailscale_api_key": "key-from-file",
+        "tailscale_sync_enabled": True,
+        "tailscale_sync_interval": 600,
+        "tailscale_include_shared": True,
+        "tailscale_tag_filter": ["tag:nas"],
+    }))
+    s.load_overrides()
+    assert s.tailscale_tailnet == "example.com"
+    assert s.tailscale_api_key == ""
+    assert s.tailscale_sync_enabled is True
+    assert s.tailscale_sync_interval == 600
+    assert s.tailscale_include_shared is True
+    assert s.tailscale_tag_filter == ["tag:nas"]
+
+
+def test_tailscale_credentials_configured_needs_a_whole_credential(tmp_path):
+    s = Settings(secret_key="x", sqlite_path=str(tmp_path / "homelab.db"))
+    assert s.tailscale_credentials_configured is False
+    s.tailscale_oauth_client_id = "k"
+    assert s.tailscale_credentials_configured is False
+    s.tailscale_oauth_client_secret = "s"
+    assert s.tailscale_credentials_configured is True
+    s.tailscale_oauth_client_id = ""
+    s.tailscale_oauth_client_secret = ""
+    s.tailscale_api_key = "tskey-api-x"
+    assert s.tailscale_credentials_configured is True
