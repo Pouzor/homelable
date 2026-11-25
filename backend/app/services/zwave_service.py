@@ -21,6 +21,15 @@ merge_zwave_properties = merge_zigbee_properties
 _REQUEST_TOPIC = "{prefix}/_CLIENTS/ZWAVE_GATEWAY-{gateway}/api/getNodes/set"
 _RESPONSE_TOPIC = "{prefix}/_CLIENTS/ZWAVE_GATEWAY-{gateway}/api/getNodes"
 
+# ``getNodes`` returns every node with all of its values, so the reply grows with the
+# mesh. Mosquitto 2.1+ drops clients that publish more than 2,000,000 bytes by default,
+# which Homelable only ever sees as a timeout.
+_TIMEOUT_HINT = (
+    "If Z-Wave JS UI logs 'MQTT: Mqtt client error read ECONNRESET' and the broker logs "
+    "'disconnected: oversize packet', the getNodes reply is larger than the broker's "
+    "max_packet_size (Mosquitto 2.1+ defaults to 2000000 bytes); raise it in the broker config"
+)
+
 
 def _zwave_type_to_homelable(raw: dict[str, Any]) -> str:
     """Map a Z-Wave node's role flags to a homelable node type.
@@ -201,17 +210,20 @@ async def fetch_zwave_network(
     request_topic = _REQUEST_TOPIC.format(prefix=prefix, gateway=gateway_name)
     response_topic = _RESPONSE_TOPIC.format(prefix=prefix, gateway=gateway_name)
 
-    payload = await request_response(
-        mqtt_host=mqtt_host,
-        mqtt_port=mqtt_port,
-        request_topic=request_topic,
-        response_topic=response_topic,
-        request_payload={"args": []},
-        username=username,
-        password=password,
-        tls=tls,
-        tls_insecure=tls_insecure,
-    )
+    try:
+        payload = await request_response(
+            mqtt_host=mqtt_host,
+            mqtt_port=mqtt_port,
+            request_topic=request_topic,
+            response_topic=response_topic,
+            request_payload={"args": []},
+            username=username,
+            password=password,
+            tls=tls,
+            tls_insecure=tls_insecure,
+        )
+    except TimeoutError as exc:
+        raise TimeoutError(f"{exc}. {_TIMEOUT_HINT}") from exc
 
     return parse_zwave_nodes(payload)
 
