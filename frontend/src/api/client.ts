@@ -739,3 +739,49 @@ export const unifiApi = {
 
   syncNow: () => api.post<UnifiImportResult>('/unifi/sync-now'),
 }
+
+export interface TailscaleFilters {
+  include_shared: boolean
+  tags: string[]
+}
+
+export interface TailscaleConnection extends Partial<TailscaleFilters> {
+  // Blank falls back to the server env; one credential is enough.
+  api_key?: string
+  oauth_client_id?: string
+  oauth_client_secret?: string
+  tailnet?: string
+}
+
+export interface TailscaleConfigData extends TailscaleFilters {
+  tailnet: string
+  sync_enabled: boolean
+  sync_interval: number
+  credentials_configured: boolean
+}
+
+export interface TailscaleImportResult {
+  device_count: number
+  pending_created: number
+  pending_updated: number
+  online_count: number
+}
+
+export const tailscaleApi = {
+  testConnection: (data: TailscaleConnection) =>
+    api.post<{ connected: boolean; message: string; device_count: number }>(
+      '/tailscale/test-connection',
+      data,
+    ),
+
+  importToPending: (data: TailscaleConnection) =>
+    api.post<TailscaleImportResult>('/tailscale/import-pending', data),
+
+  getConfig: () => api.get<TailscaleConfigData>('/tailscale/config'),
+  // Only auto-sync activation and the filters are persisted. The credential
+  // and the tailnet are env-only and never sent.
+  saveConfig: (data: TailscaleFilters & { sync_enabled: boolean; sync_interval: number }) =>
+    api.post<TailscaleConfigData>('/tailscale/config', data),
+
+  syncNow: () => api.post<TailscaleImportResult>('/tailscale/sync-now'),
+}

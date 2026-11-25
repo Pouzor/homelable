@@ -61,6 +61,7 @@ async def db_session():
             "app.api.routes.proxmox",
             "app.api.routes.unifi",
             "app.api.routes.unraid",
+            "app.api.routes.tailscale",
             "app.api.routes.scan",
         )
     ]

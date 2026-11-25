@@ -33,9 +33,15 @@ vi.mock('@/api/client', () => ({
     saveConfig: vi.fn(),
     syncNow: vi.fn(),
   },
+  // Not configured unless a test opts in, so its section stays hidden.
+  tailscaleApi: {
+    getConfig: vi.fn(() => Promise.reject(new Error('not configured'))),
+    saveConfig: vi.fn(),
+    syncNow: vi.fn(),
+  },
 }))
 
-import { settingsApi, proxmoxApi, zigbeeApi, zwaveApi, unifiApi, unraidApi } from '@/api/client'
+import { settingsApi, proxmoxApi, zigbeeApi, zwaveApi, unifiApi, unraidApi, tailscaleApi } from '@/api/client'
 import { toast } from 'sonner'
 import { useCanvasStore } from '@/stores/canvasStore'
 
@@ -522,6 +528,77 @@ describe('SettingsModal - Unraid', () => {
     await waitFor(() => {
       expect(unraidApi.syncNow).toHaveBeenCalledOnce()
       expect(toast.success).toHaveBeenCalledWith('Unraid sync started')
+    })
+  })
+})
+
+describe('SettingsModal - Tailscale', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(settingsApi.get).mockResolvedValue({ data: { interval_seconds: 60, service_check_enabled: false, service_check_interval: 300 } } as never)
+    vi.mocked(settingsApi.save).mockResolvedValue({ data: {} } as never)
+    vi.mocked(proxmoxApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(unraidApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(zigbeeApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(zwaveApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(unifiApi.getConfig).mockRejectedValue(new Error('not configured'))
+    vi.mocked(tailscaleApi.saveConfig).mockResolvedValue({ data: {} } as never)
+    vi.mocked(tailscaleApi.syncNow).mockResolvedValue({
+      data: { device_count: 7, pending_created: 2, pending_updated: 5, online_count: 6 },
+    } as never)
+    vi.mocked(toast.success).mockReset()
+  })
+
+  const config = (over = {}) => ({
+    data: {
+      tailnet: '-', sync_enabled: true, sync_interval: 3600, include_shared: false,
+      tags: ['tag:server'], credentials_configured: true, ...over,
+    },
+  })
+
+  it('persists the filters with the sync fields, tags as a list', async () => {
+    vi.mocked(tailscaleApi.getConfig).mockResolvedValue(config() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const tags = await screen.findByLabelText('Tailscale tag filter')
+    await waitFor(() => expect(tags).toHaveValue('tag:server'))
+    fireEvent.change(tags, { target: { value: 'tag:server, tag:nas , ' } })
+    fireEvent.click(screen.getByLabelText('Include shared-in Tailscale devices'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => {
+      expect(tailscaleApi.saveConfig).toHaveBeenCalledWith({
+        sync_enabled: true,
+        sync_interval: 3600,
+        include_shared: true,
+        tags: ['tag:server', 'tag:nas'],
+      })
+    })
+  })
+
+  it('clamps a typed sync interval into the range the backend accepts', async () => {
+    vi.mocked(tailscaleApi.getConfig).mockResolvedValue(config() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    const input = await screen.findByLabelText('Tailscale sync interval')
+    await waitFor(() => expect(input).toHaveValue(3600))
+    fireEvent.change(input, { target: { value: '100' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(tailscaleApi.saveConfig).toHaveBeenCalled())
+    expect(vi.mocked(tailscaleApi.saveConfig).mock.calls[0][0].sync_interval).toBe(300)
+  })
+
+  it('shows the env vars to set when no credential is configured', async () => {
+    vi.mocked(tailscaleApi.getConfig).mockResolvedValue(config({ credentials_configured: false }) as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    await screen.findByText('TAILSCALE_OAUTH_CLIENT_ID')
+    expect(screen.queryByLabelText('Toggle Tailscale auto-sync')).toBeNull()
+  })
+
+  it('reports what a manual re-sync imported', async () => {
+    vi.mocked(tailscaleApi.getConfig).mockResolvedValue(config() as never)
+    render(<SettingsModal open onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Re-sync now' }))
+    await waitFor(() => {
+      expect(tailscaleApi.syncNow).toHaveBeenCalledOnce()
+      expect(toast.success).toHaveBeenCalledWith('Tailscale sync done — 7 device(s), 6 online')
     })
   })
 })

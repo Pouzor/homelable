@@ -23,7 +23,7 @@ describe('ImportSourceModal', () => {
 
   it('lists every import source', () => {
     setup()
-    for (const label of ['Zigbee2MQTT', 'Z-Wave JS', 'Proxmox VE', 'UniFi']) {
+    for (const label of ['Zigbee2MQTT', 'Z-Wave JS', 'Proxmox VE', 'Unraid', 'UniFi', 'Tailscale']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
   })
@@ -46,6 +46,7 @@ describe('ImportSourceModal', () => {
     ['Z-Wave JS', 'zwave'],
     ['Proxmox VE', 'proxmox'],
     ['UniFi', 'unifi'],
+    ['Tailscale', 'tailscale'],
   ])('reports %s as the picked source', (label, key) => {
     const { onPick } = setup()
     fireEvent.click(screen.getByLabelText(`Import from ${label}`))

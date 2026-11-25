@@ -347,6 +347,30 @@ class Settings(BaseSettings):
     unifi_import_known_clients: bool = False
     unifi_import_active_clients: bool = False
 
+    # Tailscale import. Credentials are secrets -> env/.env ONLY, never persisted
+    # and never returned by the API. Either an API access token or an OAuth
+    # client (id + secret, scope `devices:core:read`) — the OAuth client is
+    # preferred: it does not expire and cannot write.
+    tailscale_api_key: str = ""
+    tailscale_oauth_client_id: str = ""
+    tailscale_oauth_client_secret: str = ""
+    # "-" is the tailnet the credential belongs to.
+    tailscale_tailnet: str = "-"
+    tailscale_sync_enabled: bool = False
+    tailscale_sync_interval: int = 3600  # seconds (floor 300 enforced on write)
+    # Devices shared in from another tailnet. Off: they are someone else's.
+    tailscale_include_shared: bool = False
+    # Import only devices carrying one of these tags (e.g. ["tag:server"]).
+    # Empty imports every device.
+    tailscale_tag_filter: list[str] = []
+
+    @property
+    def tailscale_credentials_configured(self) -> bool:
+        return bool(
+            self.tailscale_api_key
+            or (self.tailscale_oauth_client_id and self.tailscale_oauth_client_secret)
+        )
+
     def _unifi_target(self) -> tuple[str, int | None]:
         """(host, port) from UNIFI_URL, else UNIFI_HOST; port is None when unset.
 
@@ -458,6 +482,16 @@ class Settings(BaseSettings):
                 key = f"unifi_import_{mode}"
                 if key in data:
                     setattr(self, key, bool(data[key]))
+            # Tailscale: auto-sync activation and import filters only. The
+            # credentials and the tailnet are env-only.
+            if "tailscale_sync_enabled" in data:
+                self.tailscale_sync_enabled = bool(data["tailscale_sync_enabled"])
+            if "tailscale_sync_interval" in data:
+                self.tailscale_sync_interval = int(data["tailscale_sync_interval"])
+            if "tailscale_include_shared" in data:
+                self.tailscale_include_shared = bool(data["tailscale_include_shared"])
+            if "tailscale_tag_filter" in data:
+                self.tailscale_tag_filter = [str(t) for t in data["tailscale_tag_filter"] or []]
         except Exception:
             pass
 
@@ -496,6 +530,12 @@ class Settings(BaseSettings):
             "unifi_import_infrastructure": self.unifi_import_infrastructure,
             "unifi_import_known_clients": self.unifi_import_known_clients,
             "unifi_import_active_clients": self.unifi_import_active_clients,
+            # Tailscale: auto-sync activation and import filters only. The
+            # credentials and the tailnet are env-only.
+            "tailscale_sync_enabled": self.tailscale_sync_enabled,
+            "tailscale_sync_interval": self.tailscale_sync_interval,
+            "tailscale_include_shared": self.tailscale_include_shared,
+            "tailscale_tag_filter": self.tailscale_tag_filter,
         }))
 
 
