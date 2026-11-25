@@ -172,8 +172,9 @@ export function TailscaleImportModal({ open, onClose, onInventoryImported }: Tai
                     />
                   </div>
                   <p className="col-span-2 text-[11px] text-muted-foreground/60">
-                    Create it under Settings → Trust credentials in the Tailscale admin console, with
-                    only the <code className="font-mono">devices:core:read</code> scope. It cannot
+                    Create it under Settings → Trust credentials → + Credential → OAuth in the Tailscale
+                    admin console, with the <code className="font-mono">devices:core:read</code> scope
+                    (add <code className="font-mono">routes:read</code> for subnet routes). It cannot
                     change anything and does not expire.
                   </p>
                 </>

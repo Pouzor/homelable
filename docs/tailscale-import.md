@@ -34,8 +34,13 @@ A tag filter imports only devices carrying one of the tags you list.
 A credential that can read the tailnet's device list. Either:
 
 - **An OAuth client** (recommended). In the Tailscale admin console open
-  *Settings > Trust credentials*, create an OAuth client and give it only the
-  `devices:core:read` scope. It cannot change anything and does not expire.
+  *Settings > Trust credentials*, click **+ Credential** and choose **OAuth**.
+  The description may only contain letters and numbers (for example
+  `HomelableImport`). Under scopes tick **Devices > Core > Read**, and
+  **Routes > Read** if you want each device's advertised subnet routes and
+  exit-node status. Leave every write scope off. Generate the credential and
+  copy the client ID and secret straight away: the secret is shown only once.
+  The credential cannot change anything and does not expire.
 - **An API access token**, from *Settings > Keys*. It carries its owner's full
   rights and expires after at most 90 days.
 
