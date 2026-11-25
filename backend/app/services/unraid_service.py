@@ -139,9 +139,29 @@ def _client(host: str, port: int, api_key: str, verify_tls: bool, use_https: boo
     )
 
 
+# System UUIDs some motherboards ship unprogrammed and report verbatim on
+# every unit - seen in the wild shared across unrelated physical Unraid
+# boxes. Keying a host's identity on one of these merges their inventories
+# into a single host instead of keeping them distinct.
+_PLACEHOLDER_SYSTEM_UUIDS = frozenset({
+    "00000000-0000-0000-0000-000000000000",
+    "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    "03000200-0400-0500-0006-000700080009",
+})
+
+
 def _host_key(info: dict[str, Any]) -> str | None:
-    """Stable host key: the system UUID, else the hostname."""
-    key = ((info.get("system") or {}).get("uuid")) or ((info.get("os") or {}).get("hostname"))
+    """Stable host key: the system UUID, else the hostname.
+
+    A UUID in _PLACEHOLDER_SYSTEM_UUIDS is a manufacturer default, not a
+    real per-board identifier, so it falls back to hostname instead -
+    otherwise two different hosts reporting the same placeholder collapse
+    into one on import.
+    """
+    uuid = (info.get("system") or {}).get("uuid")
+    normalized = str(uuid).strip().lower() if uuid else ""
+    is_real_uuid = normalized and normalized not in _PLACEHOLDER_SYSTEM_UUIDS
+    key = uuid if is_real_uuid else (info.get("os") or {}).get("hostname")
     return str(key).lower() if key else None
 
 

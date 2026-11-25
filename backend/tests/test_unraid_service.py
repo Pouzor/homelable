@@ -67,6 +67,51 @@ def test_host_key_falls_back_to_hostname() -> None:
     assert nodes[0]["ieee_address"] == "unraid-host-pearl"
 
 
+def test_host_key_falls_back_to_hostname_for_known_placeholder_uuid() -> None:
+    # Two different physical boards reporting this exact unprogrammed UUID
+    # is a real, observed case - without the fallback they'd collapse into
+    # one host and each import would overwrite the other's containers.
+    data = _payload([])
+    data["info"]["system"]["uuid"] = "03000200-0400-0500-0006-000700080009"
+    nodes, _ = svc._parse_inventory(data)
+    assert nodes[0]["ieee_address"] == "unraid-host-pearl"
+
+
+def test_host_key_matches_placeholder_denylist_case_insensitively() -> None:
+    # Uppercase, so this only passes if the denylist check lowercases first.
+    data = _payload([])
+    data["info"]["system"]["uuid"] = "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"
+    nodes, _ = svc._parse_inventory(data)
+    assert nodes[0]["ieee_address"] == "unraid-host-pearl"
+
+
+def test_host_key_strips_whitespace_before_checking_placeholder_denylist() -> None:
+    data = _payload([])
+    data["info"]["system"]["uuid"] = "  03000200-0400-0500-0006-000700080009  "
+    nodes, _ = svc._parse_inventory(data)
+    assert nodes[0]["ieee_address"] == "unraid-host-pearl"
+
+
+def test_two_hosts_with_same_placeholder_uuid_stay_distinct() -> None:
+    # The actual observed failure: two different physical boards reporting
+    # the identical placeholder UUID must not collapse into one host, and
+    # their containers (same name on both) must not collide either.
+    pearl = _payload([_container("plex", "host")])
+    pearl["info"]["system"]["uuid"] = "03000200-0400-0500-0006-000700080009"
+
+    onyx = _payload([_container("plex", "host")])
+    onyx["info"]["system"]["uuid"] = "03000200-0400-0500-0006-000700080009"
+    onyx["info"]["os"]["hostname"] = "Onyx"
+
+    pearl_nodes, _ = svc._parse_inventory(pearl)
+    onyx_nodes, _ = svc._parse_inventory(onyx)
+
+    assert pearl_nodes[0]["ieee_address"] == "unraid-host-pearl"
+    assert onyx_nodes[0]["ieee_address"] == "unraid-host-onyx"
+    assert pearl_nodes[1]["ieee_address"] == "unraid-pearl-ct-plex"
+    assert onyx_nodes[1]["ieee_address"] == "unraid-onyx-ct-plex"
+
+
 def test_server_web_ui_is_the_address_the_import_used() -> None:
     assert svc._server_web_ui("10.1.1.231", 80, False)["host"] == "http://10.1.1.231"
     assert svc._server_web_ui("10.1.1.231", 443, True)["host"] == "https://10.1.1.231"
