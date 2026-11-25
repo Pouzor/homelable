@@ -296,6 +296,21 @@ def test_a_phone_is_typed_mobile_and_keeps_its_key_expiry() -> None:
     assert _props(dev)["Key expires"] == "2027-05-01T00:00:00Z"
 
 
+def test_an_iphone_reporting_localhost_takes_its_tailscale_name() -> None:
+    """Every iPhone reports the hostname "localhost" (seen on a real tailnet)."""
+    dev = normalize_device({
+        "nodeId": "nIphone1CNTRL",
+        "addresses": ["100.68.1.1"],
+        "name": "iphone-13-pro-max.tail1234.ts.net",
+        "hostname": "localhost",
+        "os": "iOS",
+    })
+    assert dev is not None
+    assert dev["hostname"] == "iphone-13-pro-max"
+    assert dev["label"] == "iphone-13-pro-max"
+    assert dev["type"] == "mobile"
+
+
 def test_every_property_starts_hidden() -> None:
     dev = normalize_device(_SERVER)
     assert dev is not None

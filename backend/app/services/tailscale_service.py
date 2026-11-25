@@ -221,7 +221,18 @@ def _short_name(d: dict[str, Any]) -> str:
     """The MagicDNS machine name without the tailnet suffix, else the hostname."""
     name = str(d.get("name") or "")
     first = name.split(".", 1)[0]
-    return first or str(d.get("hostname") or "")
+    return first or _reported_hostname(d)
+
+
+# Hostnames that name no machine. iOS reports "localhost" for every iPhone and
+# iPad, so on a tailnet with several of them the reported name says nothing.
+_PLACEHOLDER_HOSTNAMES = {"localhost", "localhost.localdomain", "localhost6"}
+
+
+def _reported_hostname(d: dict[str, Any]) -> str:
+    """The hostname the device reports, or '' when it is a placeholder."""
+    hostname = str(d.get("hostname") or "").strip()
+    return "" if hostname.lower() in _PLACEHOLDER_HOSTNAMES else hostname
 
 
 def _online(d: dict[str, Any]) -> bool | None:
@@ -244,7 +255,7 @@ def normalize_device(d: dict[str, Any]) -> dict[str, Any] | None:
     ipv6 = [a for a in addresses if ":" in a]
 
     os_name = str(d.get("os") or "").strip()
-    hostname = str(d.get("hostname") or "").strip() or _short_name(d)
+    hostname = _reported_hostname(d) or _short_name(d)
     label = _short_name(d) or hostname or node_id
 
     props: list[dict[str, Any]] = []
