@@ -586,6 +586,18 @@ async def test_run_zigbee_sync_skips_when_no_host():
     with patch("app.core.scheduler.settings") as mock_settings:
         mock_settings.zigbee_sync_enabled = True
         mock_settings.zigbee_mqtt_host = ""
+        mock_settings.zigbee_source = "mqtt"
+        await _run_zigbee_sync()  # no exception, no fetch
+
+
+@pytest.mark.asyncio
+async def test_run_zigbee_sync_skips_when_ha_source_not_configured():
+    """ZIGBEE_SOURCE=ha_api must check the HA env vars, not the MQTT host."""
+    with patch("app.core.scheduler.settings") as mock_settings:
+        mock_settings.zigbee_sync_enabled = True
+        mock_settings.zigbee_source = "ha_api"
+        mock_settings.zigbee_ha_url = ""
+        mock_settings.zigbee_ha_token = ""
         await _run_zigbee_sync()  # no exception, no fetch
 
 
@@ -613,6 +625,7 @@ async def test_run_zigbee_sync_records_scan_run(mem_db):
         patch("app.api.routes.zigbee.env_import_request", return_value=fake_payload),
     ):
         mock_settings.zigbee_sync_enabled = True
+        mock_settings.zigbee_source = "mqtt"
         mock_settings.zigbee_mqtt_host = "broker"
         mock_settings.zigbee_mqtt_port = 1883
         await _run_zigbee_sync()
@@ -622,6 +635,34 @@ async def test_run_zigbee_sync_records_scan_run(mem_db):
         run = (await db.execute(select(ScanRun))).scalars().one()
     assert run.kind == "zigbee"
     assert run.ranges == ["broker:1883"]
+    mock_bg.assert_awaited_once_with(run.id, fake_payload)
+
+
+@pytest.mark.asyncio
+async def test_run_zigbee_sync_ha_source_records_scan_run(mem_db):
+    """ZIGBEE_SOURCE=ha_api records the HA URL, not a mqtt_host:port pair."""
+    from app.db.models import ScanRun
+    from app.schemas.zigbee import ZigbeeImportRequest
+
+    fake_payload = ZigbeeImportRequest(mqtt_host="", mqtt_port=1883)
+
+    with (
+        patch("app.core.scheduler.settings") as mock_settings,
+        patch("app.core.scheduler.AsyncSessionLocal", mem_db),
+        patch("app.api.routes.zigbee._background_zigbee_import", new_callable=AsyncMock) as mock_bg,
+        patch("app.api.routes.zigbee.env_import_request", return_value=fake_payload),
+    ):
+        mock_settings.zigbee_sync_enabled = True
+        mock_settings.zigbee_source = "ha_api"
+        mock_settings.zigbee_ha_url = "http://ha.local:8123"
+        mock_settings.zigbee_ha_token = "token"
+        await _run_zigbee_sync()
+
+    async with mem_db() as db:
+        from sqlalchemy import select
+        run = (await db.execute(select(ScanRun))).scalars().one()
+    assert run.kind == "zigbee"
+    assert run.ranges == ["http://ha.local:8123"]
     mock_bg.assert_awaited_once_with(run.id, fake_payload)
 
 

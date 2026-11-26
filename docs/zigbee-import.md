@@ -97,6 +97,45 @@ Use **Auto Layout** (toolbar) to re-arrange the full canvas, or drag nodes manua
 
 ---
 
+## Alternative source: Home Assistant ZHA (no MQTT broker)
+
+If you run Zigbee through Home Assistant's native **ZHA** integration instead
+of Zigbee2MQTT, there is no MQTT broker to query — the manual **Zigbee
+Import** dialog above stays MQTT-only. Auto-sync and **Sync Now**
+(Settings → Zigbee auto-sync) can instead pull the device list straight from
+Home Assistant's WebSocket API.
+
+### Setup
+
+1. In Home Assistant: **Profile → Security → Long-Lived Access Tokens →
+   Create Token**.
+2. In the server `.env`:
+
+   ```bash
+   ZIGBEE_SOURCE=ha_api
+   ZIGBEE_HA_URL=http://homeassistant.local:8123
+   ZIGBEE_HA_TOKEN=<long-lived access token>
+   ```
+3. Restart the backend, then use **Settings → Zigbee auto-sync → Sync Now**
+   (or enable auto-sync) exactly as you would for Zigbee2MQTT.
+
+### What you get vs. Zigbee2MQTT
+
+- **Coordinator / Router / End Device** typing, model, vendor, and the
+  device's own LQI — same as Zigbee2MQTT.
+- **Hierarchy is flat**: every device is drawn as a direct child of the
+  coordinator. HA's `zha/devices` call reports each device's own radio
+  stats, but — unlike Z2M's networkmap — it does not return the neighbour
+  table needed to tell which router a device is actually routed through.
+- `include_mesh_links` and the mesh-link edge type do not apply to this
+  source (there is no neighbour data to draw).
+
+`ZIGBEE_SOURCE` is mutually exclusive: `ha_api` takes over auto-sync/Sync Now
+entirely, and the `ZIGBEE_MQTT_*` variables are ignored while it is set. The
+default remains `mqtt`, so existing Zigbee2MQTT setups are unaffected.
+
+---
+
 ## MQTT Configuration Tips
 
 ### Mosquitto without authentication

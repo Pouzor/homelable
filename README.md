@@ -247,6 +247,11 @@ Homelable can connect directly to your MQTT broker and import your Zigbee networ
 Hierarchy is set automatically: coordinator → routers → end devices (`parent_id`).
 LQI (Link Quality Indicator) is stored as a node property.
 
+Running Home Assistant's native **ZHA** integration instead of Zigbee2MQTT?
+Set `ZIGBEE_SOURCE=ha_api` (plus `ZIGBEE_HA_URL`/`ZIGBEE_HA_TOKEN`) to pull the
+device list from HA's API via Settings → Zigbee auto-sync / Sync Now, no MQTT
+broker required — see the docs for what differs (flat hierarchy, no mesh links).
+
 > **Full documentation:** [docs/zigbee-import.md](./docs/zigbee-import.md)
 
 ---

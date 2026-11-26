@@ -133,8 +133,9 @@ class ZigbeeConfig(BaseModel):
 
     MQTT connection fields (host/port/base_topic/tls) are env-only and
     read-only here — surfaced for display. ``host_configured`` reflects whether
-    a server-side MQTT host is set (required for auto-sync). MQTT credentials
-    (username/password) are never carried."""
+    the active ``source``'s connection is set on the server (required for
+    auto-sync). MQTT credentials (username/password) and the HA token are
+    never carried."""
 
     mqtt_host: str = ""
     mqtt_port: int = Field(1883, ge=1, le=65535)
@@ -144,6 +145,10 @@ class ZigbeeConfig(BaseModel):
     sync_interval: int = Field(3600, ge=300)
     include_mesh_links: bool = False
     host_configured: bool = False
+    # "mqtt" (Zigbee2MQTT networkmap) or "ha_api" (Home Assistant ZHA via
+    # websocket) — set via ZIGBEE_SOURCE, surfaced here for operators to
+    # confirm which one is actually active.
+    source: str = "mqtt"
 
 
 class ZigbeeSyncConfig(BaseModel):
