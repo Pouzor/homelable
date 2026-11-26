@@ -1,6 +1,6 @@
 import { createElement, useEffect, useMemo } from 'react'
 import { NodeResizer, useUpdateNodeInternals, useViewport, type NodeProps, type Node } from '@xyflow/react'
-import { Cpu, MemoryStick, HardDrive, ExternalLink, type LucideIcon } from 'lucide-react'
+import { Cpu, MemoryStick, HardDrive, ExternalLink, Layers, ChevronRight, type LucideIcon } from 'lucide-react'
 import type { NodeData } from '@/types'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { resolveNodeIcon, isImageIconKey } from '@/utils/nodeIcons'
@@ -10,6 +10,7 @@ import { resolvePropertyIcon } from '@/utils/propertyIcons'
 import { useThemeStore } from '@/stores/themeStore'
 import { THEMES } from '@/utils/themes'
 import { useCanvasStore, serviceStatusKey } from '@/stores/canvasStore'
+import { useDesignStore } from '@/stores/designStore'
 import { maskIp, primaryIp, splitIps } from '@/utils/maskIp'
 import { sideHandleCount } from '@/utils/handleUtils'
 import { SideHandles } from './SideHandles'
@@ -45,6 +46,11 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
   const services = (data.services ?? []).filter((svc) => svc.visible !== false)
   const showServices = data.custom_colors?.show_services === true
   const serviceHost = data.ip ? primaryIp(data.ip) : data.hostname
+  // Drill-down: the design this node opens. Only drawn when that design is
+  // known here — the live view loads no design list, so it shows no button.
+  const linkedDesign = useDesignStore((s) =>
+    data.linked_design_id ? s.designs.find((d) => d.id === data.linked_design_id) : undefined)
+  const openLinkedDesign = useDesignStore((s) => s.openLinkedDesign)
 
   // Properties: prefer new system; fall back to legacy hardware fields for unmigrated nodes
   const visibleProperties = data.properties?.filter((p) => p.visible) ?? null
@@ -265,6 +271,32 @@ export function BaseNode({ id, data, selected, icon: typeIcon, width, height }: 
                 )}
               </div>
             )}
+          </div>
+        </>
+      )}
+
+      {linkedDesign && (
+        <>
+          <div style={{ height: 1, background: `${colors.border}44`, margin: '0 8px' }} />
+          <div className="px-2.5 py-1.5">
+            <button
+              type="button"
+              className="nodrag flex items-center justify-between gap-2 w-full px-1.5 py-1 rounded text-[10px] min-w-0 cursor-pointer hover:opacity-85 transition-opacity"
+              style={{ background: theme.colors.nodeIconBackground, color: theme.colors.nodeSubtextColor }}
+              title={`Open ${linkedDesign.name}`}
+              aria-label={`Open ${linkedDesign.name}`}
+              onClick={(e) => {
+                // A click on the button is a navigation, not a node selection.
+                e.stopPropagation()
+                openLinkedDesign(linkedDesign.id)
+              }}
+            >
+              <span className="flex items-center gap-1 min-w-0">
+                <Layers size={11} className="shrink-0" />
+                <span className="font-medium truncate">{linkedDesign.name}</span>
+              </span>
+              <ChevronRight size={11} className="shrink-0" />
+            </button>
           </div>
         </>
       )}

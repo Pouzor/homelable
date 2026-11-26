@@ -90,6 +90,24 @@ async def _remap_shrunk_handles(db: AsyncSession, node: Node, sent: dict[str, An
             edge.target_handle = fallbacks[edge.target_handle]
 
 
+async def _check_linked_design(db: AsyncSession, linked_id: str | None, own_design_id: str | None) -> None:
+    """Reject a drill-down link the canvas could not follow.
+
+    A missing design would draw a button that leads nowhere, and the node's own
+    design would just reload the canvas the user is already on. Rejected rather
+    than dropped: from an API client either one is a wrong argument.
+    """
+    if not linked_id:
+        return
+    if linked_id == own_design_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A node cannot open the design it is drawn on",
+        )
+    if await db.get(Design, linked_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Linked design not found")
+
+
 # ---------------------------------------------------------------------------
 # Auto-positioning helpers
 # ---------------------------------------------------------------------------
@@ -160,6 +178,7 @@ async def create_node(body: NodeCreate, db: AsyncSession = Depends(get_db), _: s
     if data.get("design_id") is None:
         first_design = (await db.execute(select(Design).order_by(Design.created_at).limit(1))).scalar()
         data["design_id"] = first_design.id if first_design else None
+    await _check_linked_design(db, data.get("linked_design_id"), data["design_id"])
 
     # Reject a silent duplicate: a node with the same ip OR mac already on the
     # target design. Scripts/MCP clients get a clear 409 (with the existing id)
@@ -238,6 +257,8 @@ async def update_node(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="A text annotation cannot be a parent node",
             )
+    if "linked_design_id" in sent:
+        await _check_linked_design(db, sent["linked_design_id"], node.design_id)
     # Before the new counts land: the old ones are what says which handles go away.
     await _remap_shrunk_handles(db, node, sent)
     for field, value in node_columns(sent).items():

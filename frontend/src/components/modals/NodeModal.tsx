@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { NODE_TYPE_LABELS, type NodeData, type NodeType, type CheckMethod, type NodeTypeStyle } from '@/types'
 import { useThemeStore } from '@/stores/themeStore'
+import { useDesignStore } from '@/stores/designStore'
 import { resolveNodeColors } from '@/utils/nodeColors'
 import { ICON_REGISTRY, NODE_TYPE_DEFAULT_ICONS, isBrandIconKey, brandIconSlug, brandIconUrl, resolveCustomIcon } from '@/utils/nodeIcons'
 import { IconImage } from '@/components/ui/IconImage'
@@ -190,6 +191,11 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
     setForm((f) => ({ ...f, [key]: value }))
 
   const customStyle = useThemeStore((s) => s.customStyle)
+  // Drill-down targets: every other design. The one being edited would only
+  // reload the canvas the node is already on.
+  const designs = useDesignStore((s) => s.designs)
+  const activeDesignId = useDesignStore((s) => s.activeDesignId)
+  const linkableDesigns = designs.filter((d) => d.id !== activeDesignId)
   // Effective default count for a side: the per-type style default if set,
   // otherwise the intrinsic side default (top/bottom → 1, left/right → 0).
   const effectiveSideDefault = (side: Side): number => {
@@ -476,6 +482,32 @@ export function NodeModal({ open, onClose, onSubmit, initial, title = 'Add Node'
                 </button>
               </div>
             )}
+            {/* Drill-down: the design this node opens when clicked through. */}
+            {!isFurniture && linkableDesigns.length > 0 && (
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <Label className="text-xs text-muted-foreground">Opens Design</Label>
+                <Select
+                  value={form.linked_design_id ?? 'none'}
+                  onValueChange={(v) => set('linked_design_id', v === 'none' ? undefined : v)}
+                >
+                  <SelectTrigger className={`bg-[#21262d] border-[#30363d] text-sm h-8 cursor-pointer ${modalStyles['modal-interactive']} ${modalStyles['modal-radius']}`} aria-label="Linked design selector">
+                    <SelectValue>
+                      {linkableDesigns.find((d) => d.id === form.linked_design_id)?.name ?? 'None'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#21262d] border-[#30363d]">
+                    <SelectItem value="none" className="text-sm">None</SelectItem>
+                    {linkableDesigns.map((d) => (
+                      <SelectItem key={d.id} value={d.id} className="text-sm">{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-[10px] text-muted-foreground/60">
+                  Adds a button on the node that opens this design, with a way back at the top of the canvas
+                </span>
+              </div>
+            )}
+
             {/* Notes — or, for canvas furniture, its description.
                 Furniture draws no device, so it has no inventory row to keep
                 `notes` on; its text lives on the node's own `description`. */}

@@ -94,10 +94,17 @@ async def save_canvas(
     # them — an edit made on this canvas is an edit to the device itself, and
     # every other canvas showing it follows.
     saved: list[tuple[Node, dict[str, Any], list[str] | None]] = []
+    known_designs = set((await db.execute(select(Design.id))).scalars().all())
     for node_data in body.nodes:
         db_node = await db.get(Node, node_data.id)
         payload = node_data.model_dump()
         payload["design_id"] = design_id
+        # A drill-down link to a design deleted meanwhile (another tab, the API)
+        # or to this very canvas leads nowhere: dropped like a bad port label,
+        # never a 422 that would cost the whole save.
+        linked = payload.get("linked_design_id")
+        if linked not in known_designs or linked == design_id:
+            payload["linked_design_id"] = None
         facts = facts_from_payload(payload, label=node_data.label, node_type=node_data.type)
         columns = node_columns(payload)
         if db_node and db_node.device_id and not columns.get("device_id"):

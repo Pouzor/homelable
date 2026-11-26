@@ -77,6 +77,12 @@ class Node(Base):
     # handle ID ('top', 'bottom-3'…), so a node can carry the device's own port
     # numbering (#495). NULL when every point shows its number.
     port_labels: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
+    # Another design this node opens when clicked through: a host drawn as one
+    # card on the network map leads to the canvas of what runs inside it. NULL
+    # when the node opens nothing. Never the node's own design.
+    linked_design_id: Mapped[str | None] = mapped_column(
+        String, ForeignKey("designs.id", ondelete="SET NULL"), nullable=True
+    )
     width: Mapped[float | None] = mapped_column(Float, nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)
     bottom_handles: Mapped[int] = mapped_column(Integer, default=1)

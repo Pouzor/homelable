@@ -715,6 +715,12 @@ def test_node_schemas_expose_port_labels():
         assert props["port_labels"]["additionalProperties"] == {"type": "string", "maxLength": 8}
 
 
+def test_node_schemas_expose_the_drill_down_link():
+    for tool_name in ("create_node", "update_node"):
+        props = _tool_schema(tool_name)
+        assert props["linked_design_id"]["type"] == "string"
+
+
 def test_edge_schemas_expose_the_connection_points():
     for tool_name in ("create_edge", "update_edge"):
         props = _tool_schema(tool_name)

@@ -3,7 +3,13 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationInfo, field_validator, model_validator
 
-from app.schemas.utils import SIDES, clamp_handles, normalize_port_labels, prune_port_labels
+from app.schemas.utils import (
+    SIDES,
+    clamp_handles,
+    normalize_linked_design,
+    normalize_port_labels,
+    prune_port_labels,
+)
 
 
 class NodeBase(BaseModel):
@@ -35,6 +41,8 @@ class NodeBase(BaseModel):
     show_port_numbers: bool = False
     # Text shown in place of a connection point's number, keyed by handle ID.
     port_labels: dict[str, str] | None = None
+    # Another design this node opens when clicked through (drill-down).
+    linked_design_id: str | None = None
     properties: list[dict[str, Any]] = []
     width: float | None = None
     height: float | None = None
@@ -59,6 +67,11 @@ class NodeBase(BaseModel):
     @classmethod
     def clean_port_labels(cls, v: object) -> object:
         return normalize_port_labels(v)
+
+    @field_validator('linked_design_id', mode='before')
+    @classmethod
+    def clean_linked_design(cls, v: object) -> object:
+        return normalize_linked_design(v)
 
     @model_validator(mode="after")
     def drop_unreachable_port_labels(self) -> "NodeBase":
@@ -106,6 +119,7 @@ class NodeUpdate(BaseModel):
     show_hardware: bool | None = None
     show_port_numbers: bool | None = None
     port_labels: dict[str, str] | None = None
+    linked_design_id: str | None = None
     properties: list[dict[str, Any]] | None = None
     width: float | None = None
     height: float | None = None
@@ -132,6 +146,11 @@ class NodeUpdate(BaseModel):
     @classmethod
     def clean_port_labels(cls, v: object) -> object:
         return normalize_port_labels(v)
+
+    @field_validator('linked_design_id', mode='before')
+    @classmethod
+    def clean_linked_design(cls, v: object) -> object:
+        return normalize_linked_design(v)
 
 
 class NodeResponse(NodeBase):

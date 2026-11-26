@@ -715,3 +715,18 @@ describe('port labels (#495)', () => {
     expect(without.data.port_labels).toBeUndefined()
   })
 })
+
+describe('drill-down link', () => {
+  it('serializes the linked design, or null when there is none', () => {
+    const linked = makeRfNode({ data: { label: 'host', type: 'server', status: 'online', services: [], linked_design_id: 'd2' } })
+    expect(serializeNode(linked).linked_design_id).toBe('d2')
+    expect(serializeNode(makeRfNode()).linked_design_id).toBeNull()
+  })
+
+  it('deserializes the link and maps the API null to unset', () => {
+    const linked = deserializeApiNode(makeApiNode({ linked_design_id: 'd2' }), new Map())
+    expect(linked.data.linked_design_id).toBe('d2')
+    const without = deserializeApiNode(makeApiNode({ linked_design_id: null }), new Map())
+    expect(without.data.linked_design_id).toBeUndefined()
+  })
+})
