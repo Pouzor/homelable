@@ -706,11 +706,10 @@ async def _mount_device(design_id: str, args: dict[str, Any]) -> dict[str, Any]:
         u_height=item.get("rack_u_height") if modelled else None,
         col_span=item.get("rack_col_span") if modelled else None,
     )
-    ports = (
-        [dict(p) for p in item.get("rack_ports") or []]
-        if modelled
-        else _seed_ports(plate)
-    )
+    # A plate set without ports (e.g. update_device with only
+    # rack_faceplate_id) has never been seeded: give it the template's.
+    stored_ports = [dict(p) for p in item.get("rack_ports") or []] if modelled else []
+    ports = stored_ports or _seed_ports(plate)
 
     mount = {
         "id": str(uuid.uuid4()),

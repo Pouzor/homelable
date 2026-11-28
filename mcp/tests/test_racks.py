@@ -272,6 +272,21 @@ async def test_mount_device_reuses_the_front_panel_the_inventory_owns(fake):
 
 
 @pytest.mark.anyio
+async def test_mount_device_seeds_ports_when_the_plate_was_set_without_any(fake):
+    """A plate picked with update_device (rack_faceplate_id only) has never been
+    seeded: mounting must not copy its empty port list onto the mount."""
+    _use(fake, items=[api_item(rack_faceplate_id="switch-24", rack_ports=[])])
+    result = await dispatch_rack(
+        "mount_device", {"design_id": DESIGN, "rack_id": "r1", "inventory_device_id": "i1"}
+    )
+    mount = fake.payload["devices"][0]
+    plate = get_faceplate("switch-24")
+    assert mount["faceplate_id"] == "switch-24"
+    assert [p["label"] for p in mount["ports"]] == [p["label"] for p in plate["ports"]]
+    assert result["ports"] == len(plate["ports"])
+
+
+@pytest.mark.anyio
 async def test_mount_device_keeps_the_label_and_bay_colours_the_inventory_owns(fake):
     """The save writes the plate back to the inventory row: a mount that dropped
     these colours would wipe them from the row as well."""
