@@ -21,6 +21,7 @@ READ_ONLY = frozenset({
     "list_pending_devices", "list_inventory", "list_hidden_devices",
     "list_zones", "list_designs",
     "list_racks", "get_rack", "list_rack_inventory", "list_faceplates",
+    "get_git_sync_status",
 })
 
 WRITE = frozenset({
@@ -39,8 +40,9 @@ DESTRUCTIVE = frozenset({
     "unmount_device", "unpatch_cable", "set_device_faceplate", "update_scan_config",
 })
 
-# Tools that make the backend touch the network (nmap), not just its database.
-OPEN_WORLD = frozenset({"trigger_scan", "rescan_device"})
+# Tools that make the backend touch the network (nmap, another system's API, a
+# git remote), not just its database.
+OPEN_WORLD = frozenset({"trigger_scan", "rescan_device", "sync_integration", "git_sync"})
 
 
 def annotation_for(name: str) -> ToolAnnotations:

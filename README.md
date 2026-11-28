@@ -524,6 +524,7 @@ Or add it manually to `~/.claude.json`:
 - *"What nodes are currently offline?"*
 - *"Add a new LXC container named `pihole` at 192.168.1.5, connected to my switch."*
 - *"Trigger a network scan on 192.168.1.0/24 and show me the pending devices."*
+- *"Re-sync Proxmox and UniFi now, then push the docs to git."*
 - *"Show me the full canvas topology."*
 - *"How much free U is left in the garage rack?"*
 - *"Mount the NAS in rack 1 and patch its first port to port 12 of the patch panel."*

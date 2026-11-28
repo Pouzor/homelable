@@ -12,6 +12,7 @@ from .racks import RACK_TOOL_NAMES, RACK_TOOLS, dispatch_rack
 # Kept in sync manually with frontend/src/types/index.ts NodeType (device types only —
 # group/groupRect/text are canvas annotations created via dedicated UI actions, not create_node).
 # Sync is enforced automatically by test_node_types_in_sync_with_frontend (mcp/tests/test_node_types_sync.py).
+
 NODE_TYPES = [
     "isp", "router", "firewall", "switch", "server", "proxmox", "vm", "lxc", "nas", "kvm", "ai_server",
     "iot", "ap", "camera", "printer", "computer", "laptop", "mobile", "cpl", "docker_host", "docker_container",
@@ -20,6 +21,9 @@ NODE_TYPES = [
     "solar_panel", "inverter", "circuit_breaker", "contactor", "electrical_switch", "socket",
     "light", "meter", "transformer", "load",
 ]
+
+# Integrations with a server-side "Re-sync now" (POST /api/v1/<source>/sync-now).
+SYNC_SOURCES = ["proxmox", "unifi", "unraid", "zigbee", "zwave"]
 
 # Kept in sync manually with frontend/src/types/index.ts EdgeType.
 # Sync is enforced automatically by test_edge_types_in_sync_with_frontend (mcp/tests/test_edge_types_sync.py).
@@ -214,6 +218,21 @@ def _build_tools() -> list[Tool]:
             "properties": {
                 "ranges": {"type": "array", "items": {"type": "string"}, "description": "CIDR ranges to scan (uses configured defaults if omitted)"},
             },
+        }),
+        Tool(name="sync_integration", description="Re-import one integration now, using the connection configured in the server's .env: the same as its Settings \u2192 Re-sync now button. Proxmox, UniFi and Unraid update the Device Inventory (new devices land as pending); Zigbee and Z-Wave refresh the mesh. Returns the scan run(s) it recorded; poll Scan History for the result. Fails with 400 when that integration isn't configured.", inputSchema={
+            "type": "object",
+            "required": ["source"],
+            "properties": {
+                "source": {"type": "string", "enum": SYNC_SOURCES, "description": "Which integration to re-import."},
+            },
+        }),
+        Tool(name="git_sync", description="Push the saved documentation and diagrams to the configured git repository now (Settings \u2192 Git sync \u2192 Sync now). Fails with 409 while a sync is already running, and when git sync is not configured.", inputSchema={
+            "type": "object",
+            "properties": {},
+        }),
+        Tool(name="get_git_sync_status", description="Git sync configuration (repository, branch, folder, auth method; never the credential), whether a sync is running, and the outcome of the last one.", inputSchema={
+            "type": "object",
+            "properties": {},
         }),
         Tool(name="approve_device", description="Approve a pending discovered device and create a node. A device created from a rack canvas (discovery_source 'rack') is refused with a 409 — passive rack gear never goes on a logical canvas.", inputSchema={
             "type": "object",
@@ -452,6 +471,18 @@ async def _dispatch(name: str, args: dict) -> dict:
     if name == "trigger_scan":
         body = {"ranges": args["ranges"]} if "ranges" in args else {}
         return await backend.post("/api/v1/scan/trigger", body)
+
+    if name == "sync_integration":
+        source = args["source"]
+        if source not in SYNC_SOURCES:
+            raise ValueError(f"Unknown source {source!r}. Choose one of: {', '.join(SYNC_SOURCES)}")
+        return await backend.post(f"/api/v1/{source}/sync-now", {})
+
+    if name == "git_sync":
+        return await backend.post("/api/v1/git-sync", {})
+
+    if name == "get_git_sync_status":
+        return await backend.get("/api/v1/git-sync")
 
     if name == "approve_device":
         device_id = safe_id(args.pop("id"), field="device id")

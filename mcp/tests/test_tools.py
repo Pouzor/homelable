@@ -813,3 +813,36 @@ async def test_update_edge_forwards_the_styling_fields(mock_backend):
     mock_backend.patch.assert_called_once_with(
         "/api/v1/edges/e7", {"animated": "flow", "path_style": "smooth"}
     )
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("source", ["proxmox", "unifi", "unraid", "zigbee", "zwave"])
+async def test_sync_integration_posts_to_the_sources_sync_now(mock_backend, source):
+    await _dispatch("sync_integration", {"source": source})
+    mock_backend.post.assert_called_once_with(f"/api/v1/{source}/sync-now", {})
+
+
+@pytest.mark.anyio
+async def test_sync_integration_refuses_an_unknown_source(mock_backend):
+    with pytest.raises(ValueError, match="Unknown source"):
+        await _dispatch("sync_integration", {"source": "../auth/login"})
+    mock_backend.post.assert_not_called()
+
+
+def test_sync_integration_schema_lists_every_source():
+    tool = next(t for t in TOOLS if t.name == "sync_integration")
+    assert tool.inputSchema["properties"]["source"]["enum"] == [
+        "proxmox", "unifi", "unraid", "zigbee", "zwave",
+    ]
+
+
+@pytest.mark.anyio
+async def test_git_sync_pushes(mock_backend):
+    await _dispatch("git_sync", {})
+    mock_backend.post.assert_called_once_with("/api/v1/git-sync", {})
+
+
+@pytest.mark.anyio
+async def test_get_git_sync_status_reads(mock_backend):
+    await _dispatch("get_git_sync_status", {})
+    mock_backend.get.assert_called_once_with("/api/v1/git-sync")

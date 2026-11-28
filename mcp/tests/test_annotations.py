@@ -65,7 +65,7 @@ def test_destructive_and_open_world_sets_are_pinned_to_explicit_lists():
         "delete_device", "delete_node", "delete_edge", "delete_design", "delete_rack",
         "unmount_device", "unpatch_cable", "set_device_faceplate", "update_scan_config",
     }
-    assert OPEN_WORLD == {"trigger_scan", "rescan_device"}
+    assert OPEN_WORLD == {"trigger_scan", "rescan_device", "sync_integration", "git_sync"}
 
 
 def test_unclassified_tool_gets_the_most_cautious_hints_and_a_warning(caplog):
