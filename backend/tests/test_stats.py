@@ -134,3 +134,35 @@ async def test_summary_counts_a_device_once_across_canvases(
     assert body["unknown"] == 2
     assert body["nodes"] == 4
     assert body["zigbee_devices"] == 1
+
+
+@pytest.mark.asyncio
+async def test_summary_zigbee_count_ignores_other_importers(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Proxmox, UniFi, Unraid and Z-Wave rows carry a synthetic ieee_address too.
+
+    They key their rows on it (`pve-…`, `unifi-…`, `unraid-…`, `zwave-…`), so
+    "has an ieee" is not "is a Zigbee device": a lab with no Zigbee mesh at all
+    reported dozens of Zigbee devices to the Homepage widget.
+    """
+    settings.homepage_api_key = "topsecret"
+    ieees = [
+        "0x00124b0018ed2b4c",           # Zigbee (zigbee2mqtt)
+        "pve-node-pve01",               # Proxmox host
+        "pve-pve01-105",                # Proxmox guest
+        "unifi-9c:05:d6:ca:a3:e3",      # UniFi
+        "unraid-host-tower",            # Unraid
+        "zwave-3c2a1b0f-7",             # Z-Wave
+    ]
+    for i, ieee in enumerate(ieees):
+        device = InventoryDevice(status="approved", status_live="online", ieee_address=ieee)
+        db_session.add(device)
+        await db_session.flush()
+        db_session.add(Node(type="iot", label=f"n{i}", device_id=device.id))
+    await db_session.commit()
+
+    res = await client.get("/api/v1/stats/summary", headers={"X-API-Key": "topsecret"})
+    body = res.json()
+    assert body["nodes"] == 6
+    assert body["zigbee_devices"] == 1

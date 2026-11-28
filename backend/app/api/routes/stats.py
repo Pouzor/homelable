@@ -10,6 +10,10 @@ from app.db.models import InventoryDevice, Node, ScanRun
 
 router = APIRouter()
 
+# Importers other than Zigbee key their inventory rows on a synthetic
+# ieee_address too, so "has an ieee" does not mean "is a Zigbee device".
+_NON_ZIGBEE_IEEE_PREFIXES = ("pve-", "unifi-", "unraid-", "zwave-")
+
 
 def _check_key(x_api_key: str | None) -> None:
     if not settings.homepage_api_key:
@@ -62,7 +66,13 @@ async def summary(
             select(func.count(InventoryDevice.id.distinct()))
             .select_from(Node)
             .join(InventoryDevice, Node.device_id == InventoryDevice.id)
-            .where(InventoryDevice.ieee_address.isnot(None))
+            .where(
+                InventoryDevice.ieee_address.isnot(None),
+                *(
+                    InventoryDevice.ieee_address.not_like(f"{prefix}%")
+                    for prefix in _NON_ZIGBEE_IEEE_PREFIXES
+                ),
+            )
         )
     ).scalar_one()
 
