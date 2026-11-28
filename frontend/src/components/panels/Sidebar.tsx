@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, LayoutDashboard, Clock, Square, Settings, LogOut, Download, Type, PlusCircle, Pencil, Trash2, ChevronUp, ChevronDown, Rows3, BookOpen, Loader2 } from 'lucide-react'
+import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, X, LayoutDashboard, Clock, Square, Settings, LogOut, Download, Type, PlusCircle, Pencil, Trash2, ChevronUp, ChevronDown, Rows3, BookOpen, Loader2 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
@@ -18,6 +18,7 @@ import type { Design } from '@/types'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
 import { useScanRunning } from '@/hooks/useScanRunning'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -34,7 +35,14 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenImports, onSave, onOpenSettings, onOpenHistory, onOpenInventory }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsedPref, setCollapsed] = useState(false)
+  // Below `md` the sidebar is a drawer behind the hamburger: always full width,
+  // never the icon rail.
+  const isMobile = useIsMobile()
+  const collapsed = collapsedPref && !isMobile
+  const navOpen = useUiStore((s) => s.navOpen)
+  const setNavOpen = useUiStore((s) => s.setNavOpen)
+  const drawerHidden = isMobile && !navOpen
   const logout = useAuthStore((s) => s.logout)
   const { designs, activeDesignId, activeDesignType, setActiveDesign, addDesign, updateDesign, removeDesign, reorderDesigns } = useDesignStore()
   const view = useUiStore((s) => s.view)
@@ -165,26 +173,56 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
   const onlineCount = networkNodes.filter((n) => n.data.status === 'online').length
   const offlineCount = networkNodes.filter((n) => n.data.status === 'offline').length
 
+  // Escape closes the drawer, like any other overlay.
+  useEffect(() => {
+    if (!isMobile || !navOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNavOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isMobile, navOpen, setNavOpen])
+
   const handleScan = useCallback(() => {
     onScan()
   }, [onScan])
 
   return (
+    <>
+    {isMobile && navOpen && (
+      <div
+        data-testid="nav-backdrop"
+        aria-hidden="true"
+        className="fixed inset-0 z-40 bg-black/50 md:hidden"
+        onClick={() => setNavOpen(false)}
+      />
+    )}
     <aside
-      className="flex flex-col border-r border-border bg-popover transition-all duration-200 relative shrink-0"
-      style={{ width: collapsed ? 48 : 220 }}
+      id="app-navigation"
+      aria-label="Navigation"
+      inert={drawerHidden}
+      className={`fixed inset-y-0 left-0 z-50 flex w-[min(85vw,300px)] flex-col overflow-y-auto border-r border-border bg-popover shadow-2xl transition-transform duration-200 ${navOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:inset-auto md:z-auto md:w-(--rail-width) md:translate-x-0 md:overflow-visible md:shadow-none md:transition-all shrink-0`}
+      style={{ '--rail-width': collapsed ? '48px' : '220px' } as React.CSSProperties}
+      data-collapsed={collapsed}
     >
       {/* Toggle */}
       <button
         onClick={() => setCollapsed((c) => !c)}
-        className="absolute -right-3 top-6 z-10 flex items-center justify-center w-6 h-6 rounded-full border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        className="absolute -right-3 top-6 z-10 hidden md:flex items-center justify-center w-6 h-6 rounded-full border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors"
       >
         {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
       </button>
 
       {/* Logo */}
-      <div className="flex items-center px-3 py-4 border-b border-border overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-4 border-b border-border overflow-hidden">
         <Logo size={28} showText={!collapsed} />
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setNavOpen(false)}
+          className="md:hidden flex items-center justify-center w-9 h-9 -mr-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       {/* Design Switcher */}
@@ -217,8 +255,8 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
                       }`}
                     >
                       <button
-                        onClick={() => { setActiveDesign(d.id); setDesignSwitcherOpen(false) }}
-                        className="flex items-center gap-2 flex-1 min-w-0 px-3 py-2 text-xs cursor-pointer hover:text-foreground"
+                        onClick={() => { setActiveDesign(d.id); setDesignSwitcherOpen(false); setNavOpen(false) }}
+                        className="flex items-center gap-2 flex-1 min-w-0 px-3 py-2.5 md:py-2 text-sm md:text-xs cursor-pointer hover:text-foreground"
                       >
                         <Icon size={14} className="shrink-0" />
                         <span className="truncate">{d.name}</span>
@@ -409,6 +447,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
         }
       />
     </aside>
+    </>
   )
 }
 
@@ -497,11 +536,14 @@ interface SidebarItemProps {
 }
 
 function SidebarItem({ icon: Icon, iconClassName, label, collapsed, active, badge, accent, onClick, dataTour }: SidebarItemProps) {
+  // Every item either navigates or opens a modal, so on a phone the drawer
+  // gets out of the way of what was just opened.
+  const setNavOpen = useUiStore((s) => s.setNavOpen)
   const btn = (
     <button
-      onClick={onClick}
+      onClick={() => { onClick?.(); setNavOpen(false) }}
       data-tour={dataTour}
-      className={`relative flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-sm transition-colors cursor-pointer ${
+      className={`relative flex items-center gap-2 w-full px-2 py-2.5 md:py-1.5 rounded-md text-sm transition-colors cursor-pointer ${
         active
           ? 'bg-primary/10 text-primary'
           : accent

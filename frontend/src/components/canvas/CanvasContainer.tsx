@@ -27,6 +27,7 @@ import { FloorMapLayer } from './FloorMapLayer'
 import { useAlignmentGuides } from '@/hooks/useAlignmentGuides'
 import { setViewportCenterProjector } from '@/utils/viewportCenter'
 import { isTypingTarget } from '@/utils/keyboard'
+import { useUiStore } from '@/stores/uiStore'
 import { readHoverHighlightSettings, subscribeHoverHighlightSettings } from '@/utils/hoverHighlightSettings'
 import type { NodeData, EdgeData } from '@/types'
 
@@ -43,6 +44,11 @@ interface CanvasContainerProps {
 
 export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, onNodeDoubleClick, onNodeDragStart, onRequestAddToGroup, onRequestAddToContainer, onRequestAddToZone, onOpenInventory }: CanvasContainerProps) {
   const [lassoMode, setLassoMode] = useState(true)
+  // View mode: the canvas still pans, zooms and selects (tap a node to see its
+  // details) but nothing on it can be moved, wired, resized, deleted or opened
+  // for editing. Touch devices start here — a pinch or a double tap otherwise
+  // lands on a node and drags it or opens its editor.
+  const locked = useUiStore((s) => s.canvasLocked)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoverHighlight, setHoverHighlight] = useState(readHoverHighlightSettings)
   useEffect(() => subscribeHoverHighlightSettings(setHoverHighlight), [])
@@ -91,6 +97,7 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
       if (e.key === 'c') {
         copySelectedNodes()
       } else if (e.key === 'v') {
+        if (useUiStore.getState().canvasLocked) return
         const screen = cursorRef.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 }
         pasteNodes(screenToFlowPosition(screen))
       }
@@ -197,12 +204,25 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
   }, [setSavedViewport])
 
   const handleEdgeDoubleClick = useCallback((_: React.MouseEvent, edge: Edge<EdgeData>) => {
+    if (locked) return
     onEdgeDoubleClick?.(edge)
-  }, [onEdgeDoubleClick])
+  }, [onEdgeDoubleClick, locked])
 
   const handleNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node<NodeData>) => {
+    if (locked) return
     onNodeDoubleClick?.(node)
-  }, [onNodeDoubleClick])
+  }, [onNodeDoubleClick, locked])
+
+  // Zones and text nodes open their editors from their own onDoubleClick, and
+  // edge waypoints delete themselves on one. In view mode a double click (or a
+  // double tap) on anything drawn is swallowed before it reaches them; the
+  // pane's own double-click zoom is a native listener and still fires.
+  const swallowDoubleClick = useCallback((e: React.MouseEvent) => {
+    const target = e.target as Element | null
+    if (target?.closest?.('.react-flow__node, .react-flow__edge, .react-flow__edgelabel-renderer, .edge-edit-control')) {
+      e.stopPropagation()
+    }
+  }, [])
 
   const handleBeforeDelete = useCallback(async () => {
     snapshotHistory()
@@ -285,7 +305,14 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
   }, [onRequestAddToGroup, onRequestAddToContainer, onRequestAddToZone, removeNodesFromGroup, nodes, getIntersectingNodes, onNodeDragStop])
 
   return (
-    <div ref={wrapperRef} className="w-full h-full" style={{ background: theme.colors.canvasBackground }} onMouseMove={onMouseMove}>
+    <div
+      ref={wrapperRef}
+      className={`w-full h-full${locked ? ' canvas-locked' : ''}`}
+      data-canvas-locked={locked}
+      style={{ background: theme.colors.canvasBackground }}
+      onMouseMove={onMouseMove}
+      onDoubleClickCapture={locked ? swallowDoubleClick : undefined}
+    >
       <ReactFlow
         nodes={displayNodes}
         edges={displayEdges}
@@ -305,10 +332,14 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         onNodeMouseLeave={handleNodeMouseLeave}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        deleteKeyCode={['Backspace', 'Delete']}
+        deleteKeyCode={locked ? null : ['Backspace', 'Delete']}
         onBeforeDelete={handleBeforeDelete}
-        selectionOnDrag={lassoMode}
-        panOnDrag={lassoMode ? [1, 2] : true}
+        nodesDraggable={!locked}
+        nodesConnectable={!locked}
+        edgesReconnectable={!locked}
+        // Locked, a one-finger drag always pans: there is nothing to lasso for.
+        selectionOnDrag={lassoMode && !locked}
+        panOnDrag={lassoMode && !locked ? [1, 2] : true}
         panActivationKeyCode="Space"
         selectionMode={SelectionMode.Partial}
         multiSelectionKeyCode={['Meta', 'Control']}
@@ -331,13 +362,15 @@ export function CanvasContainer({ onConnect: onConnectProp, onEdgeDoubleClick, o
         <FloorMapLayer />
         <SearchBar onOpenInventory={onOpenInventory} />
         <AlignmentGuides guides={guides} />
-        <Controls>
+        <Controls showInteractive={false}>
+          {!locked && (
           <ControlButton
             onClick={() => setLassoMode((m) => !m)}
             title={lassoMode ? 'Switch to pan mode (Space to pan)' : 'Switch to lasso mode'}
           >
             {lassoMode ? <MousePointer2 size={12} /> : <Hand size={12} />}
           </ControlButton>
+          )}
         </Controls>
       </ReactFlow>
     </div>

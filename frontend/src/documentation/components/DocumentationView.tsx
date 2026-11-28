@@ -496,9 +496,15 @@ export function DocumentationView() {
 
   return (
     <div className="flex min-h-0 flex-1">
+      {/* A phone has room for the list or the document, not both: the list
+          shows until a document opens, and MobileDocsBar's back button
+          closes the document to return to it. */}
       <aside
         style={{ width: treeWidth }}
-        className="flex min-h-0 shrink-0 flex-col border-r border-border"
+        className={cn(
+          'flex min-h-0 shrink-0 flex-col border-r border-border max-md:w-full! max-md:border-r-0',
+          openDoc && 'max-md:hidden',
+        )}
       >
         <div className="flex items-center gap-1 border-b border-border px-2 py-2">
           <Search size={13} className="shrink-0 opacity-50" />
@@ -682,10 +688,10 @@ export function DocumentationView() {
         onMouseDown={() => {
           dragging.current = true
         }}
-        className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-primary/30"
+        className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-primary/30 max-md:hidden"
       />
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', !openDoc && 'max-md:hidden')}>
         {coverage && coverage.notes_unmigrated > 0 && (
           <MigrateNotesBanner count={coverage.notes_unmigrated} onMigrate={() => void handleMigrate()} />
         )}

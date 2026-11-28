@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ViewportPortal, useReactFlow, useStore } from '@xyflow/react'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { resolveServerPath } from '@/utils/basePath'
+import { useUiStore } from '@/stores/uiStore'
 
 interface ResizeState {
   startMouseX: number
@@ -34,7 +35,9 @@ export function FloorMapLayer() {
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState(false)
 
-  const locked = floorMap?.locked ?? false
+  // The canvas lock (view mode) pins the plan too, whatever its own lock says.
+  const canvasLocked = useUiStore((s) => s.canvasLocked)
+  const locked = (floorMap?.locked ?? false) || canvasLocked
 
   // While selected (and unlocked), deselect on any click outside the plan.
   // A locked plan can't be selected, and handles/edit are gated on !locked, so

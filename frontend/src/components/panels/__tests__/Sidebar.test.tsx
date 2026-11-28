@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react'
 import { Sidebar } from '../Sidebar'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useAuthStore } from '@/stores/authStore'
 import { useUiStore } from '@/stores/uiStore'
+import { useDesignStore } from '@/stores/designStore'
 import { useDocsStore } from '@/documentation/store'
 import { scanApi } from '@/api/client'
 import type { Node } from '@xyflow/react'
@@ -161,11 +162,12 @@ describe('Sidebar', () => {
   it('collapses sidebar on toggle button click', () => {
     render(<Sidebar {...defaultProps} />)
     const aside = screen.getByRole('complementary')
-    expect(aside).toHaveStyle({ width: '220px' })
+    // The rail width is a custom property: below `md` the drawer ignores it.
+    expect(aside.style.getPropertyValue('--rail-width')).toBe('220px')
 
     const toggle = aside.querySelector('button')!
     fireEvent.click(toggle)
-    expect(aside).toHaveStyle({ width: '48px' })
+    expect(aside.style.getPropertyValue('--rail-width')).toBe('48px')
   })
 
   it('hides label text when collapsed', () => {
@@ -627,5 +629,73 @@ describe('Sidebar — Documentation entry', () => {
     fireEvent.click(screen.getByText('Documentation'))
     expect(useUiStore.getState().view).toBe('documentation')
     expect(openHome).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Sidebar — phone drawer', () => {
+  beforeEach(() => {
+    // An earlier test can leave a modal portal open, which marks the rest of
+    // the page inert for role queries.
+    cleanup()
+    // With the canvas store mocked whole, the floor-plan edit nonce reads as
+    // truthy, so an active design left by an earlier test opens its modal.
+    useDesignStore.setState({ designs: [], activeDesignId: null })
+    mockStore()
+    mockAuth()
+    vi.clearAllMocks()
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q === '(max-width: 767px)',
+      media: q,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }))
+  })
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+    useUiStore.setState({ navOpen: false })
+  })
+
+  it('is inert off-screen until the hamburger opens it', () => {
+    useUiStore.setState({ navOpen: false })
+    render(<Sidebar {...defaultProps} />)
+    const aside = screen.getByRole('complementary', { hidden: true })
+    expect(aside).toHaveAttribute('inert')
+    expect(aside.className).toContain('-translate-x-full')
+    expect(screen.queryByTestId('nav-backdrop')).not.toBeInTheDocument()
+  })
+
+  it('shows every item with labels when open, ignoring the rail collapse', () => {
+    useUiStore.setState({ navOpen: true })
+    render(<Sidebar {...defaultProps} />)
+    const aside = screen.getByRole('complementary')
+    expect(aside).not.toHaveAttribute('inert')
+    expect(aside.style.getPropertyValue('--rail-width')).toBe('220px')
+    for (const label of ['Canvas', 'Documentation', 'Device Inventory', 'Scan History', 'Add Node', 'Add Zone', 'Add Text', 'Scan Network', 'Import from…', 'Save Canvas', 'Settings', 'Logout']) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('closes after an item is used', () => {
+    useUiStore.setState({ navOpen: true })
+    render(<Sidebar {...defaultProps} />)
+    fireEvent.click(screen.getByText('Settings'))
+    expect(defaultProps.onOpenSettings).toHaveBeenCalled()
+    expect(useUiStore.getState().navOpen).toBe(false)
+  })
+
+  it('closes from the backdrop, the close button and Escape', () => {
+    useUiStore.setState({ navOpen: true })
+    render(<Sidebar {...defaultProps} />)
+    fireEvent.click(screen.getByTestId('nav-backdrop'))
+    expect(useUiStore.getState().navOpen).toBe(false)
+
+    act(() => useUiStore.setState({ navOpen: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close navigation' }))
+    expect(useUiStore.getState().navOpen).toBe(false)
+
+    act(() => useUiStore.setState({ navOpen: true }))
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(useUiStore.getState().navOpen).toBe(false)
   })
 })

@@ -174,7 +174,7 @@ export function DetailPanel({ onEdit, onOpenInventory, onOpenDocumentation }: De
   }
 
   return (
-    <aside className="w-72 shrink-0 flex flex-col border-l border-border bg-popover overflow-y-auto">
+    <aside className="fixed inset-x-0 bottom-0 z-30 max-h-[55dvh] rounded-t-xl border-t shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:w-72 md:rounded-none md:border-t-0 md:border-l md:shadow-none shrink-0 flex flex-col border-border bg-popover overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="font-semibold text-sm text-foreground truncate">{data.label}</span>
         <button aria-label="Close panel" onClick={() => setSelectedNode(null)} className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
@@ -459,7 +459,7 @@ function MultiSelectPanel({ nodeIds, nodes, groupName, setGroupName, creatingGro
   }
 
   return (
-    <aside className="w-72 shrink-0 flex flex-col border-l border-border bg-popover overflow-y-auto">
+    <aside className="fixed inset-x-0 bottom-0 z-30 max-h-[55dvh] rounded-t-xl border-t shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:w-72 md:rounded-none md:border-t-0 md:border-l md:shadow-none shrink-0 flex flex-col border-border bg-popover overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
           <Layers size={14} className="text-primary" />
@@ -558,7 +558,7 @@ function GroupDetailPanel({ node, nodes, onUngroup, onRemoveChild, onChangeDescr
   }
 
   return (
-    <aside className="w-72 shrink-0 flex flex-col border-l border-border bg-popover overflow-y-auto">
+    <aside className="fixed inset-x-0 bottom-0 z-30 max-h-[55dvh] rounded-t-xl border-t shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:w-72 md:rounded-none md:border-t-0 md:border-l md:shadow-none shrink-0 flex flex-col border-border bg-popover overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2 min-w-0">
           <Layers size={14} className="text-primary shrink-0" />

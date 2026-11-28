@@ -260,3 +260,14 @@
     animation: flow-dot 2.5s linear infinite;
     pointer-events: none;
 }
+
+/* View mode (the canvas lock): nothing drawn can be grabbed, resized or
+   rewired. Node resizers and edge waypoint/endpoint dots disappear, and
+   connection handles stop taking pointers so a pan that starts on one pans. */
+.canvas-locked .react-flow__resize-control,
+.canvas-locked .edge-edit-control {
+  display: none !important;
+}
+.canvas-locked .react-flow__handle {
+  pointer-events: none;
+}

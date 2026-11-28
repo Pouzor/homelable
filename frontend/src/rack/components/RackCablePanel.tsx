@@ -55,7 +55,7 @@ export function RackCablePanel() {
   }
 
   return (
-    <aside className="w-72 shrink-0 flex flex-col border-l border-border bg-popover overflow-y-auto">
+    <aside className="fixed inset-x-0 bottom-0 z-30 max-h-[55dvh] rounded-t-xl border-t shadow-2xl md:static md:inset-auto md:z-auto md:max-h-none md:w-72 md:rounded-none md:border-t-0 md:border-l md:shadow-none shrink-0 flex flex-col border-border bg-popover overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="flex items-center gap-2 min-w-0 font-semibold text-sm text-foreground">
           <CableIcon size={14} className="shrink-0" style={{ color: cable.color }} />

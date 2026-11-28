@@ -21,6 +21,7 @@ import { isZoneSubnetCandidate } from '@/utils/subnet'
 import { CanvasContainer } from '@/components/canvas/CanvasContainer'
 import { Sidebar } from '@/components/panels/Sidebar'
 import { Toolbar } from '@/components/panels/Toolbar'
+import { MobileDocsBar } from '@/components/panels/MobileTopBar'
 import { DetailPanel } from '@/components/panels/DetailPanel'
 import { LoginPage } from '@/components/LoginPage'
 import { NodeModal } from '@/components/modals/NodeModal'
@@ -1243,7 +1244,7 @@ export default function App() {
       <ReactFlowProvider>
         {/* data-new-user marks a first-time (demo) canvas — the hook the upcoming
             Getting Started walkthrough keys off. */}
-        <div className="flex h-screen w-screen overflow-hidden bg-background" data-new-user={isNewUser}>
+        <div className="flex h-dvh w-screen overflow-hidden bg-background" data-new-user={isNewUser}>
           <Sidebar
             onAddNode={() => setAddNodeOpen(true)}
             onAddGroupRect={() => setAddGroupRectOpen(true)}
@@ -1272,11 +1273,14 @@ export default function App() {
               </div>
             )}
             {appView === 'documentation' ? (
+              <>
+              <MobileDocsBar />
               <Suspense
                 fallback={<div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">Loading documentation…</div>}
               >
                 <DocumentationView />
               </Suspense>
+              </>
             ) : (
             <>
             <Toolbar

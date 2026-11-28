@@ -99,6 +99,7 @@ function WaypointHandle({ edgeId, index, waypoint, waypoints, color, pathStyle, 
         pointerEvents: 'all',
         zIndex: 10,
       }}
+      className="edge-edit-control"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -134,6 +135,7 @@ function AddWaypointHandle({ edgeId, insertIndex, x, y, waypoints, color, pathSt
 
   return (
     <div
+      className="edge-edit-control"
       onClick={handleClick}
       style={{
         position: 'absolute',
@@ -267,6 +269,7 @@ function EndpointDot({ edgeId, role, x, y, position, color, source, target, sour
 
   return (
     <div
+      className="edge-edit-control"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

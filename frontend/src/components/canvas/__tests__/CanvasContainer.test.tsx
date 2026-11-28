@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { act, render } from '@testing-library/react'
+import { act, fireEvent, render } from '@testing-library/react'
 import { CanvasContainer } from '../CanvasContainer'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useThemeStore } from '@/stores/themeStore'
+import { useUiStore } from '@/stores/uiStore'
 import type { Node, Edge } from '@xyflow/react'
 import type { NodeData, EdgeData, NodeType } from '@/types'
 import { writeHoverHighlightSettings } from '@/utils/hoverHighlightSettings'
@@ -17,12 +18,21 @@ const rf = vi.hoisted(() => ({
   intersecting: [] as unknown[],
   viewport: { x: 0, y: 0, zoom: 1 },
   fitView: vi.fn(() => Promise.resolve(true)),
+  innerDoubleClick: vi.fn(),
 }))
 
 vi.mock('@xyflow/react', () => ({
   ReactFlow: (props: Record<string, unknown>) => {
     rfProps = props
-    return <div data-testid="react-flow" />
+    // A stand-in node with its own double-click handler, like a zone or a
+    // text node, to test that view mode swallows the event before it.
+    return (
+      <div data-testid="react-flow">
+        <div className="react-flow__node">
+          <span data-testid="node-inner" onDoubleClick={rf.innerDoubleClick} />
+        </div>
+      </div>
+    )
   },
   Background: () => null,
   Controls: () => null,
@@ -658,6 +668,79 @@ describe('CanvasContainer', () => {
       hover(makeNode('n1'))
       hover({ ...makeNode('zone'), type: 'groupRect', data: { ...makeNode('zone').data, type: 'groupRect' } })
       expect(opacities(rfProps.edges)).toEqual({ e12: undefined, e23: undefined })
+    })
+  })
+
+  // ── View mode (canvas lock) ───────────────────────────────────────────────
+
+  describe('canvas lock', () => {
+    afterEach(() => useUiStore.setState({ canvasLocked: false }))
+
+    it('unlocked: nodes drag, connect and delete as before', () => {
+      render(<CanvasContainer />)
+      expect(rfProps.nodesDraggable).toBe(true)
+      expect(rfProps.nodesConnectable).toBe(true)
+      expect(rfProps.deleteKeyCode).toEqual(['Backspace', 'Delete'])
+      expect(rfProps.selectionOnDrag).toBe(true)
+    })
+
+    it('locked: nothing can be dragged, wired or deleted, and a drag pans', () => {
+      useUiStore.setState({ canvasLocked: true })
+      render(<CanvasContainer />)
+      expect(rfProps.nodesDraggable).toBe(false)
+      expect(rfProps.nodesConnectable).toBe(false)
+      expect(rfProps.edgesReconnectable).toBe(false)
+      expect(rfProps.deleteKeyCode).toBeNull()
+      expect(rfProps.selectionOnDrag).toBe(false)
+      expect(rfProps.panOnDrag).toBe(true)
+    })
+
+    it('locked: a double click on a node or link opens no editor', () => {
+      useUiStore.setState({ canvasLocked: true })
+      const onNodeDoubleClick = vi.fn()
+      const onEdgeDoubleClick = vi.fn()
+      render(<CanvasContainer onNodeDoubleClick={onNodeDoubleClick} onEdgeDoubleClick={onEdgeDoubleClick} />)
+      ;(rfProps.onNodeDoubleClick as (...a: unknown[]) => void)({}, makeNode('n1'))
+      ;(rfProps.onEdgeDoubleClick as (...a: unknown[]) => void)({}, makeEdge('e1'))
+      expect(onNodeDoubleClick).not.toHaveBeenCalled()
+      expect(onEdgeDoubleClick).not.toHaveBeenCalled()
+    })
+
+    it('locked: a tap still selects, so details stay one tap away', () => {
+      useUiStore.setState({ canvasLocked: true })
+      const node = makeNode('n1')
+      useCanvasStore.setState({ nodes: [node] })
+      render(<CanvasContainer />)
+      ;(rfProps.onNodeClick as (...a: unknown[]) => void)({}, node)
+      expect(useCanvasStore.getState().selectedNodeId).toBe('n1')
+    })
+
+    it('unlocked: a double click is forwarded to the editor', () => {
+      const onNodeDoubleClick = vi.fn()
+      render(<CanvasContainer onNodeDoubleClick={onNodeDoubleClick} />)
+      ;(rfProps.onNodeDoubleClick as (...a: unknown[]) => void)({}, makeNode('n1'))
+      expect(onNodeDoubleClick).toHaveBeenCalledOnce()
+    })
+
+    it('marks the wrapper so CSS can hide resizers and waypoint dots', () => {
+      useUiStore.setState({ canvasLocked: true })
+      const { container } = render(<CanvasContainer />)
+      expect(container.querySelector('.canvas-locked')).not.toBeNull()
+    })
+
+    it('locked: a double click inside a node is swallowed before its own handler', () => {
+      rf.innerDoubleClick.mockClear()
+      useUiStore.setState({ canvasLocked: true })
+      const { getByTestId } = render(<CanvasContainer />)
+      fireEvent.doubleClick(getByTestId('node-inner'))
+      expect(rf.innerDoubleClick).not.toHaveBeenCalled()
+    })
+
+    it('unlocked: the node keeps its own double click', () => {
+      rf.innerDoubleClick.mockClear()
+      const { getByTestId } = render(<CanvasContainer />)
+      fireEvent.doubleClick(getByTestId('node-inner'))
+      expect(rf.innerDoubleClick).toHaveBeenCalledOnce()
     })
   })
 })
