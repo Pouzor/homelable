@@ -10,6 +10,7 @@ const SHORTCUTS = [
       { keys: ['Ctrl', 'Y'], description: 'Redo' },
       { keys: ['Ctrl', 'K'], description: 'Search nodes' },
       { keys: ['?'], description: 'Show this help' },
+      { keys: ['M'], description: 'Open / close navigation' },
     ],
   },
   {

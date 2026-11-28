@@ -159,42 +159,6 @@ describe('Sidebar', () => {
 
   // ── Collapse ───────────────────────────────────────────────────────────────
 
-  it('collapses sidebar on toggle button click', () => {
-    render(<Sidebar {...defaultProps} />)
-    const aside = screen.getByRole('complementary')
-    // The rail width is a custom property: below `md` the drawer ignores it.
-    expect(aside.style.getPropertyValue('--rail-width')).toBe('220px')
-
-    const toggle = aside.querySelector('button')!
-    fireEvent.click(toggle)
-    expect(aside.style.getPropertyValue('--rail-width')).toBe('48px')
-  })
-
-  it('hides label text when collapsed', () => {
-    render(<Sidebar {...defaultProps} />)
-    const aside = screen.getByRole('complementary')
-    const toggle = aside.querySelector('button')!
-    fireEvent.click(toggle)
-    expect(screen.queryByText('Add Node')).not.toBeInTheDocument()
-  })
-
-  it('hides stats footer when collapsed', () => {
-    render(<Sidebar {...defaultProps} />)
-    expect(screen.getByText('Total')).toBeInTheDocument()
-    const toggle = screen.getByRole('complementary').querySelector('button')!
-    fireEvent.click(toggle)
-    expect(screen.queryByText('Total')).not.toBeInTheDocument()
-  })
-
-  it('shows logo with showText=false when collapsed', () => {
-    render(<Sidebar {...defaultProps} />)
-    const logo = screen.getByTestId('logo')
-    expect(logo).toHaveAttribute('data-show-text', 'true')
-    const toggle = screen.getByRole('complementary').querySelector('button')!
-    fireEvent.click(toggle)
-    expect(logo).toHaveAttribute('data-show-text', 'false')
-  })
-
   // ── Action callbacks ───────────────────────────────────────────────────────
 
   it('calls onAddNode when Add Node is clicked', () => {
@@ -632,7 +596,7 @@ describe('Sidebar — Documentation entry', () => {
   })
 })
 
-describe('Sidebar — phone drawer', () => {
+describe('Sidebar — navigation drawer (every screen size)', () => {
   beforeEach(() => {
     // An earlier test can leave a modal portal open, which marks the rest of
     // the page inert for role queries.
@@ -643,37 +607,86 @@ describe('Sidebar — phone drawer', () => {
     mockStore()
     mockAuth()
     vi.clearAllMocks()
-    vi.stubGlobal('matchMedia', (q: string) => ({
-      matches: q === '(max-width: 767px)',
-      media: q,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    }))
   })
   afterEach(() => {
     cleanup()
-    vi.unstubAllGlobals()
-    useUiStore.setState({ navOpen: false })
+    useUiStore.setState({ navOpen: false, view: 'canvas' })
   })
 
-  it('is inert off-screen until the hamburger opens it', () => {
+  const items = () => Array.from(document.querySelectorAll<HTMLElement>('#app-navigation [data-nav-item]'))
+
+  it('is inert and off-screen until the hamburger opens it, with no collapse rail', () => {
     useUiStore.setState({ navOpen: false })
     render(<Sidebar {...defaultProps} />)
     const aside = screen.getByRole('complementary', { hidden: true })
     expect(aside).toHaveAttribute('inert')
     expect(aside.className).toContain('-translate-x-full')
     expect(screen.queryByTestId('nav-backdrop')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /collapse sidebar/i, hidden: true })).not.toBeInTheDocument()
   })
 
-  it('shows every item with labels when open, ignoring the rail collapse', () => {
+  it('shows every item with its label when open', () => {
     useUiStore.setState({ navOpen: true })
     render(<Sidebar {...defaultProps} />)
-    const aside = screen.getByRole('complementary')
-    expect(aside).not.toHaveAttribute('inert')
-    expect(aside.style.getPropertyValue('--rail-width')).toBe('220px')
+    expect(screen.getByRole('complementary')).not.toHaveAttribute('inert')
     for (const label of ['Canvas', 'Documentation', 'Device Inventory', 'Scan History', 'Add Node', 'Add Zone', 'Add Text', 'Scan Network', 'Import from…', 'Save Canvas', 'Settings', 'Logout']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
+  })
+
+  it('moves focus to the current section when it opens', async () => {
+    useUiStore.setState({ navOpen: false, view: 'documentation' })
+    render(<Sidebar {...defaultProps} />)
+    act(() => useUiStore.setState({ navOpen: true }))
+    await waitFor(() => expect(document.activeElement).toHaveAttribute('aria-current', 'page'))
+    expect(document.activeElement?.textContent).toContain('Documentation')
+  })
+
+  it('arrow keys, Home and End move between items', async () => {
+    useUiStore.setState({ navOpen: true })
+    render(<Sidebar {...defaultProps} />)
+    const all = items()
+    await waitFor(() => expect(document.activeElement).toBe(all.find((el) => el.getAttribute('aria-current') === 'page') ?? all[0]))
+    const start = all.indexOf(document.activeElement as HTMLElement)
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(all[start + 1])
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(all[start])
+    fireEvent.keyDown(document.activeElement!, { key: 'End' })
+    expect(document.activeElement).toBe(all[all.length - 1])
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(all[0])
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' })
+    expect(document.activeElement).toBe(all[0])
+  })
+
+  it('Tab wraps inside the open drawer', () => {
+    useUiStore.setState({ navOpen: true })
+    render(<Sidebar {...defaultProps} />)
+    const aside = screen.getByRole('complementary')
+    const focusables = Array.from(aside.querySelectorAll<HTMLElement>('a[href], button:not([disabled])'))
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+    last.focus()
+    fireEvent.keyDown(last, { key: 'Tab' })
+    expect(document.activeElement).toBe(first)
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(last)
+  })
+
+  it('Escape closes it and hands focus back to the button that opened it', async () => {
+    const opener = document.createElement('button')
+    opener.textContent = 'open'
+    document.body.appendChild(opener)
+    opener.focus()
+    useUiStore.setState({ navOpen: false })
+    render(<Sidebar {...defaultProps} />)
+    act(() => useUiStore.setState({ navOpen: true }))
+    await waitFor(() => expect(screen.getByRole('complementary').contains(document.activeElement)).toBe(true))
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(useUiStore.getState().navOpen).toBe(false)
+    expect(document.activeElement).toBe(opener)
+    opener.remove()
   })
 
   it('closes after an item is used', () => {
@@ -684,7 +697,7 @@ describe('Sidebar — phone drawer', () => {
     expect(useUiStore.getState().navOpen).toBe(false)
   })
 
-  it('closes from the backdrop, the close button and Escape', () => {
+  it('closes from the backdrop and the close button', () => {
     useUiStore.setState({ navOpen: true })
     render(<Sidebar {...defaultProps} />)
     fireEvent.click(screen.getByTestId('nav-backdrop'))
@@ -692,10 +705,6 @@ describe('Sidebar — phone drawer', () => {
 
     act(() => useUiStore.setState({ navOpen: true }))
     fireEvent.click(screen.getByRole('button', { name: 'Close navigation' }))
-    expect(useUiStore.getState().navOpen).toBe(false)
-
-    act(() => useUiStore.setState({ navOpen: true }))
-    fireEvent.keyDown(window, { key: 'Escape' })
     expect(useUiStore.getState().navOpen).toBe(false)
   })
 })

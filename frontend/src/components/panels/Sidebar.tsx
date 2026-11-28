@@ -1,7 +1,6 @@
-import { useState, useCallback, useEffect } from 'react'
-import { Plus, Save, ScanLine, ChevronLeft, ChevronRight, X, LayoutDashboard, Clock, Square, Settings, LogOut, Download, Type, PlusCircle, Pencil, Trash2, ChevronUp, ChevronDown, Rows3, BookOpen, Loader2 } from 'lucide-react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { Plus, Save, ScanLine, X, LayoutDashboard, Clock, Square, Settings, LogOut, Download, Type, PlusCircle, Pencil, Trash2, ChevronUp, ChevronDown, Rows3, BookOpen, Loader2 } from 'lucide-react'
 import { Logo } from '@/components/ui/Logo'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useCanvasStore } from '@/stores/canvasStore'
 import { useDesignStore } from '@/stores/designStore'
 import { useAuthStore } from '@/stores/authStore'
@@ -18,7 +17,6 @@ import type { Design } from '@/types'
 import { toast } from 'sonner'
 import { useLatestRelease } from '@/hooks/useLatestRelease'
 import { useScanRunning } from '@/hooks/useScanRunning'
-import { useIsMobile } from '@/hooks/useIsMobile'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -35,14 +33,13 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenImports, onSave, onOpenSettings, onOpenHistory, onOpenInventory }: SidebarProps) {
-  const [collapsedPref, setCollapsed] = useState(false)
-  // Below `md` the sidebar is a drawer behind the hamburger: always full width,
-  // never the icon rail.
-  const isMobile = useIsMobile()
-  const collapsed = collapsedPref && !isMobile
+  // The navigation is a drawer at every screen size, opened from the hamburger
+  // in the header (or M). Closed, it is inert: out of the Tab order and hidden
+  // from assistive tech, so the page starts with what the user came for.
   const navOpen = useUiStore((s) => s.navOpen)
   const setNavOpen = useUiStore((s) => s.setNavOpen)
-  const drawerHidden = isMobile && !navOpen
+  const asideRef = useRef<HTMLElement>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
   const logout = useAuthStore((s) => s.logout)
   const { designs, activeDesignId, activeDesignType, setActiveDesign, addDesign, updateDesign, removeDesign, reorderDesigns } = useDesignStore()
   const view = useUiStore((s) => s.view)
@@ -175,11 +172,64 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
 
   // Escape closes the drawer, like any other overlay.
   useEffect(() => {
-    if (!isMobile || !navOpen) return
+    if (!navOpen) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setNavOpen(false) }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [isMobile, navOpen, setNavOpen])
+  }, [navOpen, setNavOpen])
+
+  // Focus follows the drawer: opening it moves focus to the current section
+  // (or the first item), closing it hands focus back to whatever opened it,
+  // unless an item already moved focus on (a modal it opened, say).
+  useEffect(() => {
+    if (navOpen) {
+      returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      const id = window.requestAnimationFrame(() => {
+        const aside = asideRef.current
+        if (!aside) return
+        const current = aside.querySelector<HTMLElement>('[data-nav-item][aria-current="page"]')
+        ;(current ?? navItems(aside)[0])?.focus()
+      })
+      return () => window.cancelAnimationFrame(id)
+    }
+    const back = returnFocusRef.current
+    returnFocusRef.current = null
+    const focusLost = !document.activeElement || document.activeElement === document.body
+      || asideRef.current?.contains(document.activeElement)
+    if (back && focusLost && document.contains(back)) back.focus()
+  }, [navOpen])
+
+  // Arrow keys move between items, Home/End jump to the ends, and Tab wraps
+  // inside the open drawer instead of escaping behind the backdrop.
+  const handleNavKeyDown = useCallback((e: React.KeyboardEvent<HTMLElement>) => {
+    const aside = asideRef.current
+    if (!aside) return
+    const active = document.activeElement as HTMLElement | null
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+      // Leave arrow keys to the design switcher's own list and to text fields.
+      if (active?.closest('[data-nav-skip-arrows]') || active instanceof HTMLInputElement) return
+      const items = navItems(aside)
+      if (items.length === 0) return
+      e.preventDefault()
+      const i = active ? items.indexOf(active) : -1
+      const next = e.key === 'Home' ? 0
+        : e.key === 'End' ? items.length - 1
+        : e.key === 'ArrowDown' ? (i + 1) % items.length
+        : (i - 1 + items.length) % items.length
+      items[next]?.focus()
+      return
+    }
+    if (e.key === 'Tab') {
+      const focusables = Array.from(aside.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ))
+      if (focusables.length === 0) return
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      if (e.shiftKey && active === first) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus() }
+    }
+  }, [])
 
   const handleScan = useCallback(() => {
     onScan()
@@ -187,50 +237,48 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
 
   return (
     <>
-    {isMobile && navOpen && (
+    {navOpen && (
       <div
         data-testid="nav-backdrop"
         aria-hidden="true"
-        className="fixed inset-0 z-40 bg-black/50 md:hidden"
+        className="fixed inset-0 z-40 bg-black/50"
         onClick={() => setNavOpen(false)}
       />
     )}
     <aside
+      ref={asideRef}
       id="app-navigation"
       aria-label="Navigation"
-      inert={drawerHidden}
-      className={`fixed inset-y-0 left-0 z-50 flex w-[min(85vw,300px)] flex-col overflow-y-auto border-r border-border bg-popover shadow-2xl transition-transform duration-200 ${navOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:inset-auto md:z-auto md:w-(--rail-width) md:translate-x-0 md:overflow-visible md:shadow-none md:transition-all shrink-0`}
-      style={{ '--rail-width': collapsed ? '48px' : '220px' } as React.CSSProperties}
-      data-collapsed={collapsed}
+      inert={!navOpen}
+      onKeyDown={handleNavKeyDown}
+      // A rack accessory is dragged out of the drawer onto the canvas: get the
+      // drawer and its backdrop out of the way once the drag has started.
+      onDragStart={() => { window.setTimeout(() => setNavOpen(false), 0) }}
+      className={`fixed inset-y-0 left-0 z-50 flex w-[min(85vw,300px)] flex-col overflow-y-auto border-r border-border bg-popover shadow-2xl transition-transform duration-200 ${navOpen ? 'translate-x-0' : '-translate-x-full'}`}
     >
-      {/* Toggle */}
-      <button
-        onClick={() => setCollapsed((c) => !c)}
-        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        className="absolute -right-3 top-6 z-10 hidden md:flex items-center justify-center w-6 h-6 rounded-full border border-border bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-      >
-        {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-      </button>
 
       {/* Logo */}
       <div className="flex items-center justify-between px-3 py-4 border-b border-border overflow-hidden">
-        <Logo size={28} showText={!collapsed} />
+        <Logo size={28} showText={true} />
         <button
           type="button"
           aria-label="Close navigation"
           onClick={() => setNavOpen(false)}
-          className="md:hidden flex items-center justify-center w-9 h-9 -mr-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer"
+          className="flex items-center justify-center w-9 h-9 -mr-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer"
         >
           <X size={18} />
         </button>
       </div>
 
       {/* Design Switcher */}
-      {!collapsed && designs.length > 0 && (
+      {designs.length > 0 && (
         <div className="px-2 pt-2 pb-1 border-b border-border relative">
           <button
             onClick={() => setDesignSwitcherOpen((o) => !o)}
             data-tour="canvas-switcher"
+            data-nav-item=""
+            aria-haspopup="listbox"
+            aria-expanded={designSwitcherOpen}
             className="flex items-center gap-2 w-full px-2 py-1.5 rounded-md text-xs font-medium bg-secondary border border-border hover:border-border transition-colors cursor-pointer"
           >
             {activeDesignId ? (() => {
@@ -243,7 +291,7 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
             <>
               {/* Overlay to close */}
               <div className="fixed inset-0 z-40" onClick={() => setDesignSwitcherOpen(false)} />
-              <div className="absolute left-2 right-2 top-full mt-1 z-50 bg-secondary border border-border rounded-md shadow-xl overflow-hidden">
+              <div data-nav-skip-arrows="" className="absolute left-2 right-2 top-full mt-1 z-50 bg-secondary border border-border rounded-md shadow-xl overflow-hidden">
                 {designs.map((d, index) => {
                   const Icon = resolveDesignIcon(d.icon)
                   const isActive = d.id === activeDesignId
@@ -320,11 +368,10 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
       )}
 
       {/* Views */}
-      <nav className="flex flex-col gap-0.5 p-2">
+      <nav aria-label="Sections" className="flex flex-col gap-0.5 p-2">
         <SidebarItem
           icon={isRack ? Rows3 : LayoutDashboard}
           label={isRack ? 'Rack view' : 'Canvas'}
-          collapsed={collapsed}
           active={view === 'canvas'}
           onClick={() => setView('canvas')}
         />
@@ -332,7 +379,6 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
           <SidebarItem
             icon={BookOpen}
             label="Documentation"
-            collapsed={collapsed}
             active={view === 'documentation'}
             onClick={() => {
               setView('documentation')
@@ -348,7 +394,6 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
           <SidebarItem
             icon={ScanLine}
             label="Device Inventory"
-            collapsed={collapsed}
             onClick={() => onOpenInventory(undefined, 'pending')}
           />
         )}
@@ -357,7 +402,6 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
             icon={scanRunning ? Loader2 : Clock}
             iconClassName={scanRunning ? 'animate-spin text-warning' : undefined}
             label="Scan History"
-            collapsed={collapsed}
             onClick={onOpenHistory}
           />
         )}
@@ -365,11 +409,11 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
 
       {/* The rack inventory is the sidebar's body: it scrolls, everything else
           stays pinned. On a logical canvas the space is just a spacer. */}
-      {isRack && !collapsed ? <AccessoryTray /> : !collapsed && <div className="flex-1" />}
+      {isRack ? <AccessoryTray /> : <div className="flex-1" />}
 
       {/* Stats footer — hidden in standalone (no scan / live status to count) */}
-      {!collapsed && isRack && <RackStats />}
-      {!collapsed && !isRack && !STANDALONE && (
+      {isRack && <RackStats />}
+      {!isRack && !STANDALONE && (
         <div className="px-3 py-2 border-t border-border text-xs text-muted-foreground space-y-0.5">
           <div className="flex justify-between">
             <span>Total</span>
@@ -389,22 +433,21 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
       {/* Actions */}
       <div className="flex flex-col gap-0.5 p-2 border-t border-border">
         {isRack ? (
-          <SidebarItem icon={Plus} label="Add Device" collapsed={collapsed} onClick={() => openDeviceEditor()} />
+          <SidebarItem icon={Plus} label="Add Device" onClick={() => openDeviceEditor()} />
         ) : (
           <>
-            <SidebarItem icon={Plus} label="Add Node" collapsed={collapsed} onClick={onAddNode} dataTour="add-node" />
-            <SidebarItem icon={Square} label="Add Zone" collapsed={collapsed} onClick={onAddGroupRect} dataTour="add-zone" />
-            <SidebarItem icon={Type} label="Add Text" collapsed={collapsed} onClick={onAddText} dataTour="add-text" />
+            <SidebarItem icon={Plus} label="Add Node" onClick={onAddNode} dataTour="add-node" />
+            <SidebarItem icon={Square} label="Add Zone" onClick={onAddGroupRect} dataTour="add-zone" />
+            <SidebarItem icon={Type} label="Add Text" onClick={onAddText} dataTour="add-text" />
           </>
         )}
-        {!STANDALONE && !isRack && <SidebarItem icon={ScanLine} label="Scan Network" collapsed={collapsed} onClick={handleScan} dataTour="scan-network" />}
+        {!STANDALONE && !isRack && <SidebarItem icon={ScanLine} label="Scan Network" onClick={handleScan} dataTour="scan-network" />}
         {/* One entry for every import source — the list grows with each new
             integration and four near-identical links crowded the rail. */}
-        {!STANDALONE && !isRack && <SidebarItem icon={Download} label="Import from…" collapsed={collapsed} onClick={onOpenImports} dataTour="imports" />}
+        {!STANDALONE && !isRack && <SidebarItem icon={Download} label="Import from…" onClick={onOpenImports} dataTour="imports" />}
         <SidebarItem
           icon={Save}
           label={isRack ? 'Save Rack' : 'Save Canvas'}
-          collapsed={collapsed}
           onClick={() => onSave()}
           badge={hasUnsavedChanges}
           accent
@@ -412,20 +455,18 @@ export function Sidebar({ onAddNode, onAddGroupRect, onAddText, onScan, onOpenIm
         <SidebarItem
           icon={Settings}
           label="Settings"
-          collapsed={collapsed}
           onClick={onOpenSettings}
         />
         {!STANDALONE && (
           <SidebarItem
             icon={LogOut}
             label="Logout"
-            collapsed={collapsed}
             onClick={() => void handleLogout()}
           />
         )}
       </div>
 
-      {!collapsed && <VersionBadge />}
+      <VersionBadge />
 
       <DesignModal
         key={`${designModal?.mode === 'edit' ? designModal.design?.id : 'create'}-${openSeq}`}
@@ -526,7 +567,6 @@ interface SidebarItemProps {
   /** Extra classes on the icon only (e.g. a spin while a scan runs). */
   iconClassName?: string
   label: string
-  collapsed: boolean
   active?: boolean
   badge?: boolean
   accent?: boolean
@@ -535,7 +575,7 @@ interface SidebarItemProps {
   dataTour?: string
 }
 
-function SidebarItem({ icon: Icon, iconClassName, label, collapsed, active, badge, accent, onClick, dataTour }: SidebarItemProps) {
+function SidebarItem({ icon: Icon, iconClassName, label, active, badge, accent, onClick, dataTour }: SidebarItemProps) {
   // Every item either navigates or opens a modal, so on a phone the drawer
   // gets out of the way of what was just opened.
   const setNavOpen = useUiStore((s) => s.setNavOpen)
@@ -543,6 +583,8 @@ function SidebarItem({ icon: Icon, iconClassName, label, collapsed, active, badg
     <button
       onClick={() => { onClick?.(); setNavOpen(false) }}
       data-tour={dataTour}
+      data-nav-item=""
+      aria-current={active ? 'page' : undefined}
       className={`relative flex items-center gap-2 w-full px-2 py-2.5 md:py-1.5 rounded-md text-sm transition-colors cursor-pointer ${
         active
           ? 'bg-primary/10 text-primary'
@@ -552,21 +594,19 @@ function SidebarItem({ icon: Icon, iconClassName, label, collapsed, active, badg
       }`}
     >
       <Icon size={16} className={`shrink-0${iconClassName ? ` ${iconClassName}` : ''}`} />
-      {!collapsed && <span className="truncate">{label}</span>}
+      <span className="truncate">{label}</span>
       {badge && (
         <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-warning" />
       )}
     </button>
   )
 
-  if (collapsed) {
-    return (
-      <Tooltip>
-        <TooltipTrigger>{btn}</TooltipTrigger>
-        <TooltipContent side="right">{label}</TooltipContent>
-      </Tooltip>
-    )
-  }
-
   return btn
+}
+
+/** The drawer's arrow-key stops: section links, actions and the canvas switcher. */
+function navItems(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>('[data-nav-item]')).filter(
+    (el) => !el.hasAttribute('disabled'),
+  )
 }

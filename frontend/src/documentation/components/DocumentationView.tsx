@@ -691,7 +691,7 @@ export function DocumentationView() {
         className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-primary/30 max-md:hidden"
       />
 
-      <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', !openDoc && 'max-md:hidden')}>
+      <div id="content-region" tabIndex={-1} aria-label="Document" className={cn('flex min-h-0 min-w-0 flex-1 flex-col outline-none', !openDoc && 'max-md:hidden')}>
         {coverage && coverage.notes_unmigrated > 0 && (
           <MigrateNotesBanner count={coverage.notes_unmigrated} onMigrate={() => void handleMigrate()} />
         )}

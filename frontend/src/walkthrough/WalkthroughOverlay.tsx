@@ -6,6 +6,7 @@ import { useWalkthroughStore } from '@/stores/walkthroughStore'
 import { useWalkthroughActions } from './actions'
 import { getSteps, type StepPlacement } from './steps'
 import './walkthrough.css'
+import { useUiStore } from '@/stores/uiStore'
 
 const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 
@@ -77,6 +78,10 @@ export function WalkthroughOverlay() {
     actions.closeAll()
     const key = step?.action as keyof typeof actions | undefined
     if (key && typeof actions[key] === 'function') (actions[key] as () => void)()
+    // Several steps point at sidebar items, which now live in a drawer: open it
+    // for those, and keep it closed for the rest.
+    const anchorEl = step?.anchor ? document.querySelector(step.anchor) : null
+    useUiStore.getState().setNavOpen(!!anchorEl?.closest('#app-navigation'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isActive, stepIndex, actions])
 

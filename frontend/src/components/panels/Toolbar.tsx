@@ -52,7 +52,8 @@ export function Toolbar({ onSave, onAutoLayout, onExport, onChangeStyle, onUndo,
       <div className="hidden md:flex">
         <Logo size={28} showText={true} />
       </div>
-      <span className="md:hidden min-w-0 truncate text-sm font-medium text-foreground">{activeDesignName}</span>
+      {/* The canvas switcher lives in the drawer, so the header names the open canvas. */}
+      <span className="min-w-0 truncate text-sm font-medium text-foreground md:ml-2 md:text-muted-foreground">{activeDesignName}</span>
       <div className="flex-1" />
       <div className="hidden md:flex items-center gap-2">
       {/* Undo/redo are canvas history; the rack canvas has none yet. */}

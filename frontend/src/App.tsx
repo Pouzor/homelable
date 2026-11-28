@@ -21,7 +21,7 @@ import { isZoneSubnetCandidate } from '@/utils/subnet'
 import { CanvasContainer } from '@/components/canvas/CanvasContainer'
 import { Sidebar } from '@/components/panels/Sidebar'
 import { Toolbar } from '@/components/panels/Toolbar'
-import { MobileDocsBar } from '@/components/panels/MobileTopBar'
+import { DocsHeader } from '@/components/panels/MobileTopBar'
 import { DetailPanel } from '@/components/panels/DetailPanel'
 import { LoginPage } from '@/components/LoginPage'
 import { NodeModal } from '@/components/modals/NodeModal'
@@ -574,6 +574,13 @@ export default function App() {
       // Copy/paste (Ctrl/Cmd+C/V) handled in CanvasContainer so paste can place
       // nodes under the cursor / viewport center.
       if (e.key === '?' && !isInput) { setShortcutsOpen(true); return }
+      // M opens and closes the navigation drawer from anywhere.
+      if ((e.key === 'm' || e.key === 'M') && !isInput && !ctrl && !e.altKey) {
+        e.preventDefault()
+        const ui = useUiStore.getState()
+        ui.setNavOpen(!ui.navOpen)
+        return
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -1245,6 +1252,19 @@ export default function App() {
         {/* data-new-user marks a first-time (demo) canvas — the hook the upcoming
             Getting Started walkthrough keys off. */}
         <div className="flex h-dvh w-screen overflow-hidden bg-background" data-new-user={isNewUser}>
+          {/* First Tab stop: straight past the header to the canvas or document. */}
+          <a
+            href="#main-content"
+            onClick={(e) => {
+              e.preventDefault()
+              // The canvas or the document pane, past the header's buttons.
+              const target = document.getElementById('content-region') ?? document.getElementById('main-content')
+              target?.focus()
+            }}
+            className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[60] focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:text-primary-foreground"
+          >
+            Skip to content
+          </a>
           <Sidebar
             onAddNode={() => setAddNodeOpen(true)}
             onAddGroupRect={() => setAddGroupRectOpen(true)}
@@ -1256,7 +1276,7 @@ export default function App() {
             onOpenHistory={() => setScanHistoryOpen(true)}
             onOpenInventory={openInventoryModal}
           />
-          <div className="flex flex-col flex-1 min-w-0">
+          <main id="main-content" tabIndex={-1} className="flex flex-col flex-1 min-w-0 outline-none">
             {loadError && (
               <div
                 role="alert"
@@ -1274,7 +1294,7 @@ export default function App() {
             )}
             {appView === 'documentation' ? (
               <>
-              <MobileDocsBar />
+              <DocsHeader />
               <Suspense
                 fallback={<div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">Loading documentation…</div>}
               >
@@ -1296,7 +1316,7 @@ export default function App() {
               onViewOnly={handleViewOnly}
             />
             <div className="flex flex-1 min-h-0">
-              <div ref={canvasRef} className="flex-1 min-w-0 h-full">
+              <div ref={canvasRef} id="content-region" tabIndex={-1} aria-label="Canvas" className="flex-1 min-w-0 h-full outline-none">
                 {isRackDesign ? (
                   <RackCanvas />
                 ) : (
@@ -1333,7 +1353,7 @@ export default function App() {
             </div>
             </>
             )}
-          </div>
+          </main>
         </div>
 
         <NodeModal
