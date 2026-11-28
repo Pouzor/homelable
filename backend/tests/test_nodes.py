@@ -48,6 +48,66 @@ async def test_delete_node(client: AsyncClient, headers: dict):
     assert (await client.get(f"/api/v1/nodes/{node_id}", headers=headers)).status_code == 404
 
 
+async def test_delete_node_removes_its_edges(client: AsyncClient, headers: dict):
+    # Foreign keys are off at runtime, so the edge would outlive its node and
+    # the canvas would load a link to nothing.
+    ids = []
+    for label in ("A", "B", "C"):
+        res = await client.post("/api/v1/nodes", json={"type": "server", "label": label, "status": "unknown"}, headers=headers)
+        ids.append(res.json()["id"])
+    a, b, c = ids
+    gone = await client.post("/api/v1/edges", json={"source": a, "target": b, "type": "ethernet"}, headers=headers)
+    kept = await client.post("/api/v1/edges", json={"source": b, "target": c, "type": "ethernet"}, headers=headers)
+
+    assert (await client.delete(f"/api/v1/nodes/{a}", headers=headers)).status_code == 204
+
+    edge_ids = {e["id"] for e in (await client.get("/api/v1/edges", headers=headers)).json()}
+    assert gone.json()["id"] not in edge_ids
+    assert kept.json()["id"] in edge_ids
+
+
+async def test_delete_zone_releases_its_members_in_absolute_coordinates(client: AsyncClient, headers: dict):
+    zone = await client.post(
+        "/api/v1/nodes",
+        json={"type": "groupRect", "label": "Zone", "status": "unknown", "pos_x": 100, "pos_y": 200},
+        headers=headers,
+    )
+    zone_id = zone.json()["id"]
+    member = await client.post(
+        "/api/v1/nodes",
+        json={"type": "server", "label": "M", "status": "unknown", "parent_id": zone_id, "pos_x": 10, "pos_y": 20},
+        headers=headers,
+    )
+    member_id = member.json()["id"]
+
+    assert (await client.delete(f"/api/v1/nodes/{zone_id}", headers=headers)).status_code == 204
+
+    res = await client.get(f"/api/v1/nodes/{member_id}", headers=headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["parent_id"] is None
+    assert (body["pos_x"], body["pos_y"]) == (110, 220)
+
+
+async def test_delete_container_takes_its_children_and_their_edges(client: AsyncClient, headers: dict):
+    host = await client.post("/api/v1/nodes", json={"type": "proxmox", "label": "pve", "status": "unknown"}, headers=headers)
+    host_id = host.json()["id"]
+    vm = await client.post(
+        "/api/v1/nodes",
+        json={"type": "vm", "label": "vm", "status": "unknown", "parent_id": host_id},
+        headers=headers,
+    )
+    vm_id = vm.json()["id"]
+    other = await client.post("/api/v1/nodes", json={"type": "switch", "label": "sw", "status": "unknown"}, headers=headers)
+    link = await client.post("/api/v1/edges", json={"source": vm_id, "target": other.json()["id"], "type": "ethernet"}, headers=headers)
+
+    assert (await client.delete(f"/api/v1/nodes/{host_id}", headers=headers)).status_code == 204
+
+    assert (await client.get(f"/api/v1/nodes/{vm_id}", headers=headers)).status_code == 404
+    edge_ids = {e["id"] for e in (await client.get("/api/v1/edges", headers=headers)).json()}
+    assert link.json()["id"] not in edge_ids
+
+
 async def test_list_nodes_returns_all(client: AsyncClient, headers: dict):
     for i in range(3):
         await client.post("/api/v1/nodes", json={"type": "generic", "label": f"Node {i}", "status": "unknown"}, headers=headers)

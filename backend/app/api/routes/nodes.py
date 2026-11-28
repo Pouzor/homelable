@@ -268,7 +268,33 @@ async def delete_node(node_id: str, db: AsyncSession = Depends(get_db), _: str =
     node = await db.get(Node, node_id)
     if not node:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
-    # Foreign keys are off, so the schema's ON DELETE SET NULL does not fire.
-    await unlink_documents(db, node_ids=[node_id])
-    await db.delete(node)
+    # Foreign keys are off at runtime, so none of the schema's ON DELETE rules
+    # fire: not the SET NULL on documents, and not the CASCADE that would take
+    # this node's edges and children with it. Do here what the canvas store's
+    # deleteNode does, so an MCP or API delete leaves the same canvas behind:
+    # a zone releases its members (in absolute coordinates); any other parent
+    # takes its descendants with it; every edge touching a removed node goes.
+    removed: list[Node] = []
+
+    async def collect(current: Node) -> None:
+        removed.append(current)
+        children = (await db.execute(select(Node).where(Node.parent_id == current.id))).scalars().all()
+        for child in children:
+            if current.type == "groupRect":
+                child.parent_id = None
+                child.pos_x = (child.pos_x or 0) + (current.pos_x or 0)
+                child.pos_y = (child.pos_y or 0) + (current.pos_y or 0)
+            else:
+                await collect(child)
+
+    await collect(node)
+    removed_ids = [n.id for n in removed]
+    edges = (
+        await db.execute(select(Edge).where(or_(Edge.source.in_(removed_ids), Edge.target.in_(removed_ids))))
+    ).scalars().all()
+    for edge in edges:
+        await db.delete(edge)
+    await unlink_documents(db, node_ids=removed_ids)
+    for gone in removed:
+        await db.delete(gone)
     await db.commit()
