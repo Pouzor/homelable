@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { RefreshCw, X, Loader2, StopCircle, Clock, ScanLine, Network, RadioTower, Server, Wifi, HardDrive, Inbox } from 'lucide-react'
+import { RefreshCw, X, Loader2, StopCircle, Clock, ScanLine, Network, RadioTower, Server, Wifi, HardDrive, Inbox, Crosshair } from 'lucide-react'
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { scanApi } from '@/api/client'
@@ -26,11 +26,14 @@ interface ScanHistoryModalProps {
   demoRuns?: ScanRun[]
 }
 
-type KindFilter = 'all' | 'ip' | 'zigbee' | 'zwave' | 'proxmox' | 'unifi' | 'unraid'
+type KindFilter = 'all' | 'ip' | 'device' | 'zigbee' | 'zwave' | 'proxmox' | 'unifi' | 'unraid'
 
 /** Normalise a ScanRun.kind into one of the known display kinds. */
-function runKind(kind: string | undefined): 'ip' | 'zigbee' | 'zwave' | 'proxmox' | 'unifi' | 'unraid' {
-  return kind === 'zigbee' ? 'zigbee'
+function runKind(kind: string | undefined): 'ip' | 'device' | 'zigbee' | 'zwave' | 'proxmox' | 'unifi' | 'unraid' {
+  // 'device' is a per-device deep rescan (POST /scan/pending/{id}/rescan): one
+  // known host, so "N found" means nothing for it.
+  return kind === 'device' ? 'device'
+    : kind === 'zigbee' ? 'zigbee'
     : kind === 'zwave' ? 'zwave'
     : kind === 'proxmox' ? 'proxmox'
     : kind === 'unifi' ? 'unifi'
@@ -40,6 +43,7 @@ function runKind(kind: string | undefined): 'ip' | 'zigbee' | 'zwave' | 'proxmox
 
 const KIND_META = {
   ip: { label: 'IP', color: '#a855f7' },
+  device: { label: 'Rescan', color: '#39d353' },
   zigbee: { label: 'Zigbee', color: '#00d4ff' },
   zwave: { label: 'Z-Wave', color: '#ff6e00' },
   proxmox: { label: 'Proxmox', color: '#e57000' },
@@ -59,6 +63,7 @@ const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
 const KIND_FILTERS: { key: KindFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'ip', label: 'IP' },
+  { key: 'device', label: 'Rescan' },
   { key: 'zigbee', label: 'Zigbee' },
   { key: 'zwave', label: 'Z-Wave' },
   { key: 'proxmox', label: 'Proxmox' },
@@ -256,7 +261,8 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
           {filtered.map((r) => {
             const kind = runKind(r.kind)
             const meta = KIND_META[kind]
-            const KindIcon = kind === 'zigbee' ? Network : kind === 'zwave' ? RadioTower : kind === 'proxmox' ? Server : kind === 'unifi' ? Wifi : kind === 'unraid' ? HardDrive : ScanLine
+            const isRescan = kind === 'device'
+            const KindIcon = kind === 'device' ? Crosshair : kind === 'zigbee' ? Network : kind === 'zwave' ? RadioTower : kind === 'proxmox' ? Server : kind === 'unifi' ? Wifi : kind === 'unraid' ? HardDrive : ScanLine
             return (
               <div key={r.id} className="rounded-lg border border-border bg-popover p-3">
                 <div className="flex items-center gap-2">
@@ -276,7 +282,7 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
                     </span>
                   )}
                   <span className="ml-auto text-xs text-muted-foreground font-mono">
-                    {r.devices_found} found
+                    {isRescan ? (r.ranges[0] ?? '') : `${r.devices_found} found`}
                   </span>
                   {r.status === 'running' && (
                     <Tooltip>
@@ -305,10 +311,12 @@ export function ScanHistoryModal({ open, onClose, demoRuns }: ScanHistoryModalPr
                     value={r.finished_at ? new Date(parseUtc(r.finished_at)).toLocaleString() : '—'}
                   />
                   <Meta label="Duration" value={runDuration(r, now)} mono />
-                  <Meta label="Devices" value={`${r.devices_found}`} mono />
+                  {isRescan
+                    ? <Meta label="Target" value={r.ranges[0] ?? '—'} mono />
+                    : <Meta label="Devices" value={`${r.devices_found}`} mono />}
                 </div>
 
-                {r.ranges.length > 0 && (
+                {!isRescan && r.ranges.length > 0 && (
                   <div className="mt-2 text-[11px]">
                     <span className="text-muted-foreground">Ranges: </span>
                     <span className="text-muted-foreground font-mono break-all">{r.ranges.join(', ')}</span>

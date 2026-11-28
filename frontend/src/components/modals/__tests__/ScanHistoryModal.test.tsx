@@ -307,4 +307,43 @@ describe('ScanHistoryModal', () => {
       expect(toast.success).toHaveBeenCalledWith('Proxmox (lab1) import done — 9 devices')
     )
   })
+
+  it('shows a per-device rescan as a Rescan with its target, not "0 found"', async () => {
+    const RESCAN_RUN = {
+      id: 'run-rescan',
+      status: 'done',
+      kind: 'device',
+      ranges: ['10.0.0.5/32'],
+      devices_found: 0,
+      started_at: new Date(Date.now() - 60000).toISOString(),
+      finished_at: new Date(Date.now() - 30000).toISOString(),
+      error: null,
+    }
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [RESCAN_RUN, DONE_RUN] } as never)
+    renderModal()
+    await screen.findByText('3 found')
+    expect(screen.getAllByText('Rescan').length).toBeGreaterThan(0)
+    expect(screen.queryByText('0 found')).toBeNull()
+    expect(screen.getByText('Target')).toBeDefined()
+    expect(screen.getAllByText('10.0.0.5/32').length).toBeGreaterThan(0)
+  })
+
+  it('filters rescans apart from IP scans', async () => {
+    const RESCAN_RUN = {
+      id: 'run-rescan',
+      status: 'done',
+      kind: 'device',
+      ranges: ['10.0.0.5/32'],
+      devices_found: 0,
+      started_at: new Date().toISOString(),
+      finished_at: new Date().toISOString(),
+      error: null,
+    }
+    vi.mocked(scanApi.runs).mockResolvedValue({ data: [RESCAN_RUN, DONE_RUN] } as never)
+    renderModal()
+    await screen.findByText('3 found')
+    fireEvent.click(screen.getByRole('button', { name: 'IP' }))
+    await waitFor(() => expect(screen.queryByText('Target')).toBeNull())
+    expect(screen.getByText('3 found')).toBeDefined()
+  })
 })
