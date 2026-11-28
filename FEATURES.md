@@ -216,13 +216,14 @@ Nodes: `proxmox` (host) / `vm` / `lxc`, linked host→guest by a `virtual` edge.
   | Method | Checks |
   |--------|--------|
   | `ping` | ICMP reachability |
-  | `http` | GET, OK if status < 500 |
-  | `https` | GET with TLS verify |
+  | `http` | GET, OK if status < 500. An `https://…` target works too, without verifying the certificate |
+  | `https` | GET with TLS verify (fails on self-signed certificates) |
   | `tcp` | TCP connect to `host:port` |
   | `ssh` | TCP connect to port 22 |
   | `prometheus` | GET `/metrics` |
   | `health` | GET `/health` |
 
+- **Self-signed certificate?** Use `http` with the full `https://host:port` as the target. `https` is for services with a certificate your system trusts.
 - Checks run on a timer (`STATUS_CHECKER_INTERVAL`, 60s by default) and stream to the UI over WebSocket, no refresh. The sidebar footer keeps a running online/offline tally.
 - **Monitoring handled elsewhere?** Set `STATUS_CHECKER_ENABLED=false` in `.env`: Homelable then sends no status or service probes at all, approved devices no longer default to `ping`, and Settings shows the checks as disabled.
 

@@ -210,8 +210,8 @@ Homelable continuously monitors your nodes and displays their live status (onlin
 | Method | Description |
 |--------|-------------|
 | `ping` | ICMP ping |
-| `http` | GET request, success if status < 500 |
-| `https` | GET with TLS verify |
+| `http` | GET request, success if status < 500. Takes an `https://` target too, **without** certificate verification: use it for self-signed web UIs (Proxmox, UniFi, Portainer…) |
+| `https` | GET with TLS verify. A self-signed certificate fails this check |
 | `tcp` | TCP connect (target: `host:port`) |
 | `ssh` | TCP connect to port 22 |
 | `prometheus` | GET `/metrics` |

@@ -119,6 +119,23 @@ async def test_check_node_https_uses_verify():
 
 
 @pytest.mark.asyncio
+async def test_check_node_http_keeps_an_https_target_without_verifying():
+    """Documented in README/FEATURES as the way to check a self-signed web UI."""
+    captured = {}
+
+    async def fake_http_get(url, verify=False):
+        captured["url"] = url
+        captured["verify"] = verify
+        return True
+
+    with patch("app.services.status_checker._http_get", side_effect=fake_http_get):
+        await check_node("http", "https://10.0.0.5:8006", None)
+
+    assert captured["url"] == "https://10.0.0.5:8006"
+    assert captured["verify"] is False
+
+
+@pytest.mark.asyncio
 async def test_check_node_ssh():
     with patch("app.services.status_checker._tcp_connect", new_callable=AsyncMock, return_value=True) as mock_tcp:
         result = await check_node("ssh", None, "192.168.1.5")
