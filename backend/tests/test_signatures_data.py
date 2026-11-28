@@ -147,3 +147,20 @@ def test_ai_server_outranks_plain_server():
         {"port": 80, "protocol": "tcp"},
         {"port": 11434, "protocol": "tcp"},
     ]) == "ai_server"
+
+
+@pytest.mark.parametrize(
+    ("http_signals", "expected"),
+    [
+        # Probe confirms the NZBGet web UI.
+        ({"title": "NZBGet", "headers": {}}, "NZBGet"),
+        # Probe ran and found something else on 6789 (e.g. the UniFi
+        # gateway's speed-test port): not NZBGet.
+        ({"title": None, "headers": {}}, None),
+        # Probe disabled: unchanged port-only guess.
+        (None, "NZBGet"),
+    ],
+)
+def test_port_6789_is_nzbget_only_when_the_probe_agrees(http_signals, expected):
+    sig = match_service(6789, "tcp", banner=None, http_signals=http_signals)
+    assert (sig["service_name"] if sig else None) == expected

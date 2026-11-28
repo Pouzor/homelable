@@ -35,7 +35,7 @@
 
   {"port": 9091,  "protocol": "tcp", "banner_regex": "Transmission",                   "service_name": "Transmission",            "icon": "download",    "category": "download",      "suggested_node_type": "server"},
   {"port": 8112,  "protocol": "tcp", "banner_regex": null,                              "service_name": "Deluge",                  "icon": "download",    "category": "download",      "suggested_node_type": "server"},
-  {"port": 6789,  "protocol": "tcp", "banner_regex": null,                              "service_name": "NZBGet",                  "icon": "download",    "category": "download",      "suggested_node_type": "server"},
+  {"port": 6789,  "protocol": "tcp", "banner_regex": null, "http_regex": "NZBGet",      "service_name": "NZBGet",                  "icon": "download",    "category": "download",      "suggested_node_type": "server"},
   {"port": 6800,  "protocol": "tcp", "banner_regex": null,                              "service_name": "Aria2 RPC",               "icon": "download",    "category": "download",      "suggested_node_type": "server"},
   {"port": 51413, "protocol": "tcp", "banner_regex": null,                              "service_name": "Transmission BitTorrent", "icon": "download",    "category": "download",      "suggested_node_type": "server"},
   {"port": 6881,  "protocol": "tcp", "banner_regex": null,                              "service_name": "BitTorrent Peer",         "icon": "download",    "category": "download",      "suggested_node_type": "server"},
